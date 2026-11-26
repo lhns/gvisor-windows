@@ -2,4 +2,4 @@ gvisor-windows is an unofficial port of gVisor (https://gvisor.dev) to Windows h
 It is not a Google project. gVisor is Copyright The gVisor Authors, Apache License 2.0.
 
 Code borrowed from other projects is listed here with its origin:
-(none yet)
+- third_party/golang.org/x/sys: copy of golang.org/x/sys v0.48.0 (BSD-3-Clause, see its LICENSE). Its unix/*_shim_windows.go files are generated from the linux/amd64 files of the same version (ADR 0006).
