@@ -1,0 +1,154 @@
+//go:build windows
+
+package winhost
+
+import (
+	"sync"
+	"time"
+)
+
+// A file that Windows replaces (an editor's write-temp-then-rename "safe
+// save", git checkout) gets a new file ID and no metadata stream, so the
+// guest would see the mount defaults for mode, owner and xattrs. The backend
+// remembers the metadata it last saw for each (directory, name) and, when a
+// lookup finds a different regular file without a stream at that name, writes
+// the remembered metadata to it. The memory is per run: a replacement that
+// happens while no sandbox is running, or of a file the guest never looked
+// at, is not covered (a persistent per-folder index would be needed).
+
+type shadowKey struct {
+	dir  ID
+	name string
+}
+
+type shadowEntry struct {
+	id   ID
+	meta Metadata
+}
+
+const (
+	maxShadow   = 100000
+	selfWindow  = 750 * time.Millisecond
+	maxSelfMark = 4096
+)
+
+type shadowState struct {
+	mu    sync.Mutex
+	files map[shadowKey]shadowEntry
+
+	// Changes the backend makes itself produce directory-change events that
+	// must not be reported as Windows changes. Names and IDs of recent own
+	// changes are kept for selfWindow.
+	selfMu    sync.Mutex
+	selfNames map[string]time.Time
+	selfIDs   map[ID]time.Time
+}
+
+func (fs *FS) remember(dir ID, name string, id ID, m *Metadata) {
+	s := &fs.shadow
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.files == nil {
+		s.files = map[shadowKey]shadowEntry{}
+	}
+	if len(s.files) >= maxShadow {
+		n := 0
+		for k := range s.files {
+			delete(s.files, k)
+			if n++; n >= maxShadow/2 {
+				break
+			}
+		}
+	}
+	c := *m
+	s.files[shadowKey{dir, name}] = shadowEntry{id: id, meta: c}
+}
+
+// forget drops the memory of a name the guest removed or renamed.
+func (fs *FS) forget(dir ID, name string) {
+	s := &fs.shadow
+	s.mu.Lock()
+	delete(s.files, shadowKey{dir, name})
+	s.mu.Unlock()
+}
+
+// noteMeta is called with what a lookup found. It remembers a stream, or
+// restores the remembered metadata of a replaced file.
+func (fs *FS) noteMeta(dir ID, name string, a Attr, m *Metadata) Attr {
+	if m != nil {
+		if m.Mode&SIFMT == SIFREG {
+			fs.remember(dir, name, a.ID, m)
+		}
+		return a
+	}
+	if a.Mode&SIFMT != SIFREG || a.Native&(attrReparse|attrSystem|attrDirectory) != 0 {
+		return a
+	}
+	s := &fs.shadow
+	s.mu.Lock()
+	e, ok := s.files[shadowKey{dir, name}]
+	s.mu.Unlock()
+	if !ok || e.id == a.ID {
+		return a
+	}
+	m2 := e.meta
+	m2.Mode = SIFREG | e.meta.Mode&0o7777
+	m2.RdevMajor, m2.RdevMinor, m2.Target = 0, 0, ""
+	fs.markID(a.ID)
+	h, err := fs.openID(a.ID, xattrAccess)
+	if err != nil {
+		return a
+	}
+	defer fs.closeID(a.ID, h)
+	fs.metaMu.Lock()
+	err = fs.writeMeta(h, &m2)
+	fs.metaMu.Unlock()
+	if err != nil {
+		return a
+	}
+	fs.remember(dir, name, a.ID, &m2)
+	a.Mode, a.UID, a.GID = m2.Mode, m2.UID, m2.GID
+	return a
+}
+
+func (fs *FS) markName(name string) {
+	s := &fs.shadow
+	s.selfMu.Lock()
+	if s.selfNames == nil {
+		s.selfNames = map[string]time.Time{}
+	}
+	if len(s.selfNames) > maxSelfMark {
+		s.selfNames = map[string]time.Time{}
+	}
+	s.selfNames[name] = time.Now().Add(selfWindow)
+	s.selfMu.Unlock()
+}
+
+func (fs *FS) markID(id ID) {
+	s := &fs.shadow
+	s.selfMu.Lock()
+	if s.selfIDs == nil {
+		s.selfIDs = map[ID]time.Time{}
+	}
+	if len(s.selfIDs) > maxSelfMark {
+		s.selfIDs = map[ID]time.Time{}
+	}
+	s.selfIDs[id] = time.Now().Add(selfWindow)
+	s.selfMu.Unlock()
+}
+
+func (fs *FS) isSelfName(name string) bool {
+	s := &fs.shadow
+	s.selfMu.Lock()
+	defer s.selfMu.Unlock()
+	t, ok := s.selfNames[name]
+	return ok && time.Now().Before(t)
+}
+
+func (fs *FS) isSelfID(id ID) bool {
+	s := &fs.shadow
+	s.selfMu.Lock()
+	defer s.selfMu.Unlock()
+	t, ok := s.selfIDs[id]
+	return ok && time.Now().Before(t)
+}
