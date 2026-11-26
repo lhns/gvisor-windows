@@ -1683,22 +1683,24 @@
   lane: windows-ci
   plain: Decommitted guest memory only partly leaves the working set and never reduces commit charge, because pages stay committed in 1 GB sections.
   notes: 'Fixed when: a guest that allocates and frees 1 GB returns it to Windows (working set and commit charge), measured in CI.'
-- outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+- outcome: very-successful
+  evidence:
+  - docs/results/1e-platform-perf.md
+  verdict_quote: A free window for the Windows loader plus cached, parallel scanning cut a glibc hello from about 380 ms to 42 ms and fork + wait to about 10 ms extra
+  headline: about 380 ms to 42 ms
   depends_on:
   - platform-static-guest-from-memory
   replaced_by: []
   start: '2026-11-26'
-  end: ''
-  folded: []
+  end: '2026-11-26'
+  folded:
+  - 'Merged head: glibc hello 35 ms median, shell pipelines 150-170 ms (2026-11-26, commit 8fb9b94b9)'
   overview: true
   id: platform-fast-process-start
   title: Start guest processes fast
   track: platform
   kind: feature
-  state: in-progress
+  state: done
   lane: windows-ci
   plain: A guest process takes 280-560 ms to start through the Sentry, against 18 ms for a bare stub; profile the gap and keep a pool of ready stubs.
   notes: 'Done when: static glibc hello starts and exits through the Sentry in under 50 ms median on windows-latest, and fork+waitpid adds under 50 ms; the profile is written up.'
@@ -1764,19 +1766,20 @@
 - outcome: unrated
   evidence:
   - docs/results/1c-windows-platform.md
+  - docs/results/1e-platform-perf.md
   verdict_quote: ''
   headline: ''
   depends_on: []
   replaced_by: []
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   id: platform-split-syscall-unpatched
   title: Syscalls split across mappings
   track: platform
   kind: defect
-  state: in-progress
+  state: done
   lane: windows-ci
   plain: A syscall instruction whose two bytes fall into two separately mapped ranges is not found by the scan, so it would reach the Windows kernel.
   notes: 'Fixed when: a test guest with a syscall straddling two MapFile ranges is patched and served correctly.'

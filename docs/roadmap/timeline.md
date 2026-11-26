@@ -37,8 +37,8 @@ gantt
     Save and restore FPU and SSE state :platform_fp_state, 2026-11-26, 2026-11-26
     Retire the stub prototype :platform_retire_prototype, 2026-11-26, 2026-11-26
     Give freed guest memory back :platform_memory_release, 2026-11-26, 2026-11-26
-    Start guest processes fast :active, platform_fast_process_start, 2026-11-26, 2026-11-26
-    Syscalls split across mappings :active, platform_split_syscall_unpatched, 2026-11-26, 2026-11-26
+    Start guest processes fast :platform_fast_process_start, 2026-11-26, 2026-11-26
+    Syscalls split across mappings :platform_split_syscall_unpatched, 2026-11-26, 2026-11-26
     section sentry - sentry
     Recover faults in Go :sentry_go_fault_recovery, 2026-11-26, 2026-11-26
     Sentry builds for Windows :sentry_windows_build, 2026-11-26, 2026-11-26

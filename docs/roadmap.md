@@ -89,9 +89,9 @@ Owner calls are the purple shape. A decided owner call is drawn in the overview 
 ## Ratings
 
 <!-- BEGIN GENERATED: ratings -->
-0 of 43 rated nodes are confirmed by the owner.
+0 of 44 rated nodes are confirmed by the owner.
 
-Not yet confirmed: `research-lkl-nommu`, `research-unkernel`, `research-flinux-translation`, `research-qemu-emulation`, `workloads-podman-on-gvisor-linux`, `research-gvisor-benchmark`, `platform-elf-alignment-survey`, `fs-persistent-image-storage`, `platform-trap-cost`, `platform-4k-section-views`, `platform-tls-register`, `platform-restricted-stub`, `sentry-go-fault-recovery`, `research-whpx-this-machine`, `platform-stub-controller`, `platform-page-verification`, `platform-syscall-fast-path`, `platform-winstub`, `fs-windows-directfs`, `fs-change-notifications`, `fs-linux-metadata-on-ntfs`, `fs-handles-do-not-block-users`, `net-netstack-windows-link`, `net-port-forwarding`, `runsc-measure-cli`, `ops-windows-ci-standard-user`, `sentry-fault-recovery`, `fs-root-filesystem-source`, `sentry-threads-and-signals`, `research-file-protocol`, `platform-zpoline-hooks`, `sentry-unix-shim`, `platform-exception-stack`, `workloads-strict-bar-linux`, `platform-static-guest-from-memory`, `net-bridge-networking`, `platform-debug-event-cost`, `platform-syscall-site-survey`, `platform-faults-per-exec`, `platform-controller-wakeups`, `platform-fp-state`, `platform-retire-prototype`, `sentry-dynamic-elf-and-exec`.
+Not yet confirmed: `research-lkl-nommu`, `research-unkernel`, `research-flinux-translation`, `research-qemu-emulation`, `workloads-podman-on-gvisor-linux`, `research-gvisor-benchmark`, `platform-elf-alignment-survey`, `fs-persistent-image-storage`, `platform-trap-cost`, `platform-4k-section-views`, `platform-tls-register`, `platform-restricted-stub`, `sentry-go-fault-recovery`, `research-whpx-this-machine`, `platform-stub-controller`, `platform-page-verification`, `platform-syscall-fast-path`, `platform-winstub`, `fs-windows-directfs`, `fs-change-notifications`, `fs-linux-metadata-on-ntfs`, `fs-handles-do-not-block-users`, `net-netstack-windows-link`, `net-port-forwarding`, `runsc-measure-cli`, `ops-windows-ci-standard-user`, `sentry-fault-recovery`, `fs-root-filesystem-source`, `sentry-threads-and-signals`, `research-file-protocol`, `platform-zpoline-hooks`, `sentry-unix-shim`, `platform-exception-stack`, `workloads-strict-bar-linux`, `platform-static-guest-from-memory`, `net-bridge-networking`, `platform-debug-event-cost`, `platform-syscall-site-survey`, `platform-faults-per-exec`, `platform-controller-wakeups`, `platform-fp-state`, `platform-retire-prototype`, `platform-fast-process-start`, `sentry-dynamic-elf-and-exec`.
 <!-- END GENERATED: ratings -->
 
 ## Overview
@@ -112,11 +112,9 @@ flowchart TB
         platform_veh_on_guest_stack_unsafe>"platform · ✔<br/>Exceptions overwrite<br/>guest stacks"]
         platform_winstub["platform · ✔ Windows<br/>platform for the<br/>Sentry"]
         platform_static_guest_from_memory["platform · ✔ Run a<br/>static guest from<br/>memory"]
+        platform_fast_process_start["platform · ✔ Start<br/>guest processes fast"]
     end
-    subgraph bd_1["Now (in progress)"]
-        platform_fast_process_start["platform · ▶ Start<br/>guest processes fast"]
-    end
-    subgraph bd_2["Later (blocked or parked)"]
+    subgraph bd_1["Later (blocked or parked)"]
         platform_busybox_on_windows["platform · ⛔ Run<br/>busybox under the<br/>Sentry"]
         runsc_container_on_windows["runsc · ⛔ Run a<br/>container with runsc"]
         workloads_podman_on_windows[/"workloads · ⛔ Podman<br/>passes on Windows"/]
@@ -165,7 +163,7 @@ flowchart TB
     class workloads_podman_on_gvisor_linux,platform_tls_register mixed
     class workloads_podman_on_windows,runsc_container_on_windows,platform_busybox_on_windows blocked
     class platform_winstub,fs_windows_directfs,net_netstack_windows_link,platform_static_guest_from_memory,net_bridge_networking,platform_veh_on_guest_stack_unsafe succ
-    class platform_fast_process_start inprog
+    class platform_fast_process_start vsucc
 ```
 <!-- END GENERATED: overview -->
 
@@ -188,8 +186,7 @@ flowchart TB
 | Exceptions overwrite guest stacks | ✔ fixed | Windows writes about 3 KB of exception data below the faulting thread stack pointer, so in-process handlers can corrupt Linux code; faults must go to the Sentry as debugger instead. |
 | Binary translation as a fallback | ⏸ parked | Translate guest code (as the owner's v3compat does with DynamoRIO on Linux) only if debugger faults or unpatchable syscalls prove too slow, or to support CPUs without FSGSBASE. |
 | Give freed guest memory back | ⚠ open | Decommitted guest memory only partly leaves the working set and never reduces commit charge, because pages stay committed in 1 GB sections. |
-| Start guest processes fast | ▶ in progress | A guest process takes 280-560 ms to start through the Sentry, against 18 ms for a bare stub; profile the gap and keep a pool of ready stubs. |
-| Syscalls split across mappings | ⚠ open | A syscall instruction whose two bytes fall into two separately mapped ranges is not found by the scan, so it would reach the Windows kernel. |
+| Start guest processes fast | ✔ done · very-successful | A guest process takes 280-560 ms to start through the Sentry, against 18 ms for a bare stub; profile the gap and keep a pool of ready stubs. |
 | Event waiting on IOCP | ⛔ blocked | Waiting for many host events at once (epoll on Linux) moves to Windows completion ports. |
 | Timers and clocks on Windows | ⛔ blocked | The Sentry's clocks and timers run on Windows' high-resolution timers. |
 | Guest terminal and stdio | ▶ in progress | A guest program's input, output and terminal connect to the Windows console (ConPTY), including Ctrl-C. |
@@ -232,7 +229,6 @@ flowchart TB
 **windows-ci**
 
 - `sentry-host-stdio-and-tty`: Guest terminal and stdio
-- `platform-fast-process-start`: Start guest processes fast
 - `runsc-windows-boot`: Boot runsc on Windows
 <!-- END GENERATED: running -->
 
@@ -259,7 +255,7 @@ Generated on 2026-11-26.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 58 done, 7 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 60 done, 7 abandoned</summary>
 
 - `fs-change-notifications`: Windows changes reach the guest (✔ done · successful). Edits made on Windows invalidate the Sentry's caches and arrive in the guest as inotify events.
 - `fs-compat-layer-not-boundary`: Compatibility layer, not security boundary (✔ done · n/a). The sandbox may open the user's files directly with the user's rights; it isolates containers from each other, not from the user.
@@ -291,6 +287,8 @@ Generated on 2026-11-26.
 - `platform-debug-event-cost`: Measure debugger fault handling (✔ done · successful). Measure what handling a guest fault as debugger costs without touching thread context, how many events a process start makes, and whether many stubs can be debugged at once.
 - `platform-elf-alignment-survey`: Survey ELF segment alignment (✔ done · successful). Count how often program files place code at addresses Windows cannot map directly (64 KB alignment).
 - `platform-exception-stack`: Check what exceptions do to stacks (✔ done · successful). Windows writes exception data onto the faulting thread stack; check whether that destroys data Linux code keeps there, and what happens on unmapped stacks.
+- `platform-fast-process-start`: Start guest processes fast (✔ done · very-successful). A guest process takes 280-560 ms to start through the Sentry, against 18 ms for a bare stub; profile the gap and keep a pool of ready stubs.
+  - Merged head: glibc hello 35 ms median, shell pipelines 150-170 ms (2026-11-26)
 - `platform-faults-per-exec`: Count page faults per exec (✔ done · successful). Count how many page faults gVisor takes for one fork plus exec on Linux; times the debugger cost this gives the Windows process-start cost.
 - `platform-fp-state`: Save and restore FPU and SSE state (✔ done · successful). Guest floating-point and vector registers must survive every switch into the Sentry and back; the platform does not carry them yet.
 - `platform-fs-base-repair`: Restore the TLS register after switches (✔ done · unrated). The stub sets the guest thread-local register on every return to the guest; losses from preemption arrive as debug events and the Sentry restores it.
@@ -299,6 +297,7 @@ Generated on 2026-11-26.
 - `platform-restricted-stub`: Restrict the stub process (✔ done · mixed). Check that the process running Linux code can be locked down, so a missed system call does little harm.
   - Low-integrity child dies at startup on the hosted runner, 0xC0000142 (2026-11-26)
 - `platform-retire-prototype`: Retire the stub prototype (✔ done · successful). The prototype under tools/windows/stubproto duplicates the platform code; once its test guests run under the Sentry, delete it.
+- `platform-split-syscall-unpatched`: Syscalls split across mappings (✔ fixed). A syscall instruction whose two bytes fall into two separately mapped ranges is not found by the scan, so it would reach the Windows kernel.
 - `platform-static-guest-from-memory`: Run a static guest from memory (✔ done · successful). Thinnest end-to-end slice: the Sentry on Windows runs one embedded static program from its own memory filesystem, without host files, network or threads.
   - Process start through the Sentry 280-560 ms, fork +260-410 ms (2026-11-26)
 - `platform-stub-controller`: Stub and controller prototype (✔ done · successful). The Sentry debugs a tiny Windows stub process that runs a static Linux program; patched syscalls arrive over shared memory and faults as debug events.
@@ -355,7 +354,7 @@ Generated on 2026-11-26.
 Each track has its own page with its tree, node table and per-node details.
 
 - [runsc - runsc](roadmap/tracks/runsc.md): 5 nodes (2 done, 1 in progress, 2 blocked)
-- [platform - platform](roadmap/tracks/platform.md): 29 nodes (19 done, 2 in progress, 1 next, 2 blocked, 4 parked, 1 abandoned)
+- [platform - platform](roadmap/tracks/platform.md): 29 nodes (21 done, 1 next, 2 blocked, 4 parked, 1 abandoned)
 - [sentry - sentry](roadmap/tracks/sentry.md): 10 nodes (7 done, 1 in progress, 2 blocked)
 - [fs - files](roadmap/tracks/fs.md): 12 nodes (10 done, 1 next, 1 blocked)
 - [net - network](roadmap/tracks/net.md): 4 nodes (4 done)

@@ -30,8 +30,8 @@ flowchart TB
     platform_static_guest_from_memory["✔ Run a static guest<br/>from memory"]
     platform_retire_prototype["✔ Retire the stub<br/>prototype"]
     platform_memory_release>"⚠ Give freed guest<br/>memory back"]
-    platform_fast_process_start["▶ Start guest<br/>processes fast"]
-    platform_split_syscall_unpatched>"⚠ Syscalls split<br/>across mappings"]
+    platform_fast_process_start["✔ Start guest<br/>processes fast"]
+    platform_split_syscall_unpatched>"✔ Syscalls split<br/>across mappings"]
     platform_own_vdso["⛔ Own vDSO for clock<br/>calls"]
     platform_64k_mapping_conflicts["⏸ Handle 64 KB mapping<br/>conflicts"]
     platform_busybox_on_windows["⛔ Run busybox under<br/>the Sentry"]
@@ -113,12 +113,12 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class platform_elf_alignment_survey,platform_trap_cost,platform_4k_section_views,platform_exception_stack,platform_veh_on_guest_stack_unsafe,platform_debug_event_cost,platform_faults_per_exec,platform_stub_controller,platform_page_verification,platform_syscall_fast_path,platform_controller_wakeups,platform_winstub,platform_fp_state,platform_static_guest_from_memory,platform_retire_prototype succ
+    class platform_elf_alignment_survey,platform_trap_cost,platform_4k_section_views,platform_exception_stack,platform_veh_on_guest_stack_unsafe,platform_debug_event_cost,platform_faults_per_exec,platform_stub_controller,platform_page_verification,platform_syscall_fast_path,platform_controller_wakeups,platform_winstub,platform_fp_state,platform_static_guest_from_memory,platform_retire_prototype,platform_split_syscall_unpatched succ
     class platform_tls_register,platform_restricted_stub,platform_syscall_site_survey mixed
     class platform_zpoline_hooks dead
     class platform_fs_base_repair unrated
-    class platform_memory_release,platform_split_syscall_unpatched finding
-    class platform_fast_process_start inprog
+    class platform_memory_release finding
+    class platform_fast_process_start vsucc
     class platform_own_vdso,platform_busybox_on_windows blocked
     class platform_64k_mapping_conflicts,platform_hardware_acceleration,platform_binary_translation_fallback,platform_no_fsgsbase_fallback parked
 ```
@@ -156,8 +156,8 @@ flowchart TB
 | `platform-fp-state` | Save and restore FPU and SSE state | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-winstub |  |  |  | docs/results/1d-static-guest.md |
 | `platform-retire-prototype` | Retire the stub prototype | tooling | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-static-guest-from-memory |  |  |  | docs/results/1d-static-guest.md |
 | `platform-memory-release` | Give freed guest memory back | defect | windows-ci | next | unrated | 2026-11-26 |  |  |  |  |  | docs/adr/0013-memory-file-on-reserved-sections.md |
-| `platform-fast-process-start` | Start guest processes fast | feature | windows-ci | in-progress | unrated | 2026-11-26 |  | platform-static-guest-from-memory |  |  |  |  |
-| `platform-split-syscall-unpatched` | Syscalls split across mappings | defect | windows-ci | in-progress | unrated | 2026-11-26 |  |  |  |  |  | docs/results/1c-windows-platform.md |
+| `platform-fast-process-start` | Start guest processes fast | feature | windows-ci | done | very-successful | 2026-11-26 | 2026-11-26 | platform-static-guest-from-memory |  |  | about 380 ms to 42 ms | docs/results/1e-platform-perf.md |
+| `platform-split-syscall-unpatched` | Syscalls split across mappings | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/1c-windows-platform.md; docs/results/1e-platform-perf.md |
 
 ### Details per node
 
@@ -190,7 +190,7 @@ flowchart TB
 | `platform-fp-state` | Save and restore FPU and SSE state | the stubs keep the guests' vector state across every kind of stop |  | Guest floating-point and vector registers must survive every switch into the Sentry and back; the platform does not carry them yet. | Done when: a guest using SSE/AVX across syscalls, faults and signals keeps its register values, and the Sentry sees the right xsave size for signal frames. |  |  |  |  |
 | `platform-retire-prototype` | Retire the stub prototype | The real Sentry on a hosted Windows runner runs static asm, glibc (static and PIE), fork, Go and JIT guests from an in-memory tmpfs with correct output and exit codes |  | The prototype under tools/windows/stubproto duplicates the platform code; once its test guests run under the Sentry, delete it. | Done when: tools/windows/stubproto and its workflow are removed and its guests run through the Sentry in CI. |  |  |  |  |
 | `platform-memory-release` | Give freed guest memory back |  |  | Decommitted guest memory only partly leaves the working set and never reduces commit charge, because pages stay committed in 1 GB sections. | Fixed when: a guest that allocates and frees 1 GB returns it to Windows (working set and commit charge), measured in CI. |  |  |  |  |
-| `platform-fast-process-start` | Start guest processes fast |  |  | A guest process takes 280-560 ms to start through the Sentry, against 18 ms for a bare stub; profile the gap and keep a pool of ready stubs. | Done when: static glibc hello starts and exits through the Sentry in under 50 ms median on windows-latest, and fork+waitpid adds under 50 ms; the profile is written up. |  |  |  |  |
+| `platform-fast-process-start` | Start guest processes fast | A free window for the Windows loader plus cached, parallel scanning cut a glibc hello from about 380 ms to 42 ms and fork + wait to about 10 ms extra | about 380 ms to 42 ms | A guest process takes 280-560 ms to start through the Sentry, against 18 ms for a bare stub; profile the gap and keep a pool of ready stubs. | Done when: static glibc hello starts and exits through the Sentry in under 50 ms median on windows-latest, and fork+waitpid adds under 50 ms; the profile is written up. |  |  |  |  |
 | `platform-split-syscall-unpatched` | Syscalls split across mappings |  |  | A syscall instruction whose two bytes fall into two separately mapped ranges is not found by the scan, so it would reach the Windows kernel. | Fixed when: a test guest with a syscall straddling two MapFile ranges is patched and served correctly. |  |  |  |  |
 
 ### Folded items per node
@@ -212,4 +212,6 @@ flowchart TB
   - Process start through the Sentry 280-560 ms, fork +260-410 ms (2026-11-26, commit 3708f1a28)
 - `platform-controller-wakeups`: Controller waits without busy polling
   - Remaining 8-9 %fs repairs per Go run follow debug events, which stop all threads (2026-11-26, commit b5cc61e9b)
+- `platform-fast-process-start`: Start guest processes fast
+  - Merged head: glibc hello 35 ms median, shell pipelines 150-170 ms (2026-11-26, commit 8fb9b94b9)
 <!-- END GENERATED: table-platform -->
