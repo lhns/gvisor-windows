@@ -31,6 +31,10 @@ jobs:
           sudo cp $h/containers.conf /tmp/root/etc/containers/containers.conf
           sudo sed -i '/^\[engine\]/a static_dir = "/run/podman-static"' /tmp/root/etc/containers/containers.conf
           sudo sed 's/^driver = .*/driver = "vfs"/' $h/storage.conf | sudo tee /tmp/root/etc/containers/storage.conf >/dev/null
+          # Marker that makes Podman ask the gateway to expose published ports (libpod/networking_machine.go);
+          # the windows-nat gateway answers at gateway.containers.internal (10.0.2.2:80).
+          echo qemu | sudo tee /tmp/root/etc/containers/podman-machine >/dev/null
+          echo "10.0.2.2 gateway.containers.internal host.containers.internal" | sudo tee -a /tmp/root/etc/hosts >/dev/null
           echo "nameserver 10.0.2.3" | sudo tee /tmp/root/etc/resolv.conf >/dev/null
           sudo mkfs.erofs -b 4096 -T 0 podman.erofs /tmp/root >/dev/null
           ls -l podman.erofs

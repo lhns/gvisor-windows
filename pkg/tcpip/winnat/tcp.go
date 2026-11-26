@@ -1,6 +1,8 @@
 package winnat
 
 import (
+	"fmt"
+	"net/http"
 	"context"
 	"io"
 	"net"
@@ -121,3 +123,49 @@ func (n *NAT) DialGuest(guestPort uint16) (net.Conn, error) {
 
 // Relay copies between a and b until both directions end, then closes both.
 func Relay(a, b net.Conn) { relay(a, b) }
+
+// Unpublish stops the listener Publish made for hostPort.
+func (n *NAT) Unpublish(hostPort uint16) error {
+	n.mu.Lock()
+	l := n.published[hostPort]
+	delete(n.published, hostPort)
+	n.mu.Unlock()
+	if l == nil {
+		return fmt.Errorf("host port %d is not published", hostPort)
+	}
+	return l.Close()
+}
+
+// handleGatewayHTTP serves a guest connection to GatewayIP:80 with
+// Options.GatewayHTTP, over an in-memory connection.
+func (n *NAT) handleGatewayHTTP(r *tcp.ForwarderRequest) {
+	wq := new(waiter.Queue)
+	ep, terr := r.CreateEndpoint(wq)
+	if terr != nil {
+		r.Complete(true)
+		return
+	}
+	r.Complete(false)
+	a, b := net.Pipe()
+	n.mu.Lock()
+	if n.gwConns == nil {
+		n.gwConns = make(chan net.Conn)
+		go (&http.Server{Handler: n.opts.GatewayHTTP}).Serve(chanListener(n.gwConns))
+	}
+	ch := n.gwConns
+	n.mu.Unlock()
+	ch <- b
+	relay(gonet.NewTCPConn(wq, ep), a)
+}
+
+type chanListener chan net.Conn
+
+func (l chanListener) Accept() (net.Conn, error) {
+	c, ok := <-l
+	if !ok {
+		return nil, net.ErrClosed
+	}
+	return c, nil
+}
+func (chanListener) Close() error   { return nil }
+func (chanListener) Addr() net.Addr { return &net.TCPAddr{} }

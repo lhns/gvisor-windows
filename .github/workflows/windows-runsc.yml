@@ -74,6 +74,14 @@ jobs:
             -Program C:\ci\bin\runsctest.exe `
             -Arguments '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-erofs','-image','C:\ci\work\rootfs.erofs','-only','erofs' `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 300
+      - name: Host-folder rename and rmdir as a standard user (known gap, see docs/results/5-podman-windows.md)
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          & tools/windows/ci/run-as-standard-user.ps1 `
+            -Program C:\ci\bin\runsctest.exe `
+            -Arguments '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-hostfs','-only','hostfs' `
+            -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 300
       - name: All tests as a standard user
         shell: pwsh
         run: |
