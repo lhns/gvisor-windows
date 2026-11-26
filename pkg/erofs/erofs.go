@@ -496,6 +496,10 @@ func (i *Image) Inode(nid uint64) (Inode, error) {
 		return Inode{}, linuxerr.ENOTSUP
 	}
 
+	if inode.IsCharDev() || inode.IsBlockDev() {
+		inode.rdev = rawBlockAddr
+	}
+
 	blockSize := uint64(i.BlockSize())
 	inode.blocks = (inode.size + (blockSize - 1)) / blockSize
 
@@ -569,6 +573,10 @@ type Inode struct {
 	uid       uint32
 	gid       uint32
 	nlink     uint32
+
+	// rdev is the encoded device number of a character or block device
+	// (gvisor-windows: it was ignored, so devices in an image read as 0:0).
+	rdev uint32 `state:"nosave"`
 }
 
 // bitRange returns the bits within the range [bit, bit+bits) in value.
@@ -594,6 +602,13 @@ func (i *Inode) IsRegular() bool {
 // IsDir indicates whether i represents a directory.
 func (i *Inode) IsDir() bool {
 	return i.mode&linux.S_IFMT == linux.S_IFDIR
+}
+
+// Rdev returns the device numbers of a character or block device, decoded
+// from the kernel's new device number encoding.
+func (i *Inode) Rdev() (major, minor uint32) {
+	d := i.rdev
+	return (d & 0xfff00) >> 8, (d & 0xff) | ((d >> 12) & 0xfff00)
 }
 
 // IsCharDev indicates whether i represents a character device.
