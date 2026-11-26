@@ -259,7 +259,14 @@ jobs:
           export PODMAN_IMAGE=quay.io/podman/stable:${{ matrix.podman }}
           export CONTAINER_HOST=unix:///tmp/podman-runsc.sock
           export ENGINE_CTL="$PWD/test/e2e/podman-acceptance/harness/engine-runsc.sh"
-          test/e2e/podman-acceptance/run.sh || true
+          # Steps 1-8 first: step 9 restarts the sandbox and with it the netavark/nft logs.
+          ONLY="1 2 3 4 5 6 7 8" test/e2e/podman-acceptance/run.sh || true
+          docker exec podman-in-runsc sh -c "tail -c 300000 /var/log/netavark.log" >"$RESULTS_DIR/netavark-1-8.tail" 2>&1 || true
+          docker exec podman-in-runsc sh -c "tail -c 300000 /var/log/nft-in.log" >"$RESULTS_DIR/nft-in-1-8.log" 2>&1 || true
+          cp "$RESULTS_DIR/steps.txt" "$RESULTS_DIR/steps-1-8.txt"
+          ONLY="9 10" test/e2e/podman-acceptance/run.sh || true
+          cat "$RESULTS_DIR/steps-1-8.txt" "$RESULTS_DIR/steps.txt" | grep -E '^STEP' | sort -k2,2n >"$RESULTS_DIR/steps-all.txt"
+          { cat "$RESULTS_DIR/steps-all.txt"; echo "FAILED_STEPS=$(grep -c ' FAIL ' "$RESULTS_DIR/steps-all.txt")"; } >"$RESULTS_DIR/steps.txt"
       - name: Diagnostics
         if: always()
         run: |
