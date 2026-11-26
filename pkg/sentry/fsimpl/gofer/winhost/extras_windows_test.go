@@ -5,7 +5,10 @@ package winhost
 import (
 	"golang.org/x/sys/windows"
 	"os"
+	"os/exec"
+	"os/user"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -251,5 +254,38 @@ func TestCaseSensitivityRights(t *testing.T) {
 		err = setCaseSensitive(h, true)
 		windows.CloseHandle(h)
 		t.Logf("%-70s open ok, set case sensitive: %v", c.name, err)
+	}
+}
+
+// If the flag is refused, which right granted on the folder itself (the owner
+// may change its ACL) makes it work?
+func TestCaseSensitivityAfterGrant(t *testing.T) {
+	base := os.Getenv("GVISOR_PROBE_DIR")
+	if base == "" {
+		base = t.TempDir()
+	}
+	u, err := user.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range []string{"(DC)", "(WA)", "(WD)", "(AD)", "(WEA)", "(F)", "(M)"} {
+		dir, err := os.MkdirTemp(base, "grant")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.RemoveAll(dir)
+		out, gerr := exec.Command("icacls", dir, "/grant", u.Username+":"+g, "/Q").CombinedOutput()
+		if gerr != nil {
+			t.Logf("grant %s: %v %s", g, gerr, strings.TrimSpace(string(out)))
+			continue
+		}
+		h, err := ntOpen(0, `\??\`+dir, fileWriteAttributes|fileReadAttributes, shareAll, windows.FILE_OPEN, windows.FILE_DIRECTORY_FILE, 0)
+		if err != nil {
+			t.Logf("after granting %-5s open: %v", g, err)
+			continue
+		}
+		err = setCaseSensitive(h, true)
+		windows.CloseHandle(h)
+		t.Logf("after granting %-5s set case sensitive: %v", g, err)
 	}
 }
