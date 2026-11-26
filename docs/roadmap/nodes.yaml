@@ -782,7 +782,7 @@
   title: Windows changes reach the guest
   track: fs
   kind: feature
-  state: next
+  state: in-progress
   outcome: unrated
   evidence: []
   verdict_quote: ''
@@ -791,7 +791,7 @@
   - fs-windows-directfs
   replaced_by: []
   lane: windows-ci
-  start: ''
+  start: '2026-11-26'
   end: ''
   folded: []
   overview: false
@@ -1105,7 +1105,7 @@
   title: Guest terminal and stdio
   track: sentry
   kind: feature
-  state: blocked
+  state: in-progress
   outcome: unrated
   evidence: []
   verdict_quote: ''
@@ -1114,7 +1114,7 @@
   - sentry-windows-build
   replaced_by: []
   lane: windows-ci
-  start: ''
+  start: '2026-11-26'
   end: ''
   folded: []
   overview: false
@@ -1124,14 +1124,13 @@
   title: Root filesystem from an erofs image
   track: fs
   kind: feature
-  state: blocked
+  state: in-progress
   outcome: unrated
   evidence: []
   verdict_quote: ''
   headline: ''
   depends_on:
   - fs-windows-directfs
-  - runsc-windows-boot
   - fs-rootfs-import
   replaced_by: []
   lane: windows-ci
@@ -1145,7 +1144,7 @@
   title: Guest threads and signals
   track: sentry
   kind: feature
-  state: blocked
+  state: in-progress
   outcome: unrated
   evidence: []
   verdict_quote: ''
@@ -1154,7 +1153,7 @@
   - platform-winstub
   replaced_by: []
   lane: windows-ci
-  start: ''
+  start: '2026-11-26'
   end: ''
   folded: []
   overview: false
@@ -1686,7 +1685,7 @@
   depends_on:
   - platform-static-guest-from-memory
   replaced_by: []
-  start: ''
+  start: '2026-11-26'
   end: ''
   folded: []
   overview: true
@@ -1694,7 +1693,7 @@
   title: Start guest processes fast
   track: platform
   kind: feature
-  state: next
+  state: in-progress
   lane: windows-ci
   plain: A guest process takes 280-560 ms to start through the Sentry, against 18 ms for a bare stub; profile the gap and keep a pool of ready stubs.
   notes: 'Done when: static glibc hello starts and exits through the Sentry in under 50 ms median on windows-latest, and fork+waitpid adds under 50 ms; the profile is written up.'
@@ -1706,7 +1705,7 @@
   - platform-static-guest-from-memory
   - runsc-windows-commands
   replaced_by: []
-  start: ''
+  start: '2026-11-26'
   end: ''
   folded: []
   overview: false
@@ -1714,7 +1713,7 @@
   title: Boot runsc on Windows
   track: runsc
   kind: feature
-  state: next
+  state: in-progress
   lane: windows-ci
   plain: runsc's real boot path on Windows (spec, mounts, stdio, network) replaces the test harness that builds the kernel by hand.
   notes: 'Done when: runsc boot on Windows starts a sandbox from an OCI spec with the windows-nat network and a tmpfs or directfs root, and the static guests pass through it.'
@@ -1725,7 +1724,7 @@
   depends_on:
   - platform-static-guest-from-memory
   replaced_by: []
-  start: ''
+  start: '2026-11-26'
   end: ''
   folded: []
   overview: false
@@ -1733,7 +1732,7 @@
   title: Dynamic programs, exec and pipes
   track: sentry
   kind: feature
-  state: next
+  state: in-progress
   lane: windows-ci
   plain: Run dynamically linked programs with their interpreter and shared libraries, exec a second program, and connect processes with pipes.
   notes: 'Done when: a dynamic glibc and a dynamic musl program, an exec chain and a shell pipeline (static busybox sh -c "echo a | cat") pass under the Sentry on Windows.'
@@ -1741,7 +1740,7 @@
   title: Editor safe-saves keep Linux metadata
   track: fs
   kind: defect
-  state: next
+  state: in-progress
   outcome: unrated
   evidence:
   - docs/results/2-windows-directfs.md
@@ -1771,7 +1770,7 @@
   title: Syscalls split across mappings
   track: platform
   kind: defect
-  state: next
+  state: in-progress
   lane: windows-ci
   plain: A syscall instruction whose two bytes fall into two separately mapped ranges is not found by the scan, so it would reach the Windows kernel.
   notes: 'Fixed when: a test guest with a syscall straddling two MapFile ranges is patched and served correctly.'

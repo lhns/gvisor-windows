@@ -30,14 +30,14 @@ flowchart TB
     platform_static_guest_from_memory["✔ Run a static guest<br/>from memory"]
     platform_retire_prototype["✔ Retire the stub<br/>prototype"]
     platform_memory_release>"⚠ Give freed guest<br/>memory back"]
+    platform_fast_process_start["▶ Start guest<br/>processes fast"]
     platform_split_syscall_unpatched>"⚠ Syscalls split<br/>across mappings"]
     platform_own_vdso["⛔ Own vDSO for clock<br/>calls"]
     platform_64k_mapping_conflicts["⏸ Handle 64 KB mapping<br/>conflicts"]
+    platform_busybox_on_windows["⛔ Run busybox under<br/>the Sentry"]
     platform_hardware_acceleration["⏸ Use hardware<br/>acceleration when<br/>available"]
     platform_binary_translation_fallback["⏸ Binary translation<br/>as a fallback"]
     platform_no_fsgsbase_fallback["⏸ Support CPUs without<br/>FSGSBASE"]
-    platform_fast_process_start["○ Start guest<br/>processes fast"]
-    platform_busybox_on_windows["⛔ Run busybox under<br/>the Sentry"]
     platform_elf_alignment_survey ~~~ platform_tls_register
     platform_trap_cost ~~~ platform_restricted_stub
     platform_4k_section_views ~~~ platform_zpoline_hooks
@@ -62,16 +62,16 @@ flowchart TB
     platform_fp_state ~~~ platform_static_guest_from_memory
     platform_static_guest_from_memory ~~~ platform_retire_prototype
     platform_static_guest_from_memory ~~~ platform_memory_release
-    platform_static_guest_from_memory ~~~ platform_split_syscall_unpatched
-    platform_retire_prototype ~~~ platform_own_vdso
-    platform_memory_release ~~~ platform_64k_mapping_conflicts
-    platform_split_syscall_unpatched ~~~ platform_hardware_acceleration
-    platform_own_vdso ~~~ platform_binary_translation_fallback
+    platform_static_guest_from_memory ~~~ platform_fast_process_start
+    platform_retire_prototype ~~~ platform_split_syscall_unpatched
+    platform_memory_release ~~~ platform_own_vdso
+    platform_fast_process_start ~~~ platform_64k_mapping_conflicts
+    platform_split_syscall_unpatched ~~~ platform_busybox_on_windows
+    platform_own_vdso ~~~ platform_hardware_acceleration
     platform_64k_mapping_conflicts ~~~ platform_binary_translation_fallback
-    platform_hardware_acceleration ~~~ platform_binary_translation_fallback
+    platform_busybox_on_windows ~~~ platform_no_fsgsbase_fallback
+    platform_hardware_acceleration ~~~ platform_no_fsgsbase_fallback
     platform_binary_translation_fallback ~~~ platform_no_fsgsbase_fallback
-    platform_binary_translation_fallback ~~~ platform_fast_process_start
-    platform_binary_translation_fallback ~~~ platform_busybox_on_windows
     platform_trap_cost -.-> platform_veh_on_guest_stack_unsafe
     platform_tls_register -.-> platform_veh_on_guest_stack_unsafe
     platform_trap_cost --> platform_exception_stack
@@ -93,11 +93,11 @@ flowchart TB
     platform_fs_base_repair --> platform_static_guest_from_memory
     platform_fp_state --> platform_static_guest_from_memory
     platform_static_guest_from_memory --> platform_retire_prototype
+    platform_static_guest_from_memory --> platform_fast_process_start
     platform_stub_controller --> platform_own_vdso
     platform_winstub --> platform_hardware_acceleration
     platform_debug_event_cost --> platform_binary_translation_fallback
     platform_binary_translation_fallback --> platform_no_fsgsbase_fallback
-    platform_static_guest_from_memory --> platform_fast_process_start
     linkStyle 34,35 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
@@ -118,9 +118,9 @@ flowchart TB
     class platform_zpoline_hooks dead
     class platform_fs_base_repair unrated
     class platform_memory_release,platform_split_syscall_unpatched finding
+    class platform_fast_process_start inprog
     class platform_own_vdso,platform_busybox_on_windows blocked
     class platform_64k_mapping_conflicts,platform_hardware_acceleration,platform_binary_translation_fallback,platform_no_fsgsbase_fallback parked
-    class platform_fast_process_start next
 ```
 <!-- END GENERATED: track-platform -->
 
@@ -156,8 +156,8 @@ flowchart TB
 | `platform-fp-state` | Save and restore FPU and SSE state | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-winstub |  |  |  | docs/results/1d-static-guest.md |
 | `platform-retire-prototype` | Retire the stub prototype | tooling | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-static-guest-from-memory |  |  |  | docs/results/1d-static-guest.md |
 | `platform-memory-release` | Give freed guest memory back | defect | windows-ci | next | unrated | 2026-11-26 |  |  |  |  |  | docs/adr/0013-memory-file-on-reserved-sections.md |
-| `platform-fast-process-start` | Start guest processes fast | feature | windows-ci | next | unrated |  |  | platform-static-guest-from-memory |  |  |  |  |
-| `platform-split-syscall-unpatched` | Syscalls split across mappings | defect | windows-ci | next | unrated | 2026-11-26 |  |  |  |  |  | docs/results/1c-windows-platform.md |
+| `platform-fast-process-start` | Start guest processes fast | feature | windows-ci | in-progress | unrated | 2026-11-26 |  | platform-static-guest-from-memory |  |  |  |  |
+| `platform-split-syscall-unpatched` | Syscalls split across mappings | defect | windows-ci | in-progress | unrated | 2026-11-26 |  |  |  |  |  | docs/results/1c-windows-platform.md |
 
 ### Details per node
 

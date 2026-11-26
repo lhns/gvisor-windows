@@ -11,23 +11,23 @@ Scope: host files, bind mounts, image storage.
 flowchart TB
     fs_persistent_image_storage[/"✔ Test persistent<br/>image storage"/]
     fs_windows_directfs["✔ Open Windows files<br/>directly"]
+    fs_change_notifications["▶ Windows changes<br/>reach the guest"]
     fs_linux_metadata_on_ntfs["✔ Linux file metadata<br/>on NTFS"]
     fs_handles_do_not_block_users["✔ Files stay editable<br/>on Windows"]
+    fs_root_filesystem_source["▶ Root filesystem from<br/>an erofs image"]
     fs_safe_save_keeps_metadata>"⚠ Editor safe-saves<br/>keep Linux metadata"]
-    fs_change_notifications["○ Windows changes<br/>reach the guest"]
     fs_persistent_storage_impl["⛔ Storage that<br/>survives restarts"]
-    fs_root_filesystem_source["⛔ Root filesystem from<br/>an erofs image"]
-    fs_persistent_image_storage ~~~ fs_linux_metadata_on_ntfs
+    fs_persistent_image_storage ~~~ fs_change_notifications
+    fs_windows_directfs ~~~ fs_linux_metadata_on_ntfs
     fs_windows_directfs ~~~ fs_handles_do_not_block_users
-    fs_windows_directfs ~~~ fs_safe_save_keeps_metadata
-    fs_linux_metadata_on_ntfs ~~~ fs_change_notifications
+    fs_change_notifications ~~~ fs_root_filesystem_source
+    fs_linux_metadata_on_ntfs ~~~ fs_safe_save_keeps_metadata
     fs_handles_do_not_block_users ~~~ fs_persistent_storage_impl
-    fs_safe_save_keeps_metadata ~~~ fs_root_filesystem_source
+    fs_windows_directfs --> fs_change_notifications
     fs_windows_directfs --> fs_linux_metadata_on_ntfs
     fs_windows_directfs --> fs_handles_do_not_block_users
-    fs_windows_directfs --> fs_change_notifications
-    fs_windows_directfs --> fs_persistent_storage_impl
     fs_windows_directfs --> fs_root_filesystem_source
+    fs_windows_directfs --> fs_persistent_storage_impl
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -44,9 +44,9 @@ flowchart TB
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class fs_persistent_image_storage mixed
     class fs_windows_directfs,fs_linux_metadata_on_ntfs,fs_handles_do_not_block_users succ
+    class fs_change_notifications,fs_root_filesystem_source inprog
     class fs_safe_save_keeps_metadata finding
-    class fs_change_notifications next
-    class fs_persistent_storage_impl,fs_root_filesystem_source blocked
+    class fs_persistent_storage_impl blocked
 ```
 <!-- END GENERATED: track-fs -->
 
@@ -58,13 +58,13 @@ flowchart TB
 | `fs-compat-layer-not-boundary` | Compatibility layer, not security boundary | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0005-host-files-accessed-directly.md |
 | `fs-persistent-image-storage` | Test persistent image storage | experiment | linux-ci | done | mixed | 2026-11-26 | 2026-11-26 | workloads-podman-on-gvisor-linux |  |  | 3.7 s with overlay | docs/results/0a-linux.md |
 | `fs-windows-directfs` | Open Windows files directly | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | sentry-windows-build, fs-compat-layer-not-boundary |  |  |  | docs/results/2-windows-directfs.md |
-| `fs-change-notifications` | Windows changes reach the guest | feature | windows-ci | next | unrated |  |  | fs-windows-directfs |  |  |  |  |
+| `fs-change-notifications` | Windows changes reach the guest | feature | windows-ci | in-progress | unrated | 2026-11-26 |  | fs-windows-directfs |  |  |  |  |
 | `fs-linux-metadata-on-ntfs` | Linux file metadata on NTFS | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | fs-windows-directfs |  |  |  | docs/results/2-windows-directfs.md |
 | `fs-handles-do-not-block-users` | Files stay editable on Windows | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | fs-windows-directfs |  |  |  | docs/results/2-windows-directfs.md |
 | `fs-persistent-storage-choice` | Choose the persistent storage | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 | fs-persistent-image-storage, fs-windows-directfs |  |  |  | docs/adr/0007-persistent-storage-in-a-windows-folder.md |
-| `fs-root-filesystem-source` | Root filesystem from an erofs image | feature | windows-ci | blocked | unrated | 2026-11-26 |  | fs-windows-directfs, runsc-windows-boot, fs-rootfs-import |  |  |  |  |
+| `fs-root-filesystem-source` | Root filesystem from an erofs image | feature | windows-ci | in-progress | unrated | 2026-11-26 |  | fs-windows-directfs, fs-rootfs-import |  |  |  |  |
 | `fs-persistent-storage-impl` | Storage that survives restarts | feature | windows-ci | blocked | unrated |  |  | fs-persistent-storage-choice |  |  |  |  |
-| `fs-safe-save-keeps-metadata` | Editor safe-saves keep Linux metadata | defect | windows-ci | next | unrated | 2026-11-26 |  |  |  |  |  | docs/results/2-windows-directfs.md |
+| `fs-safe-save-keeps-metadata` | Editor safe-saves keep Linux metadata | defect | windows-ci | in-progress | unrated | 2026-11-26 |  |  |  |  |  | docs/results/2-windows-directfs.md |
 | `fs-rootfs-import` | Bring container images onto NTFS | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0015-sandbox-rootfs-as-erofs-image.md |
 
 ### Details per node

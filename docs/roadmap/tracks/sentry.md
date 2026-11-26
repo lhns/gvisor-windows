@@ -14,29 +14,29 @@ flowchart TB
     sentry_windows_build["✔ Sentry builds for<br/>Windows"]
     sentry_memory_file_sections["✔ Guest memory on<br/>Windows sections"]
     sentry_fault_recovery["✔ Port fault recovery<br/>to Windows"]
+    sentry_host_stdio_and_tty["▶ Guest terminal and<br/>stdio"]
+    sentry_threads_and_signals["▶ Guest threads and<br/>signals"]
+    sentry_dynamic_elf_and_exec["▶ Dynamic programs,<br/>exec and pipes"]
     sentry_event_loop_iocp["⛔ Event waiting on<br/>IOCP"]
     sentry_timers_and_clocks["⛔ Timers and clocks on<br/>Windows"]
-    sentry_host_stdio_and_tty["⛔ Guest terminal and<br/>stdio"]
-    sentry_threads_and_signals["⛔ Guest threads and<br/>signals"]
-    sentry_dynamic_elf_and_exec["○ Dynamic programs,<br/>exec and pipes"]
     sentry_go_fault_recovery ~~~ sentry_unix_shim
     sentry_unix_shim ~~~ sentry_windows_build
     sentry_windows_build ~~~ sentry_memory_file_sections
     sentry_windows_build ~~~ sentry_fault_recovery
-    sentry_windows_build ~~~ sentry_event_loop_iocp
-    sentry_memory_file_sections ~~~ sentry_timers_and_clocks
-    sentry_fault_recovery ~~~ sentry_host_stdio_and_tty
-    sentry_event_loop_iocp ~~~ sentry_threads_and_signals
-    sentry_timers_and_clocks ~~~ sentry_dynamic_elf_and_exec
-    sentry_host_stdio_and_tty ~~~ sentry_dynamic_elf_and_exec
-    sentry_threads_and_signals ~~~ sentry_dynamic_elf_and_exec
+    sentry_windows_build ~~~ sentry_host_stdio_and_tty
+    sentry_memory_file_sections ~~~ sentry_threads_and_signals
+    sentry_fault_recovery ~~~ sentry_dynamic_elf_and_exec
+    sentry_host_stdio_and_tty ~~~ sentry_event_loop_iocp
+    sentry_threads_and_signals ~~~ sentry_timers_and_clocks
+    sentry_dynamic_elf_and_exec ~~~ sentry_timers_and_clocks
+    sentry_event_loop_iocp ~~~ sentry_timers_and_clocks
     sentry_go_fault_recovery --> sentry_unix_shim
     sentry_unix_shim --> sentry_windows_build
     sentry_windows_build --> sentry_memory_file_sections
     sentry_windows_build --> sentry_fault_recovery
+    sentry_windows_build --> sentry_host_stdio_and_tty
     sentry_windows_build --> sentry_event_loop_iocp
     sentry_windows_build --> sentry_timers_and_clocks
-    sentry_windows_build --> sentry_host_stdio_and_tty
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -53,8 +53,8 @@ flowchart TB
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class sentry_go_fault_recovery,sentry_unix_shim,sentry_fault_recovery succ
     class sentry_windows_build,sentry_memory_file_sections unrated
-    class sentry_event_loop_iocp,sentry_timers_and_clocks,sentry_host_stdio_and_tty,sentry_threads_and_signals blocked
-    class sentry_dynamic_elf_and_exec next
+    class sentry_host_stdio_and_tty,sentry_threads_and_signals,sentry_dynamic_elf_and_exec inprog
+    class sentry_event_loop_iocp,sentry_timers_and_clocks blocked
 ```
 <!-- END GENERATED: track-sentry -->
 
@@ -69,10 +69,10 @@ flowchart TB
 | `sentry-event-loop-iocp` | Event waiting on IOCP | feature | windows-ci | blocked | unrated |  |  | sentry-windows-build, ops-syscall-test-strategy |  |  |  |  |
 | `sentry-timers-and-clocks` | Timers and clocks on Windows | feature | windows-ci | blocked | unrated |  |  | sentry-windows-build, ops-syscall-test-strategy |  |  |  |  |
 | `sentry-fault-recovery` | Port fault recovery to Windows | feature | none | done | successful | 2026-11-26 | 2026-11-26 | sentry-windows-build, sentry-go-fault-recovery |  |  | 1.3 us per fault | docs/results/1b-sentry-host-basics.md |
-| `sentry-host-stdio-and-tty` | Guest terminal and stdio | feature | windows-ci | blocked | unrated |  |  | sentry-windows-build |  |  |  |  |
-| `sentry-threads-and-signals` | Guest threads and signals | feature | windows-ci | blocked | unrated |  |  | platform-winstub |  |  |  |  |
+| `sentry-host-stdio-and-tty` | Guest terminal and stdio | feature | windows-ci | in-progress | unrated | 2026-11-26 |  | sentry-windows-build |  |  |  |  |
+| `sentry-threads-and-signals` | Guest threads and signals | feature | windows-ci | in-progress | unrated | 2026-11-26 |  | platform-winstub |  |  |  |  |
 | `sentry-unix-shim` | Make Linux names resolve on Windows | feature | none | done | successful | 2026-11-26 | 2026-11-26 | ops-phase0-go-no-go |  |  | 25 hand-edited shared files | docs/adr/0006-a-linux-abi-shim-for-x-sys-unix.md; docs/results/1b-windows-build.md |
-| `sentry-dynamic-elf-and-exec` | Dynamic programs, exec and pipes | feature | windows-ci | next | unrated |  |  | platform-static-guest-from-memory |  |  |  |  |
+| `sentry-dynamic-elf-and-exec` | Dynamic programs, exec and pipes | feature | windows-ci | in-progress | unrated | 2026-11-26 |  | platform-static-guest-from-memory |  |  |  |  |
 
 ### Details per node
 

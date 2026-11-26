@@ -10,7 +10,7 @@ Scope: gVisor's runtime on Windows hosts: commands, sandbox lifecycle, OCI bundl
 ```mermaid
 flowchart TB
     runsc_measure_cli[/"✔ Measure runsc's<br/>command side"/]
-    runsc_windows_boot["○ Boot runsc on<br/>Windows"]
+    runsc_windows_boot["▶ Boot runsc on<br/>Windows"]
     runsc_sandbox_lifecycle["⛔ Start and stop<br/>sandboxes on Windows"]
     runsc_container_on_windows["⛔ Run a container with<br/>runsc"]
     runsc_measure_cli ~~~ runsc_windows_boot
@@ -32,7 +32,7 @@ flowchart TB
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class runsc_measure_cli succ
-    class runsc_windows_boot next
+    class runsc_windows_boot inprog
     class runsc_sandbox_lifecycle,runsc_container_on_windows blocked
 ```
 <!-- END GENERATED: track-runsc -->
@@ -46,7 +46,7 @@ flowchart TB
 | `runsc-measure-cli` | Measure runsc's command side | experiment | none | done | successful | 2026-11-26 | 2026-11-26 | research-gvisor-base |  |  | about 42k lines | docs/results/runsc-command-side.md |
 | `runsc-windows-commands` | Choose runsc commands for Windows | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 | runsc-measure-cli |  |  |  | docs/adr/0008-runsc-on-windows.md |
 | `runsc-sandbox-lifecycle` | Start and stop sandboxes on Windows | feature | windows-ci | blocked | unrated |  |  | runsc-windows-commands, platform-busybox-on-windows, runsc-windows-boot |  |  |  |  |
-| `runsc-windows-boot` | Boot runsc on Windows | feature | windows-ci | next | unrated |  |  | platform-static-guest-from-memory, runsc-windows-commands |  |  |  |  |
+| `runsc-windows-boot` | Boot runsc on Windows | feature | windows-ci | in-progress | unrated | 2026-11-26 |  | platform-static-guest-from-memory, runsc-windows-commands |  |  |  |  |
 
 ### Details per node
 
