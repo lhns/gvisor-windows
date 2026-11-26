@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"fmt"
 	"math"
+	"strings"
 
 	"gvisor.dev/gvisor/pkg/abi/linux"
 	"gvisor.dev/gvisor/pkg/atomicbitops"
@@ -121,7 +122,26 @@ func (d *lazySysDir) populate(ctx context.Context) {
 // Lookup implements kernfs.Inode.Lookup.
 func (d *lazySysDir) Lookup(ctx context.Context, name string) (kernfs.Inode, error) {
 	d.populate(ctx)
-	return d.StaticDirectory.Lookup(ctx, name)
+	in, err := d.StaticDirectory.Lookup(ctx, name)
+	if err == nil || !linuxerr.Equals(linuxerr.ENOENT, err) {
+		return in, err
+	}
+	// Linux has a conf/<ifname> directory for every interface of the
+	// task's network namespace. We build it on demand: netavark sets
+	// conf/<bridge>/route_localnet in the host netns and conf/eth0/arp_notify in
+	// the container's.
+	if d.path == "net/ipv4/conf" || d.path == "net/ipv6/conf" {
+		if t := kernel.TaskFromContext(ctx); t != nil {
+			if stack := t.NetworkNamespace().Stack(); stack != nil {
+				for _, iface := range stack.Interfaces() {
+					if iface.Name == name {
+						return d.fs.newLazySysDir(ctx, d.creds, d.k, d.path+"/"+name), nil
+					}
+				}
+			}
+		}
+	}
+	return nil, err
 }
 
 // Open implements kernfs.Inode.Open.
@@ -344,6 +364,12 @@ func (fs *filesystem) sysDirFiles(ctx context.Context, root *auth.Credentials, k
 		return map[string]kernfs.Inode{
 			"forwarding": fs.newInode(ctx, root, 0644, &atomicInt32File{val: new(atomicbitops.Int32), min: 0, max: 1}),
 		}
+	}
+	if strings.HasPrefix(path, "net/ipv4/conf/") {
+		return fs.ifaceConfFiles(ctx, root, ipv4IfaceConf)
+	}
+	if strings.HasPrefix(path, "net/ipv6/conf/") {
+		return fs.ifaceConfFiles(ctx, root, ipv6IfaceConf)
 	}
 	panic(fmt.Sprintf("unknown /proc/sys directory %q", path))
 }
@@ -746,6 +772,22 @@ func (ipf *ipForwarding) Write(ctx context.Context, _ *vfs.FileDescription, src 
 	}
 	ipf.enabled = enabled
 	return n, nil
+}
+
+// Per-interface conf knobs that container tooling writes. Only the values are
+// kept (as Linux would); netstack does not act on them.
+var (
+	ipv4IfaceConf = []string{"arp_accept", "arp_announce", "arp_filter", "arp_ignore", "arp_notify", "accept_local", "accept_redirects", "accept_source_route", "forwarding", "log_martians", "proxy_arp", "route_localnet", "rp_filter", "send_redirects", "promote_secondaries"}
+	ipv6IfaceConf = []string{"accept_dad", "accept_ra", "accept_redirects", "addr_gen_mode", "autoconf", "dad_transmits", "disable_ipv6", "forwarding", "keep_addr_on_down", "use_tempaddr"}
+)
+
+// ifaceConfFiles returns stub files for a conf/<ifname> directory.
+func (fs *filesystem) ifaceConfFiles(ctx context.Context, root *auth.Credentials, names []string) map[string]kernfs.Inode {
+	files := make(map[string]kernfs.Inode, len(names))
+	for _, n := range names {
+		files[n] = fs.newInode(ctx, root, 0644, &atomicInt32File{val: new(atomicbitops.Int32), min: 0, max: 1 << 20})
+	}
+	return files
 }
 
 // routeLocalnetData implements vfs.WritableDynamicBytesSource for
