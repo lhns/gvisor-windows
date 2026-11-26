@@ -56,7 +56,9 @@ func main() {
 			defer func() { <-sem }()
 			t0 := time.Now()
 			if err := exec.Command("/bin/true").Run(); err != nil {
-				childFail.Add(1)
+				if childFail.Add(1) == 1 {
+					fmt.Println("gopodman: first child error:", err)
+				}
 				return
 			}
 			childMu.Lock()
