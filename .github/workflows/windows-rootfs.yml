@@ -32,7 +32,7 @@ jobs:
             sudo rm -rf /tmp/root-$name && mkdir /tmp/root-$name
             podman export "$c" | sudo tar -x -C /tmp/root-$name --numeric-owner --same-owner -p
             podman rm "$c" >/dev/null
-            sudo tools/windows/mkrootfs.sh "$name" /tmp/root-$name "$out"
+            sudo bash tools/windows/mkrootfs.sh "$name" /tmp/root-$name "$out"
             sudo rm -rf /tmp/root-$name
           done
       - name: Synthetic tree with every file kind
@@ -53,7 +53,7 @@ jobs:
             for i in \$(seq 1 20000); do : > synth/big/entry-\$i; done
             chmod 1777 synth/sub
           "
-          sudo tools/windows/mkrootfs.sh synth $r "$PWD/out"
+          sudo bash tools/windows/mkrootfs.sh synth $r "$PWD/out"
       - uses: actions/upload-artifact@v4
         with:
           name: erofs-images
