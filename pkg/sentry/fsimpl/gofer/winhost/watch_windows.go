@@ -3,6 +3,7 @@
 package winhost
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -51,12 +52,12 @@ func (fs *FS) Watch(fn func(Change)) error {
 	h, err := windows.CreateFile(p, 0x1 /*FILE_LIST_DIRECTORY*/, shareAll, nil, windows.OPEN_EXISTING,
 		windows.FILE_FLAG_BACKUP_SEMANTICS|windows.FILE_FLAG_OVERLAPPED, 0)
 	if err != nil {
-		return toErrno(err)
+		return fmt.Errorf("watch: opening the folder: %w", err)
 	}
 	ev, err := windows.CreateEvent(nil, 1, 0, nil)
 	if err != nil {
 		windows.CloseHandle(h)
-		return toErrno(err)
+		return fmt.Errorf("watch: creating an event: %w", err)
 	}
 	w := &watcher{stop: make(chan struct{}), done: make(chan struct{})}
 	fs.watcher = w

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -31,6 +32,8 @@ type testClock struct{}
 func (testClock) Now() ktime.Time                     { return ktime.FromNanoseconds(time.Now().UnixNano()) }
 func (testClock) NewTimer(ktime.Listener) ktime.Timer { panic("no timers in tests") }
 
+var uniqueCounter atomic.Uint64
+
 type testContext struct {
 	context.Context
 	mf  *pgalloc.MemoryFile
@@ -49,6 +52,8 @@ func (c *testContext) Value(key any) any {
 		}
 		c.mns.IncRef()
 		return c.mns
+	case uniqueid.CtxGlobalUniqueID:
+		return uniqueCounter.Add(1)
 	case uniqueid.CtxInotifyCookie:
 		return uint32(1)
 	case limits.CtxLimits:
