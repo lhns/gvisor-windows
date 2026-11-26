@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"unsafe"
 
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/stubasm"
 )
@@ -55,8 +56,19 @@ func DumpState(w io.Writer) {
 				continue
 			}
 			t.mu.Lock()
-			fmt.Fprintf(w, "  thread %d tid %d: state %d ctlSleep %d stubSleep %d mode %d parked %v lastKind %d req %+v spins %d\n",
-				i, t.tid, t.state(), *t.u32(stubasm.PgCtlSlp), *t.u32(stubasm.PgStubSlp), *t.u32(stubasm.PgMode), t.parked, t.lastKind, t.req, *t.u64(stubasm.PgSpins))
+			// Where is the thread? Suspend it for a moment (diagnostics only).
+			var rip uint64
+			var code uint32
+			pGetExitCode.Call(t.hThread, uintptr(unsafe.Pointer(&code)))
+			if r, _, _ := pSuspendThread.Call(t.hThread); int32(r) != -1 {
+				var ctx ctxBuf
+				if ctx.get(t.hThread, ctxControl) {
+					rip = *ctx.u64(ctxRipOff)
+				}
+				pResumeThread.Call(t.hThread)
+			}
+			fmt.Fprintf(w, "  thread %d tid %d: state %d ctlSleep %d stubSleep %d mode %d parked %v lastKind %d req %+v spins %d rip %#x exit %d\n",
+				i, t.tid, t.state(), *t.u32(stubasm.PgCtlSlp), *t.u32(stubasm.PgStubSlp), *t.u32(stubasm.PgMode), t.parked, t.lastKind, t.req, *t.u64(stubasm.PgSpins), rip, code)
 			t.mu.Unlock()
 		}
 		as.tmu.Unlock()

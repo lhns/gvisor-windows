@@ -220,3 +220,5 @@ func dupInto(proc, h uintptr) uintptr {
 }
 
 const secReserveAttr = 0x4000000 // SEC_RESERVE
+
+var pGetExitCode = k32.NewProc("GetExitCodeThread")
