@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -310,4 +311,198 @@ func TestVFSLargeDirectory(t *testing.T) {
 	if st1.Ino == 0 || st1.Ino != st2.Ino {
 		t.Errorf("unstable inode numbers: %d %d", st1.Ino, st2.Ino)
 	}
+}
+
+func inotifyNames(e *env, fd *vfs.FileDescription) []string {
+	buf := make([]byte, 4096)
+	n, err := fd.Read(e.ctx, usermem.BytesIOSequence(buf), vfs.ReadOptions{})
+	if err != nil || n == 0 {
+		return nil
+	}
+	var out []string
+	b := buf[:n]
+	for len(b) >= 16 {
+		mask := uint32(b[4]) | uint32(b[5])<<8 | uint32(b[6])<<16 | uint32(b[7])<<24
+		l := int(uint32(b[12]) | uint32(b[13])<<8 | uint32(b[14])<<16 | uint32(b[15])<<24)
+		name := string(b[16 : 16+l])
+		if i := indexByte(name, 0); i >= 0 {
+			name = name[:i]
+		}
+		out = append(out, fmt.Sprintf("%#x:%s", mask, name))
+		b = b[16+l:]
+	}
+	return out
+}
+
+func indexByte(s string, c byte) int {
+	for i := 0; i < len(s); i++ {
+		if s[i] == c {
+			return i
+		}
+	}
+	return -1
+}
+
+// A file changed on Windows shows in a guest view that caches (exclusive
+// mode) within a second, and guest inotify watchers are told.
+func TestVFSWindowsChangesReachGuest(t *testing.T) {
+	e := newEnv(t, HostFolderOptions{Exclusive: true})
+	e.write("/watched", "abc", 0o644)
+	if st, err := e.stat("/watched"); err != nil || st.Size != 3 {
+		t.Fatalf("stat %+v %v", st, err)
+	}
+	ifd, err := vfs.NewInotifyFD(e.ctx, e.v, linux.O_NONBLOCK)
+	e.must("inotify", err)
+	defer ifd.DecRef(e.ctx)
+	ino := ifd.Impl().(*vfs.Inotify)
+	rootVD, err := e.v.GetDentryAt(e.ctx, e.creds, e.pop("/"), &vfs.GetDentryOptions{})
+	e.must("get root dentry", err)
+	fileVD, err := e.v.GetDentryAt(e.ctx, e.creds, e.pop("/watched"), &vfs.GetDentryOptions{})
+	e.must("get file dentry", err)
+	ino.AddWatch(rootVD.Dentry(), linux.IN_CREATE|linux.IN_DELETE|linux.IN_MODIFY)
+	ino.AddWatch(fileVD.Dentry(), linux.IN_MODIFY)
+
+	start := time.Now()
+	if err := os.WriteFile(filepath.Join(e.dir, "watched"), []byte("0123456789"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	var sizeAfter time.Duration
+	for time.Since(start) < 2*time.Second {
+		if st, err := e.stat("/watched"); err == nil && st.Size == 10 {
+			sizeAfter = time.Since(start)
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if sizeAfter == 0 {
+		t.Errorf("the cached guest view did not see the new size within 2s")
+	} else {
+		t.Logf("cached view saw the Windows write after %v", sizeAfter)
+		if sizeAfter > time.Second {
+			t.Errorf("took %v, want under 1s", sizeAfter)
+		}
+	}
+	if got, _ := e.read("/watched"); got != "0123456789" {
+		t.Errorf("content = %q", got)
+	}
+	os.WriteFile(filepath.Join(e.dir, "created"), []byte("x"), 0o666)
+	var events []string
+	for time.Since(start) < 2500*time.Millisecond {
+		events = append(events, inotifyNames(e, ifd)...)
+		if len(events) >= 2 {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Logf("inotify events: %v", events)
+	sawModify, sawCreate := false, false
+	for _, ev := range events {
+		if strings.HasSuffix(ev, ":watched") && strings.HasPrefix(ev, "0x2:") {
+			sawModify = true
+		}
+		if strings.HasSuffix(ev, ":created") && strings.HasPrefix(ev, "0x100:") {
+			sawCreate = true
+		}
+	}
+	if !sawModify || !sawCreate {
+		t.Errorf("modify seen: %v, create seen: %v", sawModify, sawCreate)
+	}
+	// The new file is listed although the directory listing was cached.
+	if got := e.list("/"); fmt.Sprint(got) != "[created watched]" {
+		t.Errorf("listing = %v", got)
+	}
+	// Guest changes are not echoed back as host changes.
+	e.write("/guest", "g", 0o644)
+	time.Sleep(400 * time.Millisecond)
+	for _, ev := range inotifyNames(e, ifd) {
+		if strings.HasSuffix(ev, ":guest") {
+			t.Logf("event for a guest change: %s (guest-made create is reported once by the VFS itself)", ev)
+		}
+	}
+}
+
+// An editor's save by replacement keeps the mode and owner the guest set.
+func TestVFSSafeSaveKeepsMetadata(t *testing.T) {
+	e := newEnv(t, HostFolderOptions{})
+	e.write("/doc", "v1", 0o640)
+	e.must("chown", e.v.SetStatAt(e.ctx, e.creds, e.pop("/doc"), &vfs.SetStatOptions{Stat: linux.Statx{Mask: linux.STATX_UID | linux.STATX_GID, UID: 1000, GID: 1000}}))
+	if st, _ := e.stat("/doc"); st.UID != 1000 {
+		t.Fatalf("chown: %+v", st)
+	}
+	tmp := filepath.Join(e.dir, ".doc.swp")
+	os.WriteFile(tmp, []byte("version two"), 0o666)
+	if err := os.Rename(tmp, filepath.Join(e.dir, "doc")); err != nil {
+		t.Fatal(err)
+	}
+	st, err := e.stat("/doc")
+	e.must("stat after replacement", err)
+	if st.Mode != linux.S_IFREG|0o640 || st.UID != 1000 || st.GID != 1000 || st.Size != 11 {
+		t.Errorf("after replacement: mode %#o uid %d gid %d size %d", st.Mode, st.UID, st.GID, st.Size)
+	}
+}
+
+// Speed of the backend, which opens a host handle per call: an untar of 20000
+// small files and a git-status-like walk of stat calls, against plain os calls
+// on the same disk. Only logged; the numbers decide whether a handle or
+// attribute cache is needed.
+func TestVFSPerf(t *testing.T) {
+	const dirs, perDir, size = 400, 50, 2048
+	payload := string(make([]byte, size))
+	for _, mode := range []struct {
+		name string
+		hf   HostFolderOptions
+	}{{"shared", HostFolderOptions{}}, {"exclusive", HostFolderOptions{Exclusive: true}}} {
+		e := newEnv(t, mode.hf)
+		start := time.Now()
+		for d := 0; d < dirs; d++ {
+			e.must("mkdir", e.v.MkdirAt(e.ctx, e.creds, e.pop(fmt.Sprintf("/d%03d", d), false), &vfs.MkdirOptions{Mode: 0o755}))
+			for f := 0; f < perDir; f++ {
+				p := fmt.Sprintf("/d%03d/f%02d", d, f)
+				fd, err := e.v.OpenAt(e.ctx, e.creds, e.pop(p, false), &vfs.OpenOptions{Flags: linux.O_CREAT | linux.O_WRONLY, Mode: 0o751})
+				e.must("create", err)
+				_, err = fd.Write(e.ctx, usermem.BytesIOSequence([]byte(payload)), vfs.WriteOptions{})
+				e.must("write", err)
+				fd.DecRef(e.ctx)
+			}
+		}
+		untar := time.Since(start)
+		start = time.Now()
+		for d := 0; d < dirs; d++ {
+			for f := 0; f < perDir; f++ {
+				if _, err := e.stat(fmt.Sprintf("/d%03d/f%02d", d, f)); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		walk := time.Since(start)
+		start = time.Now()
+		for d := 0; d < dirs; d++ {
+			e.list(fmt.Sprintf("/d%03d", d))
+		}
+		lists := time.Since(start)
+		n := dirs * perDir
+		t.Logf("%s: untar of %d files (create+write, mode 0751 so a metadata stream each) %v = %v/file; stat walk %v = %v/stat; %d directory listings %v",
+			mode.name, n, untar.Round(time.Millisecond), (untar / time.Duration(n)).Round(time.Microsecond),
+			walk.Round(time.Millisecond), (walk / time.Duration(n)).Round(time.Microsecond), dirs, lists.Round(time.Millisecond))
+	}
+	// Baseline: the same with os calls.
+	base := t.TempDir()
+	start := time.Now()
+	for d := 0; d < dirs; d++ {
+		os.Mkdir(filepath.Join(base, fmt.Sprintf("d%03d", d)), 0o755)
+		for f := 0; f < perDir; f++ {
+			os.WriteFile(filepath.Join(base, fmt.Sprintf("d%03d", d), fmt.Sprintf("f%02d", f)), []byte(payload), 0o644)
+		}
+	}
+	untar := time.Since(start)
+	start = time.Now()
+	for d := 0; d < dirs; d++ {
+		for f := 0; f < perDir; f++ {
+			os.Lstat(filepath.Join(base, fmt.Sprintf("d%03d", d), fmt.Sprintf("f%02d", f)))
+		}
+	}
+	walk := time.Since(start)
+	n := dirs * perDir
+	t.Logf("baseline os calls: untar %v = %v/file; stat walk %v = %v/stat", untar.Round(time.Millisecond),
+		(untar / time.Duration(n)).Round(time.Microsecond), walk.Round(time.Millisecond), (walk / time.Duration(n)).Round(time.Microsecond))
 }

@@ -10,6 +10,8 @@ import (
 	"io"
 	"sync/atomic"
 
+	"strings"
+
 	"golang.org/x/sys/unix"
 	"gvisor.dev/gvisor/pkg/abi/linux"
 	"gvisor.dev/gvisor/pkg/atomicbitops"
@@ -20,6 +22,7 @@ import (
 	"gvisor.dev/gvisor/pkg/sentry/kernel/auth"
 	"gvisor.dev/gvisor/pkg/sentry/ktime"
 	"gvisor.dev/gvisor/pkg/sentry/pgalloc"
+	"gvisor.dev/gvisor/pkg/sentry/uniqueid"
 	"gvisor.dev/gvisor/pkg/sentry/vfs"
 )
 
@@ -112,7 +115,77 @@ func (fstype FilesystemType) getHostFolderFilesystem(ctx context.Context, vfsObj
 		return nil, nil, err
 	}
 	fs.root.refs = atomicbitops.FromInt64(2)
+	if !hf.NoWatch {
+		if err := host.Watch(func(ch winhost.Change) { fs.hostChange(ctx, ch) }); err != nil {
+			ctx.Warningf("gofer: cannot watch host folder %q, changes made from Windows are noticed only when looked at: %v", hf.Path, err)
+		}
+	}
 	return &fs.vfsfs, &fs.root.vfsd, nil
+}
+
+// hostChange applies a change made to the folder from outside: it drops or
+// refreshes what is cached and notifies the guest's inotify watchers.
+func (fs *filesystem) hostChange(ctx context.Context, ch winhost.Change) {
+	if fs.released.Load() != 0 {
+		return
+	}
+	if ch.Overflow {
+		fs.renameMu.Lock()
+		fs.evictAllCachedDentriesLocked(ctx, false /* keepRenameMu */)
+		fs.renameMu.Unlock()
+		return
+	}
+	var ds *[]*dentry
+	fs.renameMu.RLock()
+	defer fs.renameMuRUnlockAndCheckCaching(ctx, &ds)
+
+	comps := strings.Split(ch.Path, "/")
+	parent := fs.root
+	for _, name := range comps[:len(comps)-1] {
+		parent.childrenMu.Lock()
+		next := parent.children[name]
+		parent.childrenMu.Unlock()
+		if next == nil || !next.isDir() {
+			return // nothing cached below here, so nobody can watch it
+		}
+		parent = next
+	}
+	leaf := comps[len(comps)-1]
+	parent.childrenMu.Lock()
+	child := parent.children[leaf]
+	if ch.Action != winhost.Modified {
+		parent.clearDirentsLocked()
+	}
+	parent.childrenMu.Unlock()
+
+	var mask uint32
+	switch ch.Action {
+	case winhost.Added:
+		mask = linux.IN_CREATE
+	case winhost.Removed:
+		mask = linux.IN_DELETE
+	case winhost.Modified:
+		mask = linux.IN_MODIFY
+	case winhost.RenamedFrom:
+		mask = linux.IN_MOVED_FROM
+		fs.hostCookie.Store(uniqueid.InotifyCookie(ctx))
+	case winhost.RenamedTo:
+		mask = linux.IN_MOVED_TO
+	}
+	cookie := uint32(0)
+	if mask == linux.IN_MOVED_FROM || mask == linux.IN_MOVED_TO {
+		cookie = fs.hostCookie.Load()
+	}
+	if child != nil {
+		child.InotifyWithParent(ctx, mask, cookie, vfs.PathEvent)
+		if ch.Action == winhost.Modified && fs.opts.interop == InteropModeShared {
+			child.inode.updateMetadata(ctx)
+		} else {
+			child.invalidate(ctx, fs.vfsfs.VirtualFilesystem(), &ds)
+		}
+	} else {
+		parent.inode.watches.Notify(ctx, leaf, mask, cookie, vfs.PathEvent, false)
+	}
 }
 
 // newWinDentry creates a dentry for the file described by a, or reuses the
