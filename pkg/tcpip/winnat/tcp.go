@@ -31,6 +31,10 @@ func (n *NAT) hostAddr(a tcpip.Address, port uint16) string {
 // gives the guest an RST instead of a connection that then dies.
 func (n *NAT) handleTCP(r *tcp.ForwarderRequest) {
 	id := r.ID()
+	if n.opts.GatewayHTTP != nil && id.LocalPort == 80 && id.LocalAddress == addr(GatewayIP) {
+		go n.handleGatewayHTTP(r)
+		return
+	}
 	dst := n.hostAddr(id.LocalAddress, id.LocalPort)
 	go func() {
 		host, err := n.opts.Dialer.Dial("tcp", dst)
@@ -65,6 +69,10 @@ func (n *NAT) Publish(hostPort, guestPort uint16) (uint16, error) {
 		return 0, net.ErrClosed
 	}
 	n.listeners = append(n.listeners, l)
+	if n.published == nil {
+		n.published = map[uint16]net.Listener{}
+	}
+	n.published[uint16(l.Addr().(*net.TCPAddr).Port)] = l
 	n.mu.Unlock()
 	go func() {
 		for {

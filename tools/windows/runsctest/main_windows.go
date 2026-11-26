@@ -142,6 +142,10 @@ func bundle(name string, args []string, terminal bool) string {
 		"annotations": map[string]string{"dev.gvisor.windows.rootfs-options": "file-mode=0755"},
 		"linux": map[string]any{"namespaces": []map[string]string{
 			{"type": "pid"}, {"type": "network"}, {"type": "ipc"}, {"type": "uts"}, {"type": "mount"},
+		}, "devices": []map[string]any{
+			{"path": "/dev/null", "type": "c", "major": 1, "minor": 3, "fileMode": 438},
+			{"path": "/dev/zero", "type": "c", "major": 1, "minor": 5, "fileMode": 438},
+			{"path": "/dev/urandom", "type": "c", "major": 1, "minor": 9, "fileMode": 438},
 		}},
 	}
 	b, err := json.MarshalIndent(spec, "", "  ")
