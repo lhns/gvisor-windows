@@ -251,6 +251,10 @@ type chunkInfo struct {
 	//
 	// section is immutable.
 	section uintptr `state:"nosave"`
+
+	// gvisor-windows: ext is the state of the extent sections of this chunk;
+	// it is nil on Linux.
+	ext *hostExtents `state:"nosave"`
 }
 
 func (f *MemoryFile) chunksLoad() []chunkInfo {
@@ -1088,7 +1092,12 @@ func (f *MemoryFile) Decommit(fr memmap.FileRange) {
 		panic(fmt.Sprintf("invalid range: %v", fr))
 	}
 
-	f.decommitOrManuallyZero(fr)
+	// gvisor-windows: pages that stay allocated (and may be mapped elsewhere)
+	// keep their backing memory; decommitRetained is decommitFile on Linux.
+	if err := f.decommitRetained(fr); err != nil {
+		log.Warningf("PERF: Failed to decommit %v: %v; zeroing manually", fr, err)
+		f.manuallyZero(fr)
+	}
 
 	f.mu.Lock()
 	defer f.mu.Unlock()
