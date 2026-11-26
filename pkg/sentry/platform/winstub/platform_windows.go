@@ -51,6 +51,7 @@ type Platform struct {
 	platform.NoCPUPreemptionDetection
 	platform.NoCPUNumbers
 
+	scans         scanCache
 	xmask         uint64
 	fpSize        int
 	stubPath      string

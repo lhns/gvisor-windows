@@ -59,6 +59,12 @@ func (g GoogleEmitter) Emit(depth int, level Level, timestamp time.Time, format 
 		prefix = byte('W')
 	}
 
+	// gvisor-windows: the first use of the local time zone costs ~30 ms on
+	// Windows (registry lookups); log in UTC instead.
+	if runtime.GOOS == "windows" {
+		timestamp = timestamp.UTC()
+	}
+
 	// Timestamp.
 	_, month, day := timestamp.Date()
 	hour, minute, second := timestamp.Clock()

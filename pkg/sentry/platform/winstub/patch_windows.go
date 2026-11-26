@@ -17,7 +17,11 @@
 package winstub
 
 import (
+	"crypto/sha256"
 	"encoding/binary"
+	"runtime"
+	"sort"
+	"sync"
 	"unsafe"
 
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/stubasm"
@@ -41,23 +45,156 @@ const (
 )
 
 type ins struct {
-	off int
-	n   int
-	op  x86asm.Op
-	cls uint8
+	off    int
+	n      int
+	op     x86asm.Op
+	cls    uint8
+	hasTgt bool
+	tgt    int // branch target as an offset in the scanned range
 }
 
-func classify(in x86asm.Inst) uint8 {
-	if in.PCRel != 0 {
-		return clsNever
+// scanSite is what the patcher needs to know about one syscall instruction: the
+// instructions around it (up to 3 before and after) and which are branch targets.
+// It does not depend on the address the range is mapped at.
+type scanSite struct {
+	off int
+	win [7]ins
+	tgt [7]bool
+	n   int
+	s   int // index of the syscall in win
+}
+
+type scanResult struct {
+	pairs int // 0f 05 byte pairs
+	sites []scanSite
+}
+
+// decodeRange decodes code linearly from from to end (instructions that start
+// before end), skipping bytes that do not decode.
+func decodeRange(code []byte, from, end int, list []ins) []ins {
+	for off := from; off < end; {
+		inst, err := x86asm.Decode(code[off:], 64)
+		if err != nil || inst.Len == 0 {
+			off++
+			continue
+		}
+		x := ins{off: off, n: inst.Len, op: inst.Op, cls: classify(inst)}
+		if rel, ok := inst.Args[0].(x86asm.Rel); ok {
+			x.hasTgt, x.tgt = true, off+inst.Len+int(rel)
+		}
+		list = append(list, x)
+		off += inst.Len
 	}
-	switch in.Op {
-	case x86asm.SYSCALL, x86asm.SYSENTER, x86asm.INT, x86asm.CALL, x86asm.LCALL, x86asm.UD1, x86asm.UD2, x86asm.HLT, x86asm.INTO:
-		return clsNever
-	case x86asm.RET, x86asm.LRET, x86asm.JMP, x86asm.LJMP:
-		return clsLastOnly
+	return list
+}
+
+// decodeAll is the linear sweep over the whole range, split over several
+// goroutines: every chunk after the first is decoded from its start, which is
+// usually not an instruction boundary; the results are joined where a later
+// chunk's decoding agrees with the true stream (it almost always does within a few
+// instructions), and the stream is decoded serially until then.
+func decodeAll(code []byte) []ins {
+	const minChunk = 256 << 10
+	workers := min(runtime.GOMAXPROCS(0), len(code)/minChunk)
+	if workers < 2 {
+		return decodeRange(code, 0, len(code), make([]ins, 0, len(code)/4))
 	}
-	return clsOK
+	cs := (len(code) + workers - 1) / workers
+	parts := make([][]ins, workers)
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func(w int) {
+			defer wg.Done()
+			lo, hi := w*cs, min((w+1)*cs, len(code))
+			parts[w] = decodeRange(code, lo, hi, make([]ins, 0, cs/4))
+		}(w)
+	}
+	wg.Wait()
+	list := parts[0]
+	pos := 0
+	if n := len(list); n > 0 {
+		pos = list[n-1].off + list[n-1].n
+	}
+	for w := 1; w < workers; w++ {
+		end := min((w+1)*cs, len(code))
+		part := parts[w]
+		for pos < end {
+			i := sort.Search(len(part), func(i int) bool { return part[i].off >= pos })
+			if i < len(part) && part[i].off == pos {
+				list = append(list, part[i:]...)
+				last := part[len(part)-1]
+				pos = last.off + last.n
+				break
+			}
+			one := decodeRange(code, pos, pos+1, nil)
+			if len(one) == 0 {
+				pos++
+				continue
+			}
+			list = append(list, one[0])
+			pos += one[0].n
+		}
+	}
+	return list
+}
+
+// scanText finds every syscall instruction in code and its surroundings.
+func scanText(code []byte) *scanResult {
+	r := &scanResult{}
+	for i := 0; i+1 < len(code); i++ {
+		if code[i] == 0x0F && code[i+1] == 0x05 {
+			r.pairs++
+		}
+	}
+	if r.pairs == 0 {
+		return r
+	}
+	list := decodeAll(code)
+	isTgt := make([]uint64, (len(code)+63)/64)
+	for _, x := range list {
+		if x.hasTgt && x.tgt >= 0 && x.tgt < len(code) {
+			isTgt[x.tgt/64] |= 1 << (x.tgt % 64)
+		}
+	}
+	for s, x := range list {
+		if x.op != x86asm.SYSCALL {
+			continue
+		}
+		lo, hi := max(0, s-3), min(len(list)-1, s+3)
+		site := scanSite{off: x.off, n: hi - lo + 1, s: s - lo}
+		for k := lo; k <= hi; k++ {
+			site.win[k-lo] = list[k]
+			site.tgt[k-lo] = list[k].off < len(code) && isTgt[list[k].off/64]&(1<<(list[k].off%64)) != 0
+		}
+		r.sites = append(r.sites, site)
+	}
+	return r
+}
+
+// scanCache remembers scan results by content: the same library text is mapped
+// again by every process.
+type scanCache struct {
+	mu sync.Mutex
+	m  map[[32]byte]*scanResult
+}
+
+func (c *scanCache) scan(code []byte) *scanResult {
+	key := sha256.Sum256(code)
+	c.mu.Lock()
+	r := c.m[key]
+	c.mu.Unlock()
+	if r != nil {
+		return r
+	}
+	r = scanText(code)
+	c.mu.Lock()
+	if c.m == nil || len(c.m) >= 512 {
+		c.m = map[[32]byte]*scanResult{}
+	}
+	c.m[key] = r
+	c.mu.Unlock()
+	return r
 }
 
 // siteInfo remembers a patched `mov $imm,%eax; syscall` site so that scanning the
@@ -84,43 +221,22 @@ func (as *addressSpace) areaWrite(addr uint64, b []byte) {
 // The caller holds as.mu.
 func (as *addressSpace) patchCode(code []byte, base uint64) siteStats {
 	var st siteStats
-	for i := 0; i+1 < len(code); i++ {
-		if code[i] == 0x0F && code[i+1] == 0x05 {
-			st.pairs++
-		}
-	}
-	var list []ins
-	targets := map[uint64]bool{}
-	for off := 0; off < len(code); {
-		inst, err := x86asm.Decode(code[off:], 64)
-		if err != nil || inst.Len == 0 {
-			off++
-			continue
-		}
-		list = append(list, ins{off: off, n: inst.Len, op: inst.Op, cls: classify(inst)})
-		if rel, ok := inst.Args[0].(x86asm.Rel); ok {
-			targets[uint64(int64(base)+int64(off)+int64(inst.Len)+int64(rel))] = true
-		}
-		off += inst.Len
-	}
-	contig := func(i int) bool { return i > 0 && list[i-1].off+list[i-1].n == list[i].off }
-
-	for s, x := range list {
-		if x.op != x86asm.SYSCALL {
-			continue
-		}
+	scan := as.p.scans.scan(code)
+	st.pairs = scan.pairs
+	for i := range scan.sites {
+		site := &scan.sites[i]
 		st.syscalls++
-		a := base + uint64(x.off)
-		if as.patchImm(code, base, list, s, targets, contig, &st) {
+		win, tgt := site.win[:site.n], site.tgt[:site.n]
+		if as.patchImm(code, base, win, site.s, tgt, &st) {
 			continue
 		}
-		if as.patchReloc(code, base, list, s, targets, contig, &st) {
+		if as.patchReloc(code, base, win, site.s, tgt, &st) {
 			continue
 		}
-		code[x.off], code[x.off+1] = 0x0F, 0x0B
-		as.ud2Sites[a] = true
+		code[site.off], code[site.off+1] = 0x0F, 0x0B
+		as.ud2Sites[base+uint64(site.off)] = true
 		st.ud2++
-		debugf("ud2 site %#x", a)
+		debugf("ud2 site %#x", base+uint64(site.off))
 	}
 	return st
 }
@@ -134,10 +250,10 @@ func (as *addressSpace) newSlot() (idx uint64, ok bool) {
 	return idx, true
 }
 
-func (as *addressSpace) patchImm(code []byte, base uint64, list []ins, s int, targets map[uint64]bool, contig func(int) bool, st *siteStats) bool {
+func (as *addressSpace) patchImm(code []byte, base uint64, list []ins, s int, tgt []bool, st *siteStats) bool {
 	x := list[s]
 	a := base + uint64(x.off)
-	if !contig(s) || targets[a] || list[s-1].op != x86asm.MOV {
+	if s == 0 || list[s-1].off+list[s-1].n != x.off || tgt[s] || list[s-1].op != x86asm.MOV {
 		return false
 	}
 	pv := list[s-1]
@@ -190,7 +306,8 @@ func (as *addressSpace) patchImm(code []byte, base uint64, list []ins, s int, ta
 // window of whole instructions around the syscall in which no instruction except
 // the first is a branch target and every instruction can be copied, becomes a jump
 // to a veneer.
-func (as *addressSpace) patchReloc(code []byte, base uint64, list []ins, s int, targets map[uint64]bool, contig func(int) bool, st *siteStats) bool {
+func (as *addressSpace) patchReloc(code []byte, base uint64, list []ins, s int, tgt []bool, st *siteStats) bool {
+	contig := func(i int) bool { return i > 0 && list[i-1].off+list[i-1].n == list[i].off }
 	x := list[s]
 	a := base + uint64(x.off)
 	va := as.vcur
@@ -221,7 +338,7 @@ func (as *addressSpace) patchReloc(code []byte, base uint64, list []ins, s int, 
 					ok = false
 					break
 				}
-				if k > ia && targets[base+uint64(list[k].off)] {
+				if k > ia && tgt[k] {
 					ok = false
 					break
 				}
@@ -285,4 +402,17 @@ func (as *addressSpace) patchReloc(code []byte, base uint64, list []ins, s int, 
 	as.restartAt[postAddr-2] = va + uint64(len(pre))
 	st.reloc++
 	return true
+}
+
+func classify(in x86asm.Inst) uint8 {
+	if in.PCRel != 0 {
+		return clsNever
+	}
+	switch in.Op {
+	case x86asm.SYSCALL, x86asm.SYSENTER, x86asm.INT, x86asm.CALL, x86asm.LCALL, x86asm.UD1, x86asm.UD2, x86asm.HLT, x86asm.INTO:
+		return clsNever
+	case x86asm.RET, x86asm.LRET, x86asm.JMP, x86asm.LJMP:
+		return clsLastOnly
+	}
+	return clsOK
 }

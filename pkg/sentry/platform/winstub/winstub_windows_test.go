@@ -777,3 +777,33 @@ func TestStubStartExperiment(t *testing.T) {
 		}
 	}
 }
+
+// TestDecodeAllMatchesSerial checks the chunked parallel sweep against the serial
+// one on real code (this test binary), and times both.
+func TestDecodeAllMatchesSerial(t *testing.T) {
+	exe, err := os.Executable()
+	if err != nil {
+		t.Skip(err)
+	}
+	b, err := os.ReadFile(exe)
+	if err != nil {
+		t.Skip(err)
+	}
+	if len(b) > 6<<20 {
+		b = b[:6<<20]
+	}
+	t0 := time.Now()
+	serial := decodeRange(b, 0, len(b), nil)
+	t1 := time.Now()
+	par := decodeAll(b)
+	t2 := time.Now()
+	if len(serial) != len(par) {
+		t.Fatalf("instruction counts differ: serial %d, parallel %d", len(serial), len(par))
+	}
+	for i := range serial {
+		if serial[i] != par[i] {
+			t.Fatalf("instruction %d differs: %+v vs %+v", i, serial[i], par[i])
+		}
+	}
+	t.Logf("DECODE %d bytes, %d instructions: serial %v, parallel %v", len(b), len(serial), t1.Sub(t0), t2.Sub(t1))
+}
