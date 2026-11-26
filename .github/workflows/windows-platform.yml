@@ -31,6 +31,17 @@ jobs:
             if ($LASTEXITCODE -ne 0) { $fail = 1 }
           }
           exit $fail
+      - name: Oversubscription, with and without the spin limit
+        continue-on-error: true
+        shell: pwsh
+        working-directory: pkg/sentry/platform/winstub
+        run: |
+          foreach ($l in 4, 1000) {
+            $env:WINSTUB_SPINLIMIT = "$l"
+            "===== spin limit $l" | Tee-Object -Append -FilePath ../../../../tuning.txt
+            $a = @("-test.run=^TestOversubscribed$|^TestSyscallLatency$", "-test.v=true")
+            & ../../../../winstub.test.exe @a 2>&1 | Select-String "OVERSUB|LATENCY" | Tee-Object -Append -FilePath ../../../../tuning.txt
+          }
       - name: Spin tuning
         continue-on-error: true
         shell: pwsh

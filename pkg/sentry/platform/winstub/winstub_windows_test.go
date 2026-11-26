@@ -1216,11 +1216,11 @@ func TestOversubscribed(t *testing.T) {
 	pac := newAC(g.loop, 0)
 	end := time.Now().Add(dur)
 	for time.Now().Before(end) {
-		t0 := time.Now()
+		t0 := qpc()
 		if _, _, err := probe.Switch(pkgcontext.Background(), mm, pac, -1); err != nil {
 			t.Fatalf("probe: %v", err)
 		}
-		lat = append(lat, time.Since(t0))
+		lat = append(lat, time.Duration(qpc()-t0))
 	}
 	close(stop)
 	wg.Wait()

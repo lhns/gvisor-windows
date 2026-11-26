@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"sync/atomic"
 
 	pkgcontext "gvisor.dev/gvisor/pkg/context"
 	"gvisor.dev/gvisor/pkg/cpuid"
@@ -52,6 +53,8 @@ type Platform struct {
 	platform.NoCPUNumbers
 
 	scans         scanCache
+	active        atomic.Int32 // contexts inside Switch
+	spinLimit     int          // spin only while active <= spinLimit (WINSTUB_SPINLIMIT)
 	xmask         uint64
 	fpSize        int
 	stubPath      string
@@ -87,6 +90,7 @@ func New(opts platform.Options) (*Platform, error) {
 		return nil, fmt.Errorf("winstub: stub image: %w", err)
 	}
 	return &Platform{
+		spinLimit: envInt("WINSTUB_SPINLIMIT", runtime.NumCPU()),
 		xmask:    stubasm.XSaveMask(),
 		fpSize:   int(fpSize),
 		stubPath: f.Name(),
