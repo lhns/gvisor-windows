@@ -5,7 +5,8 @@ $repo = (Resolve-Path "$PSScriptRoot\..\..\..").Path
 $work = "$Root\std"; New-Item -ItemType Directory -Force $work, "$work\share" | Out-Null
 $podman = (Get-ChildItem "$Root\tools" -Recurse -Filter podman.exe | Select-Object -First 1).FullName
 $docker = (Get-ChildItem "$Root\tools" -Recurse -Filter docker.exe | Select-Object -First 1).FullName
-& $podman --version; & $docker --version
+$env:DOCKER_CONFIG = "$Root	oolsdockercfg"
+& $podman --version; & $docker --version $podman --version; & $docker --version
 $ctl = "$work\engine-ctl.ps1"
 @"
 param([string]`$Action = 'start')
