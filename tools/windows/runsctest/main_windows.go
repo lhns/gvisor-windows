@@ -63,6 +63,7 @@ func main() {
 		{"net", testNet},
 		{"publish", testPublish},
 		{"tty", testTTY},
+		{"hostfs", testHostfs},
 		// Not in the default run: fails today (docs/results/3-runsc-boot.md).
 		{"erofs", testErofs},
 	}
@@ -74,7 +75,7 @@ func main() {
 	}
 	failed := 0
 	for _, t := range tests {
-		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && t.name == "erofs") {
+		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs")) {
 			continue
 		}
 		start := time.Now()
@@ -115,12 +116,14 @@ func bundle(name string, args []string, terminal bool) string {
 	}
 	dir := filepath.Join(*workDir, "bundle-"+name)
 	must(os.MkdirAll(dir, 0o755))
-	mounts := []map[string]any{
+	mounts := []map[string]any{}
+	mounts = append(mounts, extraMounts...)
+	mounts = append(mounts, []map[string]any{
 		{"destination": "/proc", "type": "proc", "source": "proc"},
 		{"destination": "/dev", "type": "tmpfs", "source": "tmpfs", "options": []string{"nosuid", "strictatime", "mode=755", "size=65536k"}},
 		{"destination": "/dev/pts", "type": "devpts", "source": "devpts", "options": []string{"nosuid", "noexec", "newinstance", "ptmxmode=0666", "mode=0620"}},
 		{"destination": "/tmp", "type": "tmpfs", "source": "tmpfs"},
-	}
+	}...)
 	spec := map[string]any{
 		"ociVersion": "1.0.2",
 		"process": map[string]any{
@@ -289,4 +292,28 @@ func testPublish() error {
 		time.Sleep(500 * time.Millisecond)
 	}
 	return fmt.Errorf("published port never answered: %v (runsc stderr %q)", last, errb.String())
+}
+
+var extraMounts []map[string]any
+
+// testHostfs is the reproducer for the rename and rmdir failures Podman's
+// storage hits on a host-folder bind mount ("rename .tmp-images.json
+// images.json: permission denied", "remove /.pivot_root: permission denied").
+func testHostfs() error {
+	dir := filepath.Join(*workDir, "hostfs")
+	_ = os.RemoveAll(dir)
+	must(os.MkdirAll(dir, 0o755))
+	extraMounts = []map[string]any{{"destination": "/w", "type": "bind", "source": dir, "options": []string{"rbind", "rw"}}}
+	defer func() { extraMounts = nil }()
+	script := `cd /w; set -x; echo a >x; echo b >y; mv x y && echo replace-ok; cat y; mkdir d; mkdir d/e; rmdir d/e && echo rmdir-ok; mv d d2 && echo dirmove-ok; rmdir d2 && echo rmdir2-ok; echo c >z; rm z && echo rm-ok; exit 0`
+	r, err := runsc("hostfs", []string{"/bin/sh", "-c", script}, nil)
+	if err != nil {
+		return err
+	}
+	for _, want := range []string{"replace-ok", "rmdir-ok", "dirmove-ok", "rmdir2-ok", "rm-ok"} {
+		if !strings.Contains(r.stdout, want) {
+			return fmt.Errorf("%q missing; stdout %q stderr %q", want, r.stdout, r.stderr)
+		}
+	}
+	return nil
 }

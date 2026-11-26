@@ -15,6 +15,7 @@
 package winnat
 
 import (
+	"net/http"
 	"fmt"
 	"net"
 	"net/netip"
@@ -71,6 +72,10 @@ type Options struct {
 	// so the guest can reach host services. Off by default: it exposes
 	// everything listening on the host's loopback to the guest.
 	HostLoopback bool
+	// GatewayHTTP, if set, serves HTTP at GatewayIP:80 instead of dialing the
+	// host: the guest's services API of the gateway (Podman's port
+	// forwarding request, see runsc/boot/network_winnat.go).
+	GatewayHTTP http.Handler
 }
 
 // NAT is the gateway side of the virtual network.
@@ -81,6 +86,9 @@ type NAT struct {
 
 	mu        sync.Mutex
 	listeners []net.Listener
+	published map[uint16]net.Listener // by host port, for Unpublish
+	gwConns   chan net.Conn
+
 	closed    bool
 }
 

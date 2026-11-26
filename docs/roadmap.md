@@ -194,14 +194,12 @@ flowchart TB
 | Open Windows files directly | ✔ done · successful | The Sentry opens NTFS files itself for bind mounts, with its own caches, instead of going through a file protocol. |
 | Storage that survives restarts | ⛔ blocked | Implement the chosen writable filesystem so data inside the sandbox outlives a restart. |
 | Flaky negative-cache test on host folders | ⚠ open | TestVFSNegativeCacheAndQuickChange failed once on windows-fs after passing on the previous head; a timing race in the change watcher or the test. |
+| Deletes fail for standard users | ⚠ open | On a host folder as a standard Windows user, rename over an existing file, rmdir and unlink fail with permission denied; Podman cannot extract layers or write images.json. |
 | Netstack to Windows sockets | ✔ done · successful | gVisor's own TCP/IP stack sends guest traffic out through ordinary Windows sockets, like a user-space NAT. |
 | Bridge networking inside gVisor | ✔ done · successful | Podman's default network creates a bridge and veth pairs over netlink; gVisor lacks part of that, so it fails today. Fix it in gVisor itself, first on Linux, then it carries over to Windows. |
 | Podman on gVisor on Linux | ✔ done · mixed ⚠ | Run the acceptance test on stock gVisor on Linux; whatever fails there is a gap in gVisor itself, not in the port. |
 | Podman passes on Windows | ⛔ blocked | The bar for enough features: an unmodified Podman engine passes the acceptance test on gVisor on Windows. |
-| Acceptance test for Windows | ▶ in progress | The ten acceptance steps written for Windows, driving the stock Podman and docker clients. |
-| Serve Podman to Windows clients | ⛔ blocked | The test harness runs the Podman engine on runsc and exposes its API to the stock Windows clients. |
-| Podman API on a named pipe | ▶ in progress | Expose the Podman engine API on a Windows named pipe owned by the user, instead of a loopback TCP port. |
-| Probe Podman inside the sandbox | ○ next | Right after busybox works, run podman --version and podman info inside the sandbox; their failures are the real gap list. |
+| Serve Podman to Windows clients | ▶ in progress | The test harness runs the Podman engine on runsc and exposes its API to the stock Windows clients. |
 | Measure end-to-end speed on Windows | ○ next | Run the Phase 0 workloads (fork+exec loop, untar of small files, a CPU job) through runsc.exe on Windows and compare with runsc and native on Linux. |
 | Pick gVisor as the base | ✔ done · unrated | Of all ways to run Linux code on Windows without admin, gVisor's user-space Linux kernel is the only one that already runs containers. |
 | Name it gvisor-windows | ✔ done · n/a | The project is an unofficial fork of gVisor's Go branch called gvisor-windows. |
@@ -221,9 +219,9 @@ flowchart TB
 
 **windows-ci**
 
-- `workloads-podman-probe`: Probe Podman inside the sandbox
 - `fs-flaky-negative-cache-test`: Flaky negative-cache test on host folders
 - `workloads-end-to-end-speed`: Measure end-to-end speed on Windows
+- `fs-standard-user-delete-rights`: Deletes fail for standard users
 <!-- END GENERATED: ready-now -->
 
 ## Running
@@ -231,9 +229,8 @@ flowchart TB
 <!-- BEGIN GENERATED: running -->
 **windows-ci**
 
-- `workloads-acceptance-test-windows`: Acceptance test for Windows
 - `ops-syscall-tests-on-windows`: gVisor syscall tests on Windows
-- `workloads-podman-api-named-pipe`: Podman API on a named pipe
+- `workloads-podman-harness`: Serve Podman to Windows clients
 <!-- END GENERATED: running -->
 
 ## Built, waiting
@@ -259,7 +256,7 @@ Generated on 2026-11-26.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 67 done, 7 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 70 done, 7 abandoned</summary>
 
 - `fs-attribute-cache`: Faster stat walks on host folders (✔ done · mixed). A git-status-like walk of 20000 files takes 1.2-2.4 s through the host folder; an attribute cache fed by the change watcher would bring stat near native.
   - Cold stat walk on a fresh mount is still about 4x native, 99-105 us per file (2026-11-26)
@@ -353,11 +350,14 @@ Generated on 2026-11-26.
   - GOOS=windows build of runsc/boot succeeds, CI green (2026-11-26)
 - `workloads-acceptance-test`: Write the Podman acceptance test (✔ done · unrated). One test of ten steps defines when Podman counts as working: pull, run, build, mounts, ports, compose, restart, isolation.
   - Native Podman baseline passes all 10 steps (2026-11-26)
+- `workloads-acceptance-test-windows`: Acceptance test for Windows (✔ done · unrated). The ten acceptance steps written for Windows, driving the stock Podman and docker clients.
 - `workloads-bar-host-network`: Does host networking meet the bar (✔ done · n/a). Decided: host networking is only an interim state; -p and compose service names are required.
 - `workloads-gvisor-bridge-netlink`: Bridge networking fails in gVisor (✔ fixed). netavark dies on setsockopt(NETLINK_DUMP_STRICT_CHK) (ENOPROTOOPT) and then on RTM_SETLINK with NLM_F_CREATE (EINVAL); nftables (NETLINK_NETFILTER) is only enabled by a test-only flag.
 - `workloads-gvisor-cgroupfs-readonly`: Cgroup filesystem mounted read-only (✔ fixed). With Podman managing cgroups, crun cannot write cgroup.subtree_control because gVisor mounts /sys/fs/cgroup read-only; a remount makes it pass.
 - `workloads-gvisor-port-publishing`: Port publishing untested in gVisor (✔ fixed). Publishing container ports with -p and service-name lookup in compose never worked or were never exercised inside gVisor.
+- `workloads-podman-api-named-pipe`: Podman API on a named pipe (✔ done · unrated). Expose the Podman engine API on a Windows named pipe owned by the user, instead of a loopback TCP port.
 - `workloads-podman-on-gvisor-linux`: Podman on gVisor on Linux (✔ done · mixed). Run the acceptance test on stock gVisor on Linux; whatever fails there is a gap in gVisor itself, not in the port.
+- `workloads-podman-probe`: Probe Podman inside the sandbox (✔ done · unrated). Right after busybox works, run podman --version and podman info inside the sandbox; their failures are the real gap list.
 - `workloads-strict-bar-linux`: Strict bar on stock gVisor (✔ done · mixed). Find out what stock gVisor on Linux needs for -p port publishing and compose service names, across Podman versions and network modes.
 
 </details>
@@ -371,9 +371,9 @@ Each track has its own page with its tree, node table and per-node details.
 - [runsc - runsc](roadmap/tracks/runsc.md): 6 nodes (4 done, 2 blocked)
 - [platform - platform](roadmap/tracks/platform.md): 30 nodes (24 done, 1 blocked, 4 parked, 1 abandoned)
 - [sentry - sentry](roadmap/tracks/sentry.md): 10 nodes (8 done, 1 blocked, 1 parked)
-- [fs - files](roadmap/tracks/fs.md): 13 nodes (11 done, 1 next, 1 blocked)
+- [fs - files](roadmap/tracks/fs.md): 14 nodes (11 done, 2 next, 1 blocked)
 - [net - network](roadmap/tracks/net.md): 4 nodes (4 done)
-- [workloads - workloads](roadmap/tracks/workloads.md): 13 nodes (7 done, 2 in progress, 2 next, 2 blocked)
+- [workloads - workloads](roadmap/tracks/workloads.md): 13 nodes (10 done, 1 in progress, 1 next, 1 blocked)
 - [research - research](roadmap/tracks/research.md): 8 nodes (2 done, 6 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 11 nodes (7 done, 1 in progress, 1 next, 2 blocked)
 <!-- END GENERATED: tracks -->

@@ -450,6 +450,7 @@
   - net-nftables-thread-safety
   - platform-split-syscall-unpatched
   - workloads-podman-api-named-pipe
+  - fs-standard-user-delete-rights
   replaced_by: []
   lane: windows-ci
   start: ''
@@ -971,9 +972,10 @@
   title: Acceptance test for Windows
   track: workloads
   kind: tooling
-  state: in-progress
+  state: done
   outcome: unrated
-  evidence: []
+  evidence:
+  - docs/results/5-podman-windows.md
   verdict_quote: ''
   headline: ''
   depends_on:
@@ -981,7 +983,7 @@
   replaced_by: []
   lane: windows-ci
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   plain: The ten acceptance steps written for Windows, driving the stock Podman and docker clients.
@@ -1193,9 +1195,10 @@
   title: Serve Podman to Windows clients
   track: workloads
   kind: tooling
-  state: blocked
+  state: in-progress
   outcome: unrated
-  evidence: []
+  evidence:
+  - docs/results/5-podman-windows.md
   verdict_quote: ''
   headline: ''
   depends_on:
@@ -1204,12 +1207,12 @@
   - workloads-podman-probe
   replaced_by: []
   lane: windows-ci
-  start: ''
+  start: '2026-11-26'
   end: ''
   folded: []
   overview: false
   plain: The test harness runs the Podman engine on runsc and exposes its API to the stock Windows clients.
-  notes: 'Done when: podman version from a Windows client reaches the engine running on runsc.'
+  notes: Engine runs on runsc.exe with the erofs podman image; step 1 passes. Gap list in docs/results/5-podman-windows.md.
 - id: platform-hardware-acceleration
   title: Use hardware acceleration when available
   track: platform
@@ -1814,41 +1817,43 @@
   plain: 'Decided: the sandbox root is a read-only erofs image with an overlay on top; persistent data such as Podman storage lives in Windows folders.'
   notes: 'Done when: an ADR records the choice, after reading how gVisor opens erofs images and which mode a file without a metadata stream reports.'
 - outcome: unrated
-  evidence: []
+  evidence:
+  - docs/results/5-podman-windows.md
   verdict_quote: ''
   headline: ''
   depends_on:
   - runsc-windows-boot
   replaced_by: []
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   id: workloads-podman-api-named-pipe
   title: Podman API on a named pipe
   track: workloads
   kind: feature
-  state: in-progress
+  state: done
   lane: windows-ci
   plain: Expose the Podman engine API on a Windows named pipe owned by the user, instead of a loopback TCP port.
-  notes: 'Done when: podman --url npipe:////./pipe/<name> and DOCKER_HOST with the same pipe reach the engine in the sandbox.'
+  notes: Done for the docker CLI; stock podman 5.3.1 cannot dial npipe, so the podman client uses a forwarded AF_UNIX socket.
 - outcome: unrated
-  evidence: []
+  evidence:
+  - docs/results/5-podman-windows.md
   verdict_quote: ''
   headline: ''
   depends_on:
   - platform-busybox-on-windows
   - platform-map-files-without-sections
   replaced_by: []
-  start: ''
-  end: ''
+  start: '2026-11-26'
+  end: '2026-11-26'
   folded: []
   overview: false
   id: workloads-podman-probe
   title: Probe Podman inside the sandbox
   track: workloads
   kind: experiment
-  state: next
+  state: done
   lane: windows-ci
   plain: Right after busybox works, run podman --version and podman info inside the sandbox; their failures are the real gap list.
   notes: 'Done when: the gap list is written up in docs/results.'
@@ -1968,3 +1973,22 @@
   - workloads-podman-on-windows
   plain: All evidence comes from GitHub hosted Windows images; the owner runs runsc.exe once on a work machine to check FSGSBASE and whether security software tolerates the generated stub being debugged.
   notes: 'Done when: the owner reports the result of one run of the published artifact.'
+- outcome: unrated
+  evidence:
+  - docs/results/5-podman-windows.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-26'
+  end: ''
+  folded: []
+  overview: false
+  id: fs-standard-user-delete-rights
+  title: Deletes fail for standard users
+  track: fs
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: On a host folder as a standard Windows user, rename over an existing file, rmdir and unlink fail with permission denied; Podman cannot extract layers or write images.json.
+  notes: 'Fixed when: the hostfs test in windows-runsc (mv over, rmdir, rm) passes as a standard user and Podman can pull an image.'
