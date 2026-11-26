@@ -163,59 +163,72 @@ jobs:
         if: always()
         with: {name: netlink-probe, path: results, retention-days: 30}
 
-  # Round 2: what is behind the first gap. Stock runsc with its --TESTONLY-nftables flag (opens
-  # NETLINK_NETFILTER) and an LD_PRELOAD shim that swallows ENOPROTOOPT for SOL_NETLINK sockopts in netavark.
-  probe2:
-    name: probe2-${{ matrix.podman }}-${{ matrix.v }}
+  # runsc built from this tree: strict bar (default bridge, -p, compose names, default cgroup manager).
+  # v: ipt-priv = docker --privileged (rw cgroup mount), ipt-remount = unprivileged plus in-sandbox remount rw.
+  bridge:
+    name: bridge-${{ matrix.podman }}-${{ matrix.v }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        podman: ["v5.7.1", "v6.2.0"]
-        v: [nft-shim, nft-shim-cgroupfs]
+        include:
+          - {podman: "v5.7.1", v: ipt-priv}
+          - {podman: "v6.2.0", v: nft-priv}
     steps:
       - uses: actions/checkout@v4
-        with: {sparse-checkout: "test/e2e"}
-      - run: mkdir -p "$RESULTS_DIR/out" && test/e2e/podman-acceptance/harness/install.sh
-      - name: Build shim
-        run: gcc -Wall -shared -fPIC -O2 -o /tmp/shim.so test/e2e/podman-acceptance/harness/shim.c -ldl
+      - uses: actions/setup-go@v5
+        with: {go-version-file: go.mod}
+      - run: mkdir -p "$RESULTS_DIR/out" && BUILD_RUNSC=1 PODMAN_IMAGE=quay.io/podman/stable:${{ matrix.podman }} test/e2e/podman-acceptance/harness/install.sh
+      - name: Kernel-behaviour checks (nlcheck)
+        run: |
+          CGO_ENABLED=0 go build -o /tmp/nlcheck ./test/e2e/podman-acceptance/harness/nlcheck
+          docker run --rm --runtime runsc-fix --cap-add NET_ADMIN -v /tmp/nlcheck:/nlcheck:ro --entrypoint /nlcheck mirror.gcr.io/library/alpine:3.20 | tee "$RESULTS_DIR/out/nlcheck.txt" || true
+      - name: nft statement probe
+        if: matrix.v == 'nft-priv'
+        run: |
+          docker run --rm -i --runtime runsc-nft --cap-add NET_ADMIN --user root --entrypoint '' quay.io/podman/stable:${{ matrix.podman }} sh -s <test/e2e/podman-acceptance/harness/nftprobe.sh 2>&1 | tee "$RESULTS_DIR/out/nftprobe.txt" || true
       - name: Start engine
         run: |
-          export SHARE_DIR=/tmp/acc-share STORAGE=hostdir PODMAN_IMAGE=quay.io/podman/stable:${{ matrix.podman }} CGROUPS=disabled
-          export RUNTIME=runsc-nft-strace
-          case "${{ matrix.v }}" in
-            nft-shim) export SHIM=1 SHIM_SO=/tmp/shim.so ;;
-            nft-shim-cgroupfs) export SHIM=1 SHIM_SO=/tmp/shim.so CGROUPS=enabled REMOUNT_CG=1 ;;
-            nft-only) ;;
-            slirp) export INSTALL_SLIRP=1 ;;
-            cgfs-host) export CGROUPS=enabled REMOUNT_CG=1 RUNTIME=runsc ;;
-          esac
+          export SHARE_DIR=/tmp/acc-share STORAGE=hostdir PODMAN_IMAGE=quay.io/podman/stable:${{ matrix.podman }} CGROUPS=enabled RUNTIME=runsc-fix-strace NETAVARK_TRACE=1 PRIVILEGED=1
+          [ "${{ matrix.v }}" = ipt-priv ] && export FW=iptables
+          [ "${{ matrix.v }}" = nft-priv ] && export RUNTIME=runsc-nft-strace
           test/e2e/podman-acceptance/harness/engine-runsc.sh start
           docker exec podman-in-runsc podman version | tee "$RESULTS_DIR/out/engine-version.txt"
-      - name: Acceptance test
+      - name: Acceptance test (strict)
         run: |
-          export SHARE_DIR=/tmp/acc-share RESULTS_DIR="$RESULTS_DIR/out" STORAGE=hostdir RUNTIME=runsc-nft-strace
+          export SHARE_DIR=/tmp/acc-share RESULTS_DIR="$RESULTS_DIR/out" STORAGE=hostdir RUNTIME=runsc-fix-strace CGROUPS=enabled NETAVARK_TRACE=1 PRIVILEGED=1
+          [ "${{ matrix.v }}" = ipt-priv ] && export FW=iptables
+          [ "${{ matrix.v }}" = nft-priv ] && export RUNTIME=runsc-nft-strace
+          export PODMAN_IMAGE=quay.io/podman/stable:${{ matrix.podman }}
           export CONTAINER_HOST=unix:///tmp/podman-runsc.sock
           export ENGINE_CTL="$PWD/test/e2e/podman-acceptance/harness/engine-runsc.sh"
-          [ "${{ matrix.v }}" = slirp ] && export NETARGS=--network=slirp4netns
-          if [ "${{ matrix.v }}" = cgfs-host ]; then export HOSTNET=1 NETARGS=--network=host RUNTIME=runsc CGROUPS=enabled REMOUNT_CG=1 PODMAN_IMAGE=quay.io/podman/stable:${{ matrix.podman }}; fi
-          if [ "${{ matrix.v }}" = cgfs-host ]; then test/e2e/podman-acceptance/run.sh || true; else ONLY="1 2 3 6 7 8 10" test/e2e/podman-acceptance/run.sh || true; fi
+          # Steps 1-8 first: step 9 restarts the sandbox and with it the netavark/nft logs.
+          ONLY="1 2 3 4 5 6 7 8" test/e2e/podman-acceptance/run.sh || true
+          docker exec podman-in-runsc sh -c "tail -c 300000 /var/log/netavark.log" >"$RESULTS_DIR/netavark-1-8.tail" 2>&1 || true
+          docker exec podman-in-runsc sh -c "tail -c 300000 /var/log/nft-in.log" >"$RESULTS_DIR/nft-in-1-8.log" 2>&1 || true
+          cp "$RESULTS_DIR/steps.txt" "$RESULTS_DIR/steps-1-8.txt"
+          ONLY="9 10" test/e2e/podman-acceptance/run.sh || true
+          cat "$RESULTS_DIR/steps-1-8.txt" "$RESULTS_DIR/steps.txt" | grep -E '^STEP' | sort -k2,2n >"$RESULTS_DIR/steps-all.txt"
+          { cat "$RESULTS_DIR/steps-all.txt"; echo "FAILED_STEPS=$(grep -c ' FAIL ' "$RESULTS_DIR/steps-all.txt")"; } >"$RESULTS_DIR/steps.txt"
       - name: Diagnostics
         if: always()
         run: |
           cd "$RESULTS_DIR/out"
           docker logs podman-in-runsc >engine-container.log 2>&1 || true
-          docker exec podman-in-runsc sh -c "tail -c 400000 /var/log/netavark.log" >netavark.tail 2>&1 || true
+          docker exec podman-in-runsc sh -c "tail -c 300000 /var/log/netavark.log" >netavark.tail 2>&1 || true
+          docker exec podman-in-runsc sh -c "tail -c 200000 /var/log/nft-in.log" >nft-in.log 2>&1 || true
+          { docker exec podman-in-runsc podman info --format 'logdriver={{.Host.LogDriver}} events={{.Host.EventLogger}}'; docker exec podman-in-runsc sh -c 'cat /etc/containers/containers.conf; ls /etc/containers/containers.conf.d /usr/share/containers/ 2>&1'; export DOCKER_HOST=unix:///tmp/podman-runsc.sock; docker create --name logprobe mirror.gcr.io/library/alpine:3.20 true && docker inspect logprobe --format 'compat-logconfig={{json .HostConfig.LogConfig}}'; docker rm -f logprobe; } >logdriver-probe.txt 2>&1 || true
+          ( cd /tmp/runsc-logs; grep -rhiE 'nftables|netfilter' . | grep -v 'strace.go' | cut -c1-400 | sort | uniq -c | sort -rn | head -80 ) >gvisor-nftables.txt || true
+          docker exec podman-in-runsc sh -c "grep cgroup /proc/mounts; iptables -t nat -S; iptables -S; nft list ruleset; cat /proc/net/dev" >sandbox-state.txt 2>&1 || true
+          docker inspect podman-in-runsc --format 'privileged={{.HostConfig.Privileged}} cgroupns={{.HostConfig.CgroupnsMode}}' >>sandbox-state.txt 2>&1 || true
           sudo chmod -R a+r /tmp/runsc-logs
-          ( cd /tmp/runsc-logs; grep -rh 'W1.*\(netlink\|link info\|unexpected\|attribute\)' . | cut -c1-400 | head -100 ) >gvisor-netlink-warnings.txt || true
-          ( cd /tmp/runsc-logs; grep -rhE ' (netavark|nft|iptables|exe) [XE] ' . | grep -E 'NETLINK|errno=(92|93|94|95|97|22|38|1|13) ' | grep -E 'socket|setsockopt|sendmsg|sendto|setns|mount|bind' | cut -c1-350 | head -200 ) >netlink-errors.txt || true
-          ( cd /tmp/runsc-logs; grep -rh 'Unsupported syscall\|unexpected attribute\|not supported\|unimplemented' . | cut -c1-300 | sort | uniq -c | sort -rn | head -40 ) >gvisor-warnings.txt || true
-          { echo "### probe2-${{ matrix.podman }}-${{ matrix.v }}"; echo '```'; grep -E '^Version' engine-version.txt; cat steps.txt; echo '```'; } >>"$GITHUB_STEP_SUMMARY"
+          ( cd /tmp/runsc-logs; grep -rhE 'W1[0-9]+ .*(unexpected|netfilter|iptables|bridge|veth)|errno=(22|92|93|95|97) ' . | grep -E 'NETLINK|netlink|unexpected|iptables|IPT|bridge|veth|sendmsg|setsockopt|getsockopt' | cut -c1-400 | head -300 ) >gvisor-netlink.txt || true
+          { echo "### bridge-${{ matrix.podman }}-${{ matrix.v }}"; echo '```'; grep -E '^Version' engine-version.txt; cat nlcheck.txt; cat steps.txt; echo '```'; } >>"$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: probe2-${{ matrix.podman }}-${{ matrix.v }}
+          name: bridge-${{ matrix.podman }}-${{ matrix.v }}
           path: results/out
           retention-days: 30
 
@@ -272,7 +285,7 @@ jobs:
         with: {name: storage, path: results, retention-days: 30}
 
   summary:
-    needs: [acceptance, strict, netlink-probe, probe2, bench, elf, storage]
+    needs: [acceptance, strict, netlink-probe, bridge, bench, elf, storage]
     if: always()
     runs-on: ubuntu-latest
     steps:

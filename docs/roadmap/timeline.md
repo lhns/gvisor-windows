@@ -41,9 +41,14 @@ gantt
     Compatibility layer, not security bound… :fs_compat_layer_not_boundary, 2026-11-26, 2026-11-26
     Test persistent image storage :fs_persistent_image_storage, 2026-11-26, 2026-11-26
     Choose the persistent storage :fs_persistent_storage_choice, 2026-11-26, 2026-11-26
+    section net - network
+    Bridge networking inside gVisor :net_bridge_networking, 2026-11-26, 2026-11-26
+    Make nftables safe for concurrent use :net_nftables_thread_safety, 2026-11-26, 2026-11-26
     section workloads - workloads
     Write the Podman acceptance test :workloads_acceptance_test, 2026-11-26, 2026-11-26
     Podman on gVisor on Linux :workloads_podman_on_gvisor_linux, 2026-11-26, 2026-11-26
+    Bridge networking fails in gVisor :workloads_gvisor_bridge_netlink, 2026-11-26, 2026-11-26
+    Port publishing untested in gVisor :workloads_gvisor_port_publishing, 2026-11-26, 2026-11-26
     Does host networking meet the bar :workloads_bar_host_network, 2026-11-26, 2026-11-26
     Strict bar on stock gVisor :workloads_strict_bar_linux, 2026-11-26, 2026-11-26
     Cgroup filesystem mounted read-only :workloads_gvisor_cgroupfs_readonly, 2026-11-26, 2026-11-26
@@ -65,5 +70,5 @@ gantt
     Choose how to run gVisor's tests :ops_syscall_test_strategy, 2026-11-26, 2026-11-26
 ```
 
-Not shown (no `start`): `runsc-container-on-windows`, `runsc-sandbox-lifecycle`, `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-winstub`, `platform-busybox-on-windows`, `platform-hardware-acceleration`, `platform-no-fsgsbase-fallback`, `platform-static-guest-from-memory`, `platform-binary-translation-fallback`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `sentry-host-stdio-and-tty`, `sentry-threads-and-signals`, `fs-windows-directfs`, `fs-change-notifications`, `fs-linux-metadata-on-ntfs`, `fs-handles-do-not-block-users`, `fs-root-filesystem-source`, `fs-persistent-storage-impl`, `net-netstack-windows-link`, `net-port-forwarding`, `net-bridge-networking`, `workloads-podman-on-windows`, `workloads-acceptance-test-windows`, `workloads-podman-harness`, `workloads-gvisor-bridge-netlink`, `workloads-gvisor-port-publishing`, `ops-windows-ci-standard-user`, `ops-syscall-tests-on-windows`, `ops-upstream-merges`, `ops-portable-packaging`
+Not shown (no `start`): `runsc-container-on-windows`, `runsc-sandbox-lifecycle`, `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-winstub`, `platform-busybox-on-windows`, `platform-hardware-acceleration`, `platform-no-fsgsbase-fallback`, `platform-static-guest-from-memory`, `platform-binary-translation-fallback`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `sentry-host-stdio-and-tty`, `sentry-threads-and-signals`, `fs-windows-directfs`, `fs-change-notifications`, `fs-linux-metadata-on-ntfs`, `fs-handles-do-not-block-users`, `fs-root-filesystem-source`, `fs-persistent-storage-impl`, `net-netstack-windows-link`, `net-port-forwarding`, `workloads-podman-on-windows`, `workloads-acceptance-test-windows`, `workloads-podman-harness`, `ops-windows-ci-standard-user`, `ops-syscall-tests-on-windows`, `ops-upstream-merges`, `ops-portable-packaging`
 <!-- END GENERATED: timeline -->

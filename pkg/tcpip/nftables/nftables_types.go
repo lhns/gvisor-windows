@@ -1026,6 +1026,10 @@ type NftSetBackend interface {
 type nftSet struct {
 	// name represents the unique name for this set.
 	name string
+	// id is the NFTA_SET_ID given at creation. nft names anonymous sets
+	// "__set%d" and refers to them by this id from rules and elements in
+	// the same batch; the id is only unique per batch (see findSet).
+	id uint32
 	// keyType represents the type of key; i.e. IPv4, IPv6, port, etc.
 	keyType uint32
 	// dataType represents the type of data; i.e. VERDICT or DATA.
@@ -1404,6 +1408,7 @@ func (t *Table) updateReferences(sourceTable *Table) {
 func deepCopySet(set *nftSet, copyBindings bool) *nftSet {
 	setCopy := &nftSet{
 		name:       set.name,
+		id:         set.id,
 		keyType:    set.keyType,
 		dataType:   set.dataType,
 		objType:    set.objType,

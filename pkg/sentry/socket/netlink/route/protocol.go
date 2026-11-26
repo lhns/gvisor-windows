@@ -188,10 +188,8 @@ func (p *Protocol) setLink(ctx context.Context, s *netlink.Socket, msg *nlmsg.Me
 		return syserr.ErrProtocolNotSupported
 	}
 
-	if msg.Header().Flags&linux.NLM_F_CREATE == linux.NLM_F_CREATE {
-		return syserr.ErrInvalidArgument
-	}
-
+	// Linux's rtnl_setlink ignores NLM_F_CREATE and NLM_F_EXCL (they only
+	// matter to RTM_NEWLINK); netavark sends both when bringing up lo.
 	return stack.SetInterface(ctx, msg)
 }
 
@@ -263,6 +261,12 @@ func writeLinkInfo(m *nlmsg.Message, idx int32, i inet.Interface) {
 	}
 	m.PutAttr(linux.IFLA_ADDRESS, primitive.AsByteSlice(mac))
 	m.PutAttr(linux.IFLA_BROADCAST, primitive.AsByteSlice(brd))
+	if i.Link != 0 {
+		// A veth end reports its peer's ifindex, as Linux does; netavark
+		// reads it from the container side to find the host veth. Linux also
+		// adds IFLA_LINK_NETNSID for a peer in another netns, which we skip.
+		m.PutAttr(linux.IFLA_LINK, primitive.AllocateUint32(i.Link))
+	}
 	if i.Master != 0 {
 		m.PutAttr(linux.IFLA_MASTER, primitive.AllocateUint32(i.Master))
 	}

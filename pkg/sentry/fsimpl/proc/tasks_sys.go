@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"fmt"
 	"math"
+	"strings"
 
 	"gvisor.dev/gvisor/pkg/abi/linux"
 	"gvisor.dev/gvisor/pkg/atomicbitops"
@@ -121,7 +122,26 @@ func (d *lazySysDir) populate(ctx context.Context) {
 // Lookup implements kernfs.Inode.Lookup.
 func (d *lazySysDir) Lookup(ctx context.Context, name string) (kernfs.Inode, error) {
 	d.populate(ctx)
-	return d.StaticDirectory.Lookup(ctx, name)
+	in, err := d.StaticDirectory.Lookup(ctx, name)
+	if err == nil || !linuxerr.Equals(linuxerr.ENOENT, err) {
+		return in, err
+	}
+	// Linux has a conf/<ifname> directory for every interface of the
+	// task's network namespace. We build it on demand: netavark sets
+	// conf/<bridge>/route_localnet in the host netns and conf/eth0/arp_notify in
+	// the container's.
+	if d.path == "net/ipv4/conf" || d.path == "net/ipv6/conf" {
+		if t := kernel.TaskFromContext(ctx); t != nil {
+			if stack := t.NetworkNamespace().Stack(); stack != nil {
+				for _, iface := range stack.Interfaces() {
+					if iface.Name == name {
+						return d.fs.newLazySysDir(ctx, d.creds, d.k, d.path+"/"+name), nil
+					}
+				}
+			}
+		}
+	}
+	return nil, err
 }
 
 // Open implements kernfs.Inode.Open.
@@ -263,6 +283,7 @@ func (fs *filesystem) sysDirFiles(ctx context.Context, root *auth.Credentials, k
 		return map[string]kernfs.Inode{
 			"ip_forward":          fs.newInode(ctx, root, 0644, &ipForwarding{stack: stack, protocol: ipv4.ProtocolNumber}),
 			"ip_local_port_range": fs.newInode(ctx, root, 0644, &portRange{stack: stack}),
+			"ping_group_range":    fs.newInode(ctx, root, 0644, newPingGroupRange()),
 			"tcp_recovery":        fs.newInode(ctx, root, 0644, &tcpRecoveryData{stack: stack}),
 			"tcp_rmem":            fs.newInode(ctx, root, 0644, &tcpMemData{stack: stack, dir: tcpRMem}),
 			"tcp_sack":            fs.newInode(ctx, root, 0644, &tcpSackData{stack: stack}),
@@ -344,6 +365,12 @@ func (fs *filesystem) sysDirFiles(ctx context.Context, root *auth.Credentials, k
 		return map[string]kernfs.Inode{
 			"forwarding": fs.newInode(ctx, root, 0644, &atomicInt32File{val: new(atomicbitops.Int32), min: 0, max: 1}),
 		}
+	}
+	if strings.HasPrefix(path, "net/ipv4/conf/") {
+		return fs.ifaceConfFiles(ctx, root, ipv4IfaceConf)
+	}
+	if strings.HasPrefix(path, "net/ipv6/conf/") {
+		return fs.ifaceConfFiles(ctx, root, ipv6IfaceConf)
 	}
 	panic(fmt.Sprintf("unknown /proc/sys directory %q", path))
 }
@@ -748,6 +775,22 @@ func (ipf *ipForwarding) Write(ctx context.Context, _ *vfs.FileDescription, src 
 	return n, nil
 }
 
+// Per-interface conf knobs that container tooling writes. Only the values are
+// kept (as Linux would); netstack does not act on them.
+var (
+	ipv4IfaceConf = []string{"arp_accept", "arp_announce", "arp_filter", "arp_ignore", "arp_notify", "accept_local", "accept_redirects", "accept_source_route", "forwarding", "log_martians", "proxy_arp", "route_localnet", "rp_filter", "send_redirects", "promote_secondaries"}
+	ipv6IfaceConf = []string{"accept_dad", "accept_ra", "accept_redirects", "addr_gen_mode", "autoconf", "dad_transmits", "disable_ipv6", "forwarding", "keep_addr_on_down", "use_tempaddr"}
+)
+
+// ifaceConfFiles returns stub files for a conf/<ifname> directory.
+func (fs *filesystem) ifaceConfFiles(ctx context.Context, root *auth.Credentials, names []string) map[string]kernfs.Inode {
+	files := make(map[string]kernfs.Inode, len(names))
+	for _, n := range names {
+		files[n] = fs.newInode(ctx, root, 0644, &atomicInt32File{val: new(atomicbitops.Int32), min: 0, max: 1 << 20})
+	}
+	return files
+}
+
 // routeLocalnetData implements vfs.WritableDynamicBytesSource for
 // /proc/sys/net/ipv4/conf/{all,default}/route_localnet. Enabling it accepts
 // martian loopback packets (IPv4 AllowExternalLoopbackTraffic), matching
@@ -833,6 +876,46 @@ func (pr *portRange) Write(ctx context.Context, _ *vfs.FileDescription, src user
 	if err := pr.stack.SetPortRange(uint16(ports[0]), uint16(ports[1])); err != nil {
 		return 0, err
 	}
+	return n, nil
+}
+
+// pingGroupRange implements /proc/sys/net/ipv4/ping_group_range: the range of
+// GIDs allowed to create ICMP echo sockets. Linux defaults to "1 0" (nobody);
+// runc and crun write it for containers. The value is only stored.
+//
+// +stateify savable
+type pingGroupRange struct {
+	kernfs.DynamicBytesFile
+
+	lo, hi atomicbitops.Int32
+}
+
+var _ vfs.WritableDynamicBytesSource = (*pingGroupRange)(nil)
+
+func newPingGroupRange() *pingGroupRange {
+	p := &pingGroupRange{}
+	p.lo.Store(1)
+	return p
+}
+
+// Generate implements vfs.DynamicBytesSource.Generate.
+func (p *pingGroupRange) Generate(ctx context.Context, buf *bytes.Buffer) error {
+	_, err := fmt.Fprintf(buf, "%d\t%d\n", p.lo.Load(), p.hi.Load())
+	return err
+}
+
+// Write implements vfs.WritableDynamicBytesSource.Write.
+func (p *pingGroupRange) Write(ctx context.Context, _ *vfs.FileDescription, src usermem.IOSequence, offset int64) (int64, error) {
+	if offset != 0 {
+		return 0, linuxerr.EINVAL
+	}
+	v := make([]int32, 2)
+	n, err := ParseInt32Vec(ctx, src, v)
+	if err != nil || n == 0 {
+		return 0, err
+	}
+	p.lo.Store(v[0])
+	p.hi.Store(v[1])
 	return n, nil
 }
 

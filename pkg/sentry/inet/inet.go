@@ -186,6 +186,10 @@ type Interface struct {
 
 	// Kind is the link kind (e.g. "veth", "bridge").
 	Kind string
+
+	// Link is the ifindex of the peer device for veth (IFLA_LINK), in the
+	// peer's network namespace; 0 if there is none.
+	Link uint32
 }
 
 // InterfaceAddr contains information about a network interface address.

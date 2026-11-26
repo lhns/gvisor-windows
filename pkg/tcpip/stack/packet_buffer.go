@@ -506,6 +506,17 @@ func (pk *PacketBuffer) FillConnTrackInfo(opts ConnTrackInfoOpts, info *ConnTrac
 	return t.conn.FillConnTrackInfo(opts, info)
 }
 
+// SetConnMark sets the mark of the packet's connection. It returns false if
+// the packet has no connection tracking entry.
+func (pk *PacketBuffer) SetConnMark(mark uint32) bool {
+	t := pk.tuple
+	if t == nil || t.conn == nil {
+		return false
+	}
+	t.conn.setMark(mark)
+	return true
+}
+
 // IsReplyPacket returns whether the packet is a reply packet.
 func (pk *PacketBuffer) IsReplyPacket() bool {
 	t := pk.tuple

@@ -447,6 +447,7 @@
   - fs-linux-metadata-on-ntfs
   - net-bridge-networking
   - workloads-gvisor-cgroupfs-readonly
+  - net-nftables-thread-safety
   replaced_by: []
   lane: windows-ci
   start: ''
@@ -682,7 +683,8 @@
   - GOOS=windows build of runsc/boot succeeds, CI green (2026-11-26, commit 3b38a4660)
   overview: false
   plain: gVisor's kernel compiles as a Windows program, with host-specific parts stubbed out.
-  notes: 'Done when: the Sentry process starts on Windows and reaches its init without a guest. Reached on 2026-11-26: the init of every package up to runsc/boot passes on windows-latest (safecopy handler, clocks, task size and minimum address replaced; hosttid and cpuid worked as they are).'
+  notes: 'Done when: the Sentry process starts on Windows and reaches its init without a guest. Reached on 2026-11-26: the init of every package up to runsc/boot passes on windows-latest (safecopy handler,
+    clocks, task size and minimum address replaced; hosttid and cpuid worked as they are).'
 - id: sentry-memory-file-sections
   title: Guest memory on Windows sections
   track: sentry
@@ -705,7 +707,8 @@
   folded: []
   overview: false
   plain: The Sentry's memory file becomes Windows section objects, one per 1 GB chunk.
-  notes: 'Done when: pgalloc allocates, maps into a stub and copy-on-write-breaks memory on Windows; mm tests pass. Done so far: allocation, internal mappings, Decommit and the section accessor, tested on Windows; mapping into a stub and releasing committed memory are open.'
+  notes: 'Done when: pgalloc allocates, maps into a stub and copy-on-write-breaks memory on Windows; mm tests pass. Done so far: allocation, internal mappings, Decommit and the section accessor, tested
+    on Windows; mapping into a stub and releasing committed memory are open.'
 - id: sentry-event-loop-iocp
   title: Event waiting on IOCP
   track: sentry
@@ -1232,18 +1235,19 @@
   title: Bridge networking fails in gVisor
   track: workloads
   kind: defect
-  state: next
+  state: done
   outcome: unrated
   evidence:
   - docs/results/0a-linux.md
   - docs/results/0c-linux-strict-bar.md
+  - docs/results/1n-bridge-networking.md
   verdict_quote: ''
   headline: ''
   depends_on: []
   replaced_by: []
   lane: linux-ci
-  start: ''
-  end: ''
+  start: '2026-11-26'
+  end: '2026-11-26'
   folded: []
   overview: false
   plain: netavark dies on setsockopt(NETLINK_DUMP_STRICT_CHK) (ENOPROTOOPT) and then on RTM_SETLINK with NLM_F_CREATE (EINVAL); nftables (NETLINK_NETFILTER) is only enabled by a test-only flag.
@@ -1252,17 +1256,18 @@
   title: Port publishing untested in gVisor
   track: workloads
   kind: defect
-  state: next
+  state: done
   outcome: unrated
   evidence:
   - docs/results/0a-linux.md
+  - docs/results/1n-bridge-networking.md
   verdict_quote: ''
   headline: ''
   depends_on: []
   replaced_by: []
   lane: linux-ci
-  start: ''
-  end: ''
+  start: '2026-11-26'
+  end: '2026-11-26'
   folded: []
   overview: false
   plain: Publishing container ports with -p and service-name lookup in compose never worked or were never exercised inside gVisor.
@@ -1410,17 +1415,19 @@
   title: Bridge networking inside gVisor
   track: net
   kind: feature
-  state: next
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/1n-bridge-networking.md
+  verdict_quote: the strict acceptance test (default bridge network, `-p` from the host, compose service-name resolution, cgroupfs manager) passes all 10 steps on Podman 6.2.0 and 5.7.1 after eleven small
+    gVisor fixes
+  headline: all 10 steps on Podman 6.2.0 and 5.7.1
   depends_on:
   - workloads-strict-bar-linux
   replaced_by: []
   lane: linux-ci
-  start: ''
-  end: ''
+  start: '2026-11-26'
+  end: '2026-11-26'
   folded: []
   overview: true
   plain: Podman's default network creates a bridge and veth pairs over netlink; gVisor lacks part of that, so it fails today. Fix it in gVisor itself, first on Linux, then it carries over to Windows.
@@ -1530,21 +1537,21 @@
   title: Cgroup filesystem mounted read-only
   track: workloads
   kind: defect
-  state: next
+  state: done
   outcome: unrated
   evidence:
-  - docs/results/0c-linux-strict-bar.md
+  - docs/results/1n-bridge-networking.md
   verdict_quote: ''
   headline: ''
   depends_on: []
   replaced_by: []
   lane: linux-ci
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   plain: With Podman managing cgroups, crun cannot write cgroup.subtree_control because gVisor mounts /sys/fs/cgroup read-only; a remount makes it pass.
-  notes: 'Fixed when: Podman runs with its default cgroup manager on runsc without the remount workaround.'
+  notes: 'Fixed in the harness, not in gVisor: Docker writes ro into the OCI spec for unprivileged containers; the engine container now runs with docker --privileged.'
 - id: platform-controller-wakeups
   title: Controller waits without busy polling
   track: platform
@@ -1566,3 +1573,22 @@
   overview: false
   plain: The prototype controller polls all stubs on one thread and starves guests on small machines; replace it with spin-then-wait hand-offs per stub thread.
   notes: 'Done when: the Go guest runs on a 4-vCPU runner with no FS-base losses caused by controller starvation and syscall latency stays near 0.3 us.'
+- id: net-nftables-thread-safety
+  title: Make nftables safe for concurrent use
+  track: net
+  kind: defect
+  state: next
+  outcome: unrated
+  evidence:
+  - docs/results/1n-bridge-networking.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: linux-ci
+  start: '2026-11-26'
+  end: ''
+  folded: []
+  overview: false
+  plain: Podman 6's netavark only speaks nftables, and gVisor's nftables package says it is not thread-safe, so --nftables stays off by default.
+  notes: 'Fixed when: the nftables package is safe under concurrent rule updates and packet evaluation (race-detector test), and --nftables can default on.'

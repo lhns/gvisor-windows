@@ -30,6 +30,7 @@ import (
 	"gvisor.dev/gvisor/pkg/sentry/inet"
 	"gvisor.dev/gvisor/pkg/sentry/kernel/auth"
 	"gvisor.dev/gvisor/pkg/sentry/socket/netlink/nlmsg"
+	"gvisor.dev/gvisor/pkg/sync"
 	"gvisor.dev/gvisor/pkg/syserr"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
@@ -53,6 +54,11 @@ type Stack struct {
 	// linkMu serializes link creation, modification and deletion.
 	// It is a rough parallel to the per-netns rtnl_mutex in Linux.
 	linkMu netstackLinkMutex `state:"nosave"`
+
+	// vethPeer maps the ID of a veth NIC of this stack to the ID of its peer
+	// (in the peer's stack), for IFLA_LINK.
+	vethPeerMu sync.Mutex                `state:"nosave"`
+	vethPeer   map[tcpip.NICID]tcpip.NICID `state:"nosave"`
 
 	// id is a unique identifier for this stack, it is currently only
 	// used for a deterministic lock ordering.
@@ -90,12 +96,31 @@ func makeInterfaceInfo(ni *stack.NICInfo) inet.Interface {
 	}
 }
 
+// ifaceInfo is makeInterfaceInfo plus the fields that live in the sentry.
+func (s *Stack) ifaceInfo(id tcpip.NICID, ni *stack.NICInfo) inet.Interface {
+	i := makeInterfaceInfo(ni)
+	s.vethPeerMu.Lock()
+	i.Link = uint32(s.vethPeer[id])
+	s.vethPeerMu.Unlock()
+	return i
+}
+
+// setVethPeer records that NIC id of s is a veth whose other end is peer.
+func (s *Stack) setVethPeer(id, peer tcpip.NICID) {
+	s.vethPeerMu.Lock()
+	defer s.vethPeerMu.Unlock()
+	if s.vethPeer == nil {
+		s.vethPeer = make(map[tcpip.NICID]tcpip.NICID)
+	}
+	s.vethPeer[id] = peer
+}
+
 func (s *Stack) sendChangeEvent(ctx context.Context, id tcpip.NICID) {
 	if s.eventSubscriber == nil {
 		return
 	}
 	if nicInfo, ok := s.Stack.SingleNICInfo(id); ok {
-		s.eventSubscriber.OnInterfaceChangeEvent(ctx, int32(id), makeInterfaceInfo(nicInfo))
+		s.eventSubscriber.OnInterfaceChangeEvent(ctx, int32(id), s.ifaceInfo(id, nicInfo))
 	}
 }
 
@@ -103,7 +128,7 @@ func (s *Stack) sendDeleteEvent(ctx context.Context, id tcpip.NICID, nicInfo *st
 	if s.eventSubscriber == nil {
 		return
 	}
-	s.eventSubscriber.OnInterfaceDeleteEvent(ctx, int32(id), makeInterfaceInfo(nicInfo))
+	s.eventSubscriber.OnInterfaceDeleteEvent(ctx, int32(id), s.ifaceInfo(id, nicInfo))
 }
 
 func (s *Stack) sendAddressEvent(ctx context.Context, id tcpip.NICID, addr inet.InterfaceAddr, added bool) {
@@ -111,7 +136,7 @@ func (s *Stack) sendAddressEvent(ctx context.Context, id tcpip.NICID, addr inet.
 		return
 	}
 	if nicInfo, ok := s.Stack.SingleNICInfo(id); ok {
-		s.eventSubscriber.OnAddressEvent(ctx, int32(id), makeInterfaceInfo(nicInfo), addr, added)
+		s.eventSubscriber.OnAddressEvent(ctx, int32(id), s.ifaceInfo(id, nicInfo), addr, added)
 	}
 }
 
@@ -159,7 +184,7 @@ func toLinuxARPHardwareType(t header.ARPHardwareType) uint16 {
 func (s *Stack) Interfaces() map[int32]inet.Interface {
 	is := make(map[int32]inet.Interface)
 	for id, ni := range s.Stack.NICInfo() {
-		is[int32(id)] = makeInterfaceInfo(&ni)
+		is[int32(id)] = s.ifaceInfo(id, &ni)
 	}
 	return is
 }
@@ -235,15 +260,18 @@ func (s *Stack) SetInterface(ctx context.Context, msg *nlmsg.Message) *syserr.Er
 			return syserr.ErrNotSupported
 		}
 	}
+	// Only RTM_NEWLINK honors NLM_F_CREATE/EXCL/REPLACE; RTM_SETLINK
+	// ignores them (see rtnetlink.c rtnl_newlink vs rtnl_setlink).
+	isNew := msg.Header().Type == linux.RTM_NEWLINK
 	flags := msg.Header().Flags
 	if ifinfomsg.Index == 0 {
-		if flags&linux.NLM_F_CREATE != 0 {
+		if isNew && flags&linux.NLM_F_CREATE != 0 {
 			return s.newInterface(ctx, msg, attrs)
 		}
 		return syserr.ErrNoDevice
 	}
 
-	if flags&(linux.NLM_F_EXCL|linux.NLM_F_REPLACE) != 0 {
+	if isNew && flags&(linux.NLM_F_EXCL|linux.NLM_F_REPLACE) != 0 {
 		return syserr.ErrExists
 	}
 
@@ -795,6 +823,9 @@ func (s *Stack) newVeth(ctx context.Context, linkAttrs map[uint16]nlmsg.BytesVie
 		peerEP.Close()
 		return syserr.TranslateNetstackError(err)
 	}
+	// Linux reports the peer's ifindex as IFLA_LINK on each end.
+	s.setVethPeer(id, peerID)
+	peerStack.setVethPeer(peerID, id)
 	if peerLinkAttrs != nil {
 		if err := peerStack.setLinkLocked(ctx, peerID, peerLinkAttrs, 0 /* flags */, 0 /* change */, peerDstNs); err != nil {
 			peerStack.Stack.RemoveNIC(peerID)
