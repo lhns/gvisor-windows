@@ -20,6 +20,7 @@ flowchart TB
     workloads_podman_on_windows[/"⛔ Podman passes on<br/>Windows"/]
     workloads_podman_probe[/"○ Probe Podman inside<br/>the sandbox"/]
     workloads_podman_harness["⛔ Serve Podman to<br/>Windows clients"]
+    workloads_end_to_end_speed[/"○ Measure end-to-end<br/>speed on Windows"/]
     workloads_acceptance_test ~~~ workloads_podman_on_gvisor_linux
     workloads_acceptance_test ~~~ workloads_acceptance_test_windows
     workloads_acceptance_test ~~~ workloads_gvisor_bridge_netlink
@@ -32,7 +33,7 @@ flowchart TB
     workloads_podman_api_named_pipe ~~~ workloads_podman_on_windows
     workloads_podman_api_named_pipe ~~~ workloads_podman_probe
     workloads_podman_on_windows ~~~ workloads_podman_harness
-    workloads_podman_probe ~~~ workloads_podman_harness
+    workloads_podman_probe ~~~ workloads_end_to_end_speed
     workloads_acceptance_test --> workloads_podman_on_gvisor_linux
     workloads_podman_on_gvisor_linux -.-> workloads_gvisor_port_publishing
     workloads_acceptance_test --> workloads_acceptance_test_windows
@@ -61,7 +62,7 @@ flowchart TB
     class workloads_acceptance_test_windows,workloads_podman_api_named_pipe inprog
     class workloads_gvisor_bridge_netlink,workloads_gvisor_port_publishing,workloads_gvisor_cgroupfs_readonly succ
     class workloads_podman_on_windows,workloads_podman_harness blocked
-    class workloads_podman_probe next
+    class workloads_podman_probe,workloads_end_to_end_speed next
 ```
 <!-- END GENERATED: track-workloads -->
 
@@ -82,6 +83,7 @@ flowchart TB
 | `workloads-gvisor-cgroupfs-readonly` | Cgroup filesystem mounted read-only | defect | linux-ci | done | unrated | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/1n-bridge-networking.md |
 | `workloads-podman-api-named-pipe` | Podman API on a named pipe | feature | windows-ci | in-progress | unrated | 2026-11-26 |  | runsc-windows-boot |  |  |  |  |
 | `workloads-podman-probe` | Probe Podman inside the sandbox | experiment | windows-ci | next | unrated |  |  | platform-busybox-on-windows, platform-map-files-without-sections |  |  |  |  |
+| `workloads-end-to-end-speed` | Measure end-to-end speed on Windows | experiment | windows-ci | next | unrated |  |  | runsc-windows-boot |  |  |  |  |
 
 ### Details per node
 
@@ -99,6 +101,7 @@ flowchart TB
 | `workloads-gvisor-cgroupfs-readonly` | Cgroup filesystem mounted read-only |  |  | With Podman managing cgroups, crun cannot write cgroup.subtree_control because gVisor mounts /sys/fs/cgroup read-only; a remount makes it pass. | Fixed in the harness, not in gVisor: Docker writes ro into the OCI spec for unprivileged containers; the engine container now runs with docker --privileged. |  |  |  |  |
 | `workloads-podman-api-named-pipe` | Podman API on a named pipe |  |  | Expose the Podman engine API on a Windows named pipe owned by the user, instead of a loopback TCP port. | Done when: podman --url npipe:////./pipe/<name> and DOCKER_HOST with the same pipe reach the engine in the sandbox. |  |  |  |  |
 | `workloads-podman-probe` | Probe Podman inside the sandbox |  |  | Right after busybox works, run podman --version and podman info inside the sandbox; their failures are the real gap list. | Done when: the gap list is written up in docs/results. |  |  |  |  |
+| `workloads-end-to-end-speed` | Measure end-to-end speed on Windows |  |  | Run the Phase 0 workloads (fork+exec loop, untar of small files, a CPU job) through runsc.exe on Windows and compare with runsc and native on Linux. | Done when: a table of Windows vs Linux runsc vs native is in docs/results. |  |  |  |  |
 
 ### Folded items per node
 

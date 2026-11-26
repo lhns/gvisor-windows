@@ -202,12 +202,14 @@ flowchart TB
 | Serve Podman to Windows clients | ⛔ blocked | The test harness runs the Podman engine on runsc and exposes its API to the stock Windows clients. |
 | Podman API on a named pipe | ▶ in progress | Expose the Podman engine API on a Windows named pipe owned by the user, instead of a loopback TCP port. |
 | Probe Podman inside the sandbox | ○ next | Right after busybox works, run podman --version and podman info inside the sandbox; their failures are the real gap list. |
+| Measure end-to-end speed on Windows | ○ next | Run the Phase 0 workloads (fork+exec loop, untar of small files, a CPU job) through runsc.exe on Windows and compare with runsc and native on Linux. |
 | Pick gVisor as the base | ✔ done · unrated | Of all ways to run Linux code on Windows without admin, gVisor's user-space Linux kernel is the only one that already runs containers. |
 | Name it gvisor-windows | ✔ done · n/a | The project is an unofficial fork of gVisor's Go branch called gvisor-windows. |
 | Go or no-go after Phase 0 | ✔ done · n/a | Go: the owner asked for the full project; ADR 0004 lists the conditions. |
 | gVisor syscall tests on Windows | ▶ in progress | gVisor's own syscall test suite runs against the Windows port to show which Linux calls work. |
 | Merge upstream gVisor regularly | ○ next | Regularly take in upstream gVisor's Go branch so the port does not drift. |
 | Portable zip, no installer | ⛔ blocked | Ship runsc for Windows as a zip or per-user installer that needs no admin. |
+| Try it on a real work machine | ⛔ blocked | All evidence comes from GitHub hosted Windows images; the owner runs runsc.exe once on a work machine to check FSGSBASE and whether security software tolerates the generated stub being debugged. |
 <!-- END GENERATED: plain-words -->
 
 ## Ready now
@@ -221,6 +223,7 @@ flowchart TB
 
 - `workloads-podman-probe`: Probe Podman inside the sandbox
 - `fs-flaky-negative-cache-test`: Flaky negative-cache test on host folders
+- `workloads-end-to-end-speed`: Measure end-to-end speed on Windows
 <!-- END GENERATED: ready-now -->
 
 ## Running
@@ -242,7 +245,7 @@ _None._
 ## Waiting on the owner
 
 <!-- BEGIN GENERATED: waiting-on-owner -->
-_None._
+- `ops-run-on-a-work-machine`: Try it on a real work machine
 <!-- END GENERATED: waiting-on-owner -->
 
 ## Timeline
@@ -370,7 +373,7 @@ Each track has its own page with its tree, node table and per-node details.
 - [sentry - sentry](roadmap/tracks/sentry.md): 10 nodes (8 done, 1 blocked, 1 parked)
 - [fs - files](roadmap/tracks/fs.md): 13 nodes (11 done, 1 next, 1 blocked)
 - [net - network](roadmap/tracks/net.md): 4 nodes (4 done)
-- [workloads - workloads](roadmap/tracks/workloads.md): 12 nodes (7 done, 2 in progress, 1 next, 2 blocked)
+- [workloads - workloads](roadmap/tracks/workloads.md): 13 nodes (7 done, 2 in progress, 2 next, 2 blocked)
 - [research - research](roadmap/tracks/research.md): 8 nodes (2 done, 6 abandoned)
-- [ops - operations](roadmap/tracks/ops.md): 10 nodes (7 done, 1 in progress, 1 next, 1 blocked)
+- [ops - operations](roadmap/tracks/ops.md): 11 nodes (7 done, 1 in progress, 1 next, 2 blocked)
 <!-- END GENERATED: tracks -->

@@ -1930,3 +1930,41 @@
   overview: false
   plain: TestVFSNegativeCacheAndQuickChange failed once on windows-fs after passing on the previous head; a timing race in the change watcher or the test.
   notes: 'Fixed when: the test passes 20 runs in a row on windows-latest.'
+- outcome: unrated
+  evidence: &id002 []
+  verdict_quote: ''
+  headline: ''
+  replaced_by: &id003 []
+  start: ''
+  end: ''
+  folded: &id004 []
+  overview: false
+  id: workloads-end-to-end-speed
+  title: Measure end-to-end speed on Windows
+  track: workloads
+  kind: experiment
+  state: next
+  lane: windows-ci
+  depends_on:
+  - runsc-windows-boot
+  plain: Run the Phase 0 workloads (fork+exec loop, untar of small files, a CPU job) through runsc.exe on Windows and compare with runsc and native on Linux.
+  notes: 'Done when: a table of Windows vs Linux runsc vs native is in docs/results.'
+- outcome: n/a
+  evidence: *id002
+  verdict_quote: ''
+  headline: ''
+  replaced_by: *id003
+  start: ''
+  end: ''
+  folded: *id004
+  overview: false
+  id: ops-run-on-a-work-machine
+  title: Try it on a real work machine
+  track: ops
+  kind: owner-decision
+  state: blocked
+  lane: owner
+  depends_on:
+  - workloads-podman-on-windows
+  plain: All evidence comes from GitHub hosted Windows images; the owner runs runsc.exe once on a work machine to check FSGSBASE and whether security software tolerates the generated stub being debugged.
+  notes: 'Done when: the owner reports the result of one run of the published artifact.'

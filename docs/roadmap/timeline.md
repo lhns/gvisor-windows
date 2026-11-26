@@ -99,5 +99,5 @@ gantt
     gVisor syscall tests on Windows :active, ops_syscall_tests_on_windows, 2026-11-26, 2026-11-26
 ```
 
-Not shown (no `start`): `runsc-sandbox-lifecycle`, `runsc-windows-lifecycle-commands`, `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-hardware-acceleration`, `platform-no-fsgsbase-fallback`, `platform-binary-translation-fallback`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `fs-persistent-storage-impl`, `workloads-podman-on-windows`, `workloads-podman-harness`, `workloads-podman-probe`, `ops-upstream-merges`, `ops-portable-packaging`
+Not shown (no `start`): `runsc-sandbox-lifecycle`, `runsc-windows-lifecycle-commands`, `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-hardware-acceleration`, `platform-no-fsgsbase-fallback`, `platform-binary-translation-fallback`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `fs-persistent-storage-impl`, `workloads-podman-on-windows`, `workloads-podman-harness`, `workloads-podman-probe`, `workloads-end-to-end-speed`, `ops-upstream-merges`, `ops-portable-packaging`, `ops-run-on-a-work-machine`
 <!-- END GENERATED: timeline -->

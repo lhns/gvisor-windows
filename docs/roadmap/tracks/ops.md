@@ -52,6 +52,7 @@ flowchart TB
 | `ops-syscall-tests-on-windows` | gVisor syscall tests on Windows | feature | windows-ci | in-progress | unrated | 2026-11-26 |  | ops-syscall-test-strategy, platform-static-guest-from-memory |  |  |  |  |
 | `ops-upstream-merges` | Merge upstream gVisor regularly | tooling | linux-ci | next | unrated |  |  |  |  |  |  |  |
 | `ops-portable-packaging` | Portable zip, no installer | feature | windows-ci | blocked | unrated |  |  | runsc-container-on-windows |  |  |  |  |
+| `ops-run-on-a-work-machine` | Try it on a real work machine | owner-decision | owner | blocked | n/a |  |  | workloads-podman-on-windows |  |  |  |  |
 
 ### Details per node
 
@@ -67,4 +68,5 @@ flowchart TB
 | `ops-syscall-tests-on-windows` | gVisor syscall tests on Windows |  |  | gVisor's own syscall test suite runs against the Windows port to show which Linux calls work. | Done when: the suite runs in CI on Windows and its pass rate is published. |  |  |  |  |
 | `ops-upstream-merges` | Merge upstream gVisor regularly |  |  | Regularly take in upstream gVisor's Go branch so the port does not drift. | Done when: a scheduled workflow merges upstream/go into windows or opens an issue on conflict. |  |  |  |  |
 | `ops-portable-packaging` | Portable zip, no installer |  |  | Ship runsc for Windows as a zip or per-user installer that needs no admin. | Done when: a release zip runs from a user folder on a clean Windows machine. |  |  |  |  |
+| `ops-run-on-a-work-machine` | Try it on a real work machine |  |  | All evidence comes from GitHub hosted Windows images; the owner runs runsc.exe once on a work machine to check FSGSBASE and whether security software tolerates the generated stub being debugged. | Done when: the owner reports the result of one run of the published artifact. |  |  |  |  |
 <!-- END GENERATED: table-ops -->
