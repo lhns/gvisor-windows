@@ -502,7 +502,7 @@ type Config struct {
 	SystrapDisableFastPath bool `flag:"systrap-disable-fast-path"`
 
 	// Nftables enables support for nftables to be used instead of iptables.
-	Nftables bool `flag:"TESTONLY-nftables"`
+	Nftables bool `flag:"nftables"`
 
 	// AllowSUID causes ID elevation to be allowed when execving into executables
 	// with the SUID/SGID bits set.
