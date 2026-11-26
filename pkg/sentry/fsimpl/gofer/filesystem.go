@@ -47,6 +47,9 @@ func (fs *filesystem) DrainDentryCache(ctx context.Context) error {
 	// Keep renameMu locked so lookups cannot repopulate the cache during the
 	// drain. Existing references may still be released and become cacheable.
 	fs.evictAllCachedDentriesLocked(ctx, true /* keepRenameMu */)
+	if fs.client == nil { // gvisor-windows: host folders have no client
+		return nil
+	}
 	return fs.client.FlushCloses(ctx)
 }
 

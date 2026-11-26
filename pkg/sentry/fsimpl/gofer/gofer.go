@@ -213,6 +213,9 @@ type filesystem struct {
 	// is immutable.
 	client *lisafs.Client `state:"nosave"`
 
+	// hostRelease releases a host-folder mount (gvisor-windows).
+	hostRelease func() `state:"nosave"`
+
 	// clock is a realtime clock used to set timestamps in file operations.
 	clock ktime.Clock
 
@@ -518,6 +521,11 @@ func (fstype FilesystemType) GetFilesystem(ctx context.Context, vfsObj *vfs.Virt
 	if mf == nil {
 		ctx.Warningf("gofer.FilesystemType.GetFilesystem: CtxMemoryFile is nil")
 		return nil, nil, linuxerr.EINVAL
+	}
+
+	// gvisor-windows: a host folder is served directly, without a server.
+	if hf, ok := opts.InternalData.(HostFolderOptions); ok {
+		return fstype.getHostFolderFilesystem(ctx, vfsObj, mf, hf)
 	}
 
 	mopts := vfs.GenericParseMountOptions(opts.Data)
@@ -861,6 +869,9 @@ func (fs *filesystem) Release(ctx context.Context) {
 		fs.root.DecRef(ctx)
 	}
 
+	if fs.hostRelease != nil { // gvisor-windows
+		fs.hostRelease()
+	}
 	if !fs.iopts.LeakConnection {
 		// Close the connection to the server. This implicitly closes all FDs.
 		if fs.client != nil {

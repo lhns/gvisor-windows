@@ -24,3 +24,12 @@ jobs:
           rc=$?
           grep -E "^(\s*--- |FAIL|ok|panic|fatal)|_test.go:[0-9]+:" winhost.log | head -200
           exit $rc
+      - name: Gofer backend through the VFS layer
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          go test -p 1 -count=1 -v -timeout 600s -run 'TestVFS' ./pkg/sentry/fsimpl/gofer/ > gofer.log 2>&1
+          rc=$?
+          grep -E "^(\s*--- |FAIL|ok|panic|fatal)|_test.go:[0-9]+:|^goroutine|\.go:[0-9]+ " gofer.log | head -120
+          exit $rc

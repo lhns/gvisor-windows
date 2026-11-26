@@ -53,6 +53,8 @@ func (i *inode) isReadHandleOk() bool {
 		return it.readFDLisa.Ok()
 	case *directfsInode:
 		return it.readFD.RacyLoad() >= 0
+	case hostInode:
+		return it.hostReadHandleOK()
 	case nil: // synthetic inode
 		return false
 	default:
@@ -67,6 +69,8 @@ func (i *inode) isWriteHandleOk() bool {
 		return it.writeFDLisa.Ok()
 	case *directfsInode:
 		return i.writeFD.RacyLoad() >= 0
+	case hostInode:
+		return it.hostWriteHandleOK()
 	case nil: // synthetic inode
 		return false
 	default:
@@ -84,6 +88,8 @@ func (i *inode) readHandle() handle {
 		}
 	case *directfsInode:
 		return handle{fd: i.readFD.RacyLoad()}
+	case hostInode:
+		return it.hostReadHandle()
 	case nil: // synthetic dentry
 		return noHandle
 	default:
@@ -101,6 +107,8 @@ func (i *inode) writeHandle() handle {
 		}
 	case *directfsInode:
 		return handle{fd: i.writeFD.RacyLoad()}
+	case hostInode:
+		return it.hostWriteHandle()
 	case nil: // synthetic inode
 		return noHandle
 	default:
@@ -129,6 +137,8 @@ func (d *dentry) openHandle(ctx context.Context, read, write, trunc bool) (handl
 		return it.openHandle(ctx, flags)
 	case *directfsInode:
 		return it.openHandle(flags)
+	case hostInode:
+		return it.hostOpenHandle(flags)
 	default:
 		panic("unknown inode implementation")
 	}
@@ -143,6 +153,8 @@ func (i *inode) updateHandles(ctx context.Context, h handle, readable, writable 
 		it.updateHandles(ctx, h, readable, writable)
 	case *directfsInode:
 		// No update needed.
+	case hostInode:
+		it.hostUpdateHandles(readable, writable)
 	default:
 		panic("unknown inode implementation")
 	}
@@ -195,6 +207,8 @@ func (i *inode) updateMetadataLocked(ctx context.Context, h handle) error {
 		return it.updateMetadataLocked(ctx, h) // +checklocksforce: acquired by precondition.
 	case *directfsInode:
 		return it.updateMetadataLocked(h) // +checklocksforce: acquired by precondition.
+	case hostInode:
+		return it.hostUpdateMetadataLocked() // +checklocksforce: acquired by precondition.
 	default:
 		panic("unknown inode implementation")
 	}
@@ -208,6 +222,8 @@ func (d *dentry) prepareSetStat(ctx context.Context, stat *linux.Statx) error {
 		return nil
 	case *directfsInode:
 		return it.prepareSetStat(ctx, stat, d)
+	case hostInode:
+		return nil
 	default:
 		panic("unknown inode implementation")
 	}
@@ -219,6 +235,8 @@ func (d *dentry) chmod(ctx context.Context, mode uint16) error {
 		return chmod(ctx, it.controlFD, mode)
 	case *directfsInode:
 		return it.chmod(mode)
+	case hostInode:
+		return it.hostChmod(mode)
 	default:
 		panic("unknown inode implementation")
 	}
@@ -234,6 +252,9 @@ func (d *dentry) setStatLocked(ctx context.Context, stat *linux.Statx) (uint32, 
 	case *directfsInode:
 		failureMask, failureErr := it.setStatLocked(stat)
 		return failureMask, failureErr, nil
+	case hostInode:
+		failureMask, failureErr := it.hostSetStatLocked(stat)
+		return failureMask, failureErr, nil
 	default:
 		panic("unknown inode implementation")
 	}
@@ -246,6 +267,8 @@ func (i *inode) destroyImpl(ctx context.Context, d *dentry) {
 		i.destroy(ctx, d)
 	case *directfsInode:
 		i.destroy(ctx)
+	case hostInode:
+		i.hostDestroy()
 	case nil: // synthetic dentry
 	default:
 		panic("unknown inode implementation")
@@ -261,6 +284,8 @@ func (d *dentry) getRemoteChild(ctx context.Context, name string) (*dentry, erro
 		return it.getRemoteChild(ctx, name)
 	case *directfsInode:
 		return it.getHostChild(name)
+	case hostInode:
+		return it.hostGetChild(name)
 	default:
 		panic("unknown inode implementation")
 	}
@@ -283,6 +308,8 @@ func (i *inode) getRemoteChildAndWalkPathLocked(ctx context.Context, rp resolvin
 		// We need to check for races because opMu is read locked which allows
 		// concurrent walks to occur.
 		return i.fs.getRemoteChildLocked(ctx, d, rp.Component(), true /* checkForRace */, ds)
+	case hostInode:
+		return i.fs.getRemoteChildLocked(ctx, d, rp.Component(), true /* checkForRace */, ds)
 	default:
 		panic("unknown inode implementation")
 	}
@@ -295,6 +322,8 @@ func (d *dentry) listXattrImpl(ctx context.Context, size uint64) ([]string, erro
 		return it.controlFD.ListXattr(ctx, size)
 	case *directfsInode:
 		return it.listXattr(ctx, size, d)
+	case hostInode:
+		return it.hostListXattr(size)
 	default:
 		panic("unknown inode implementation")
 	}
@@ -307,6 +336,8 @@ func (d *dentry) getXattrImpl(ctx context.Context, opts *vfs.GetXattrOptions) (s
 		return it.controlFD.GetXattr(ctx, opts.Name, opts.Size)
 	case *directfsInode:
 		return it.getXattr(ctx, opts.Name, opts.Size, d)
+	case hostInode:
+		return it.hostGetXattr(opts.Name, opts.Size)
 	default:
 		panic("unknown inode implementation")
 	}
@@ -319,6 +350,8 @@ func (d *dentry) setXattrImpl(ctx context.Context, opts *vfs.SetXattrOptions) er
 		return it.controlFD.SetXattr(ctx, opts.Name, opts.Value, opts.Flags)
 	case *directfsInode:
 		return it.setXattr(ctx, opts, d)
+	case hostInode:
+		return it.hostSetXattr(opts)
 	default:
 		panic("unknown inode implementation")
 	}
@@ -331,6 +364,8 @@ func (d *dentry) removeXattrImpl(ctx context.Context, name string) error {
 		return it.controlFD.RemoveXattr(ctx, name)
 	case *directfsInode:
 		return it.removeXattr(ctx, name, d)
+	case hostInode:
+		return it.hostRemoveXattr(name)
 	default:
 		panic("unknown inode implementation")
 	}
@@ -343,6 +378,8 @@ func (d *dentry) mknod(ctx context.Context, name string, creds *auth.Credentials
 		return it.mknod(ctx, name, creds, opts)
 	case *directfsInode:
 		return it.mknod(ctx, name, creds, opts, d)
+	case hostInode:
+		return it.hostMknod(name, creds, opts)
 	default:
 		panic("unknown inode implementation")
 	}
@@ -358,6 +395,8 @@ func (d *dentry) link(ctx context.Context, target *dentry, name string) (*dentry
 		return it.link(ctx, target.inode.impl.(*lisafsInode), name)
 	case *directfsInode:
 		return it.link(target, name, d)
+	case hostInode:
+		return it.hostLink(target, name)
 	default:
 		panic("unknown inode implementation")
 	}
@@ -370,6 +409,8 @@ func (d *dentry) mkdir(ctx context.Context, name string, mode linux.FileMode, ui
 		return it.mkdir(ctx, name, mode, uid, gid, createDentry)
 	case *directfsInode:
 		return it.mkdir(name, mode, uid, gid, createDentry, d)
+	case hostInode:
+		return it.hostMkdir(name, mode, uid, gid, createDentry)
 	default:
 		panic("unknown inode implementation")
 	}
@@ -382,6 +423,8 @@ func (d *dentry) symlink(ctx context.Context, name, target string, creds *auth.C
 		return it.symlink(ctx, name, target, creds)
 	case *directfsInode:
 		return it.symlink(name, target, creds, d)
+	case hostInode:
+		return it.hostSymlink(name, target, creds)
 	default:
 		panic("unknown inode implementation")
 	}
@@ -394,6 +437,8 @@ func (d *dentry) openCreate(ctx context.Context, name string, accessFlags uint32
 		return it.openCreate(ctx, name, accessFlags, mode, uid, gid, createDentry)
 	case *directfsInode:
 		return it.openCreate(name, accessFlags, mode, uid, gid, createDentry, d)
+	case hostInode:
+		return it.hostOpenCreate(name, accessFlags, mode, uid, gid, createDentry)
 	default:
 		panic("unknown inode implementation")
 	}
@@ -409,6 +454,8 @@ func (d *dentry) getDirentsLocked(ctx context.Context, recordDirent func(name st
 		return it.getDirentsLocked(ctx, recordDirent)
 	case *directfsInode:
 		return it.getDirentsLocked(recordDirent, d)
+	case hostInode:
+		return it.hostGetDirentsLocked(recordDirent)
 	default:
 		panic("unknown inode implementation")
 	}
@@ -424,6 +471,8 @@ func (i *inode) flush(ctx context.Context) error {
 	case *directfsInode:
 		// Nothing to do here.
 		return nil
+	case hostInode:
+		return nil
 	default:
 		panic("unknown inode implementation")
 	}
@@ -438,6 +487,8 @@ func (i *inode) allocate(ctx context.Context, mode, offset, length uint64) error
 		return it.writeFDLisa.Allocate(ctx, mode, offset, length)
 	case *directfsInode:
 		return unix.Fallocate(int(i.writeFD.RacyLoad()), uint32(mode), int64(offset), int64(length))
+	case hostInode:
+		return it.hostAllocate(mode, offset, length)
 	default:
 		panic("unknown inode implementation")
 	}
@@ -466,6 +517,8 @@ func (d *dentry) connect(ctx context.Context, sockType linux.SockType) (int, err
 		return it.controlFD.Connect(ctx, sockType, euid, egid, groups)
 	case *directfsInode:
 		return it.connect(ctx, sockType, euid, egid, groups, d)
+	case hostInode:
+		return -1, unix.ENXIO // no host sockets in a Windows folder
 	default:
 		panic("unknown inode implementation")
 	}
@@ -478,6 +531,8 @@ func (i *inode) readlinkImpl(ctx context.Context) (string, error) {
 		return it.controlFD.ReadLinkAt(ctx)
 	case *directfsInode:
 		return it.readlink()
+	case hostInode:
+		return it.hostReadlink()
 	default:
 		panic("unknown inode implementation")
 	}
@@ -490,6 +545,8 @@ func (i *inode) unlink(ctx context.Context, name string, flags uint32) error {
 		return it.controlFD.UnlinkAt(ctx, name, flags)
 	case *directfsInode:
 		return unix.Unlinkat(it.controlFD, name, int(flags))
+	case hostInode:
+		return it.hostUnlink(name, flags)
 	default:
 		panic("unknown inode implementation")
 	}
@@ -502,6 +559,8 @@ func (i *inode) rename(ctx context.Context, oldName string, newParent *dentry, n
 		return it.controlFD.RenameAt(ctx, oldName, newParent.inode.impl.(*lisafsInode).controlFD.ID(), newName, flags)
 	case *directfsInode:
 		return fsutil.RenameAt2(it.controlFD, oldName, newParent.inode.impl.(*directfsInode).controlFD, newName, flags)
+	case hostInode:
+		return it.hostRename(oldName, newParent, newName, flags)
 	default:
 		panic("unknown inode implementation")
 	}
@@ -514,6 +573,8 @@ func (i *inode) statfs(ctx context.Context) (linux.Statfs, error) {
 		return it.statfs(ctx)
 	case *directfsInode:
 		return it.statfs()
+	case hostInode:
+		return it.hostStatfs()
 	default:
 		panic("unknown inode implementation")
 	}
@@ -532,6 +593,8 @@ func (fs *filesystem) restoreRoot(ctx context.Context, opts *vfs.CompleteRestore
 	case *directfsInode:
 		it.controlFDLisa = fs.client.NewFD(rootInode.ControlFD)
 		return it.restoreFile(ctx, rootHostFD, opts, fs.root)
+	case hostInode:
+		return fmt.Errorf("save/restore is not supported for host folders")
 	default:
 		panic("unknown inode implementation")
 	}
@@ -597,6 +660,8 @@ func (d *dentry) restoreFile(ctx context.Context, opts *vfs.CompleteRestoreOptio
 			}
 		}
 		return it.restoreFile(ctx, childFD, opts, d)
+	case hostInode:
+		return fmt.Errorf("save/restore is not supported for host folders")
 
 	default:
 		panic("unknown inode implementation")
@@ -635,6 +700,8 @@ func (r *revalidateState) doRevalidation(ctx context.Context, vfsObj *vfs.Virtua
 		return doRevalidationLisafs(ctx, vfsObj, r, ds)
 	case *directfsInode:
 		return doRevalidationDirectfs(ctx, vfsObj, r, ds)
+	case hostInode:
+		return r.start.inode.impl.(hostInode).hostDoRevalidation(ctx, vfsObj, r, ds)
 	default:
 		panic("unknown inode implementation")
 	}
