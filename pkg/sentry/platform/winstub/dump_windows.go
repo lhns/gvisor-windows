@@ -69,10 +69,43 @@ func DumpState(w io.Writer) {
 				}
 				pResumeThread.Call(t.hThread)
 			}
-			fmt.Fprintf(w, "  thread %d tid %d: state %d ctlSleep %d stubSleep %d mode %d parked %v lastKind %d req %+v spins %d rip %#x exit %d suspendcount %d replies %d setevents %d stubwaits %d\n",
-				i, t.tid, t.state(), *t.u32(stubasm.PgCtlSlp), *t.u32(stubasm.PgStubSlp), *t.u32(stubasm.PgMode), t.parked, t.lastKind, t.req, *t.u64(stubasm.PgSpins), rip, code, prevSuspend, t.nReply.Load(), t.nSet.Load(), *t.u32(stubasm.PgWaits))
+			fmt.Fprintf(w, "  thread %d tid %d: state %d ctlSleep %d stubSleep %d mode %d parked %v lastKind %d req %+v spins %d rip %#x (%s) exit %d suspendcount %d replies %d setevents %d stubwaits %d\n",
+				i, t.tid, t.state(), *t.u32(stubasm.PgCtlSlp), *t.u32(stubasm.PgStubSlp), *t.u32(stubasm.PgMode), t.parked, t.lastKind, t.req, *t.u64(stubasm.PgSpins), rip, ntdllSymbol(rip), code, prevSuspend, t.nReply.Load(), t.nSet.Load(), *t.u32(stubasm.PgWaits))
 			t.mu.Unlock()
 		}
 		as.tmu.Unlock()
 	}
+}
+
+// ntdllSymbol names the ntdll export at or below addr (ntdll is mapped at the
+// same address in every process), for reading DumpState.
+func ntdllSymbol(addr uint64) string {
+	ntd.Load()
+	base := ntd.Handle()
+	if base == 0 || addr < uint64(base) {
+		return "?"
+	}
+	u32 := func(off uintptr) uint32 { return *(*uint32)(ptr(base + off)) }
+	nt := uintptr(u32(0x3C))
+	exp := uintptr(u32(nt + 0x18 + 0x70)) // optional header data directory 0
+	if exp == 0 {
+		return "?"
+	}
+	n := int(u32(exp + 0x18))
+	funcs, names, ords := uintptr(u32(exp+0x1C)), uintptr(u32(exp+0x20)), uintptr(u32(exp+0x24))
+	rva := uint32(addr - uint64(base))
+	best, bestName := uint32(0), "?"
+	for i := 0; i < n; i++ {
+		ord := uintptr(*(*uint16)(ptr(base + ords + 2*uintptr(i))))
+		f := u32(funcs + 4*ord)
+		if f <= rva && f > best {
+			p := base + uintptr(u32(names+4*uintptr(i)))
+			var b []byte
+			for ; *(*byte)(ptr(p)) != 0; p++ {
+				b = append(b, *(*byte)(ptr(p)))
+			}
+			best, bestName = f, string(b)
+		}
+	}
+	return fmt.Sprintf("%s+%#x", bestName, rva-best)
 }

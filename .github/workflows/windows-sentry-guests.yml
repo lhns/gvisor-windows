@@ -91,9 +91,9 @@ jobs:
             @{n='gospin_go'; out="gospin ok${nl}"; code=0},
             @{n='jit_glibc'; out="jit1 ok${nl}jit2 ok${nl}jit3 ok${nl}"; code=0}
           )
-          # Known platform defect (docs/results/5-podman-windows.md): reported, not counted.
+          # clone() through a register-number site (veneer): the child resumes at the return address.
           $known = @(@{n='clonesys'; a=@('/bin/clonesys'); out="child${nl}parent: child exited 3${nl}"; code=0}, @{n='clonesys_ns'; a=@('/bin/clonesys','ns'); out="child${nl}parent: child exited 3${nl}"; code=0})
-          foreach ($k in $known) { $k.tar = $true; $k.known = $true }
+          foreach ($k in $known) { $k.tar = $true }
           $hello = "hello from glibc: argc=1 tv=5 work=10 heap=ok${nl}"
           $tcases = @(
             @{n='dyn_glibc'; a=@('/bin/hello_dyn'); out=$hello; code=7},
