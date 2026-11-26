@@ -516,14 +516,15 @@ func testBench() error {
 	fmt.Printf("RESULT hello_start_to_exit_median %.2f\n", hello[len(hello)/2])
 	fmt.Printf("RESULT hello_start_to_exit_min %.2f\n", hello[0])
 	t := time.Now()
-	r, err := runsc("bench", []string{"/bin/sh", "/bench.sh", "/small.tar", "/bm"}, nil)
-	if err != nil {
-		return err
-	}
-	fmt.Print(r.stdout)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, *runscExe, runscArgs("bench", bundle("bench", []string{"/bin/sh", "/bench.sh", "/small.tar", "/bm"}, false))...)
+	var out, errb bytes.Buffer
+	cmd.Stdout, cmd.Stderr = io.MultiWriter(os.Stdout, &out), &errb // results show as they come
+	err := cmd.Run()
 	fmt.Printf("RESULT bench_wall_total %.2f\n", time.Since(t).Seconds())
-	if r.code != 0 || !strings.Contains(r.stdout, "cpu_gzip_512MiB") {
-		return fmt.Errorf("bench exit %d, stderr %q", r.code, r.stderr)
+	if err != nil || !strings.Contains(out.String(), "cpu_gzip_512MiB") {
+		return fmt.Errorf("bench: %v, stderr %q", err, errb.String())
 	}
 	return nil
 }
