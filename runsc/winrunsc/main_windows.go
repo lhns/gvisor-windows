@@ -48,7 +48,7 @@ Global flags are runsc's, e.g. --network=windows-nat --publish=8080:80
 
 func run(args []string) int {
 	config.RegisterFlags(flag.CommandLine)
-	flag.StringVar(&pipeForwardFlag, "pipe-forward", "", "GUESTPORT:PIPENAME: serve \\.\pipe\PIPENAME (current user only) and relay it to a TCP port of the sandbox (needs --network=windows-nat)")
+	flag.StringVar(&pipeForwardFlag, "pipe-forward", "", `GUESTPORT:PIPENAME: serve \.\pipe\PIPENAME (current user only) and relay it to a TCP port of the sandbox (needs --network=windows-nat)`)
 	flag.BoolVar(&boot.WindowsNATHostLoopback, "host-loopback", false, "windows-nat: the guest reaches the host's 127.0.0.1 services at 10.0.2.2")
 	showVersion := flag.Bool("version", false, "show version and exit")
 	flag.CommandLine.Usage = usage
