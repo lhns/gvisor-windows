@@ -94,6 +94,7 @@ func (fstype FilesystemType) getHostFolderFilesystem(ctx context.Context, vfsObj
 	fsopts.dfltgid = auth.KGID(hf.GID)
 	fsopts.forcePageCache = true
 	fsopts.disableFifoOpen = true
+	fsopts.emulateFifoOpen = true // a Windows folder cannot hold a FIFO; the pipe lives in the Sentry
 	fsopts.charDevicePolicy = charDevEmulatedOnly
 	fs := &filesystem{
 		mf:                mf,
