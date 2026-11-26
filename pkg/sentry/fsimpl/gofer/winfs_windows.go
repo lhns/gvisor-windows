@@ -95,6 +95,13 @@ func (fstype FilesystemType) getHostFolderFilesystem(ctx context.Context, vfsObj
 	fsopts.forcePageCache = true
 	fsopts.disableFifoOpen = true
 	fsopts.charDevicePolicy = charDevEmulatedOnly
+	if hf.CaseSensitive {
+		if err := host.CaseSensitiveError(); err != nil {
+			ctx.Warningf("gofer: host folder %q is not case sensitive: %v (the folder must be empty; names that differ only in case will collide)", hf.Path, err)
+		} else {
+			ctx.Infof("gofer: host folder %q is case sensitive", hf.Path)
+		}
+	}
 	fs := &filesystem{
 		mf:                mf,
 		opts:              fsopts,
