@@ -28,6 +28,7 @@ type Ctl struct {
 	ctxBuf                  uintptr
 	evBuf                   uintptr
 	verbose                 bool
+	trace                   bool
 	stdout                  io.Writer
 	stderr                  io.Writer
 	ntDelay                 uint64

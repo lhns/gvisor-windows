@@ -71,6 +71,7 @@ func cmdRun(args []string) int {
 	c, err := newCtl(stub, memFileSize)
 	check(err)
 	c.verbose = verbose
+	c.trace = os.Getenv("STUBPROTO_TRACE") != ""
 	exit, _, err := c.runGuest(args[0], args[1:], nil, 2*time.Minute)
 	check(err)
 	if verbose {

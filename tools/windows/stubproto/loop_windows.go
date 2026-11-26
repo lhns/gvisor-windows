@@ -76,6 +76,9 @@ func (c *Ctl) serve(t *Thread) {
 		return
 	}
 	ret, st := c.syscall(t, nr, a)
+	if c.trace {
+		fmt.Fprintf(c.stderr, "trace pid %d tid %d: syscall %d(%#x, %#x, %#x, %#x) = %d [%d] rip=%#x\n", p.pid, t.tid, nr, a[0], a[1], a[2], a[3], ret, st, *t.u64(stubasm.PgRIP))
+	}
 	if st == stRet {
 		c.reply(t, ret)
 	}

@@ -70,6 +70,22 @@ jobs:
             ./stubproto.exe probe $p -dir out 2>&1 | Tee-Object -Append -FilePath probes.txt
             "exit: $LASTEXITCODE" | Tee-Object -Append -FilePath probes.txt
           }
+      - name: Go guest trace
+        if: always()
+        continue-on-error: true
+        shell: pwsh
+        working-directory: tools/windows/stubproto
+        env: {STUBPROTO_TRACE: "1"}
+        run: |
+          ./stubproto.exe run -v out/hello_go 2>&1 | Select-Object -First 400 | Tee-Object -FilePath gotrace.txt
+      - name: Go guest trace
+        if: always()
+        continue-on-error: true
+        shell: pwsh
+        working-directory: tools/windows/stubproto
+        env: {STUBPROTO_TRACE: "1"}
+        run: |
+          ./stubproto.exe run -v out/hello_go 2>&1 | Select-Object -First 400 | Tee-Object -FilePath gotrace.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -77,4 +93,6 @@ jobs:
           path: |
             tools/windows/stubproto/suite.txt
             tools/windows/stubproto/probes.txt
+            tools/windows/stubproto/gotrace.txt
+            tools/windows/stubproto/gotrace.txt
             tools/windows/stubproto/stub-sample.exe
