@@ -209,10 +209,7 @@ func testErofs() error {
 	}
 	*image, _ = filepath.Abs(*image)
 	r, err := runsc("erofs", []string{"/bin/sh", "-c", "echo hi; cat /etc/hostname; echo x > /tmp/f && cat /tmp/f; exit 3"}, nil)
-	return expect(r, err, "hi
-ciguest
-x
-", 3)
+	return expect(r, err, "hi\nciguest\nx\n", 3)
 }
 
 func testStdin() error {

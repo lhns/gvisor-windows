@@ -54,7 +54,7 @@ jobs:
           foreach ($d in 'bin','etc','proc','dev','tmp','www') { New-Item -ItemType Directory -Force "$r\$d" | Out-Null }
           Copy-Item guests\hello "$r\bin\hello"
           foreach ($a in 'busybox','sh','ls','cat','wget','httpd','sleep','stty','tty') { Copy-Item guests\busybox "$r\bin\$a" }
-          Copy-Item guestsootfs.erofs C:\ci\workootfs.erofs
+          Copy-Item guests\rootfs.erofs C:\ci\work\rootfs.erofs
           [IO.File]::WriteAllText("$r\etc\hostname", "ciguest`n")
           [IO.File]::WriteAllText("$r\www\index.html", "hello-from-guest`n")
           Get-ChildItem -Recurse $r | Select-Object FullName, Length | Format-Table -AutoSize | Out-String -Width 200
