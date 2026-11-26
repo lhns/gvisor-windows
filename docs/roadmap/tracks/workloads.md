@@ -16,18 +16,18 @@ flowchart TB
     workloads_acceptance_test_windows["⛔ Acceptance test for<br/>Windows"]
     workloads_gvisor_bridge_netlink>"⚠ Bridge networking<br/>fails in gVisor"]
     workloads_gvisor_port_publishing>"⚠ Port publishing<br/>untested in gVisor"]
-    workloads_podman_harness["⛔ Serve Podman to<br/>Windows clients"]
     workloads_podman_on_windows[/"⛔ Podman passes on<br/>Windows"/]
+    workloads_podman_harness["⛔ Serve Podman to<br/>Windows clients"]
     workloads_acceptance_test ~~~ workloads_podman_on_gvisor_linux
     workloads_podman_on_gvisor_linux ~~~ workloads_strict_bar_linux
     workloads_podman_on_gvisor_linux ~~~ workloads_gvisor_cgroupfs_readonly
     workloads_podman_on_gvisor_linux ~~~ workloads_acceptance_test_windows
     workloads_strict_bar_linux ~~~ workloads_gvisor_bridge_netlink
     workloads_gvisor_cgroupfs_readonly ~~~ workloads_gvisor_port_publishing
-    workloads_acceptance_test_windows ~~~ workloads_podman_harness
-    workloads_gvisor_bridge_netlink ~~~ workloads_podman_on_windows
-    workloads_gvisor_port_publishing ~~~ workloads_podman_on_windows
-    workloads_podman_harness ~~~ workloads_podman_on_windows
+    workloads_acceptance_test_windows ~~~ workloads_podman_on_windows
+    workloads_gvisor_bridge_netlink ~~~ workloads_podman_harness
+    workloads_gvisor_port_publishing ~~~ workloads_podman_harness
+    workloads_podman_on_windows ~~~ workloads_podman_harness
     workloads_acceptance_test --> workloads_podman_on_gvisor_linux
     workloads_podman_on_gvisor_linux -.-> workloads_gvisor_bridge_netlink
     workloads_podman_on_gvisor_linux -.-> workloads_gvisor_port_publishing
@@ -53,7 +53,7 @@ flowchart TB
     class workloads_acceptance_test unrated
     class workloads_podman_on_gvisor_linux,workloads_strict_bar_linux mixed
     class workloads_gvisor_cgroupfs_readonly,workloads_gvisor_bridge_netlink,workloads_gvisor_port_publishing finding
-    class workloads_acceptance_test_windows,workloads_podman_harness,workloads_podman_on_windows blocked
+    class workloads_acceptance_test_windows,workloads_podman_on_windows,workloads_podman_harness blocked
 ```
 <!-- END GENERATED: track-workloads -->
 

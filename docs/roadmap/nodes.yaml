@@ -498,11 +498,14 @@
   title: Stub and controller prototype
   track: platform
   kind: feature
-  state: in-progress
-  outcome: unrated
+  state: done
+  outcome: successful
   evidence:
+  - docs/results/1a-stub-prototype.md
   - docs/adr/0011-stub-process-design.md
-  verdict_quote: ''
+  - docs/adr/0012-eager-patching-and-non-blocking-debug-events.md
+  verdict_quote: PASS. A suspended PE stub, a Go controller that builds the address space from placeholders and 4 KB section views, eager `syscall` patching with a shared-memory trampoline and debugger-only
+    fault handling run static glibc (non-PIE and PIE), fork+wait, threads and a static Go binary on a
   headline: ''
   depends_on:
   - ops-phase0-go-no-go
@@ -517,8 +520,11 @@
   replaced_by: []
   lane: windows-ci
   start: '2026-11-26'
-  end: ''
-  folded: []
+  end: '2026-11-26'
+  folded:
+  - Patched syscall 0.30 us, ud2 path 60 us, process start 17.7 ms, fork 19.8 ms (2026-11-26, commit 00421bf4e)
+  - 'Trap table moved to 0xB0000: Windows maps fixed regions at 0x10000-0x94000 (2026-11-26, commit 00421bf4e)'
+  - 'One view per 4 KB page: parts of a view cannot be unmapped (2026-11-26, commit 00421bf4e)'
   overview: false
   plain: The Sentry debugs a tiny Windows stub process that runs a static Linux program; patched syscalls arrive over shared memory and faults as debug events.
   notes: 'Done when: a static x86-64 binary writes, forks and exits correctly under the controller, without the Sentry; per-syscall cost recorded. First number: cost of creating a stub process and mapping
@@ -527,7 +533,7 @@
   title: Scan code pages for syscalls
   track: platform
   kind: feature
-  state: blocked
+  state: next
   outcome: unrated
   evidence: []
   verdict_quote: ''
@@ -541,18 +547,19 @@
   folded: []
   overview: false
   plain: Before guest code may run, each page is scanned for syscall instructions; patchable sites become jumps into the stub trampoline, the rest are made to fault into the debugger.
-  notes: 'Done when: no page is ever writable and executable at once; a test binary with syscall, sysenter, int and JIT-generated code never reaches the NT kernel.'
+  notes: 'Done when: W^X holds (writes to executable pages drop execute permission and pages are re-scanned before running again), anonymous JIT memory is scanned on mmap and mprotect with PROT_EXEC, and
+    a JIT test guest never reaches the NT kernel. Eager scanning with a real decoder already works in the prototype.'
 - id: platform-syscall-fast-path
   title: Patch syscall sites into jumps
   track: platform
   kind: experiment
-  state: blocked
+  state: next
   outcome: unrated
   evidence: []
   verdict_quote: ''
   headline: ''
   depends_on:
-  - platform-page-verification
+  - platform-stub-controller
   replaced_by: []
   lane: windows-ci
   start: ''
@@ -560,8 +567,8 @@
   folded: []
   overview: false
   plain: Syscall sites are patched like gVisor's usertrap into a jump through a table at 0x60000, so syscalls never raise an exception.
-  notes: 'Done when: besides usertrap''s mov $imm32,%eax pattern, xor %eax,%eax and mov $imm,%rax sites and register-number sites (Go Syscall6, musl) are patched via a 5-byte relocating jump; measured share
-    of executed syscalls that still trap is below 1%.'
+  notes: 'Done when: xor %eax,%eax and register-number sites (Go Syscall6, musl) are patched via a 5-byte relocating jump, and static glibc has under 1% of executed syscalls on the ud2 path (prototype:
+    38 of 135 glibc sites are ud2 at 60 us each).'
 - id: platform-own-vdso
   title: Own vDSO for clock calls
   track: platform
@@ -613,9 +620,9 @@
   headline: ''
   depends_on:
   - platform-stub-controller
-  - platform-page-verification
   - sentry-memory-file-sections
   - ops-syscall-test-strategy
+  - platform-controller-wakeups
   replaced_by: []
   lane: windows-ci
   start: ''
@@ -1257,21 +1264,22 @@
   title: Restore the TLS register after switches
   track: platform
   kind: feature
-  state: blocked
+  state: done
   outcome: unrated
-  evidence: []
+  evidence:
+  - docs/results/1a-stub-prototype.md
   verdict_quote: ''
   headline: ''
   depends_on:
   - platform-stub-controller
   replaced_by: []
   lane: windows-ci
-  start: ''
-  end: ''
+  start: '2026-11-26'
+  end: '2026-11-26'
   folded: []
   overview: false
   plain: The stub sets the guest thread-local register on every return to the guest; losses from preemption arrive as debug events and the Sentry restores it.
-  notes: 'Done when: a multi-threaded guest under CPU contention never reads a wrong %fs value, with repairs counted per second.'
+  notes: 'Done in the prototype: repair via a per-thread trampoline from the debug event. A genuine null dereference costs 20 repair events before it is reported.'
 - id: platform-no-fsgsbase-fallback
   title: Support CPUs without FSGSBASE
   track: platform
@@ -1530,3 +1538,22 @@
   overview: false
   plain: With Podman managing cgroups, crun cannot write cgroup.subtree_control because gVisor mounts /sys/fs/cgroup read-only; a remount makes it pass.
   notes: 'Fixed when: Podman runs with its default cgroup manager on runsc without the remount workaround.'
+- id: platform-controller-wakeups
+  title: Controller waits without busy polling
+  track: platform
+  kind: feature
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - platform-stub-controller
+  replaced_by: []
+  lane: windows-ci
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: The prototype controller polls all stubs on one thread and starves guests on small machines; replace it with spin-then-wait hand-offs per stub thread.
+  notes: 'Done when: the Go guest runs on a 4-vCPU runner with no FS-base losses caused by controller starvation and syscall latency stays near 0.3 us.'
