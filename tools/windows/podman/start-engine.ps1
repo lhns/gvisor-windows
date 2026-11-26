@@ -26,6 +26,7 @@ param(
   [string]$Name = 'ci',
   [string]$Share,                                 # Windows folder to expose to the engine
   [string]$StorageDriver = 'vfs',
+  [switch]$StaticOnTmpfs,
   [string]$Podman,                                # podman.exe, to wait for the engine
   [int]$TimeoutSeconds = 300
 )
@@ -60,6 +61,9 @@ function Start-Engine {
     Copy-Item (Join-Path $here '..\..\..\test\e2e\podman-acceptance\harness\containers.conf') $etc\containers.conf -Force
     (Get-Content (Join-Path $here '..\..\..\test\e2e\podman-acceptance\harness\storage.conf')) -replace '^driver = .*', "driver = `"$StorageDriver`"" |
       Set-Content $etc\storage.conf -Encoding ascii
+    # Gap (docs/results/5-podman-windows.md): sqlite on the host-folder mount fails with "disk I/O error:
+    # permission denied"; the database goes to a tmpfs until that is fixed (so it does not survive a restart).
+    if ($StaticOnTmpfs) { (Get-Content $etc\containers.conf) -replace '^\[engine\]', "[engine]`nstatic_dir = `"/run/podman-static`"" | Set-Content $etc\containers.conf -Encoding ascii }
     foreach ($d in 'run', 'tmp', 'var\lib\containers', 'mnt') { New-Item -ItemType Directory -Force (Join-Path $root $d) | Out-Null }
   }
 
