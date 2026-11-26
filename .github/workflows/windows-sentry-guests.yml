@@ -21,6 +21,7 @@ jobs:
           mkdir -p out
           gcc -nostdlib -static -no-pie -o out/hello_asm $G/hello.S
           gcc -nostdlib -static -no-pie -o out/bench_asm $G/bench.S
+          gcc -nostdlib -static -no-pie -o out/getpid_asm $G/getpid.S
           gcc -static -no-pie -O1 -fstack-protector-all -o out/hello_glibc $G/hello.c
           gcc -static-pie -O1 -fstack-protector-all -o out/hello_glibc_pie $G/hello.c
           gcc -static -no-pie -O1 -o out/fork_glibc $G/fork.c
@@ -50,6 +51,7 @@ jobs:
           $nl = "`n"
           $cases = @(
             @{n='bench_asm'; out="bench done${nl}"; code=0},
+            @{n='getpid_asm'; out="bench done${nl}"; code=0},
             @{n='hello_asm'; out="hello from asm${nl}ud2 path ok${nl}"; code=0},
             @{n='hello_glibc'; out="hello from glibc: argc=1 tv=5 work=10 heap=ok${nl}"; code=7},
             @{n='hello_glibc_pie'; out="hello from glibc: argc=1 tv=5 work=10 heap=ok${nl}"; code=7},
