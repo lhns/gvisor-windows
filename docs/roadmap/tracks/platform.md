@@ -32,6 +32,7 @@ flowchart TB
     platform_memory_release>"⚠ Give freed guest<br/>memory back"]
     platform_fast_process_start["✔ Start guest<br/>processes fast"]
     platform_split_syscall_unpatched>"✔ Syscalls split<br/>across mappings"]
+    platform_map_files_without_sections>"⚠ Map files not in the<br/>memory file"]
     platform_own_vdso["⛔ Own vDSO for clock<br/>calls"]
     platform_64k_mapping_conflicts["⏸ Handle 64 KB mapping<br/>conflicts"]
     platform_busybox_on_windows["⛔ Run busybox under<br/>the Sentry"]
@@ -64,13 +65,14 @@ flowchart TB
     platform_static_guest_from_memory ~~~ platform_memory_release
     platform_static_guest_from_memory ~~~ platform_fast_process_start
     platform_retire_prototype ~~~ platform_split_syscall_unpatched
-    platform_memory_release ~~~ platform_own_vdso
-    platform_fast_process_start ~~~ platform_64k_mapping_conflicts
-    platform_split_syscall_unpatched ~~~ platform_busybox_on_windows
+    platform_memory_release ~~~ platform_map_files_without_sections
+    platform_fast_process_start ~~~ platform_own_vdso
+    platform_split_syscall_unpatched ~~~ platform_64k_mapping_conflicts
+    platform_map_files_without_sections ~~~ platform_busybox_on_windows
     platform_own_vdso ~~~ platform_hardware_acceleration
     platform_64k_mapping_conflicts ~~~ platform_binary_translation_fallback
-    platform_busybox_on_windows ~~~ platform_no_fsgsbase_fallback
-    platform_hardware_acceleration ~~~ platform_no_fsgsbase_fallback
+    platform_busybox_on_windows ~~~ platform_binary_translation_fallback
+    platform_hardware_acceleration ~~~ platform_binary_translation_fallback
     platform_binary_translation_fallback ~~~ platform_no_fsgsbase_fallback
     platform_trap_cost -.-> platform_veh_on_guest_stack_unsafe
     platform_tls_register -.-> platform_veh_on_guest_stack_unsafe
@@ -95,10 +97,11 @@ flowchart TB
     platform_static_guest_from_memory --> platform_retire_prototype
     platform_static_guest_from_memory --> platform_fast_process_start
     platform_stub_controller --> platform_own_vdso
+    platform_map_files_without_sections --> platform_busybox_on_windows
     platform_winstub --> platform_hardware_acceleration
     platform_debug_event_cost --> platform_binary_translation_fallback
     platform_binary_translation_fallback --> platform_no_fsgsbase_fallback
-    linkStyle 34,35 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    linkStyle 35,36 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -117,7 +120,7 @@ flowchart TB
     class platform_tls_register,platform_restricted_stub,platform_syscall_site_survey mixed
     class platform_zpoline_hooks dead
     class platform_fs_base_repair unrated
-    class platform_memory_release finding
+    class platform_memory_release,platform_map_files_without_sections finding
     class platform_fast_process_start vsucc
     class platform_own_vdso,platform_busybox_on_windows blocked
     class platform_64k_mapping_conflicts,platform_hardware_acceleration,platform_binary_translation_fallback,platform_no_fsgsbase_fallback parked
@@ -140,7 +143,7 @@ flowchart TB
 | `platform-own-vdso` | Own vDSO for clock calls | feature | windows-ci | blocked | unrated |  |  | platform-stub-controller |  |  |  |  |
 | `platform-64k-mapping-conflicts` | Handle 64 KB mapping conflicts | feature | windows-ci | parked | unrated |  |  | sentry-memory-file-sections, platform-elf-alignment-survey |  |  |  |  |
 | `platform-winstub` | Windows platform for the Sentry | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-stub-controller, sentry-memory-file-sections, ops-syscall-test-strategy, platform-controller-wakeups |  |  |  | docs/results/1c-windows-platform.md |
-| `platform-busybox-on-windows` | Run busybox under the Sentry | feature | windows-ci | blocked | unrated |  |  | platform-winstub, sentry-event-loop-iocp, sentry-timers-and-clocks, sentry-fault-recovery, sentry-host-stdio-and-tty, fs-root-filesystem-source, platform-fs-base-repair, platform-static-guest-from-memory, sentry-dynamic-elf-and-exec, runsc-windows-boot |  |  |  |  |
+| `platform-busybox-on-windows` | Run busybox under the Sentry | feature | windows-ci | blocked | unrated |  |  | platform-winstub, sentry-timers-and-clocks, sentry-fault-recovery, sentry-host-stdio-and-tty, fs-root-filesystem-source, platform-fs-base-repair, platform-static-guest-from-memory, sentry-dynamic-elf-and-exec, runsc-windows-boot, platform-map-files-without-sections |  |  |  |  |
 | `platform-hardware-acceleration` | Use hardware acceleration when available | feature | windows-ci | parked | unrated |  |  | platform-winstub |  |  |  |  |
 | `platform-zpoline-hooks` | Hook syscalls like zpoline | experiment | windows-local | abandoned | dead-end | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/0b-windows.md |
 | `platform-fs-base-repair` | Restore the TLS register after switches | feature | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 | platform-stub-controller |  |  |  | docs/results/1a-stub-prototype.md |
@@ -158,6 +161,7 @@ flowchart TB
 | `platform-memory-release` | Give freed guest memory back | defect | windows-ci | in-progress | unrated | 2026-11-26 |  |  |  |  |  | docs/adr/0013-memory-file-on-reserved-sections.md |
 | `platform-fast-process-start` | Start guest processes fast | feature | windows-ci | done | very-successful | 2026-11-26 | 2026-11-26 | platform-static-guest-from-memory |  |  | about 380 ms to 42 ms | docs/results/1e-platform-perf.md |
 | `platform-split-syscall-unpatched` | Syscalls split across mappings | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/1c-windows-platform.md; docs/results/1e-platform-perf.md |
+| `platform-map-files-without-sections` | Map files not in the memory file | defect | windows-ci | next | unrated | 2026-11-26 |  |  |  |  |  | docs/results/3-runsc-boot.md |
 
 ### Details per node
 
@@ -192,6 +196,7 @@ flowchart TB
 | `platform-memory-release` | Give freed guest memory back |  |  | Decommitted guest memory only partly leaves the working set and never reduces commit charge, because pages stay committed in 1 GB sections. | Fixed when: a guest that allocates and frees 1 GB returns it to Windows (working set and commit charge), measured in CI. |  |  |  |  |
 | `platform-fast-process-start` | Start guest processes fast | A free window for the Windows loader plus cached, parallel scanning cut a glibc hello from about 380 ms to 42 ms and fork + wait to about 10 ms extra | about 380 ms to 42 ms | A guest process takes 280-560 ms to start through the Sentry, against 18 ms for a bare stub; profile the gap and keep a pool of ready stubs. | Done when: static glibc hello starts and exits through the Sentry in under 50 ms median on windows-latest, and fork+waitpid adds under 50 ms; the profile is written up. |  |  |  |  |
 | `platform-split-syscall-unpatched` | Syscalls split across mappings |  |  | A syscall instruction whose two bytes fall into two separately mapped ranges is not found by the scan, so it would reach the Windows kernel. | Fixed when: a test guest with a syscall straddling two MapFile ranges is patched and served correctly. |  |  |  |  |
+| `platform-map-files-without-sections` | Map files not in the memory file |  |  | The platform can only map pages of the Sentry memory file; erofs image pages (and any other memmap.File) make the guest fault on its first instruction. | Fixed when: runsc run boots busybox from an erofs image root (mkfs.erofs --all-root) on windows-latest. |  |  |  |  |
 
 ### Folded items per node
 

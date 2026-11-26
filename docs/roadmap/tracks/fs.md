@@ -93,6 +93,8 @@ flowchart TB
 - `fs-windows-directfs`: Open Windows files directly
   - Per-directory case sensitivity works without admin on empty folders (2026-11-26, commit 79f4423db)
   - FIFO, socket and block device opens return ENXIO (2026-11-26, commit 79f4423db)
+- `fs-root-filesystem-source`: Root filesystem from an erofs image
+  - Booting from the image fails until the platform maps non-memory-file pages (2026-11-26, commit 7f1e94454)
 - `fs-attribute-cache`: Faster stat walks on host folders
   - Cold stat walk on a fresh mount is still about 4x native, 99-105 us per file (2026-11-26, commit 5f7bcfee2)
   - erofs xattrs and a persistent safe-save index added (2026-11-26, commit 5f7bcfee2)

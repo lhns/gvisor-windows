@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !false
-// +build !false
+//go:build !false && !windows
+// +build !false,!windows
 
 // Binary runsc implements the OCI runtime interface.
 package main
