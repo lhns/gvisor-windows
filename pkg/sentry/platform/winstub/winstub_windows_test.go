@@ -17,7 +17,6 @@
 package winstub
 
 import (
-	"sort"
 	"bytes"
 	"encoding/binary"
 	"errors"
