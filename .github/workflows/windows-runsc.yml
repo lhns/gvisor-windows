@@ -73,9 +73,9 @@ jobs:
         continue-on-error: true
         run: |
           & tools/windows/ci/run-as-standard-user.ps1 `
-            -Program C:\ciinunsctest.exe `
+            -Program C:\ci\bin\runsctest.exe `
             -Arguments '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-erofs','-image','C:\ci\work\rootfs.erofs','-only','erofs' `
-            -GrantPath C:\ciin -WritablePath C:\ci\work -TimeoutSeconds 300
+            -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 300
       - name: All tests as a standard user
         shell: pwsh
         run: |
