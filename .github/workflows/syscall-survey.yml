@@ -37,7 +37,6 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-        with: {sparse-checkout: "test/e2e/syscall-survey"}
       - uses: actions/setup-go@v5
         with: {go-version: stable}
       - run: bash test/e2e/syscall-survey/faults.sh
