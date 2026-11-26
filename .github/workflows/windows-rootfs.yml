@@ -1,0 +1,82 @@
+name: windows-rootfs
+
+on:
+  push:
+  workflow_dispatch:
+
+env:
+  CGO_ENABLED: "0"
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq erofs-utils
+          mkfs.erofs --version || true
+          dpkg -s erofs-utils | grep Version
+          podman --version
+      - name: Images from OCI images
+        run: |
+          set -euo pipefail
+          out=$PWD/out
+          for spec in alpine=docker.io/library/alpine:3.20 podman=quay.io/podman/stable:latest; do
+            name=${spec%%=*}; image=${spec#*=}
+            podman pull -q "$image"
+            echo "$name: $(podman image inspect "$image" --format '{{.Id}} {{.Digest}}')" | tee -a out-versions.txt
+            c=$(podman create "$image" sh)
+            sudo rm -rf /tmp/root-$name && mkdir /tmp/root-$name
+            podman export "$c" | sudo tar -x -C /tmp/root-$name --numeric-owner --same-owner -p
+            podman rm "$c" >/dev/null
+            sudo bash tools/windows/mkrootfs.sh "$name" /tmp/root-$name "$out"
+            sudo rm -rf /tmp/root-$name
+          done
+      - name: Synthetic tree with every file kind
+        run: |
+          set -euo pipefail
+          r=/tmp/root-synth; sudo rm -rf $r; sudo mkdir -p $r/etc $r/dev $r/synth/big $r/synth/sub
+          sudo bash -c "
+            cd $r
+            echo 'NAME=synth' > etc/os-release
+            echo data > synth/file-0
+            ln synth/file-0 synth/hardlink
+            ln -s file-0 synth/rel-link; ln -s /abs/target synth/abs-link; ln -s missing synth/dangling
+            install -m 4755 -o 1000 -g 1001 /dev/null synth/setuid
+            install -m 0600 -o 1234 -g 5678 /dev/null synth/private
+            mknod dev/null c 1 3; mknod dev/sda b 8 0; mkfifo dev/fifo
+            python3 -c 'import socket;s=socket.socket(socket.AF_UNIX);s.bind(\"synth/sock\")'
+            head -c 70000000 /dev/urandom > synth/large
+            for i in \$(seq 1 20000); do : > synth/big/entry-\$i; done
+            chmod 1777 synth/sub
+          "
+          sudo bash tools/windows/mkrootfs.sh synth $r "$PWD/out"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: erofs-images
+          path: |
+            out/
+            out-versions.txt
+  mount:
+    needs: images
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@v4
+        with:
+          name: erofs-images
+          path: images
+      - name: Mount each image with an overlay and check it through the VFS
+        shell: bash
+        run: |
+          set +e
+          ls -la images images/out 2>/dev/null | head -30
+          GVISOR_EROFS_DIR="$PWD/images/out" go test -p 1 -count=1 -v -timeout 1500s ./pkg/sentry/fsimpl/rootfs/ > rootfs.log 2>&1
+          rc=$?
+          grep -E "^(\s*--- |FAIL|ok|panic|fatal)|_test.go:[0-9]+:|^goroutine|\.go:[0-9]+ " rootfs.log | head -150
+          exit $rc

@@ -35,6 +35,9 @@ type HostFolderOptions struct {
 	// mounted, so cached state is never revalidated. The default is to
 	// revalidate, as Windows programs edit the folder.
 	Exclusive bool
+
+	// NoWatch turns off the watch for changes made from outside.
+	NoWatch bool
 }
 
 // hostInode is implemented by the inode type of the host-folder backend. It
