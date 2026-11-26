@@ -1,4 +1,4 @@
-// Copyright 2020 The gVisor Authors.
+// Copyright 2018 The gVisor Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,12 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package hostfd
+// gvisor-windows: also built for windows, where x/sys/unix is the ENOSYS shim (ADR 0006).
+//go:build (linux) || windows
 
-// MaxReadWriteIov is the maximum permitted size of a struct iovec array in a
-// readv, writev, preadv, or pwritev host syscall.
-const MaxReadWriteIov = 1024 // UIO_MAXIOV
+package abi
 
-// MaxSendRecvMsgIov is the maximum permitted size of a struct iovec array in a
-// sendmsg or recvmsg host syscall.
-const MaxSendRecvMsgIov = 1024 // UIO_MAXIOV
+// Host specifies the host ABI.
+const Host = Linux

@@ -1,4 +1,4 @@
-// Copyright 2018 The gVisor Authors.
+// Copyright 2026 The gVisor Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build linux
-// +build linux
+//go:build windows
 
-package abi
+// Package platforms imports all available platform packages.
+package platforms
 
-// Host specifies the host ABI.
-const Host = Linux
+// gvisor-windows: the Linux platforms (kvm, ptrace, systrap) are excluded
+// from the Windows build; the Windows platform registers itself here later.

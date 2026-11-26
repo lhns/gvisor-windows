@@ -19,7 +19,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"syscall"
 
 	"golang.org/x/sys/unix"
 	"gvisor.dev/gvisor/pkg/gomaxprocs"
@@ -77,7 +76,8 @@ func (n *Network) InitPluginStack(args *sentryapi.InitPluginStackArgs, _ *struct
 	fds := make([]int, fdNum)
 	for i := 0; i < fdNum; i++ {
 		oldFD := args.FilePayload.Files[i].Fd()
-		if newFD, err := syscall.Dup(int(oldFD)); err != nil {
+		// gvisor-windows: unix.Dup, as package syscall has no Dup on Windows.
+		if newFD, err := unix.Dup(int(oldFD)); err != nil {
 			return fmt.Errorf("failed to dup FD")
 		} else {
 			fds[i] = newFD

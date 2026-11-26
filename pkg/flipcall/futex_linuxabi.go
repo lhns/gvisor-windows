@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build linux
-// +build linux
+// gvisor-windows: also built for windows, where x/sys/unix is the ENOSYS shim (ADR 0006).
+//go:build (linux) || windows
 
 package flipcall
 

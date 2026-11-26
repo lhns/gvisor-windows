@@ -16,7 +16,6 @@ package fsutil
 
 import (
 	"fmt"
-	"syscall"
 
 	"golang.org/x/sys/unix"
 	"gvisor.dev/gvisor/pkg/hostarch"
@@ -203,7 +202,8 @@ func (f *MmapPreciseFile) MapInternal(fr memmap.FileRange, at hostarch.AccessTyp
 }
 
 // +checklocks:f.mapsMu
-func (f *MmapPreciseFile) mapInternalSegment(fr *memmap.FileRange, seg mappingIterator, prot int, write bool) (safemem.Block, mappingIterator, syscall.Errno) {
+// gvisor-windows: unix.Errno, not syscall.Errno (the same type on Linux, distinct on Windows).
+func (f *MmapPreciseFile) mapInternalSegment(fr *memmap.FileRange, seg mappingIterator, prot int, write bool) (safemem.Block, mappingIterator, unix.Errno) {
 	addr := seg.Value().addr + uintptr(fr.Start-seg.Start())
 	mapRange := seg.Range().Intersect(*fr)
 	if !seg.Value().writable && write {
@@ -230,7 +230,7 @@ func (f *MmapPreciseFile) mapInternalSegment(fr *memmap.FileRange, seg mappingIt
 }
 
 // +checklocks:f.mapsMu
-func (f *MmapPreciseFile) mapInternalGap(fr *memmap.FileRange, gap mappingGapIterator, prot int, write bool) (safemem.Block, mappingIterator, syscall.Errno) {
+func (f *MmapPreciseFile) mapInternalGap(fr *memmap.FileRange, gap mappingGapIterator, prot int, write bool) (safemem.Block, mappingIterator, unix.Errno) {
 	newRange := fr.Intersect(gap.Range())
 	var (
 		addr  uintptr
