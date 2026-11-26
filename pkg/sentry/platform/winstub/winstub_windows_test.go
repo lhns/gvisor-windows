@@ -765,17 +765,17 @@ func bareStart(p *Platform, reserve, nodebug bool, holes ...rng) (time.Duration,
 func TestStubStartExperiment(t *testing.T) {
 	h := newHarness(t)
 	top := stubasm.CtlBase + stubasm.CtlSize
-	for i := 0; i < 2; i++ {
+	for i := 0; i < 3; i++ {
 		for _, c := range []struct {
 			name  string
 			holes []rng
 		}{
-			{"reserved, no hole", nil},
-			{"hole 1 GiB at 0x7F000000000 (prototype)", []rng{{0x7F0_0000_0000, 0x7F0_4000_0000}}},
-			{"hole above the guest range (2 GiB)", []rng{{top, stubasm.ReserveMax}}},
-			{"hole above the guest range (128 MiB)", []rng{{stubasm.ReserveMax - 128<<20, stubasm.ReserveMax}}},
-			{"hole 16 MiB at 0x10000000", []rng{{0x1000_0000, 0x1100_0000}}},
-			{"hole 16 MiB at 0x200000000", []rng{{0x2_0000_0000, 0x2_0100_0000}}},
+			{"hole 64 KiB at 8 GiB", []rng{{0x2_0000_0000, 0x2_0001_0000}}},
+			{"hole 1 MiB at 8 GiB", []rng{{0x2_0000_0000, 0x2_0010_0000}}},
+			{"hole 4 MiB at 8 GiB", []rng{{0x2_0000_0000, 0x2_0040_0000}}},
+			{"hole 16 MiB at 8 GiB", []rng{{0x2_0000_0000, 0x2_0100_0000}}},
+			{"hole 512 KiB at 0x180000", []rng{{0x180000, 0x200000}}},
+			{"hole 4 MiB at 8 GiB, 4 MiB at 0x1000_0000", []rng{{0x2_0000_0000, 0x2_0040_0000}, {0x1000_0000, 0x1040_0000}}},
 		} {
 			d, err := bareStart(h.p, true, false, c.holes...)
 			t.Logf("EXPERIMENT %s: loader breakpoint after %v (%v)", c.name, d, err)
