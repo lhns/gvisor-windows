@@ -147,6 +147,7 @@ func (as *addressSpace) allocThread() (*thread, error) {
 	t.started, t.parked, t.lastKind = false, false, reqSyscall
 	t.req = request{}
 	*t.u32(0), *t.u32(stubasm.PgStubSlp), *t.u32(stubasm.PgCtlSlp), *t.u32(stubasm.PgMode) = 0, 0, 0, 0
+	*t.u32(stubasm.PgRunning) = 0
 	pResetEvent.Call(t.evReq) // no stale signal from the previous thread of the slot
 	pResetEvent.Call(t.evReply)
 	return t, nil
@@ -546,6 +547,12 @@ func (as *addressSpace) interrupt(t *thread) bool {
 	defer t.stopMu.Unlock()
 	if t.state() == 1 || !t.started {
 		return true // a request is already there
+	}
+	// A thread still in ntdll's start-up (waiting for the debugger to continue its
+	// CREATE_THREAD event, running the loader) is left alone: suspending it there
+	// can wedge it for good.
+	if atomic.LoadUint32(t.u32(stubasm.PgRunning)) == 0 {
+		return false
 	}
 	t.mu.Lock()
 	if t.parked {
