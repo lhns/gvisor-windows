@@ -343,8 +343,8 @@ func TestSyscallsFaultsInterrupt(t *testing.T) {
 	if r.Rip != g.udAfter {
 		t.Fatalf("ud2 site resume at %#x, want %#x", r.Rip, g.udAfter)
 	}
-	if mm.mmaps != 1 {
-		t.Errorf("hole reservations = %d, want 1", mm.mmaps)
+	if mm.mmaps != 2 {
+		t.Errorf("hole reservations = %d, want 2", mm.mmaps)
 	}
 }
 
@@ -764,17 +764,13 @@ func bareStart(p *Platform, reserve, nodebug bool, holes ...rng) (time.Duration,
 
 func TestStubStartExperiment(t *testing.T) {
 	h := newHarness(t)
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 1; i++ {
 		for _, c := range []struct {
 			name  string
 			holes []rng
 		}{
-			{"hole 64 KiB at 8 GiB", []rng{{0x2_0000_0000, 0x2_0001_0000}}},
-			{"hole 1 MiB at 8 GiB", []rng{{0x2_0000_0000, 0x2_0010_0000}}},
-			{"hole 4 MiB at 8 GiB", []rng{{0x2_0000_0000, 0x2_0040_0000}}},
-			{"hole 16 MiB at 8 GiB", []rng{{0x2_0000_0000, 0x2_0100_0000}}},
-			{"hole 512 KiB at 0x180000", []rng{{0x180000, 0x200000}}},
-			{"hole 4 MiB at 8 GiB, 4 MiB at 0x1000_0000", []rng{{0x2_0000_0000, 0x2_0040_0000}, {0x1000_0000, 0x1040_0000}}},
+			{"no hole", nil},
+			{"window", []rng{{stubasm.WinWindow, stubasm.WinWindow + stubasm.WinWindowSize}}},
 		} {
 			d, err := bareStart(h.p, true, false, c.holes...)
 			t.Logf("EXPERIMENT %s: loader breakpoint after %v (%v)", c.name, d, err)

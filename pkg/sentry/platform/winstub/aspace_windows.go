@@ -128,6 +128,8 @@ func newAddressSpace(p *Platform) *addressSpace {
 // placeholder, so that Windows can never place an allocation of its own there.
 func (as *addressSpace) reserve(used []rng) error {
 	cur := stubasm.ReserveMin
+	used = append(append([]rng(nil), used...), rng{stubasm.WinWindow, stubasm.WinWindow + stubasm.WinWindowSize})
+	sort.Slice(used, func(i, j int) bool { return used[i].lo < used[j].lo })
 	add := func(s, e uint64) error {
 		s = (s + 0xFFFF) &^ 0xFFFF
 		e &^= 0xFFFF
@@ -493,22 +495,26 @@ func (as *addressSpace) reserveHoles(ctx context.Context, mm platform.MemoryMana
 	if as.holesDone.Swap(true) {
 		return
 	}
-	ar := hostarch.AddrRange{Start: holeStart, End: holeEnd}
-	if _, _, err := mm.FindVMAByName(ar, holeName); err == nil {
-		return // inherited through fork
-	}
-	_, err := mm.MMap(ctx, memmap.MMapOpts{
-		Force:   true,
-		Unmap:   true,
-		Fixed:   true,
-		Addr:    holeStart,
-		Length:  uint64(holeEnd - holeStart),
-		Private: true,
-		Name:    holeName,
-		Sealed:  true,
-	})
-	if err != nil {
-		debugf("reserving the Windows holes failed: %v", err)
+	for _, h := range []hostarch.AddrRange{
+		{Start: holeStart, End: holeEnd},
+		{Start: hostarch.Addr(stubasm.WinWindow), End: hostarch.Addr(stubasm.WinWindow + stubasm.WinWindowSize)},
+	} {
+		if _, _, err := mm.FindVMAByName(h, holeName); err == nil {
+			continue // inherited through fork
+		}
+		_, err := mm.MMap(ctx, memmap.MMapOpts{
+			Force:   true,
+			Unmap:   true,
+			Fixed:   true,
+			Addr:    h.Start,
+			Length:  h.Length(),
+			Private: true,
+			Name:    holeName,
+			Sealed:  true,
+		})
+		if err != nil {
+			debugf("reserving %v for Windows failed: %v", h, err)
+		}
 	}
 }
 
