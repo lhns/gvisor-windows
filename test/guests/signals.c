@@ -195,8 +195,7 @@ static int m_eintr(void) {
 	char buf[2];
 	int n = read(fd[0], buf, 1), e = errno;
 	if (n != 1 || hits != 2) {
-		printf("read n=%d errno=%d hits=%d
-", n, e, (int)hits);
+		printf("read n=%d errno=%d hits=%d\n", n, e, (int)hits);
 		return fail("restarted read");
 	}
 	pthread_join(t, NULL);
