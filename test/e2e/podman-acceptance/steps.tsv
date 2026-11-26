@@ -1,0 +1,15 @@
+# Shared step list. The bash runner (run.sh) implements these on Linux over a
+# unix socket; the future PowerShell twin (run.ps1, not written yet) must
+# implement the same numbers and names against \\.\pipe\podman-<name>.
+# Output per step:  STEP <n> PASS|FAIL <name> <detail>
+# Exit code = number of failed steps. A failed step never stops the run.
+1	engine-reachable	podman version + podman info reach the engine (client and server version present)
+2	pull	pull alpine and debian
+3	run-exit-code	run --rm alpine echo ok; a container exiting 42 returns 42
+4	interactive-tty	run -it with a pty: tty is /dev/pts, input delivered, Ctrl-C (SIGINT) delivered
+5	build-apt	build a Containerfile with RUN apt-get install (network, many small files, fork/exec)
+6	bind-mount	-v SHARE:/w: write/rename/delete visible on the client host and host changes visible in the container
+7	port-publish	nginx published on 8080, reachable from the client host at PROBE_URL
+8	compose	docker compose up with two services, one fetching from the other by name
+9	restart-persist	restart the engine/sandbox; images and a volume with data are still there
+10	isolation	two parallel containers: different PID and mount namespaces, no shared processes or files
