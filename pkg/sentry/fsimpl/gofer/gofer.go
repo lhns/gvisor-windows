@@ -213,6 +213,9 @@ type filesystem struct {
 	// is immutable.
 	client *lisafs.Client `state:"nosave"`
 
+	// hostRelease releases a host-folder mount (gvisor-windows).
+	hostRelease func() `state:"nosave"`
+
 	// clock is a realtime clock used to set timestamps in file operations.
 	clock ktime.Clock
 
@@ -518,6 +521,11 @@ func (fstype FilesystemType) GetFilesystem(ctx context.Context, vfsObj *vfs.Virt
 	if mf == nil {
 		ctx.Warningf("gofer.FilesystemType.GetFilesystem: CtxMemoryFile is nil")
 		return nil, nil, linuxerr.EINVAL
+	}
+
+	// gvisor-windows: a host folder is served directly, without a server.
+	if hf, ok := opts.InternalData.(HostFolderOptions); ok {
+		return fstype.getHostFolderFilesystem(ctx, vfsObj, mf, hf)
 	}
 
 	mopts := vfs.GenericParseMountOptions(opts.Data)
@@ -861,6 +869,9 @@ func (fs *filesystem) Release(ctx context.Context) {
 		fs.root.DecRef(ctx)
 	}
 
+	if fs.hostRelease != nil { // gvisor-windows
+		fs.hostRelease()
+	}
 	if !fs.iopts.LeakConnection {
 		// Close the connection to the server. This implicitly closes all FDs.
 		if fs.client != nil {
@@ -1753,11 +1764,15 @@ func (d *dentry) checkXattrPermissions(creds *auth.Credentials, name string, ats
 	// Disallow the "trusted" namespace because neither the gofer nor the sentry
 	// processes have the capability to set these. It requires CAP_SYS_ADMIN in
 	// the host's root user namespace.
-	if strings.HasPrefix(name, linux.XATTR_TRUSTED_PREFIX) {
+	// gvisor-windows: a host folder stores xattrs itself (overlay whiteouts
+	// are trusted.overlay.*, file capabilities security.capability), so both
+	// namespaces are allowed there.
+	_, hostFolder := d.inode.impl.(hostInode)
+	if !hostFolder && strings.HasPrefix(name, linux.XATTR_TRUSTED_PREFIX) {
 		return linuxerr.EOPNOTSUPP
 	}
 	// Do not allow writes to the "security" namespace on the host filesystem.
-	if ats.MayWrite() && strings.HasPrefix(name, linux.XATTR_SECURITY_PREFIX) {
+	if !hostFolder && ats.MayWrite() && strings.HasPrefix(name, linux.XATTR_SECURITY_PREFIX) {
 		return linuxerr.EOPNOTSUPP
 	}
 	// Allow all other extended attributes to be passed through to remote.

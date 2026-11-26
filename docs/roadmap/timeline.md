@@ -45,11 +45,12 @@ gantt
     section fs - files
     Compatibility layer, not security bound… :fs_compat_layer_not_boundary, 2026-11-26, 2026-11-26
     Test persistent image storage :fs_persistent_image_storage, 2026-11-26, 2026-11-26
-    Open Windows files directly :active, fs_windows_directfs, 2026-11-26, 2026-11-26
-    Linux file metadata on NTFS :active, fs_linux_metadata_on_ntfs, 2026-11-26, 2026-11-26
-    Files stay editable on Windows :active, fs_handles_do_not_block_users, 2026-11-26, 2026-11-26
+    Open Windows files directly :fs_windows_directfs, 2026-11-26, 2026-11-26
+    Linux file metadata on NTFS :fs_linux_metadata_on_ntfs, 2026-11-26, 2026-11-26
+    Files stay editable on Windows :fs_handles_do_not_block_users, 2026-11-26, 2026-11-26
     Choose the persistent storage :fs_persistent_storage_choice, 2026-11-26, 2026-11-26
-    Root filesystem from an OCI bundle :active, fs_root_filesystem_source, 2026-11-26, 2026-11-26
+    Root filesystem from an OCI bundle :fs_root_filesystem_source, 2026-11-26, 2026-11-26
+    Editor safe-saves keep Linux metadata :fs_safe_save_keeps_metadata, 2026-11-26, 2026-11-26
     section net - network
     Netstack to Windows sockets :net_netstack_windows_link, 2026-11-26, 2026-11-26
     Publish guest ports on localhost :net_port_forwarding, 2026-11-26, 2026-11-26

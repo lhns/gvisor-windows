@@ -1,0 +1,35 @@
+name: windows-fs
+
+on:
+  push:
+    branches: [windows-directfs]
+  workflow_dispatch:
+
+env:
+  CGO_ENABLED: "0"
+
+jobs:
+  directfs:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Host layer (winhost) tests
+        shell: bash
+        run: |
+          set +e
+          go test -p 1 -count=1 -v -timeout 600s ./pkg/sentry/fsimpl/gofer/winhost/ > winhost.log 2>&1
+          rc=$?
+          grep -E "^(\s*--- |FAIL|ok|panic|fatal)|_test.go:[0-9]+:" winhost.log | head -200
+          exit $rc
+      - name: Gofer backend through the VFS layer
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          go test -p 1 -count=1 -v -timeout 600s -run 'TestVFS' ./pkg/sentry/fsimpl/gofer/ > gofer.log 2>&1
+          rc=$?
+          grep -E "^(\s*--- |FAIL|ok|panic|fatal)|_test.go:[0-9]+:|^goroutine|\.go:[0-9]+ " gofer.log | head -120
+          exit $rc

@@ -599,7 +599,12 @@ func (c *containerMounter) mountAll(rootCtx context.Context, rootCreds *auth.Cre
 
 // createMountNamespace creates the container's root mount and namespace.
 func (c *containerMounter) createMountNamespace(ctx context.Context, spec *specs.Spec, conf *config.Config, creds *auth.Credentials) (*vfs.MountNamespace, error) {
-	rootfsConf := c.goferMountConfs[0]
+	// gvisor-windows: no gofer on Windows, the rootfs folder is served directly.
+	hostRoot, hostRootOK := hostFolderForRoot(spec)
+	var rootfsConf specutils.GoferMountConf
+	if len(c.goferMountConfs) > 0 {
+		rootfsConf = c.goferMountConfs[0]
+	}
 
 	rootfsHint, err := sentryapi.NewRootfsHint(spec)
 	if err != nil {
@@ -617,13 +622,26 @@ func (c *containerMounter) createMountNamespace(ctx context.Context, spec *specs
 		}
 	}
 
-	ioFD := c.goferFDs.remove()
+	ioFD := -1
+	if !hostRootOK {
+		ioFD = c.goferFDs.remove()
+	}
 
 	var (
 		fsName string
 		opts   *vfs.MountOptions
 	)
 	switch {
+	case hostRootOK:
+		fsName = gofer.Name
+		opts = &vfs.MountOptions{
+			ReadOnly: c.root.Readonly,
+			GetFilesystemOptions: vfs.GetFilesystemOptions{
+				InternalMount: true,
+				InternalData:  hostRoot,
+			},
+		}
+
 	case rootfsConf.ShouldUseLisafs():
 		fsName = gofer.Name
 
@@ -990,7 +1008,8 @@ func (c *containerMounter) prepareMounts(conf *config.Config) ([]mountInfo, erro
 			if !info.goferMountConf.ShouldUseTmpfs() && info.goferMountConf.ShouldUseErofs() != isErofs {
 				return nil, fmt.Errorf("mount %q (dest: %q, type: %q) does not match gofer mount config %v", info.mount.Source, info.mount.Destination, info.mount.Type, info.goferMountConf)
 			}
-			if info.goferMountConf.ShouldUseLisafs() || info.goferMountConf.ShouldUseErofs() {
+			_, hostFolder := hostFolderForMount(info.mount) // gvisor-windows: served directly, no FD
+			if !hostFolder && (info.goferMountConf.ShouldUseLisafs() || info.goferMountConf.ShouldUseErofs()) {
 				info.goferFD = c.goferFDs.removeAsFD()
 			}
 			if info.goferMountConf.IsFilestorePresent() {
@@ -1184,6 +1203,10 @@ func getMountNameAndOptions(spec *specs.Spec, conf *config.Config, m *mountInfo,
 
 	case sentryapi.Bind:
 		fsName = gofer.Name
+		if hf, ok := hostFolderForMount(m.mount); ok { // gvisor-windows
+			internalData = hf
+			break
+		}
 		if m.goferFD == nil {
 			// Check that an FD was provided to fails fast.
 			return "", nil, fmt.Errorf("gofer mount requires a connection FD")

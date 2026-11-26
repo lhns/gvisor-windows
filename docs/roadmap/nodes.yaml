@@ -757,10 +757,11 @@
   title: Open Windows files directly
   track: fs
   kind: feature
-  state: in-progress
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/2-windows-directfs.md
+  verdict_quote: a Windows folder is served to the Sentry as a Linux filesystem with no gofer, by file ID through short-lived share-all handles with Linux metadata in an NTFS stream
   headline: ''
   depends_on:
   - sentry-windows-build
@@ -768,8 +769,10 @@
   replaced_by: []
   lane: windows-ci
   start: '2026-11-26'
-  end: ''
-  folded: []
+  end: '2026-11-26'
+  folded:
+  - Per-directory case sensitivity works without admin on empty folders (2026-11-26, commit 79f4423db)
+  - FIFO, socket and block device opens return ENXIO (2026-11-26, commit 79f4423db)
   overview: true
   plain: The Sentry opens NTFS files itself for bind mounts, with its own caches, instead of going through a file protocol.
   notes: 'Done when: the gofer''s Windows backend implements open, create, readdir, stat, rename, unlink, link, symlink and xattr calls; a Linux guest edits a Windows folder correctly.'
@@ -777,7 +780,7 @@
   title: Windows changes reach the guest
   track: fs
   kind: feature
-  state: blocked
+  state: next
   outcome: unrated
   evidence: []
   verdict_quote: ''
@@ -796,17 +799,18 @@
   title: Linux file metadata on NTFS
   track: fs
   kind: feature
-  state: in-progress
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/2-windows-directfs.md
+  verdict_quote: a Windows folder is served to the Sentry as a Linux filesystem with no gofer, by file ID through short-lived share-all handles with Linux metadata in an NTFS stream
   headline: ''
   depends_on:
   - fs-windows-directfs
   replaced_by: []
   lane: windows-ci
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   plain: Owner, mode bits, symlinks and special files survive on NTFS, using a fixed owner and alternate data streams.
@@ -815,17 +819,18 @@
   title: Files stay editable on Windows
   track: fs
   kind: feature
-  state: in-progress
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/2-windows-directfs.md
+  verdict_quote: a Windows folder is served to the Sentry as a Linux filesystem with no gofer, by file ID through short-lived share-all handles with Linux metadata in an NTFS stream
   headline: ''
   depends_on:
   - fs-windows-directfs
   replaced_by: []
   lane: windows-ci
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   plain: The Sentry holds Windows file handles only briefly, so editors and git can still rename and delete files.
@@ -1117,13 +1122,14 @@
   title: Root filesystem from an OCI bundle
   track: fs
   kind: feature
-  state: in-progress
+  state: blocked
   outcome: unrated
   evidence: []
   verdict_quote: ''
   headline: ''
   depends_on:
   - fs-windows-directfs
+  - runsc-windows-boot
   replaced_by: []
   lane: windows-ci
   start: '2026-11-26'
@@ -1131,7 +1137,7 @@
   folded: []
   overview: false
   plain: The guest's root filesystem comes from an unpacked OCI bundle directory on Windows.
-  notes: 'Done when: busybox boots from a rootfs directory unpacked on NTFS.'
+  notes: 'Done when: a guest boots from an unpacked rootfs directory on NTFS through runsc boot. The mount wiring exists but has only been compiled.'
 - id: sentry-threads-and-signals
   title: Guest threads and signals
   track: sentry
@@ -1727,3 +1733,22 @@
   lane: windows-ci
   plain: Run dynamically linked programs with their interpreter and shared libraries, exec a second program, and connect processes with pipes.
   notes: 'Done when: a dynamic glibc and a dynamic musl program, an exec chain and a shell pipeline (static busybox sh -c "echo a | cat") pass under the Sentry on Windows.'
+- id: fs-safe-save-keeps-metadata
+  title: Editor safe-saves keep Linux metadata
+  track: fs
+  kind: defect
+  state: next
+  outcome: unrated
+  evidence:
+  - docs/results/2-windows-directfs.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: windows-ci
+  start: '2026-11-26'
+  end: ''
+  folded: []
+  overview: false
+  plain: An editor's safe-save replaces the file, which drops its metadata stream, so the guest falls back to the mount defaults for mode and owner.
+  notes: 'Fixed when: a safe-save (write temp, rename over) from Windows keeps the Linux mode and owner the guest set.'

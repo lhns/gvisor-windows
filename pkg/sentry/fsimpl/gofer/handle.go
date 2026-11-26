@@ -15,6 +15,8 @@
 package gofer
 
 import (
+	"io"
+
 	"golang.org/x/sys/unix"
 	"gvisor.dev/gvisor/pkg/context"
 	"gvisor.dev/gvisor/pkg/lisafs"
@@ -35,6 +37,9 @@ var noHandle = handle{
 type handle struct {
 	fdLisa lisafs.ClientFD
 	fd     int32 // -1 if unavailable
+
+	// gvisor-windows: I/O through short-lived host handles (host_inode.go).
+	host hostHandle
 }
 
 func (h *handle) close(ctx context.Context) {
@@ -78,6 +83,9 @@ func (h *handle) writeFromBlocksAt(ctx context.Context, srcs safemem.BlockSeq, o
 }
 
 func (h *handle) allocate(ctx context.Context, mode, offset, length uint64) error {
+	if h.host != nil { // gvisor-windows
+		return h.host.Allocate(mode, offset, length)
+	}
 	if h.fdLisa.Ok() {
 		return h.fdLisa.Allocate(ctx, mode, offset, length)
 	}
@@ -88,6 +96,9 @@ func (h *handle) allocate(ctx context.Context, mode, offset, length uint64) erro
 }
 
 func (h *handle) sync(ctx context.Context) error {
+	if h.host != nil { // gvisor-windows
+		return h.host.Sync()
+	}
 	// If we have a host FD, fsyncing it is likely to be faster than an fsync
 	// RPC.
 	if h.fd >= 0 {
@@ -103,6 +114,9 @@ func (h *handle) sync(ctx context.Context) error {
 }
 
 func (h *handle) syncData(ctx context.Context) error {
+	if h.host != nil { // gvisor-windows
+		return h.host.Sync()
+	}
 	if h.fd >= 0 {
 		ctx.UninterruptibleSleepStart()
 		err := unix.Fdatasync(int(h.fd))
@@ -144,6 +158,16 @@ func putHandleReadWriter(rw *handleReadWriter) {
 
 // Read implements io.Reader.Read.
 func (rw *handleReadWriter) Read(dst []byte) (int, error) {
+	if rw.h.host != nil { // gvisor-windows
+		rw.ctx.UninterruptibleSleepStart()
+		n, err := rw.h.host.ReadAt(dst, int64(rw.off))
+		rw.ctx.UninterruptibleSleepFinish()
+		rw.off += uint64(n)
+		if err == nil && n == 0 && len(dst) > 0 {
+			err = io.EOF
+		}
+		return n, err
+	}
 	n, err := rw.h.fdLisa.Read(rw.ctx, dst, rw.off)
 	rw.off += n
 	return int(n), err
@@ -151,6 +175,13 @@ func (rw *handleReadWriter) Read(dst []byte) (int, error) {
 
 // Write implements io.Writer.Write.
 func (rw *handleReadWriter) Write(src []byte) (int, error) {
+	if rw.h.host != nil { // gvisor-windows
+		rw.ctx.UninterruptibleSleepStart()
+		n, err := rw.h.host.WriteAt(src, int64(rw.off))
+		rw.ctx.UninterruptibleSleepFinish()
+		rw.off += uint64(n)
+		return n, err
+	}
 	n, err := rw.h.fdLisa.Write(rw.ctx, src, rw.off)
 	rw.off += n
 	return int(n), err
