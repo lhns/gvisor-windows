@@ -73,7 +73,7 @@ jobs:
         run: |
           & tools/windows/ci/run-as-standard-user.ps1 `
             -Program C:\ci\bin\runsctest.exe `
-            -Arguments '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std','-image',' `
+            -Arguments '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std','-image','C:\ci\work\rootfs.erofs' `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 1500
       - uses: actions/upload-artifact@v4
         if: always()
