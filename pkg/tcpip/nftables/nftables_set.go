@@ -463,11 +463,9 @@ func (nf *NFTables) NewSet(attrs map[uint16]nlmsg.BytesView, family stack.Addres
 		return syserr.NewAnnotatedError(syserr.ErrNotSupported, "NLM_F_CREATE is required for set creation")
 	}
 
-	// TODO: b/505409691 - Support non-map sets.
-	if setFlags&linux.NFT_SET_MAP == 0 {
-		return syserr.NewAnnotatedError(syserr.ErrNotSupported, "only map sets are supported yet")
-	}
-
+	// Plain (key-only) sets use the same backend with no data; lookupOp
+	// treats a missing data length as "match only" (netavark matches
+	// l4proto against an anonymous {udp, tcp} set).
 	newSet.backend = nf.newSetMapBackend(int(keyLen), int(dataLen))
 	return nf.addSetToTable(tab, newSet)
 }
