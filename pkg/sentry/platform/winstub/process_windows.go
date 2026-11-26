@@ -98,6 +98,7 @@ func (as *addressSpace) slot(idx int) *thread {
 	*t.u64(stubasm.PgHReply) = uint64(dupInto(as.h, t.evReply))
 	*t.u64(stubasm.PgStkTop) = addr + stubasm.ThreadRegion - 0x100
 	*t.u64(stubasm.PgSpins) = stubSpin
+	*t.u64(stubasm.PgXMask) = as.p.xmask
 	code := stubasm.RepairCode(addr)
 	copy(unsafe.Slice((*byte)(unsafe.Add(t.page, stubasm.PgRepair)), len(code)), code)
 	as.slots[idx] = t
@@ -453,14 +454,14 @@ func (as *addressSpace) parkAs(t *thread, ctx *ctxBuf, req request, resume uint6
 	}
 	*t.u64(stubasm.PgRIP) = resume
 	*t.u64(stubasm.PgFlags) = uint64(ctx.eflags())
-	*ctx.u64(ctxRipOff) = stubasm.StubCode + stubasm.OffTrampWait
-	ctx.set(t.hThread) // CONTEXT_CONTROL only: rip (and rsp, flags, unchanged)
+	*ctx.u64(ctxRipOff) = stubasm.StubCode + stubasm.OffTrampPark
 	t.mu.Lock()
 	t.req = req
 	t.parked = true
 	t.mu.Unlock()
-	atomic.StoreUint32(t.u32(0), 1)
-	pSetEvent.Call(t.evReq)
+	// The thread continues in the stub's park routine: it saves the FP and vector
+	// state, then publishes the request (state 1) and wakes the Sentry itself.
+	ctx.set(t.hThread)
 }
 
 // interrupt stops a running thread at its current instruction and publishes an

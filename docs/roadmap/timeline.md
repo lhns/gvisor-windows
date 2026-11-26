@@ -27,11 +27,14 @@ gantt
     Hook syscalls like zpoline :crit, platform_zpoline_hooks, 2026-11-26, 2026-11-26
     Restore the TLS register after switches :platform_fs_base_repair, 2026-11-26, 2026-11-26
     Check what exceptions do to stacks :platform_exception_stack, 2026-11-26, 2026-11-26
+    Run a static guest from memory :platform_static_guest_from_memory, 2026-11-26, 2026-11-26
     Exceptions overwrite guest stacks :platform_veh_on_guest_stack_unsafe, 2026-11-26, 2026-11-26
     Measure debugger fault handling :platform_debug_event_cost, 2026-11-26, 2026-11-26
     Survey patchable syscall sites :platform_syscall_site_survey, 2026-11-26, 2026-11-26
     Count page faults per exec :platform_faults_per_exec, 2026-11-26, 2026-11-26
     Controller waits without busy polling :platform_controller_wakeups, 2026-11-26, 2026-11-26
+    Save and restore FPU and SSE state :platform_fp_state, 2026-11-26, 2026-11-26
+    Retire the stub prototype :platform_retire_prototype, 2026-11-26, 2026-11-26
     Give freed guest memory back :platform_memory_release, 2026-11-26, 2026-11-26
     section sentry - sentry
     Recover faults in Go :sentry_go_fault_recovery, 2026-11-26, 2026-11-26
@@ -79,5 +82,5 @@ gantt
     Choose how to run gVisor's tests :ops_syscall_test_strategy, 2026-11-26, 2026-11-26
 ```
 
-Not shown (no `start`): `runsc-container-on-windows`, `runsc-sandbox-lifecycle`, `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-busybox-on-windows`, `platform-hardware-acceleration`, `platform-no-fsgsbase-fallback`, `platform-static-guest-from-memory`, `platform-binary-translation-fallback`, `platform-fp-state`, `platform-retire-prototype`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `sentry-host-stdio-and-tty`, `sentry-threads-and-signals`, `fs-change-notifications`, `fs-persistent-storage-impl`, `workloads-podman-on-windows`, `workloads-acceptance-test-windows`, `workloads-podman-harness`, `ops-syscall-tests-on-windows`, `ops-upstream-merges`, `ops-portable-packaging`
+Not shown (no `start`): `runsc-container-on-windows`, `runsc-sandbox-lifecycle`, `runsc-windows-boot`, `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-busybox-on-windows`, `platform-hardware-acceleration`, `platform-no-fsgsbase-fallback`, `platform-binary-translation-fallback`, `platform-fast-process-start`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `sentry-host-stdio-and-tty`, `sentry-threads-and-signals`, `sentry-dynamic-elf-and-exec`, `fs-change-notifications`, `fs-persistent-storage-impl`, `workloads-podman-on-windows`, `workloads-acceptance-test-windows`, `workloads-podman-harness`, `ops-syscall-tests-on-windows`, `ops-upstream-merges`, `ops-portable-packaging`
 <!-- END GENERATED: timeline -->

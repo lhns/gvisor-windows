@@ -21,6 +21,7 @@ import (
 	"bufio"
 	"bytes"
 	"os"
+	"runtime"
 	"strconv"
 
 	"gvisor.dev/gvisor/pkg/log"
@@ -210,6 +211,10 @@ var (
 // filter installation. This value is used to create the fake /proc/cpuinfo
 // from a FeatureSet.
 func readMaxCPUFreq() {
+	// gvisor-windows: no /proc/cpuinfo; the frequency stays 0 (as the VDSO does).
+	if runtime.GOOS == "windows" {
+		return
+	}
 	cpuinfoFile, err := os.Open("/proc/cpuinfo")
 	if err != nil {
 		// Leave it as 0... the VDSO bails out in the same way.

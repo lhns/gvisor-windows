@@ -548,3 +548,92 @@ func TestMain(m *testing.M) {
 	cpuid.Initialize()
 	os.Exit(m.Run())
 }
+
+// TestFPState checks that vector registers survive syscalls, faults and
+// interrupts, and that the Sentry can read and change them.
+func TestFPState(t *testing.T) {
+	h := newHarness(t)
+	mm := h.newMM()
+	a := &asm{base: textBase}
+	start := a.emit(0xc5, 0xfe, 0x6f, 0x07) // vmovdqu ymm0,[rdi]
+	a.emit(0xb8, 39, 0, 0, 0, 0x0f, 0x05)   // syscall
+	a.emit(0xc5, 0xfe, 0x7f, 0x06)          // vmovdqu [rsi],ymm0
+	a.emit(0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05) // syscall 500
+	a.emit(0x48, 0x8b, 0x04, 0x25, 0x00, 0x00, 0x80, 0x00) // mov rax,[0x800000]
+	a.emit(0xc5, 0xfe, 0x7f, 0x46, 0x20)    // vmovdqu [rsi+32],ymm0
+	a.emit(0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05) // syscall 500
+	spin := a.emit(0xeb, 0xfe)
+	store := a.emit(0xc5, 0xfe, 0x7f, 0x46, 0x40) // vmovdqu [rsi+64],ymm0
+	a.emit(0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05)
+	h.mapAt(mm, textBase, h.pages(a.b, 1), rx)
+	pat := make([]byte, 32)
+	for i := range pat {
+		pat[i] = byte(i + 1)
+	}
+	h.mapAt(mm, 0x500000, h.pages(pat, 1), rw)
+	outFR := h.pages(nil, 1)
+	h.mapAt(mm, 0x510000, outFR, rw)
+	out := func() []byte {
+		bs, err := h.mf.MapInternal(outFR, hostarch.Read)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return append([]byte(nil), bs.Head().ToSlice()[:96]...)
+	}
+	c := h.p.NewContext(pkgcontext.Background())
+	defer c.Release()
+	ac := newAC(start, 0)
+	r := &ac.StateData().Regs
+	r.Rdi, r.Rsi = 0x500000, 0x510000
+
+	if nr := h.syscall(c, mm, ac); nr != 39 {
+		t.Fatalf("syscall %d", nr)
+	}
+	// the Sentry changes xmm0's low half
+	if err := c.PullFullState(mm.as, ac); err != nil {
+		t.Fatal(err)
+	}
+	fp := ac.FloatingPointData().Slice()
+	for i := 0; i < 16; i++ {
+		fp[160+i] = 0xAA
+	}
+	c.FullStateChanged()
+	if nr := h.syscall(c, mm, ac); nr != 500 {
+		t.Fatalf("syscall %d", nr)
+	}
+	want := append([]byte(nil), pat...)
+	for i := 0; i < 16; i++ {
+		want[i] = 0xAA
+	}
+	if got := out()[:32]; string(got) != string(want) {
+		t.Fatalf("after a Sentry modification ymm0 = %x, want %x", got, want)
+	}
+	// across a fault
+	res := h.sw(c, mm, ac)
+	if res.err != platform.ErrContextSignal {
+		t.Fatalf("want a fault, got %v", res.err)
+	}
+	h.mapAt(mm, 0x800000, h.pages(nil, 1), rw)
+	if nr := h.syscall(c, mm, ac); nr != 500 {
+		t.Fatalf("syscall %d", nr)
+	}
+	if got := out()[32:64]; string(got) != string(want) {
+		t.Fatalf("after a fault ymm0 = %x, want %x", got, want)
+	}
+	// across an interrupt
+	r.Rip = spin
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		c.Interrupt()
+	}()
+	if res := h.sw(c, mm, ac); res.err != platform.ErrContextInterrupt {
+		t.Fatalf("want an interrupt, got %v", res.err)
+	}
+	r.Rip = store
+	if nr := h.syscall(c, mm, ac); nr != 500 {
+		t.Fatalf("syscall %d", nr)
+	}
+	if got := out()[64:96]; string(got) != string(want) {
+		t.Fatalf("after an interrupt ymm0 = %x, want %x", got, want)
+	}
+}

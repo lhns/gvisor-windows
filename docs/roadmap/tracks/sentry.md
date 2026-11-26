@@ -18,6 +18,7 @@ flowchart TB
     sentry_timers_and_clocks["⛔ Timers and clocks on<br/>Windows"]
     sentry_host_stdio_and_tty["⛔ Guest terminal and<br/>stdio"]
     sentry_threads_and_signals["⛔ Guest threads and<br/>signals"]
+    sentry_dynamic_elf_and_exec["○ Dynamic programs,<br/>exec and pipes"]
     sentry_go_fault_recovery ~~~ sentry_unix_shim
     sentry_unix_shim ~~~ sentry_windows_build
     sentry_windows_build ~~~ sentry_memory_file_sections
@@ -26,6 +27,9 @@ flowchart TB
     sentry_memory_file_sections ~~~ sentry_timers_and_clocks
     sentry_fault_recovery ~~~ sentry_host_stdio_and_tty
     sentry_event_loop_iocp ~~~ sentry_threads_and_signals
+    sentry_timers_and_clocks ~~~ sentry_dynamic_elf_and_exec
+    sentry_host_stdio_and_tty ~~~ sentry_dynamic_elf_and_exec
+    sentry_threads_and_signals ~~~ sentry_dynamic_elf_and_exec
     sentry_go_fault_recovery --> sentry_unix_shim
     sentry_unix_shim --> sentry_windows_build
     sentry_windows_build --> sentry_memory_file_sections
@@ -50,6 +54,7 @@ flowchart TB
     class sentry_go_fault_recovery,sentry_unix_shim,sentry_fault_recovery succ
     class sentry_windows_build,sentry_memory_file_sections unrated
     class sentry_event_loop_iocp,sentry_timers_and_clocks,sentry_host_stdio_and_tty,sentry_threads_and_signals blocked
+    class sentry_dynamic_elf_and_exec next
 ```
 <!-- END GENERATED: track-sentry -->
 
@@ -67,6 +72,7 @@ flowchart TB
 | `sentry-host-stdio-and-tty` | Guest terminal and stdio | feature | windows-ci | blocked | unrated |  |  | sentry-windows-build |  |  |  |  |
 | `sentry-threads-and-signals` | Guest threads and signals | feature | windows-ci | blocked | unrated |  |  | platform-winstub |  |  |  |  |
 | `sentry-unix-shim` | Make Linux names resolve on Windows | feature | none | done | successful | 2026-11-26 | 2026-11-26 | ops-phase0-go-no-go |  |  | 25 hand-edited shared files | docs/adr/0006-a-linux-abi-shim-for-x-sys-unix.md; docs/results/1b-windows-build.md |
+| `sentry-dynamic-elf-and-exec` | Dynamic programs, exec and pipes | feature | windows-ci | next | unrated |  |  | platform-static-guest-from-memory |  |  |  |  |
 
 ### Details per node
 
@@ -81,6 +87,7 @@ flowchart TB
 | `sentry-host-stdio-and-tty` | Guest terminal and stdio |  |  | A guest program's input, output and terminal connect to the Windows console (ConPTY), including Ctrl-C. | Done when: an interactive guest shell works in Windows Terminal with resize and Ctrl-C. |  |  |  |  |
 | `sentry-threads-and-signals` | Guest threads and signals |  |  | Multi-threaded guests (such as Go programs) get one stub thread per guest thread, with signals delivered correctly. | Done when: a multi-threaded Go program and a signal-handling test run correctly under the Sentry on Windows. |  |  |  |  |
 | `sentry-unix-shim` | Make Linux names resolve on Windows | the sandbox side compiles for Windows with 25 hand-edited shared files and one x/sys shim | 25 hand-edited shared files | A Windows copy of x/sys/unix defines the Linux constants and types and stubs the calls, so the Sentry compiles with few edits. | Done when: ./runsc/boot type-checks for GOOS=windows with Linux-only subsystems excluded by build tags. |  |  |  |  |
+| `sentry-dynamic-elf-and-exec` | Dynamic programs, exec and pipes |  |  | Run dynamically linked programs with their interpreter and shared libraries, exec a second program, and connect processes with pipes. | Done when: a dynamic glibc and a dynamic musl program, an exec chain and a shell pipeline (static busybox sh -c "echo a \| cat") pass under the Sentry on Windows. |  |  |  |  |
 
 ### Folded items per node
 

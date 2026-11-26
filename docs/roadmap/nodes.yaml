@@ -655,6 +655,8 @@
   - fs-root-filesystem-source
   - platform-fs-base-repair
   - platform-static-guest-from-memory
+  - sentry-dynamic-elf-and-exec
+  - runsc-windows-boot
   replaced_by: []
   lane: windows-ci
   start: ''
@@ -946,6 +948,7 @@
   depends_on:
   - runsc-windows-commands
   - platform-busybox-on-windows
+  - runsc-windows-boot
   replaced_by: []
   lane: windows-ci
   start: ''
@@ -1401,9 +1404,10 @@
   lane: linux-ci
   plain: Find out what stock gVisor on Linux needs for -p port publishing and compose service names, across Podman versions and network modes.
   notes: 'Done when: docs/results/0c-linux-strict-bar.md records the matrix and the precise gVisor gaps.'
-- outcome: unrated
-  evidence: []
-  verdict_quote: ''
+- outcome: successful
+  evidence:
+  - docs/results/1d-static-guest.md
+  verdict_quote: The real Sentry on a hosted Windows runner runs static asm, glibc (static and PIE), fork, Go and JIT guests from an in-memory tmpfs with correct output and exit codes
   headline: ''
   depends_on:
   - platform-winstub
@@ -1411,15 +1415,16 @@
   - platform-fs-base-repair
   - platform-fp-state
   replaced_by: []
-  start: ''
-  end: ''
-  folded: []
+  start: '2026-11-26'
+  end: '2026-11-26'
+  folded:
+  - Process start through the Sentry 280-560 ms, fork +260-410 ms (2026-11-26, commit 3708f1a28)
   overview: true
   id: platform-static-guest-from-memory
   title: Run a static guest from memory
   track: platform
   kind: feature
-  state: blocked
+  state: done
   lane: windows-ci
   plain: 'Thinnest end-to-end slice: the Sentry on Windows runs one embedded static program from its own memory filesystem, without host files, network or threads.'
   notes: 'Done when: a static hello-world and a static program that forks and execs run under the Sentry in Windows CI.'
@@ -1605,41 +1610,43 @@
   overview: false
   plain: Podman 6's netavark only speaks nftables, and gVisor's nftables package says it is not thread-safe, so --nftables stays off by default.
   notes: 'Fixed: the package already used copy-on-write snapshots; a conntrack timer leak on discarded batches is fixed, a -race test runs in CI and --nftables is on by default.'
-- outcome: unrated
-  evidence: []
-  verdict_quote: ''
+- outcome: successful
+  evidence:
+  - docs/results/1d-static-guest.md
+  verdict_quote: the stubs keep the guests' vector state across every kind of stop
   headline: ''
   depends_on:
   - platform-winstub
   replaced_by: []
-  start: ''
-  end: ''
+  start: '2026-11-26'
+  end: '2026-11-26'
   folded: []
   overview: false
   id: platform-fp-state
   title: Save and restore FPU and SSE state
   track: platform
   kind: feature
-  state: next
+  state: done
   lane: windows-ci
   plain: Guest floating-point and vector registers must survive every switch into the Sentry and back; the platform does not carry them yet.
   notes: 'Done when: a guest using SSE/AVX across syscalls, faults and signals keeps its register values, and the Sentry sees the right xsave size for signal frames.'
-- outcome: unrated
-  evidence: []
-  verdict_quote: ''
+- outcome: successful
+  evidence:
+  - docs/results/1d-static-guest.md
+  verdict_quote: The real Sentry on a hosted Windows runner runs static asm, glibc (static and PIE), fork, Go and JIT guests from an in-memory tmpfs with correct output and exit codes
   headline: ''
   depends_on:
   - platform-static-guest-from-memory
   replaced_by: []
-  start: ''
-  end: ''
+  start: '2026-11-26'
+  end: '2026-11-26'
   folded: []
   overview: false
   id: platform-retire-prototype
   title: Retire the stub prototype
   track: platform
   kind: tooling
-  state: blocked
+  state: done
   lane: windows-ci
   plain: The prototype under tools/windows/stubproto duplicates the platform code; once its test guests run under the Sentry, delete it.
   notes: 'Done when: tools/windows/stubproto and its workflow are removed and its guests run through the Sentry in CI.'
@@ -1662,3 +1669,61 @@
   lane: windows-ci
   plain: Decommitted guest memory only partly leaves the working set and never reduces commit charge, because pages stay committed in 1 GB sections.
   notes: 'Fixed when: a guest that allocates and frees 1 GB returns it to Windows (working set and commit charge), measured in CI.'
+- outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - platform-static-guest-from-memory
+  replaced_by: []
+  start: ''
+  end: ''
+  folded: []
+  overview: true
+  id: platform-fast-process-start
+  title: Start guest processes fast
+  track: platform
+  kind: feature
+  state: next
+  lane: windows-ci
+  plain: A guest process takes 280-560 ms to start through the Sentry, against 18 ms for a bare stub; profile the gap and keep a pool of ready stubs.
+  notes: 'Done when: static glibc hello starts and exits through the Sentry in under 50 ms median on windows-latest, and fork+waitpid adds under 50 ms; the profile is written up.'
+- outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - platform-static-guest-from-memory
+  - runsc-windows-commands
+  replaced_by: []
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  id: runsc-windows-boot
+  title: Boot runsc on Windows
+  track: runsc
+  kind: feature
+  state: next
+  lane: windows-ci
+  plain: runsc's real boot path on Windows (spec, mounts, stdio, network) replaces the test harness that builds the kernel by hand.
+  notes: 'Done when: runsc boot on Windows starts a sandbox from an OCI spec with the windows-nat network and a tmpfs or directfs root, and the static guests pass through it.'
+- outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - platform-static-guest-from-memory
+  replaced_by: []
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  id: sentry-dynamic-elf-and-exec
+  title: Dynamic programs, exec and pipes
+  track: sentry
+  kind: feature
+  state: next
+  lane: windows-ci
+  plain: Run dynamically linked programs with their interpreter and shared libraries, exec a second program, and connect processes with pipes.
+  notes: 'Done when: a dynamic glibc and a dynamic musl program, an exec chain and a shell pipeline (static busybox sh -c "echo a | cat") pass under the Sentry on Windows.'

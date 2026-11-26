@@ -19,6 +19,7 @@ package winstub
 import (
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"golang.org/x/sys/unix"
 	"gvisor.dev/gvisor/pkg/abi/linux"
@@ -39,6 +40,12 @@ type winContext struct {
 	intrPending atomic.Bool
 	cur         atomic.Pointer[thread]
 	t           *thread
+
+	// needRestore: ac's FP state must be written to the thread before it runs
+	// (first run, FullStateChanged). needPull: the thread's FP state is newer than
+	// ac's (every stop); PullFullState copies it.
+	needRestore bool
+	needPull    bool
 }
 
 const eflagsUser = 0x246 // what a Linux syscall leaves in r11
@@ -63,6 +70,11 @@ func (c *winContext) Switch(ctx pkgcontext.Context, mm platform.MemoryManager, a
 	}
 	defer c.intr.Disable()
 
+	if c.needRestore {
+		copy(unsafe.Slice((*byte)(unsafe.Add(t.page, stubasm.XsaveOff)), t.as.p.fpSize), ac.FloatingPointData().Slice())
+		c.needRestore = false
+	}
+	c.needPull = true
 	if err := c.resume(t, ac); err != nil {
 		return nil, hostarch.NoAccess, &platform.ContextError{Err: err, Errno: unix.EAGAIN}
 	}
@@ -102,6 +114,7 @@ func (c *winContext) bind(as *addressSpace) (*thread, error) {
 		return nil, err
 	}
 	c.t = t
+	c.needRestore, c.needPull = true, false
 	return t, nil
 }
 
@@ -221,10 +234,19 @@ func (c *winContext) Preempt() {}
 
 // PullFullState implements platform.Context.PullFullState: ac always holds the
 // full state.
-func (c *winContext) PullFullState(as platform.AddressSpace, ac *arch.Context64) error { return nil }
+func (c *winContext) PullFullState(as platform.AddressSpace, ac *arch.Context64) error {
+	if !c.needPull || c.t == nil {
+		return nil
+	}
+	copy(ac.FloatingPointData().Slice(), unsafe.Slice((*byte)(unsafe.Add(c.t.page, stubasm.XsaveOff)), c.t.as.p.fpSize))
+	c.needPull = false
+	return nil
+}
 
 // FullStateChanged implements platform.Context.FullStateChanged.
-func (c *winContext) FullStateChanged() {}
+func (c *winContext) FullStateChanged() {
+	c.needRestore, c.needPull = true, false
+}
 
 // Release implements platform.Context.Release.
 func (c *winContext) Release() {

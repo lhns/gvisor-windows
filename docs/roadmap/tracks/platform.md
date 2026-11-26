@@ -26,16 +26,17 @@ flowchart TB
     platform_fs_base_repair["✔ Restore the TLS<br/>register after<br/>switches"]
     platform_controller_wakeups["✔ Controller waits<br/>without busy polling"]
     platform_winstub["✔ Windows platform for<br/>the Sentry"]
+    platform_fp_state["✔ Save and restore FPU<br/>and SSE state"]
+    platform_static_guest_from_memory["✔ Run a static guest<br/>from memory"]
+    platform_retire_prototype["✔ Retire the stub<br/>prototype"]
     platform_memory_release>"⚠ Give freed guest<br/>memory back"]
     platform_own_vdso["⛔ Own vDSO for clock<br/>calls"]
     platform_64k_mapping_conflicts["⏸ Handle 64 KB mapping<br/>conflicts"]
     platform_hardware_acceleration["⏸ Use hardware<br/>acceleration when<br/>available"]
     platform_binary_translation_fallback["⏸ Binary translation<br/>as a fallback"]
     platform_no_fsgsbase_fallback["⏸ Support CPUs without<br/>FSGSBASE"]
-    platform_fp_state["○ Save and restore FPU<br/>and SSE state"]
-    platform_static_guest_from_memory["⛔ Run a static guest<br/>from memory"]
+    platform_fast_process_start["○ Start guest<br/>processes fast"]
     platform_busybox_on_windows["⛔ Run busybox under<br/>the Sentry"]
-    platform_retire_prototype["⛔ Retire the stub<br/>prototype"]
     platform_elf_alignment_survey ~~~ platform_tls_register
     platform_trap_cost ~~~ platform_restricted_stub
     platform_4k_section_views ~~~ platform_zpoline_hooks
@@ -56,18 +57,17 @@ flowchart TB
     platform_syscall_fast_path ~~~ platform_controller_wakeups
     platform_fs_base_repair ~~~ platform_controller_wakeups
     platform_controller_wakeups ~~~ platform_winstub
-    platform_controller_wakeups ~~~ platform_memory_release
-    platform_controller_wakeups ~~~ platform_own_vdso
-    platform_winstub ~~~ platform_64k_mapping_conflicts
+    platform_winstub ~~~ platform_fp_state
+    platform_fp_state ~~~ platform_static_guest_from_memory
+    platform_static_guest_from_memory ~~~ platform_retire_prototype
+    platform_static_guest_from_memory ~~~ platform_memory_release
+    platform_static_guest_from_memory ~~~ platform_own_vdso
+    platform_retire_prototype ~~~ platform_64k_mapping_conflicts
     platform_memory_release ~~~ platform_hardware_acceleration
     platform_own_vdso ~~~ platform_binary_translation_fallback
     platform_64k_mapping_conflicts ~~~ platform_no_fsgsbase_fallback
-    platform_hardware_acceleration ~~~ platform_fp_state
-    platform_binary_translation_fallback ~~~ platform_fp_state
-    platform_no_fsgsbase_fallback ~~~ platform_static_guest_from_memory
-    platform_fp_state ~~~ platform_static_guest_from_memory
-    platform_static_guest_from_memory ~~~ platform_busybox_on_windows
-    platform_static_guest_from_memory ~~~ platform_retire_prototype
+    platform_hardware_acceleration ~~~ platform_fast_process_start
+    platform_binary_translation_fallback ~~~ platform_busybox_on_windows
     platform_trap_cost -.-> platform_veh_on_guest_stack_unsafe
     platform_tls_register -.-> platform_veh_on_guest_stack_unsafe
     platform_trap_cost --> platform_exception_stack
@@ -85,16 +85,16 @@ flowchart TB
     platform_stub_controller --> platform_fs_base_repair
     platform_stub_controller --> platform_controller_wakeups
     platform_controller_wakeups --> platform_winstub
+    platform_winstub --> platform_fp_state
+    platform_fs_base_repair --> platform_static_guest_from_memory
+    platform_fp_state --> platform_static_guest_from_memory
+    platform_static_guest_from_memory --> platform_retire_prototype
     platform_stub_controller --> platform_own_vdso
     platform_winstub --> platform_hardware_acceleration
     platform_debug_event_cost --> platform_binary_translation_fallback
     platform_binary_translation_fallback --> platform_no_fsgsbase_fallback
-    platform_winstub --> platform_fp_state
-    platform_fs_base_repair --> platform_static_guest_from_memory
-    platform_fp_state --> platform_static_guest_from_memory
-    platform_static_guest_from_memory --> platform_busybox_on_windows
-    platform_static_guest_from_memory --> platform_retire_prototype
-    linkStyle 32,33 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    platform_static_guest_from_memory --> platform_fast_process_start
+    linkStyle 31,32 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -109,14 +109,14 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class platform_elf_alignment_survey,platform_trap_cost,platform_4k_section_views,platform_exception_stack,platform_veh_on_guest_stack_unsafe,platform_debug_event_cost,platform_faults_per_exec,platform_stub_controller,platform_page_verification,platform_syscall_fast_path,platform_controller_wakeups,platform_winstub succ
+    class platform_elf_alignment_survey,platform_trap_cost,platform_4k_section_views,platform_exception_stack,platform_veh_on_guest_stack_unsafe,platform_debug_event_cost,platform_faults_per_exec,platform_stub_controller,platform_page_verification,platform_syscall_fast_path,platform_controller_wakeups,platform_winstub,platform_fp_state,platform_static_guest_from_memory,platform_retire_prototype succ
     class platform_tls_register,platform_restricted_stub,platform_syscall_site_survey mixed
     class platform_zpoline_hooks dead
     class platform_fs_base_repair unrated
     class platform_memory_release finding
-    class platform_own_vdso,platform_static_guest_from_memory,platform_busybox_on_windows,platform_retire_prototype blocked
+    class platform_own_vdso,platform_busybox_on_windows blocked
     class platform_64k_mapping_conflicts,platform_hardware_acceleration,platform_binary_translation_fallback,platform_no_fsgsbase_fallback parked
-    class platform_fp_state next
+    class platform_fast_process_start next
 ```
 <!-- END GENERATED: track-platform -->
 
@@ -136,22 +136,23 @@ flowchart TB
 | `platform-own-vdso` | Own vDSO for clock calls | feature | windows-ci | blocked | unrated |  |  | platform-stub-controller |  |  |  |  |
 | `platform-64k-mapping-conflicts` | Handle 64 KB mapping conflicts | feature | windows-ci | parked | unrated |  |  | sentry-memory-file-sections, platform-elf-alignment-survey |  |  |  |  |
 | `platform-winstub` | Windows platform for the Sentry | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-stub-controller, sentry-memory-file-sections, ops-syscall-test-strategy, platform-controller-wakeups |  |  |  | docs/results/1c-windows-platform.md |
-| `platform-busybox-on-windows` | Run busybox under the Sentry | feature | windows-ci | blocked | unrated |  |  | platform-winstub, sentry-event-loop-iocp, sentry-timers-and-clocks, sentry-fault-recovery, sentry-host-stdio-and-tty, fs-root-filesystem-source, platform-fs-base-repair, platform-static-guest-from-memory |  |  |  |  |
+| `platform-busybox-on-windows` | Run busybox under the Sentry | feature | windows-ci | blocked | unrated |  |  | platform-winstub, sentry-event-loop-iocp, sentry-timers-and-clocks, sentry-fault-recovery, sentry-host-stdio-and-tty, fs-root-filesystem-source, platform-fs-base-repair, platform-static-guest-from-memory, sentry-dynamic-elf-and-exec, runsc-windows-boot |  |  |  |  |
 | `platform-hardware-acceleration` | Use hardware acceleration when available | feature | windows-ci | parked | unrated |  |  | platform-winstub |  |  |  |  |
 | `platform-zpoline-hooks` | Hook syscalls like zpoline | experiment | windows-local | abandoned | dead-end | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/0b-windows.md |
 | `platform-fs-base-repair` | Restore the TLS register after switches | feature | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 | platform-stub-controller |  |  |  | docs/results/1a-stub-prototype.md |
 | `platform-no-fsgsbase-fallback` | Support CPUs without FSGSBASE | feature | windows-ci | parked | unrated |  |  | platform-binary-translation-fallback |  |  |  |  |
 | `platform-exception-stack` | Check what exceptions do to stacks | experiment | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-trap-cost |  |  |  | docs/results/0b-windows.md |
-| `platform-static-guest-from-memory` | Run a static guest from memory | feature | windows-ci | blocked | unrated |  |  | platform-winstub, sentry-fault-recovery, platform-fs-base-repair, platform-fp-state |  |  |  |  |
+| `platform-static-guest-from-memory` | Run a static guest from memory | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-winstub, sentry-fault-recovery, platform-fs-base-repair, platform-fp-state |  |  |  | docs/results/1d-static-guest.md |
 | `platform-veh-on-guest-stack-unsafe` | Exceptions overwrite guest stacks | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 | platform-exception-stack |  |  |  | docs/results/0b-windows.md; docs/adr/0010-guest-faults-via-the-debugger-syscalls-via-patching.md |
 | `platform-debug-event-cost` | Measure debugger fault handling | experiment | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-exception-stack |  |  | about 45-60 us per fault | docs/results/0b-windows.md |
 | `platform-syscall-site-survey` | Survey patchable syscall sites | experiment | linux-ci | done | mixed | 2026-11-26 | 2026-11-26 | platform-elf-alignment-survey |  |  | 62-82% of executed syscalls | docs/results/0d-syscall-sites.md |
 | `platform-faults-per-exec` | Count page faults per exec | experiment | linux-ci | done | successful | 2026-11-26 | 2026-11-26 | research-gvisor-benchmark |  |  | 10-57 Sentry-handled faults | docs/results/0d-syscall-sites.md |
 | `platform-binary-translation-fallback` | Binary translation as a fallback | feature | windows-ci | parked | unrated |  |  | platform-debug-event-cost |  |  |  |  |
 | `platform-controller-wakeups` | Controller waits without busy polling | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-stub-controller |  |  | 0.3 us median | docs/results/1a-stub-prototype.md |
-| `platform-fp-state` | Save and restore FPU and SSE state | feature | windows-ci | next | unrated |  |  | platform-winstub |  |  |  |  |
-| `platform-retire-prototype` | Retire the stub prototype | tooling | windows-ci | blocked | unrated |  |  | platform-static-guest-from-memory |  |  |  |  |
+| `platform-fp-state` | Save and restore FPU and SSE state | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-winstub |  |  |  | docs/results/1d-static-guest.md |
+| `platform-retire-prototype` | Retire the stub prototype | tooling | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-static-guest-from-memory |  |  |  | docs/results/1d-static-guest.md |
 | `platform-memory-release` | Give freed guest memory back | defect | windows-ci | next | unrated | 2026-11-26 |  |  |  |  |  | docs/adr/0013-memory-file-on-reserved-sections.md |
+| `platform-fast-process-start` | Start guest processes fast | feature | windows-ci | next | unrated |  |  | platform-static-guest-from-memory |  |  |  |  |
 
 ### Details per node
 
@@ -174,16 +175,17 @@ flowchart TB
 | `platform-fs-base-repair` | Restore the TLS register after switches |  |  | The stub sets the guest thread-local register on every return to the guest; losses from preemption arrive as debug events and the Sentry restores it. | Done in the prototype: repair via a per-thread trampoline from the debug event. A genuine null dereference costs 20 repair events before it is reported. |  |  |  |  |
 | `platform-no-fsgsbase-fallback` | Support CPUs without FSGSBASE |  |  | On CPUs or VMs without the instruction to set the register, rewrite the guest's %fs accesses instead. | Done when: a glibc program runs on a machine without FSGSBASE. |  |  |  |  |
 | `platform-exception-stack` | Check what exceptions do to stacks | A VEH on the guest stack is not safe |  | Windows writes exception data onto the faulting thread stack; check whether that destroys data Linux code keeps there, and what happens on unmapped stacks. | Done when: S7 results are in docs/results/0b-windows.md. |  |  |  |  |
-| `platform-static-guest-from-memory` | Run a static guest from memory |  |  | Thinnest end-to-end slice: the Sentry on Windows runs one embedded static program from its own memory filesystem, without host files, network or threads. | Done when: a static hello-world and a static program that forks and execs run under the Sentry in Windows CI. |  |  |  |  |
+| `platform-static-guest-from-memory` | Run a static guest from memory | The real Sentry on a hosted Windows runner runs static asm, glibc (static and PIE), fork, Go and JIT guests from an in-memory tmpfs with correct output and exit codes |  | Thinnest end-to-end slice: the Sentry on Windows runs one embedded static program from its own memory filesystem, without host files, network or threads. | Done when: a static hello-world and a static program that forks and execs run under the Sentry in Windows CI. |  |  |  |  |
 | `platform-veh-on-guest-stack-unsafe` | Exceptions overwrite guest stacks |  |  | Windows writes about 3 KB of exception data below the faulting thread stack pointer, so in-process handlers can corrupt Linux code; faults must go to the Sentry as debugger instead. |  |  |  |  |  |
 | `platform-debug-event-cost` | Measure debugger fault handling | A debugger-per-stub costs about 45-60 us per fault without touching the thread context | about 45-60 us per fault | Measure what handling a guest fault as debugger costs without touching thread context, how many events a process start makes, and whether many stubs can be debugged at once. | Done when: S8 results are in docs/results/0b-windows.md. |  |  |  |  |
 | `platform-syscall-site-survey` | Survey patchable syscall sites | stock usertrap patching covers only 62-82% of executed syscalls (23% on musl) | 62-82% of executed syscalls | Count how many syscall instructions in real images can be patched into jumps, and how many would need the slow debugger path. | Done when: per-image counts by site class are in docs/results/0d-syscall-sites.md. |  |  |  |  |
 | `platform-faults-per-exec` | Count page faults per exec | a fork+exec costs 10-57 Sentry-handled faults | 10-57 Sentry-handled faults | Count how many page faults gVisor takes for one fork plus exec on Linux; times the debugger cost this gives the Windows process-start cost. | Done when: faults per fork+exec and the mm MapUnit/precommit behaviour are in docs/results/0d-syscall-sites.md. |  |  |  |  |
 | `platform-binary-translation-fallback` | Binary translation as a fallback |  |  | Translate guest code (as the owner's v3compat does with DynamoRIO on Linux) only if debugger faults or unpatchable syscalls prove too slow, or to support CPUs without FSGSBASE. | Parked to keep complexity down (ADR 0010). Reopen if S8, the syscall-site survey or faults per exec give tens of ms per exec. Starting points from v3compat: unseg() %fs/%gs rewrite in src/expand.c, off-stack helper thunk, cmake/FetchDynamoRIO.cmake, translation stress tests; its measured DynamoRIO overhead is 1.15-1.67x on plain code but 2.4x (Node) to 13x (Java) on JIT startup. |  |  |  |  |
 | `platform-controller-wakeups` | Controller waits without busy polling | an event hand-off keeps the patched syscall at 0.3 us median | 0.3 us median | The prototype controller polls all stubs on one thread and starves guests on small machines; replace it with spin-then-wait hand-offs per stub thread. | Done when: the Go guest runs on a 4-vCPU runner with no FS-base losses caused by controller starvation and syscall latency stays near 0.3 us. |  |  |  |  |
-| `platform-fp-state` | Save and restore FPU and SSE state |  |  | Guest floating-point and vector registers must survive every switch into the Sentry and back; the platform does not carry them yet. | Done when: a guest using SSE/AVX across syscalls, faults and signals keeps its register values, and the Sentry sees the right xsave size for signal frames. |  |  |  |  |
-| `platform-retire-prototype` | Retire the stub prototype |  |  | The prototype under tools/windows/stubproto duplicates the platform code; once its test guests run under the Sentry, delete it. | Done when: tools/windows/stubproto and its workflow are removed and its guests run through the Sentry in CI. |  |  |  |  |
+| `platform-fp-state` | Save and restore FPU and SSE state | the stubs keep the guests' vector state across every kind of stop |  | Guest floating-point and vector registers must survive every switch into the Sentry and back; the platform does not carry them yet. | Done when: a guest using SSE/AVX across syscalls, faults and signals keeps its register values, and the Sentry sees the right xsave size for signal frames. |  |  |  |  |
+| `platform-retire-prototype` | Retire the stub prototype | The real Sentry on a hosted Windows runner runs static asm, glibc (static and PIE), fork, Go and JIT guests from an in-memory tmpfs with correct output and exit codes |  | The prototype under tools/windows/stubproto duplicates the platform code; once its test guests run under the Sentry, delete it. | Done when: tools/windows/stubproto and its workflow are removed and its guests run through the Sentry in CI. |  |  |  |  |
 | `platform-memory-release` | Give freed guest memory back |  |  | Decommitted guest memory only partly leaves the working set and never reduces commit charge, because pages stay committed in 1 GB sections. | Fixed when: a guest that allocates and frees 1 GB returns it to Windows (working set and commit charge), measured in CI. |  |  |  |  |
+| `platform-fast-process-start` | Start guest processes fast |  |  | A guest process takes 280-560 ms to start through the Sentry, against 18 ms for a bare stub; profile the gap and keep a pool of ready stubs. | Done when: static glibc hello starts and exits through the Sentry in under 50 ms median on windows-latest, and fork+waitpid adds under 50 ms; the profile is written up. |  |  |  |  |
 
 ### Folded items per node
 
@@ -200,6 +202,8 @@ flowchart TB
   - Views must be mapped RWX and lowered, raising map cost to 7.9 us per page (2026-11-26, commit b5cc61e9b)
 - `platform-winstub`: Windows platform for the Sentry
   - Six platform tests pass with the real memory file (2026-11-26, commit 40d02cbde)
+- `platform-static-guest-from-memory`: Run a static guest from memory
+  - Process start through the Sentry 280-560 ms, fork +260-410 ms (2026-11-26, commit 3708f1a28)
 - `platform-controller-wakeups`: Controller waits without busy polling
   - Remaining 8-9 %fs repairs per Go run follow debug events, which stop all threads (2026-11-26, commit b5cc61e9b)
 <!-- END GENERATED: table-platform -->
