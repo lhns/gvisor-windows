@@ -140,8 +140,7 @@ jobs:
           done
           sudo chmod -R a+r /tmp/runsc-logs
           cd /tmp/runsc-logs
-          grep -rhoE 'socket\(AF_NETLINK[^)]*\)[^
-]{0,40}' . | sort | uniq -c | sort -rn | head -40 >"$RESULTS_DIR/probe/netlink-sockets.txt" || true
+          grep -rhoE 'socket\(AF_NETLINK[^)]*\)[^ ]* *[^ ]*' . | sort | uniq -c | sort -rn | head -40 >"$RESULTS_DIR/probe/netlink-sockets.txt" || true
           grep -rhE 'AF_NETLINK|sendmsg|sendto' . 2>/dev/null | grep -iE 'netlink|NETLINK' | head -300 >"$RESULTS_DIR/probe/netlink-lines.txt" || true
           grep -rhE 'EPROTONOSUPPORT|EOPNOTSUPP|ENOTSUP|EINVAL|ENOSYS|EPERM' . 2>/dev/null | grep -E 'sendmsg|sendto|socket|setsockopt|bind' | head -200 >"$RESULTS_DIR/probe/errors.txt" || true
           grep -rhE 'Unsupported|unsupported|not implemented' . 2>/dev/null | head -100 >"$RESULTS_DIR/probe/unsupported.txt" || true
