@@ -30,6 +30,7 @@ const (
 type shadowState struct {
 	mu    sync.Mutex
 	files map[shadowKey]shadowEntry
+	byID  map[ID]shadowKey
 
 	// The persisted log (index_windows.go).
 	pending   []indexRec
@@ -60,12 +61,31 @@ func (fs *FS) remember(dir ID, name string, id ID, m *Metadata) {
 		}
 	}
 	k := shadowKey{dir, name}
+	if s.byID == nil {
+		s.byID = map[ID]shadowKey{}
+	}
+	s.byID[id] = k
 	if old, ok := s.files[k]; ok && sameEntry(old, id, m) {
 		return
 	}
 	c := *m
 	s.files[k] = shadowEntry{id: id, meta: c}
 	s.queueIndex(indexRec{dir: dir, name: name, id: id, meta: c})
+}
+
+// touchShadow updates the remembered metadata of a file whose metadata the
+// backend just changed (chmod, chown, xattrs), under whatever name it has.
+func (fs *FS) touchShadow(id ID, m *Metadata) {
+	if m.Mode&SIFMT != SIFREG {
+		return
+	}
+	s := &fs.shadow
+	s.mu.Lock()
+	k, ok := s.byID[id]
+	s.mu.Unlock()
+	if ok {
+		fs.remember(k.dir, k.name, id, m)
+	}
 }
 
 // forget drops the memory of a name the guest removed or renamed.

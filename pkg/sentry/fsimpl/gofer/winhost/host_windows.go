@@ -44,6 +44,8 @@ type FS struct {
 
 	watcher  *watcher
 	watching atomic.Bool
+	ntfs     bool // file IDs are NTFS index numbers
+	dirs     dirCache
 	cbMu     sync.Mutex
 	recheck  map[string]bool
 
@@ -97,6 +99,7 @@ func Open(path string, opts Options) (*FS, error) {
 	}
 	fs.vol = idi.VolumeSerialNumber
 	fs.rootID = ID{Vol: idi.VolumeSerialNumber, File: idi.FileID}
+	fs.ntfs = isNTFS(h)
 	fs.loadIndex()
 	fs.startIndexFlusher()
 	if opts.CaseSensitive {
@@ -107,6 +110,7 @@ func Open(path string, opts Options) (*FS, error) {
 
 // Close releases the root handle and pins.
 func (fs *FS) Close() {
+	fs.dirs.flush()
 	fs.stopWatch()
 	fs.stopIndexFlusher()
 	fs.pinMu.Lock()
@@ -190,16 +194,28 @@ const (
 func (fs *FS) attrOfMeta(h windows.Handle) (Attr, *Metadata, error) {
 	var a Attr
 	var bi fileBasicInfo
-	if err := getInfo(h, classBasic, unsafe.Pointer(&bi), uint32(unsafe.Sizeof(bi))); err != nil {
-		return a, nil, err
-	}
 	var si fileStandardInfo
-	if err := getInfo(h, classStandard, unsafe.Pointer(&si), uint32(unsafe.Sizeof(si))); err != nil {
-		return a, nil, err
-	}
 	var idi fileIDInfo
-	if err := getInfo(h, classIDInfo, unsafe.Pointer(&idi), uint32(unsafe.Sizeof(idi))); err != nil {
-		return a, nil, err
+	if fs.ntfs {
+		// One call for everything. On NTFS the file ID is the index number.
+		index, err := queryAll(h, &bi, &si)
+		if err != nil {
+			return a, nil, err
+		}
+		idi.VolumeSerialNumber = fs.vol
+		for k := 0; k < 8; k++ {
+			idi.FileID[k] = byte(index >> (8 * k))
+		}
+	} else {
+		if err := getInfo(h, classBasic, unsafe.Pointer(&bi), uint32(unsafe.Sizeof(bi))); err != nil {
+			return a, nil, err
+		}
+		if err := getInfo(h, classStandard, unsafe.Pointer(&si), uint32(unsafe.Sizeof(si))); err != nil {
+			return a, nil, err
+		}
+		if err := getInfo(h, classIDInfo, unsafe.Pointer(&idi), uint32(unsafe.Sizeof(idi))); err != nil {
+			return a, nil, err
+		}
 	}
 	a.ID = ID{Vol: idi.VolumeSerialNumber, File: idi.FileID}
 	a.Native = bi.FileAttributes
@@ -285,11 +301,11 @@ const dirAccess = fileReadData | fileTraverse | fileReadAttributes
 
 // Lookup finds name in the directory dir.
 func (fs *FS) Lookup(dir ID, name string) (Attr, error) {
-	dh, err := fs.openID(dir, dirAccess)
+	dh, release, err := fs.dirHandle(dir)
 	if err != nil {
 		return Attr{}, err
 	}
-	defer fs.closeID(dir, dh)
+	defer release()
 	h, err := openChild(dh, name, statAccess, 0)
 	if err != nil {
 		return Attr{}, err
@@ -595,6 +611,7 @@ func setDisposition(h windows.Handle) error {
 
 // Unlink removes name from dir. rmdir selects rmdir(2) over unlink(2).
 func (fs *FS) Unlink(dir ID, name string, rmdir bool) error {
+	fs.dirs.flush()
 	fs.forget(dir, name)
 	fs.expect(tokGone, name)
 	dh, err := fs.openID(dir, dirAccess|fileDeleteChild)
@@ -630,6 +647,7 @@ func (fs *FS) Rename(oldDir ID, oldName string, newDir ID, newName string, flags
 	if err := validName(newName); err != nil {
 		return err
 	}
+	fs.dirs.flush()
 	fs.forget(oldDir, oldName)
 	fs.forget(newDir, newName)
 	fs.expect(tokGone, oldName)
@@ -826,7 +844,7 @@ func (fs *FS) SetAttr(id ID, s SetAttr) error {
 
 	if s.HasMode || s.HasUID || s.HasGID {
 		fs.metaMu.Lock()
-		err := fs.updateMeta(h, func(m *Metadata) error {
+		err := fs.updateMeta(id, h, func(m *Metadata) error {
 			if m.Mode&SIFMT == SIFLNK && fs.isNativeLink(h) {
 				if s.HasMode {
 					return unix.EOPNOTSUPP
