@@ -1,0 +1,19 @@
+name: build
+
+on:
+  push:
+    branches: [windows, sentry-windows-build]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Sandbox for Windows
+        run: GOOS=windows CGO_ENABLED=0 go build -p 2 ./runsc/boot/...
+      - name: runsc for Linux
+        run: GOOS=linux CGO_ENABLED=0 go build -p 2 ./runsc/...

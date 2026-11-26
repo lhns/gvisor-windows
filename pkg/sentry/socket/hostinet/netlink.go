@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// gvisor-windows: host netlink does not exist on Windows; see netlink_windows.go.
+//go:build !windows
+
 package hostinet
 
 import (

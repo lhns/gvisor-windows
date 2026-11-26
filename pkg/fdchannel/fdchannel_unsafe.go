@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build aix || darwin || dragonfly || freebsd || linux || netbsd || openbsd || solaris
-// +build aix darwin dragonfly freebsd linux netbsd openbsd solaris
+// gvisor-windows: also built for windows, where x/sys/unix is the ENOSYS shim (ADR 0006).
+//go:build (aix || darwin || dragonfly || freebsd || linux || netbsd || openbsd || solaris) || windows
 
 // Package fdchannel implements passing file descriptors between processes over
 // Unix domain sockets.

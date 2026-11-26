@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// gvisor-windows: Linux namespace setup, excluded on Windows (ADR 0008).
+//go:build !windows
+
 package specutils
 
 import (
