@@ -651,9 +651,10 @@
   title: Sentry builds for Windows
   track: sentry
   kind: feature
-  state: blocked
+  state: in-progress
   outcome: unrated
-  evidence: []
+  evidence:
+  - docs/results/1b-windows-build.md
   verdict_quote: ''
   headline: ''
   depends_on:
@@ -661,12 +662,13 @@
   - sentry-go-fault-recovery
   replaced_by: []
   lane: windows-ci
-  start: ''
+  start: '2026-11-26'
   end: ''
-  folded: []
+  folded:
+  - GOOS=windows build of runsc/boot succeeds, CI green (2026-11-26, commit 3b38a4660)
   overview: false
   plain: gVisor's kernel compiles as a Windows program, with host-specific parts stubbed out.
-  notes: 'Done when: GOOS=windows go build ./runsc/boot/... succeeds and the Sentry reaches its init without a guest.'
+  notes: 'Done when: the Sentry process starts on Windows and reaches its init without a guest. Compiling is done; Linux-specific assembly (safecopy handler, hosttid, cpuid) still has to be replaced.'
 - id: sentry-memory-file-sections
   title: Guest memory on Windows sections
   track: sentry
@@ -1303,23 +1305,24 @@
   folded: []
   overview: false
   plain: 'Decided: host networking is only an interim state; -p and compose service names are required.'
-- outcome: unrated
+- outcome: successful
   evidence:
   - docs/adr/0006-a-linux-abi-shim-for-x-sys-unix.md
-  verdict_quote: ''
-  headline: ''
+  - docs/results/1b-windows-build.md
+  verdict_quote: the sandbox side compiles for Windows with 25 hand-edited shared files and one x/sys shim
+  headline: 25 hand-edited shared files
   depends_on:
   - ops-phase0-go-no-go
   replaced_by: []
-  start: ''
-  end: ''
+  start: '2026-11-26'
+  end: '2026-11-26'
   folded: []
   overview: false
   id: sentry-unix-shim
   title: Make Linux names resolve on Windows
   track: sentry
   kind: feature
-  state: next
+  state: done
   lane: none
   plain: A Windows copy of x/sys/unix defines the Linux constants and types and stubs the calls, so the Sentry compiles with few edits.
   notes: 'Done when: ./runsc/boot type-checks for GOOS=windows with Linux-only subsystems excluded by build tags.'
