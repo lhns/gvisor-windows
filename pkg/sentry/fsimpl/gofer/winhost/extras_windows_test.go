@@ -3,6 +3,7 @@
 package winhost
 
 import (
+	"golang.org/x/sys/windows"
 	"os"
 	"path/filepath"
 	"sync"
@@ -215,5 +216,40 @@ func TestWatchSeesChangeRightAfterOwnWrite(t *testing.T) {
 		t.Errorf("a Windows write right after a guest write was not reported")
 	} else {
 		t.Logf("reported after %v", d)
+	}
+}
+
+// Which rights NTFS wants for FileCaseSensitiveInformation. Only logs: the
+// answer depends on the ACL of the folder (a user's own profile folder gives
+// full control, a CI folder that was granted Modify does not).
+func TestCaseSensitivityRights(t *testing.T) {
+	base := os.Getenv("GVISOR_PROBE_DIR")
+	if base == "" {
+		base = t.TempDir()
+	}
+	for _, c := range []struct {
+		name   string
+		access uint32
+	}{
+		{"FILE_WRITE_ATTRIBUTES", fileWriteAttributes},
+		{"FILE_WRITE_ATTRIBUTES|FILE_DELETE_CHILD", fileWriteAttributes | fileDeleteChild},
+		{"FILE_WRITE_ATTRIBUTES|DELETE", fileWriteAttributes | deleteAccess},
+		{"FILE_WRITE_ATTRIBUTES|WRITE_DAC", fileWriteAttributes | 0x40000},
+		{"FILE_WRITE_ATTRIBUTES|FILE_WRITE_DATA|FILE_APPEND_DATA|FILE_WRITE_EA", fileWriteAttributes | fileWriteData | fileAppendData | fileWriteEA},
+		{"MAXIMUM_ALLOWED", 0x02000000},
+	} {
+		dir, err := os.MkdirTemp(base, "probe")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.RemoveAll(dir)
+		h, err := ntOpen(0, `\??\`+dir, c.access, shareAll, windows.FILE_OPEN, windows.FILE_DIRECTORY_FILE, 0)
+		if err != nil {
+			t.Logf("%-70s open: %v", c.name, err)
+			continue
+		}
+		err = setCaseSensitive(h, true)
+		windows.CloseHandle(h)
+		t.Logf("%-70s open ok, set case sensitive: %v", c.name, err)
 	}
 }
