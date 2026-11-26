@@ -1,0 +1,182 @@
+# gVisor's syscall test suite (test/syscalls/linux, C++ gtest) built from
+# google/gvisor at the commit the go branch was generated from (ADR 0009) and
+# run as guests: under runsc (systrap) on Linux as the baseline, and under the
+# Sentry on Windows (tools/windows/sentryguest). The report lists the failures
+# that are Windows-only.
+name: syscall-tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: "Bazel targets to build (empty: every test); a short list makes a quick run"
+        default: ""
+      shards:
+        description: "Number of shards (matrix has 12 slots; shards beyond this number stay empty)"
+        default: "12"
+  schedule:
+    - cron: "0 3 * * 0"
+  push:
+    branches: [syscall-tests]
+
+env:
+  UPSTREAM_SHA: c3efd8c9381c89b78c1d86b6c64a49d53ee938f8
+  # A push to the branch runs a quick subset; dispatch and schedule run all.
+  QUICK_TARGETS: "//test/syscalls/linux:pipe_test //test/syscalls/linux:open_test //test/syscalls/linux:fork_test //test/syscalls/linux:mmap_test //test/syscalls/linux:getdents_test //test/syscalls/linux:stat_test"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    outputs:
+      shards: ${{ steps.n.outputs.shards }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: n
+        run: |
+          if [ "${{ github.event_name }}" = push ]; then echo "shards=2" >> "$GITHUB_OUTPUT"; else echo "shards=${{ inputs.shards || '12' }}" >> "$GITHUB_OUTPUT"; fi
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq busybox-static libc6-dev python3 file
+          mkdir -p "$HOME/bin"
+          curl -fsSL -o "$HOME/bin/bazel" https://github.com/bazelbuild/bazelisk/releases/download/v1.26.0/bazelisk-linux-amd64
+          chmod +x "$HOME/bin/bazel"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          gcc --version | head -1
+      - name: Bazel caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/bazel-disk
+            ~/.cache/bazel-repo
+          key: bazel-syscalltests-${{ env.UPSTREAM_SHA }}-${{ hashFiles('tools/windows/syscalltests/build.sh') }}-${{ github.run_id }}
+          restore-keys: |
+            bazel-syscalltests-${{ env.UPSTREAM_SHA }}-
+      - name: Build the tests (static, Bazel)
+        env:
+          TARGETS: ${{ github.event_name == 'push' && env.QUICK_TARGETS || inputs.targets }}
+          SHA: ${{ env.UPSTREAM_SHA }}
+        run: bash tools/windows/syscalltests/build.sh "$PWD/out"
+      - name: Driver, test lists and shards
+        run: |
+          gcc -O1 -static -o out/driver tools/windows/syscalltests/driver.c
+          cp /bin/busybox out/busybox
+          python3 tools/windows/syscalltests/gtest_list.py out
+          python3 tools/windows/syscalltests/mkshards.py out ${{ steps.n.outputs.shards }}
+          du -sh out/shards out/bin
+      - uses: actions/upload-artifact@v4
+        with:
+          name: syscalltests-meta
+          path: |
+            out/*.txt
+            out/bazel.log
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        with:
+          name: syscalltests-shards
+          path: out/shards
+          retention-days: 7
+          compression-level: 6
+
+  linux:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version-file: go.mod, cache: false}
+      - uses: actions/download-artifact@v4
+        with: {name: syscalltests-shards, path: shards}
+      - name: Is there a shard
+        id: has
+        run: |
+          if [ -f shards/${{ matrix.shard }}/rootfs.tar ]; then echo "yes=1" >> "$GITHUB_OUTPUT"; fi
+      - name: runsc from this tree as a docker runtime (systrap)
+        if: steps.has.outputs.yes
+        run: |
+          set -eux
+          W=$(mktemp -d); cd "$W"
+          URL=https://storage.googleapis.com/gvisor/releases/release/latest/$(uname -m)
+          wget -q "$URL/gvisor.tar.bz2" "$URL/gvisor.tar.bz2.sha512"
+          sha512sum -c gvisor.tar.bz2.sha512
+          mkdir x && tar -xjf gvisor.tar.bz2 -C x
+          sudo cp -r x/gvisor-bin /usr/local/bin/ && sudo chmod -R a+rx /usr/local/bin/gvisor-bin
+          cd "$GITHUB_WORKSPACE"
+          CGO_ENABLED=0 go build -o "$W/runsc-tree" ./runsc
+          CGO_ENABLED=0 go build -o "$W/gvisor_sentry-tree" ./runsc/cmd/sentry || true
+          sudo cp "$W/runsc-tree" /usr/local/bin/runsc && sudo chmod a+rx /usr/local/bin/runsc
+          [ -f "$W/gvisor_sentry-tree" ] && sudo cp "$W/gvisor_sentry-tree" /usr/local/bin/gvisor-bin/gvisor_sentry && sudo chmod a+rx /usr/local/bin/gvisor-bin/gvisor_sentry
+          runsc --version
+          sudo mkdir -p /etc/docker
+          echo '{"runtimes":{"runsc-st":{"path":"/usr/local/bin/runsc","runtimeArgs":["--platform=systrap"]}}}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
+          docker info --format '{{.Runtimes}}'
+      - name: Run the shard under runsc
+        if: steps.has.outputs.yes
+        run: |
+          docker import shards/${{ matrix.shard }}/rootfs.tar st-shard
+          mkdir -p results
+          python3 tools/windows/syscalltests/run_shard.py --list shards/${{ matrix.shard }}/list.txt \
+            --out results/linux-${{ matrix.shard }}.tsv --docker st-shard --runtime runsc-st
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.has.outputs.yes
+        with:
+          name: results-linux-${{ matrix.shard }}
+          path: results
+          retention-days: 30
+
+  windows:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version-file: go.mod, cache: false}
+      - uses: actions/download-artifact@v4
+        with: {name: syscalltests-shards, path: shards}
+      - name: Build sentryguest
+        shell: bash
+        run: |
+          if [ -f shards/${{ matrix.shard }}/rootfs.tar ]; then echo has=1 >> "$GITHUB_ENV"; fi
+          go build -o sentryguest.exe ./tools/windows/sentryguest
+      - name: Run the shard under the Sentry
+        if: env.has == '1'
+        shell: bash
+        run: |
+          mkdir -p results
+          python tools/windows/syscalltests/run_shard.py --list shards/${{ matrix.shard }}/list.txt \
+            --out results/windows-${{ matrix.shard }}.tsv --sentryguest ./sentryguest.exe --tar shards/${{ matrix.shard }}/rootfs.tar
+      - uses: actions/upload-artifact@v4
+        if: always() && env.has == '1'
+        with:
+          name: results-windows-${{ matrix.shard }}
+          path: results
+          retention-days: 30
+
+  report:
+    needs: [linux, windows]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {pattern: "results-linux-*", path: linux, merge-multiple: true}
+      - uses: actions/download-artifact@v4
+        with: {pattern: "results-windows-*", path: windows, merge-multiple: true}
+      - run: python3 tools/windows/syscalltests/summarize.py linux windows report | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: syscalltests-report
+          path: report
+          retention-days: 90

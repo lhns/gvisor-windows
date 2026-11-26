@@ -88,6 +88,9 @@ func main() {
 	verbose := flag.Bool("v", false, "Sentry logging")
 	sample := flag.Bool("sample", false, "print where the task creating the process spends its time")
 	tarPath := flag.String("tar", "", "fill the tmpfs from this tar; the first argument is then a path inside it")
+	extraFiles := flag.String("files", "", "comma-separated hostfile:/guest/path pairs copied into the tmpfs after the tar")
+	stream := flag.Bool("stream", false, "print the guest's output while it runs (so a crash of the Sentry loses little)")
+	sysMounts := flag.Bool("sysmounts", false, "mount /proc, /sys, /dev and /dev/pts")
 	envList := flag.String("env", "PATH=/bin:/usr/bin:/", "comma-separated environment of the guest")
 	flag.Parse()
 	if flag.NArg() < 1 {
@@ -172,6 +175,21 @@ func main() {
 	} else {
 		extract(ctx, vfsObj, creds, root, *tarPath)
 	}
+	for _, pair := range strings.Split(*extraFiles, ",") {
+		if pair == "" {
+			continue
+		}
+		i := strings.LastIndex(pair, ":/")
+		if i < 0 {
+			fail("bad -files entry %q", pair)
+		}
+		data, err := os.ReadFile(pair[:i])
+		must(err, "reading "+pair[:i])
+		create(pair[i+1:], linux.O_WRONLY|linux.O_TRUNC, data).DecRef(ctx)
+	}
+	if *sysMounts {
+		mountSystem(ctx, vfsObj, creds, root)
+	}
 	stdin := create("/stdin", linux.O_RDONLY, nil)
 	stdout := create("/stdout", linux.O_RDWR, nil)
 	fdt := k.NewFDTable()
@@ -215,6 +233,28 @@ func main() {
 	winstub.Trace("boot: process created")
 	fdt.DecRef(ctx)
 	k.StartProcess(tg)
+	var streamed int
+	stopStream := make(chan struct{})
+	streamDone := make(chan struct{})
+	if *stream {
+		go func() {
+			defer close(streamDone)
+			for {
+				select {
+				case <-stopStream:
+					return
+				case <-time.After(500 * time.Millisecond):
+				}
+				out := readAll(ctx, vfsObj, creds, root, "/stdout")
+				if len(out) > streamed {
+					os.Stdout.Write(out[streamed:])
+					streamed = len(out)
+				}
+			}
+		}()
+	} else {
+		close(streamDone)
+	}
 	done := make(chan struct{})
 	go func() { k.WaitExited(); close(done) }()
 	select {
@@ -226,8 +266,10 @@ func main() {
 	winstub.Trace("boot: exit observed")
 	ws := tg.ExitStatus()
 
+	close(stopStream)
+	<-streamDone
 	out := readAll(ctx, vfsObj, creds, root, "/stdout")
-	fmt.Print(string(out))
+	fmt.Print(string(out[streamed:]))
 	fmt.Printf("sentryguest: exit status %v (code %d, signaled %v), init %v, run %v\n",
 		ws, ws.ExitStatus(), ws.Signaled(), tInit.Round(time.Millisecond), tRun.Round(time.Microsecond))
 	bad := false
