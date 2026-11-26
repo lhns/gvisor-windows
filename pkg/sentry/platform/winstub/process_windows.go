@@ -194,6 +194,7 @@ func (as *addressSpace) startThread(t *thread) error {
 func (p *Platform) newAS() (*addressSpace, error) {
 	Trace("as: start")
 	as := newAddressSpace(p)
+	registerAS(as)
 	go as.debugLoop()
 	if err := <-as.started; err != nil {
 		<-as.loopDone

@@ -130,11 +130,22 @@ jobs:
           foreach ($pol in 'tokens', 'limit', 'always') {
             $env:WINSTUB_POLICY = $pol
             "===== gopodman, spin policy $pol" | Tee-Object -Append -FilePath podman.txt
-            $o = & ./sentryguest.exe "-tar=out/rootfs.tar" "-timeout=300s" /bin/gopodman 2>&1 | Out-String
+            $o = & ./sentryguest.exe "-tar=out/rootfs.tar" "-timeout=60s" /bin/gopodman 2>&1 | Out-String
             $o | Tee-Object -Append -FilePath podman.txt
             if ($o -notmatch 'gopodman ok' -or $LASTEXITCODE -ne 0) { "FAILED with policy $pol"; $fail = 1 }
           }
           exit $fail
+      - name: Hunt for hangs (limit policy)
+        if: always()
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $env:WINSTUB_POLICY = 'limit'
+          for ($i = 0; $i -lt 8; $i++) {
+            $o = & ./sentryguest.exe "-tar=out/rootfs.tar" "-timeout=30s" /bin/gopodman 2>&1 | Out-String
+            if ($o -notmatch 'gopodman ok') { "===== run $i hung or failed" | Tee-Object -Append -FilePath hang.txt; $o | Tee-Object -Append -FilePath hang.txt }
+            else { "run $i ok" | Tee-Object -Append -FilePath hang.txt }
+          }
       - name: Timing
         continue-on-error: true
         shell: pwsh
@@ -160,4 +171,4 @@ jobs:
           }
       - uses: actions/upload-artifact@v4
         if: always()
-        with: {name: sentry-guests-output, path: "guests.txt\ntrace.txt\ntiming.txt\npodman.txt"}
+        with: {name: sentry-guests-output, path: "guests.txt\ntrace.txt\ntiming.txt\npodman.txt\nhang.txt"}

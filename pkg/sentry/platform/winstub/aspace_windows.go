@@ -534,6 +534,7 @@ func (as *addressSpace) Release() {
 		return
 	}
 	Trace("as: release")
+	unregisterAS(as)
 	as.markDead()
 	pTerminateProcess.Call(as.h, 0)
 	<-as.loopDone
