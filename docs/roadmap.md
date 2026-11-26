@@ -188,6 +188,7 @@ flowchart TB
 | Exceptions overwrite guest stacks | ✔ fixed | Windows writes about 3 KB of exception data below the faulting thread stack pointer, so in-process handlers can corrupt Linux code; faults must go to the Sentry as debugger instead. |
 | Binary translation as a fallback | ⏸ parked | Translate guest code (as the owner's v3compat does with DynamoRIO on Linux) only if debugger faults or unpatchable syscalls prove too slow, or to support CPUs without FSGSBASE. |
 | Start guest processes fast | ✔ done · very-successful | A guest process takes 280-560 ms to start through the Sentry, against 18 ms for a bare stub; profile the gap and keep a pool of ready stubs. |
+| Veneer addresses differ after clone | ⚠ open | A syscall through a relocated veneer returns into the veneer; after clone into a new address space the veneers sit elsewhere, so the child resumes on a zero page and crashes. |
 | Event waiting on IOCP | ⏸ parked | Waiting for many host events at once (epoll on Linux) moves to Windows completion ports. |
 | Timers and clocks on Windows | ⛔ blocked | The Sentry's clocks and timers run on Windows' high-resolution timers. |
 | Compatibility layer, not security boundary | ✔ done · n/a | The sandbox may open the user's files directly with the user's rights; it isolates containers from each other, not from the user. |
@@ -202,7 +203,6 @@ flowchart TB
 | Serve Podman to Windows clients | ▶ in progress | The test harness runs the Podman engine on runsc and exposes its API to the stock Windows clients. |
 | Measure end-to-end speed on Windows | ○ next | Run the Phase 0 workloads (fork+exec loop, untar of small files, a CPU job) through runsc.exe on Windows and compare with runsc and native on Linux. |
 | conmon sees no data on its sync pipe | ⚠ open | Every podman run fails with "conmon bytes \"\": found \x00": conmon reads nothing from its sync pipe while creating the first container inside the sandbox on Windows. |
-| Overlay mounts with userxattr rejected | ⚠ open | podman build fails: the Sentry overlay rejects the userxattr option (or the layer setup) when Podman storage sits on a Windows folder. |
 | Pick gVisor as the base | ✔ done · unrated | Of all ways to run Linux code on Windows without admin, gVisor's user-space Linux kernel is the only one that already runs containers. |
 | Name it gvisor-windows | ✔ done · n/a | The project is an unofficial fork of gVisor's Go branch called gvisor-windows. |
 | Go or no-go after Phase 0 | ✔ done · n/a | Go: the owner asked for the full project; ADR 0004 lists the conditions. |
@@ -224,8 +224,8 @@ flowchart TB
 - `fs-flaky-negative-cache-test`: Flaky negative-cache test on host folders
 - `workloads-end-to-end-speed`: Measure end-to-end speed on Windows
 - `workloads-conmon-sync-pipe`: conmon sees no data on its sync pipe
-- `workloads-overlay-userxattr`: Overlay mounts with userxattr rejected
 - `fs-case-sensitivity-without-admin`: Case-sensitive names without admin
+- `platform-veneer-address-in-child`: Veneer addresses differ after clone
 <!-- END GENERATED: ready-now -->
 
 ## Running
@@ -254,13 +254,13 @@ _None._
 <!-- BEGIN GENERATED: timeline -->
 [The timeline](roadmap/timeline.md) shows every dated node as a bar from its start to its end.
 
-Generated on 2026-11-26.
+Generated on 2026-11-27.
 <!-- END GENERATED: timeline -->
 
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 71 done, 7 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 72 done, 7 abandoned</summary>
 
 - `fs-attribute-cache`: Faster stat walks on host folders (✔ done · mixed). A git-status-like walk of 20000 files takes 1.2-2.4 s through the host folder; an attribute cache fed by the change watcher would bring stat near native.
   - Cold stat walk on a fresh mount is still about 4x native, 99-105 us per file (2026-11-26)
@@ -365,6 +365,8 @@ Generated on 2026-11-26.
 - `workloads-podman-on-gvisor-linux`: Podman on gVisor on Linux (✔ done · mixed). Run the acceptance test on stock gVisor on Linux; whatever fails there is a gap in gVisor itself, not in the port.
 - `workloads-podman-probe`: Probe Podman inside the sandbox (✔ done · unrated). Right after busybox works, run podman --version and podman info inside the sandbox; their failures are the real gap list.
 - `workloads-strict-bar-linux`: Strict bar on stock gVisor (✔ done · mixed). Find out what stock gVisor on Linux needs for -p port publishing and compose service names, across Podman versions and network modes.
+- `workloads-overlay-userxattr`: Overlay mounts with userxattr rejected (✔ fixed). podman build fails: the Sentry overlay rejects the userxattr option (or the layer setup) when Podman storage sits on a Windows folder.
+  - Overlay upperdir must be tmpfs; /var/tmp is now a tmpfs in the engine spec (2026-11-27)
 
 </details>
 <!-- END GENERATED: done-by-month -->
@@ -375,11 +377,11 @@ Generated on 2026-11-26.
 Each track has its own page with its tree, node table and per-node details.
 
 - [runsc - runsc](roadmap/tracks/runsc.md): 6 nodes (4 done, 2 blocked)
-- [platform - platform](roadmap/tracks/platform.md): 30 nodes (24 done, 1 blocked, 4 parked, 1 abandoned)
+- [platform - platform](roadmap/tracks/platform.md): 31 nodes (24 done, 1 next, 1 blocked, 4 parked, 1 abandoned)
 - [sentry - sentry](roadmap/tracks/sentry.md): 10 nodes (8 done, 1 blocked, 1 parked)
 - [fs - files](roadmap/tracks/fs.md): 15 nodes (12 done, 2 next, 1 blocked)
 - [net - network](roadmap/tracks/net.md): 4 nodes (4 done)
-- [workloads - workloads](roadmap/tracks/workloads.md): 15 nodes (10 done, 1 in progress, 3 next, 1 blocked)
+- [workloads - workloads](roadmap/tracks/workloads.md): 15 nodes (11 done, 1 in progress, 2 next, 1 blocked)
 - [research - research](roadmap/tracks/research.md): 8 nodes (2 done, 6 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 11 nodes (7 done, 1 in progress, 1 next, 2 blocked)
 <!-- END GENERATED: tracks -->

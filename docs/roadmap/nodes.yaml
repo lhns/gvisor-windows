@@ -2004,11 +2004,13 @@
   - docs/results/5-podman-windows.md
   verdict_quote: ''
   headline: ''
-  depends_on: []
+  depends_on:
+  - platform-veneer-address-in-child
   replaced_by: []
   start: '2026-11-26'
   end: ''
-  folded: []
+  folded:
+  - 'Cause 1 fixed: FIFO opens on host folders were rejected by policy, now in-Sentry named pipes (2026-11-27, commit 9ab48dea3)'
   overview: false
   id: workloads-conmon-sync-pipe
   title: conmon sees no data on its sync pipe
@@ -2017,7 +2019,7 @@
   state: next
   lane: windows-ci
   plain: 'Every podman run fails with "conmon bytes \"\": found \x00": conmon reads nothing from its sync pipe while creating the first container inside the sandbox on Windows.'
-  notes: 'Fixed when: podman run --rm alpine echo ok passes inside the Windows sandbox.'
+  notes: 'Remaining cause: crun clone through glibc syscall() lands in a relocated veneer whose address differs in the child address space (platform). Fixed when: podman run --rm alpine echo ok passes.'
 - outcome: unrated
   evidence:
   - docs/results/5-podman-windows.md
@@ -2026,14 +2028,15 @@
   depends_on: []
   replaced_by: []
   start: '2026-11-26'
-  end: ''
-  folded: []
+  end: '2026-11-27'
+  folded:
+  - Overlay upperdir must be tmpfs; /var/tmp is now a tmpfs in the engine spec (2026-11-27, commit 9ab48dea3)
   overview: false
   id: workloads-overlay-userxattr
   title: Overlay mounts with userxattr rejected
   track: workloads
   kind: defect
-  state: next
+  state: done
   lane: windows-ci
   plain: 'podman build fails: the Sentry overlay rejects the userxattr option (or the layer setup) when Podman storage sits on a Windows folder.'
   notes: 'Fixed when: podman build of a small Containerfile passes inside the Windows sandbox.'
@@ -2056,3 +2059,22 @@
   lane: windows-ci
   plain: A standard user on the hosted runner cannot set per-directory case sensitivity (access denied), so Linux images with names differing only in case need another way, without an admin setup step.
   notes: 'Fixed when: two names differing only in case coexist in a host folder as a standard user on windows-latest with no admin step, and Podman storage uses it.'
+- outcome: unrated
+  evidence:
+  - docs/results/5-podman-windows.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-27'
+  end: ''
+  folded: []
+  overview: false
+  id: platform-veneer-address-in-child
+  title: Veneer addresses differ after clone
+  track: platform
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: A syscall through a relocated veneer returns into the veneer; after clone into a new address space the veneers sit elsewhere, so the child resumes on a zero page and crashes.
+  notes: 'Fixed when: test/guests/clonesys.c (clonesys, clonesys_ns) passes and podman run starts a container.'

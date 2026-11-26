@@ -311,12 +311,12 @@ func testHostfs() error {
 	must(os.MkdirAll(dir, 0o755))
 	extraMounts = []map[string]any{{"destination": "/w", "type": "bind", "source": dir, "options": []string{"rbind", "rw"}}}
 	defer func() { extraMounts = nil }()
-	script := `cd /w; set -x; echo a >x; echo b >y; mv x y && echo replace-ok; cat y; mkdir d; mkdir d/e; rmdir d/e && echo rmdir-ok; mv d d2 && echo dirmove-ok; rmdir d2 && echo rmdir2-ok; echo c >z; rm z && echo rm-ok; exit 0`
+	script := `cd /w; set -x; echo a >x; echo b >y; mv x y && echo replace-ok; cat y; mkdir d; mkdir d/e; rmdir d/e && echo rmdir-ok; mv d d2 && echo dirmove-ok; rmdir d2 && echo rmdir2-ok; echo c >z; rm z && echo rm-ok; mkfifo p; echo fifo-data >p & cat p; wait; echo fifo-ok; exit 0`
 	r, err := runsc("hostfs", []string{"/bin/sh", "-c", script}, nil)
 	if err != nil {
 		return err
 	}
-	for _, want := range []string{"replace-ok", "rmdir-ok", "dirmove-ok", "rmdir2-ok", "rm-ok"} {
+	for _, want := range []string{"replace-ok", "rmdir-ok", "dirmove-ok", "rmdir2-ok", "rm-ok", "fifo-data", "fifo-ok"} {
 		if !strings.Contains(r.stdout, want) {
 			return fmt.Errorf("%q missing; stdout %q stderr %q", want, r.stdout, r.stderr)
 		}
