@@ -69,6 +69,19 @@ jobs:
             if ($LASTEXITCODE -ne 0) { $fail = 1 }
           }
           exit $fail
+      - name: Timing
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          foreach ($n in "hello_asm","hello_glibc","fork_glibc","hello_go") {
+            $t = @()
+            for ($i = 0; $i -lt 9; $i++) {
+              $o = & ./sentryguest.exe "-code=$(if ($n -eq 'hello_glibc') {7} else {0})" "out/$n" 2>&1 | Out-String
+              if ($o -match 'run ([0-9.]+)(ms|s)') { $v = [double]$Matches[1]; if ($Matches[2] -eq 's') { $v *= 1000 }; $t += $v }
+            }
+            $t = $t | Sort-Object
+            "TIMING $n median $($t[4]) ms (min $($t[0]), max $($t[8])) all: $($t -join ' ')" | Tee-Object -Append -FilePath timing.txt
+          }
       - name: Trace
         if: always()
         continue-on-error: true
@@ -81,4 +94,4 @@ jobs:
           }
       - uses: actions/upload-artifact@v4
         if: always()
-        with: {name: sentry-guests-output, path: "guests.txt\ntrace.txt"}
+        with: {name: sentry-guests-output, path: "guests.txt\ntrace.txt\ntiming.txt"}
