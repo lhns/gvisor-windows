@@ -4,7 +4,6 @@
 #define _GNU_SOURCE
 #include <errno.h>
 #include <fcntl.h>
-#include <linux/ptrace.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -15,9 +14,10 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#ifndef PTRACE_GET_SYSCALL_INFO
+// linux/ptrace.h clashes with glibc's sys/ptrace.h, so the syscall-info ABI is declared here.
 #define PTRACE_GET_SYSCALL_INFO 0x420e
-#endif
+#define PSI_ENTRY 1
+struct psi { uint8_t op; uint8_t pad[3]; uint32_t arch; uint64_t instruction_pointer, stack_pointer; uint64_t nr; uint64_t rest[16]; };
 
 struct range { uint64_t start, end, pgoff; int path; };
 struct tmaps { struct range *r; int n; };
@@ -86,12 +86,12 @@ int main(int argc, char **argv) {
 		if (!WIFSTOPPED(st)) continue;
 		int sig = WSTOPSIG(st), ev = st >> 16, inject = 0;
 		if (sig == (SIGTRAP | 0x80)) {
-			struct ptrace_syscall_info si; memset(&si, 0, sizeof si);
-			if (ptrace(PTRACE_GET_SYSCALL_INFO, pid, (void *)sizeof si, &si) > 0 && si.op == PTRACE_SYSCALL_INFO_ENTRY) {
+			struct psi si; memset(&si, 0, sizeof si);
+			if (ptrace(PTRACE_GET_SYSCALL_INFO, pid, (void *)sizeof si, &si) > 0 && si.op == PSI_ENTRY) {
 				total++;
 				uint64_t site = si.instruction_pointer - 2;
 				struct range *r = lookup(pid, site);
-				if (r) bump(r->path, site - r->start + r->pgoff, (int)si.entry.nr); else unmapped++;
+				if (r) bump(r->path, site - r->start + r->pgoff, (int)si.nr); else unmapped++;
 			}
 		} else if (sig == SIGTRAP && ev) {
 			if (ev == PTRACE_EVENT_EXEC && pid < maxtid && maps[pid]) { free(maps[pid]->r); free(maps[pid]); maps[pid] = NULL; }

@@ -26,7 +26,7 @@ jobs:
       - uses: actions/setup-go@v5
         with: {go-version: stable}
       - run: gcc -O2 -static test/e2e/syscall-survey/tracer.c -o tracer
-      - run: test/e2e/syscall-survey/run-image.sh "${{ matrix.name }}" "${{ matrix.image }}"
+      - run: bash test/e2e/syscall-survey/run-image.sh "${{ matrix.name }}" "${{ matrix.image }}"
       - uses: actions/upload-artifact@v4
         if: always()
         with: {name: "sites-${{ matrix.name }}", path: results, retention-days: 30}
@@ -40,7 +40,7 @@ jobs:
         with: {sparse-checkout: "test/e2e/syscall-survey"}
       - uses: actions/setup-go@v5
         with: {go-version: stable}
-      - run: test/e2e/syscall-survey/faults.sh
+      - run: bash test/e2e/syscall-survey/faults.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with: {name: faults, path: results, retention-days: 30}
