@@ -44,6 +44,9 @@ function Stop-Engine {
   }
 }
 
+# The podman client's unix: URL for a socket on the current drive (a drive letter does not survive url parsing).
+function UnixUrl([string]$p) { 'unix://' + ($p -replace '^[A-Za-z]:', '' -replace '\\', '/') }
+
 function Guest-Path([string]$win) {
   # C:\a\b -> /mnt/c/a/b, as podman machine and WSL do.
   $full = (Resolve-Path -LiteralPath $win).Path
@@ -99,13 +102,28 @@ function Start-Engine {
     root       = @{ path = $root; readonly = $false }
     hostname   = "podman-$Name"
     mounts     = $mounts
+    linux      = [ordered]@{
+      namespaces = @(@{ type = 'pid' }, @{ type = 'network' }, @{ type = 'ipc' }, @{ type = 'uts' }, @{ type = 'mount' })
+      # The /dev tmpfs of the spec hides the Sentry's own; runc would create these nodes.
+      devices    = @(
+        @{ path = '/dev/null'; type = 'c'; major = 1; minor = 3; fileMode = 438; uid = 0; gid = 0 },
+        @{ path = '/dev/zero'; type = 'c'; major = 1; minor = 5; fileMode = 438; uid = 0; gid = 0 },
+        @{ path = '/dev/full'; type = 'c'; major = 1; minor = 7; fileMode = 438; uid = 0; gid = 0 },
+        @{ path = '/dev/random'; type = 'c'; major = 1; minor = 8; fileMode = 438; uid = 0; gid = 0 },
+        @{ path = '/dev/urandom'; type = 'c'; major = 1; minor = 9; fileMode = 438; uid = 0; gid = 0 },
+        @{ path = '/dev/tty'; type = 'c'; major = 5; minor = 0; fileMode = 438; uid = 0; gid = 0 })
+    }
     annotations = @{ 'dev.gvisor.windows.rootfs-options' = 'file-mode=0755,dir-mode=0755' }
-    linux      = @{ namespaces = @(@{ type = 'pid' }, @{ type = 'network' }, @{ type = 'ipc' }, @{ type = 'uts' }, @{ type = 'mount' }) }
   }
   $bundle = (New-Item -ItemType Directory -Force (Join-Path $Work 'bundle')).FullName
   $spec | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $bundle 'config.json') -Encoding ascii
 
-  $args = @('--debug', "--debug-log=$logs\", '--network=windows-nat', '--overlay2=root:memory', "--pipe-forward=8888:$pipe", 'run', '-bundle', $bundle, "podman-$Name")
+  # The socket for the podman client (it cannot dial pipes) lives in a folder only this user can enter.
+  $sockDir = (New-Item -ItemType Directory -Force (Join-Path $Work 'sock')).FullName
+  & icacls $sockDir /inheritance:r /grant:r "$($env:USERNAME):(OI)(CI)F" /Q | Out-Null
+  $sock = Join-Path $sockDir 'podman.sock'
+  $sock | Set-Content (Join-Path $Work 'sock.path')
+  $args = @('--debug', "--debug-log=$logs\", '--network=windows-nat', '--overlay2=root:memory', "--pipe-forward=8888:$pipe", "--unix-forward=8888:$sock",'run', '-bundle', $bundle, "podman-$Name")
   $p = Start-Process -FilePath $Runsc -ArgumentList $args -PassThru -WindowStyle Hidden `
     -RedirectStandardOutput (Join-Path $logs 'engine.out') -RedirectStandardError (Join-Path $logs 'engine.err')
   $p.Id | Set-Content $pidFile
@@ -115,7 +133,7 @@ function Start-Engine {
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     while ((Get-Date) -lt $deadline) {
       if ($p.HasExited) { throw "runsc exited with $($p.ExitCode); see $logs" }
-      & $Podman --url "npipe:////./pipe/$pipe" version *> $null
+      & $Podman --url (UnixUrl $sock) version *> $null
       if ($LASTEXITCODE -eq 0) { Write-Host 'start-engine: engine answers'; return }
       Start-Sleep -Seconds 3
     }

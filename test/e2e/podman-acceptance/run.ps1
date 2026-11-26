@@ -20,6 +20,7 @@ param(
   [Parameter(Mandatory)][string]$Docker,
   [Parameter(Mandatory)][string]$Pipe,
   [Parameter(Mandatory)][string]$ShareDir,
+  [string]$PodmanUrl,                            # default npipe://; the stock podman client needs a unix: URL (ADR 0018)
   [string]$EngineCtl,
   [string]$TtyDrive,
   [string]$ResultsDir = '.\results',
@@ -31,6 +32,7 @@ param(
 $ErrorActionPreference = 'Continue'
 $url = "npipe:////./pipe/$Pipe"
 $env:DOCKER_HOST = "npipe:////./pipe/$Pipe"
+if ($PodmanUrl) { $url = $PodmanUrl }
 $env:CONTAINER_HOST = $url
 $ALPINE = "$ImgPrefix/alpine:3.20"; $DEBIAN = "$ImgPrefix/debian:12-slim"; $NGINX = "$ImgPrefix/nginx:alpine"
 New-Item -ItemType Directory -Force $ResultsDir, $ShareDir | Out-Null
