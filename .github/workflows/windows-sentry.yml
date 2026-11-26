@@ -26,11 +26,23 @@ jobs:
       - name: Tests of pkg/safecopy
         if: always()
         shell: bash
-        run: go test -p 2 -count=1 -v -timeout 100s ./pkg/safecopy/ 2>&1 | grep -vE "^\s*(=== (RUN|PAUSE|CONT)|--- PASS)" | head -150; exit ${PIPESTATUS[0]}
+        run: |
+          set +e
+          go test -p 2 -count=1 -v -timeout 100s ./pkg/safecopy/ > safecopy.log 2>&1
+          rc=$?
+          grep -E "^([[:space:]]*--- FAIL|FAIL|ok|panic|fatal)" safecopy.log | head -60
+          echo "top-level: $(grep -cE "^--- PASS" safecopy.log) passed, $(grep -cE "^--- FAIL" safecopy.log) failed, $(grep -cE "^--- SKIP" safecopy.log) skipped; subtests: $(grep -cE "^[[:space:]]+--- PASS" safecopy.log) passed, $(grep -cE "^[[:space:]]+--- FAIL" safecopy.log) failed, $(grep -cE "^[[:space:]]+--- SKIP" safecopy.log) skipped"
+          exit $rc
       - name: Tests of pkg/sentry/pgalloc
         if: always()
         shell: bash
-        run: go test -p 2 -count=1 -v -timeout 240s ./pkg/sentry/pgalloc/ 2>&1 | grep -vE "^\s*(=== (RUN|PAUSE|CONT)|--- PASS)" | head -150; exit ${PIPESTATUS[0]}
+        run: |
+          set +e
+          go test -p 2 -count=1 -v -timeout 200s ./pkg/sentry/pgalloc/ > pgalloc.log 2>&1
+          rc=$?
+          grep -E "^([[:space:]]*--- (FAIL|SKIP|PASS)|FAIL|ok|panic|fatal)" pgalloc.log | head -60
+          echo "top-level: $(grep -cE "^--- PASS" pgalloc.log) passed, $(grep -cE "^--- FAIL" pgalloc.log) failed, $(grep -cE "^--- SKIP" pgalloc.log) skipped"
+          exit $rc
       - name: Init of each package alone
         if: always()
         shell: bash

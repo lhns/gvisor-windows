@@ -62,6 +62,7 @@ func main() {
 	probe("time", probeTime)
 	probe("safecopy", probeSafecopy)
 	probe("pgalloc", probePgalloc)
+	probe("release", probeRelease)
 	if failed {
 		os.Exit(1)
 	}
@@ -328,4 +329,67 @@ func isZero(b []byte) bool {
 		}
 	}
 	return true
+}
+
+type memoryStatusEx struct {
+	length               uint32
+	memoryLoad           uint32
+	totalPhys            uint64
+	availPhys            uint64
+	totalPageFile        uint64
+	availPageFile        uint64
+	totalVirtual         uint64
+	availVirtual         uint64
+	availExtendedVirtual uint64
+}
+
+func availPhysMB() uint64 {
+	var m memoryStatusEx
+	m.length = uint32(unsafe.Sizeof(m))
+	syscall.NewLazyDLL("kernel32.dll").NewProc("GlobalMemoryStatusEx").Call(uintptr(unsafe.Pointer(&m)))
+	return m.availPhys >> 20
+}
+
+// probeRelease measures whether Decommit gives physical memory back, with
+// only one view of the section mapped (a second view keeps pages resident).
+func probeRelease() {
+	f, err := pgalloc.NewMemoryFile(nil, pgalloc.MemoryFileOpts{
+		DelayedEviction:         pgalloc.DelayedEvictionManual,
+		DisableMemoryAccounting: true,
+	})
+	if err != nil {
+		report(false, "release.NewMemoryFile", "%v", err)
+		return
+	}
+	defer f.Destroy()
+	const size = 512 << 20
+	fr, err := f.Allocate(size, pgalloc.AllocOpts{Kind: usage.Anonymous})
+	if err != nil {
+		report(false, "release.Allocate", "%v", err)
+		return
+	}
+	ws0, av0 := workingSetMB(), availPhysMB()
+	bs, _ := f.MapInternal(fr, hostarch.ReadWrite)
+	for ; !bs.IsEmpty(); bs = bs.Tail() {
+		s := bs.Head().ToSlice()
+		for i := 0; i < len(s); i += 4096 {
+			s[i] = 1
+		}
+	}
+	ws1, av1 := workingSetMB(), availPhysMB()
+	f.Decommit(fr)
+	ws2, av2 := workingSetMB(), availPhysMB()
+	info("release", "working set %d -> %d -> %d MB, available physical %d -> %d -> %d MB (touched, then Decommit of %d MB)", ws0, ws1, ws2, av0, av1, av2, size>>20)
+	touched := int64(ws1) - int64(ws0)
+	freed := int64(ws1) - int64(ws2)
+	info("release", "working set released %d of %d MB touched; available physical regained %d MB", freed, touched, int64(av2)-int64(av1))
+	report(touched > size>>20/2, "release touched", "the working set grew by %d MB", touched)
+	if freed >= touched/2 {
+		report(true, "release Decommit frees memory", "released %d of %d MB", freed, touched)
+	} else {
+		info("release Decommit does not free memory", "released only %d of %d MB (pages are zeroed by clearing, not discarded)", freed, touched)
+	}
+	d, c, nz, e := pgalloc.DecommitStats()
+	info("release", "Decommit zeroed %d MB by discarding and %d MB by clearing (non-zero after discard: %d, last DiscardVirtualMemory error: %d)", d>>20, c>>20, nz, e)
+	f.DecRef(fr)
 }

@@ -20,6 +20,7 @@ package pgalloc
 
 import (
 	"fmt"
+	"sync/atomic"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -157,7 +158,8 @@ func (f *MemoryFile) decommitFile(fr memmap.FileRange) error {
 
 func discardOrClear(addr, length uintptr) {
 	bs := unsafe.Slice((*byte)(unsafe.Pointer(addr)), length)
-	if r, _, _ := procDiscardVirtualMem.Call(addr, length); r == 0 {
+	r, _, _ := procDiscardVirtualMem.Call(addr, length)
+	if r == 0 {
 		zero := true
 		for i := 0; i+8 <= len(bs); i += 8 {
 			if *(*uint64)(unsafe.Pointer(&bs[i])) != 0 {
@@ -166,10 +168,30 @@ func discardOrClear(addr, length uintptr) {
 			}
 		}
 		if zero {
+			discardedBytes.Add(uint64(length))
 			return
 		}
+		nonZeroAfterDiscard.Add(1)
+	} else {
+		lastDiscardError.Store(uint64(r))
 	}
+	clearedBytes.Add(uint64(length))
 	clear(bs)
+}
+
+var (
+	discardedBytes      atomic.Uint64
+	clearedBytes        atomic.Uint64
+	nonZeroAfterDiscard atomic.Uint64
+	lastDiscardError    atomic.Uint64
+)
+
+// DecommitStats returns how many bytes Decommit zeroed with
+// DiscardVirtualMemory and how many by clearing them (because the call failed
+// or left non-zero bytes), how often the discarded range was not zero, and
+// the last error code of DiscardVirtualMemory.
+func DecommitStats() (discarded, cleared, nonZero, lastErr uint64) {
+	return discardedBytes.Load(), clearedBytes.Load(), nonZeroAfterDiscard.Load(), lastDiscardError.Load()
 }
 
 // hostResident sets buf[i]&1 if page i of s is resident in this process's
