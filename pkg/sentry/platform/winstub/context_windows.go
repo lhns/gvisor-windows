@@ -84,7 +84,7 @@ func (c *winContext) Switch(ctx pkgcontext.Context, mm platform.MemoryManager, a
 	if c.spin {
 		*t.u64(stubasm.PgSpins) = uint64(stubSpin)
 	} else {
-		*t.u64(stubasm.PgSpins) = 0
+		*t.u64(stubasm.PgSpins) = 1 // the stub counts down from this: 0 would spin 2^64 times
 	}
 	if err := c.resume(t, ac); err != nil {
 		return nil, hostarch.NoAccess, &platform.ContextError{Err: err, Errno: unix.EAGAIN}
