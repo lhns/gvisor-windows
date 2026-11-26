@@ -18,6 +18,7 @@ import (
 	"gvisor.dev/gvisor/pkg/fspath"
 	"gvisor.dev/gvisor/pkg/sentry/kernel/auth"
 	"gvisor.dev/gvisor/pkg/sentry/ktime"
+	"gvisor.dev/gvisor/pkg/sentry/limits"
 	"gvisor.dev/gvisor/pkg/sentry/pgalloc"
 	"gvisor.dev/gvisor/pkg/sentry/vfs"
 	"gvisor.dev/gvisor/pkg/usermem"
@@ -39,6 +40,8 @@ func (c *testContext) Value(key any) any {
 		return c.mf
 	case ktime.CtxRealtimeClock:
 		return testClock{}
+	case limits.CtxLimits:
+		return limits.NewLimitSet()
 	}
 	return c.Context.Value(key)
 }
