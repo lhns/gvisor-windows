@@ -270,6 +270,27 @@ func (as *addressSpace) removeRange(lo, hi uint64) error {
 		as.edges[k] = e
 	}
 	olds := append([]*view(nil), as.views[i:j]...)
+	// Where a private text view is cut, the new ends may form a split syscall
+	// with a range mapped there later: remember what the surviving pieces end
+	// and begin with (reading the text before it is unmapped).
+	var leftTail, rightHead bool
+	for _, v := range olds {
+		if v.priv == nil {
+			continue
+		}
+		if v.lo < lo {
+			if b, ok := as.readStub(lo-1, 1); ok && b[0] == 0x0F {
+				if piece, ok := as.readStub(v.lo, int(lo-v.lo)); ok {
+					leftTail = scanText(piece, 0).tail0f
+				}
+			}
+		}
+		if v.hi > hi {
+			if b, ok := as.readStub(hi, 1); ok && b[0] == 0x05 {
+				rightHead = true
+			}
+		}
+	}
 	as.views = append(as.views[:i], as.views[j:]...)
 	var pieces []*view
 	for _, v := range olds {
@@ -287,6 +308,16 @@ func (as *addressSpace) removeRange(lo, hi uint64) error {
 		if e := as.mapView(pc); e != nil && err == nil {
 			err = e
 		}
+	}
+	if leftTail {
+		e := as.edges[lo]
+		e.tail0f = true
+		as.edges[lo] = e
+	}
+	if rightHead {
+		e := as.edges[hi]
+		e.head05 = true
+		as.edges[hi] = e
 	}
 	for _, v := range olds {
 		as.unrefPriv(v.priv)
@@ -363,20 +394,26 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 	if as.dead.Load() {
 		return errDead
 	}
-	sf, ok := f.(SectionFile)
-	if !ok {
-		return errNoSection
-	}
+	sf, isSec := f.(SectionFile)
 	lo, hi := uint64(addr), uint64(addr)+fr.Length()
 	if lo < stubasm.GuestMin || hi > stubasm.GuestMax || hi < lo {
 		return errOutOfRange
 	}
 	prot := accessBits(at)
-	srs := sf.Sections(fr)
+	// Text is copied, scanned and patched. A file that is not the memory file
+	// (an image mapping, say) has no section to map: its read-only mappings are
+	// copied into private memory too; a writable one cannot be shared.
+	isText := prot&protX != 0 && prot&protW == 0
+	if !isSec && prot&protW != 0 {
+		return errNoSection
+	}
+	var srs []pgalloc.SectionRange
+	if isSec && !isText {
+		srs = sf.Sections(fr)
+	}
 
 	var content []byte
-	if prot&protX != 0 && prot&protW == 0 {
-		// Text: scan a copy now; the patched copy is what the stub maps.
+	if isText || !isSec {
 		content = make([]byte, fr.Length())
 		bs, err := f.MapInternal(fr, hostarch.Read)
 		if err != nil {
@@ -392,33 +429,21 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 	if err := as.removeRange(lo, hi); err != nil {
 		return err
 	}
+	if content != nil && !isText {
+		ps, err := as.newPrivate(content)
+		if err != nil {
+			return err
+		}
+		v := &view{lo: lo, hi: hi, sec: ps.h, prot: protR, priv: ps}
+		if err := as.mapView(v); err != nil {
+			as.unrefPriv(ps)
+			return err
+		}
+		return nil
+	}
 	if content != nil {
-		head := content[0] == 0x05
-		from := 0
-		if head && as.edges[lo].tail0f {
-			from = 1 // the 0x05 belongs to a syscall that starts in the range below
-		}
-		st, scan := as.patchCode(content, lo, from)
+		st := as.patchText(content, lo, hi)
 		debugf("text %#x-%#x: %+v", lo, hi, st)
-		// A syscall instruction may straddle two mapped ranges: 0x0f ends one,
-		// 0x05 starts the next. Whichever range is mapped second turns the 0x05
-		// into 0x0b (ud2, the debugger path) so that the pair is never executable.
-		debugf("edges at %#x: head05 %v from %d tail0f %v", lo, head, from, scan.tail0f)
-		lowE, highE := as.edges[lo], as.edges[hi]
-		if head && lowE.tail0f {
-			content[0] = 0x0B
-			as.ud2Sites[lo-1] = true
-		}
-		lowE.head05 = head
-		highE.tail0f = scan.tail0f
-		as.edges[lo], as.edges[hi] = lowE, highE
-		if scan.tail0f && highE.head05 {
-			if as.fixHead(hi) {
-				as.ud2Sites[hi-1] = true
-				highE.head05 = false
-				as.edges[hi] = highE
-			}
-		}
 		ps, err := as.newPrivate(content)
 		if err != nil {
 			return err
@@ -581,20 +606,24 @@ func (as *addressSpace) wxExec(a uint64) bool {
 		return false
 	}
 	ws, wo := v.wxSec, v.wxOff+(lo-v.lo)
-	st, _ := as.patchCode(buf, lo, 0)
+	if err := as.removeRange(lo, hi); err != nil {
+		return false
+	}
+	shared := func() {
+		as.mapView(&view{lo: lo, hi: hi, sec: ws, off: wo, prot: protR | protW, wx: true, wxSec: ws, wxOff: wo})
+	}
+	st := as.patchText(buf, lo, hi)
 	debugf("wx rescan %#x-%#x: %+v", lo, hi, st)
 	ps, err := as.newPrivate(buf)
 	if err != nil {
-		return false
-	}
-	if err := as.removeRange(lo, hi); err != nil {
-		as.unrefPriv(ps)
+		shared()
 		return false
 	}
 	nv := &view{lo: lo, hi: hi, sec: ps.h, prot: protR | protX, priv: ps, wx: true, wxPriv: true, wxSec: ws, wxOff: wo}
 	if err := as.mapView(nv); err != nil {
 		as.unrefPriv(ps)
 		debugf("wxExec map: %v", err)
+		shared()
 		return false
 	}
 	return true
@@ -619,6 +648,37 @@ func (as *addressSpace) wxWrite(a uint64) bool {
 		return false
 	}
 	return true
+}
+
+// patchText scans and patches the text content that will be mapped at [lo,hi)
+// and handles a syscall instruction that straddles one of its ends: 0x0f ends
+// one range, 0x05 starts the next. Whichever range is mapped second turns the
+// 0x05 into 0x0b (ud2, the debugger path) so that the pair is never executable.
+// The caller holds as.mu.
+func (as *addressSpace) patchText(content []byte, lo, hi uint64) siteStats {
+	head := content[0] == 0x05
+	from := 0
+	if head && as.edges[lo].tail0f {
+		from = 1 // the 0x05 belongs to a syscall that starts in the range below
+	}
+	st, scan := as.patchCode(content, lo, from)
+	debugf("edges at %#x: head05 %v from %d tail0f %v", lo, head, from, scan.tail0f)
+	lowE, highE := as.edges[lo], as.edges[hi]
+	if head && lowE.tail0f {
+		content[0] = 0x0B
+		as.ud2Sites[lo-1] = true
+	}
+	lowE.head05 = head
+	highE.tail0f = scan.tail0f
+	as.edges[lo], as.edges[hi] = lowE, highE
+	if scan.tail0f && highE.head05 {
+		if as.fixHead(hi) {
+			as.ud2Sites[hi-1] = true
+			highE.head05 = false
+			as.edges[hi] = highE
+		}
+	}
+	return st
 }
 
 // edge records, for an address where two ranges meet, what the range ending

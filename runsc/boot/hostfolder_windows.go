@@ -6,6 +6,7 @@
 package boot
 
 import (
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -14,11 +15,25 @@ import (
 	"gvisor.dev/gvisor/pkg/sentry/fsimpl/gofer"
 )
 
+// RootfsOptionsAnnotation holds the comma-separated folder options of the
+// rootfs (see hostFolderOptions).
+const RootfsOptionsAnnotation = "dev.gvisor.windows.rootfs-options"
+
 func hostFolderForRoot(spec *specs.Spec) (gofer.HostFolderOptions, bool) {
 	if spec.Root == nil || spec.Root.Path == "" {
 		return gofer.HostFolderOptions{}, false
 	}
-	return hostFolderOptions(spec.Root.Path, nil), true
+	// A root that is a file is an erofs image, mounted through GoferFDs.
+	if fi, err := os.Stat(spec.Root.Path); err == nil && !fi.IsDir() {
+		return gofer.HostFolderOptions{}, false
+	}
+	// The root has no mount options in an OCI spec; this annotation carries
+	// them, e.g. "file-mode=0755" for a folder whose files Windows created.
+	var opts []string
+	if v := spec.Annotations[RootfsOptionsAnnotation]; v != "" {
+		opts = strings.Split(v, ",")
+	}
+	return hostFolderOptions(spec.Root.Path, opts), true
 }
 
 func hostFolderForMount(m *specs.Mount) (gofer.HostFolderOptions, bool) {
@@ -30,7 +45,8 @@ func hostFolderForMount(m *specs.Mount) (gofer.HostFolderOptions, bool) {
 
 // hostFolderOptions reads the options of a folder mount: owner=UID:GID (the
 // owner of files without stored metadata, default 0:0), emulate-symlinks,
-// case-sensitive and cache=exclusive.
+// case-sensitive, cache=watched (trust the change watch, faster, with holes)
+// and cache=exclusive. The default revalidates on every use.
 func hostFolderOptions(path string, options []string) gofer.HostFolderOptions {
 	if abs, err := filepath.Abs(path); err == nil {
 		path = abs
@@ -46,12 +62,23 @@ func hostFolderOptions(path string, options []string) gofer.HostFolderOptions {
 					hf.UID, hf.GID = uint32(uid), uint32(gid)
 				}
 			}
+		case strings.HasPrefix(o, "file-mode="), strings.HasPrefix(o, "dir-mode="):
+			k, v, _ := strings.Cut(o, "=")
+			if m, err := strconv.ParseUint(v, 8, 32); err == nil {
+				if k == "file-mode" {
+					hf.FileMode = uint32(m)
+				} else {
+					hf.DirMode = uint32(m)
+				}
+			}
 		case o == "emulate-symlinks":
 			hf.EmulateSymlinks = true
 		case o == "case-sensitive":
 			hf.CaseSensitive = true
 		case o == "cache=exclusive":
 			hf.Exclusive = true
+		case o == "cache=watched":
+			hf.Watched = true
 		}
 	}
 	return hf

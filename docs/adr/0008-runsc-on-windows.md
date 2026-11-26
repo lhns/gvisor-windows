@@ -1,6 +1,6 @@
 # 0008. runsc on Windows: commands and process layout
 
-- Status: Accepted (decided under the owner's delegation)
+- Status: Accepted (decided under the owner's delegation); process layout refined by ADR 0017 (run boots in-process for now)
 - Date: 2026-11-26
 
 ## Context

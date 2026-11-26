@@ -236,6 +236,11 @@ type Loader struct {
 	// thus before `runsc start` returns).
 	PostStartCallback func()
 
+	// WindowsStdio, if set (Windows sandboxes only), fills the stdio of the
+	// root container in fdTable once its mounts exist, and returns the
+	// controlling terminal if the container has one.
+	WindowsStdio func(ctx context.Context, mns *vfs.MountNamespace, fdTable *kernel.FDTable) (*kernel.TTY, error)
+
 	// procSelfFD is initialized from Args.ProcSelfFD, or -1 once closed.
 	procSelfFD int
 
@@ -1047,8 +1052,10 @@ func New(args Args) (*Loader, error) {
 
 	// We don't care about child signals; some platforms can generate a
 	// tremendous number of useless ones (I'm looking at you, ptrace).
-	if err := sighandling.IgnoreChildStop(); err != nil {
-		return nil, fmt.Errorf("ignore child stop signals failed: %w", err)
+	if runtime.GOOS != "windows" { // gvisor-windows: no SIGCHLD on Windows.
+		if err := sighandling.IgnoreChildStop(); err != nil {
+			return nil, fmt.Errorf("ignore child stop signals failed: %w", err)
+		}
 	}
 
 	if len(args.Conf.TestOnlyAutosaveImagePath) != 0 {
@@ -1061,11 +1068,15 @@ func New(args Args) (*Loader, error) {
 	//
 	// This must be done *after* we have initialized the kernel since the
 	// controller is used to configure the kernel's network stack.
-	ctrl, err := newController(args.ControllerFD, l)
-	if err != nil {
-		return nil, fmt.Errorf("creating control server: %w", err)
+	// gvisor-windows: a Windows sandbox that runs in the runsc process has no
+	// control server (ControllerFD < 0); see RunInProcess.
+	if args.ControllerFD >= 0 {
+		ctrl, err := newController(args.ControllerFD, l)
+		if err != nil {
+			return nil, fmt.Errorf("creating control server: %w", err)
+		}
+		l.ctrl = ctrl
 	}
-	l.ctrl = ctrl
 
 	return l, nil
 }
@@ -1217,7 +1228,9 @@ func (l *Loader) Destroy() {
 	// Stop the control server. This will indirectly stop any
 	// long-running control operations that are in flight, e.g.
 	// profiling operations.
-	l.ctrl.stop()
+	if l.ctrl != nil {
+		l.ctrl.stop()
+	}
 
 	// Release all kernel resources. This is only safe after we can no longer
 	// save/restore.
@@ -1296,6 +1309,8 @@ func createMemoryFile(appHugePages bool, hostTHP HostTHP) (*pgalloc.MemoryFile, 
 	}
 
 	mfopts := pgalloc.MemoryFileOpts{
+		DelayedEviction:         memoryFileDelayedEviction,
+		DisableMemoryAccounting: memoryFileNoAccounting,
 		// We can't enable pgalloc.MemoryFileOpts.UseHostMemcgPressure even if
 		// there are memory cgroups specified, because at this point we're already
 		// in a mount namespace in which the relevant cgroupfs is not visible.
@@ -1907,8 +1922,15 @@ func (l *Loader) startSubcontainer(spec *specs.Spec, conf *config.Config, cid st
 func (l *Loader) createContainerProcess(info *containerInfo) (*kernel.ThreadGroup, *host.TTYFileDescription, error) {
 	// Create the FD map, which will set stdin, stdout, and stderr.
 	ctx := info.procArgs.NewContext(l.k)
-	fdTable, ttyFile, err := createFDTable(ctx, info.spec.Process.Terminal, info.stdioFDs, info.passFDs, info.spec.Process.User, info.containerName)
-	if err != nil {
+	var (
+		fdTable *kernel.FDTable
+		ttyFile *host.TTYFileDescription
+		err     error
+	)
+	if l.WindowsStdio != nil {
+		// gvisor-windows: the stdio is filled in once the mounts exist.
+		fdTable = l.k.NewFDTable()
+	} else if fdTable, ttyFile, err = createFDTable(ctx, info.spec.Process.Terminal, info.stdioFDs, info.passFDs, info.spec.Process.User, info.containerName); err != nil {
 		return nil, nil, fmt.Errorf("importing fds: %w", err)
 	}
 	info.procArgs.StartupTimeline.Reached("FD table created")
@@ -1941,10 +1963,13 @@ func (l *Loader) createContainerProcess(info *containerInfo) (*kernel.ThreadGrou
 	}
 
 	// Gofer FDs must be ordered and the first FD is always the rootfs.
-	if len(info.goferFDs) < 1 {
-		return nil, nil, fmt.Errorf("rootfs gofer FD not found")
+	// gvisor-windows: a host-folder root has no gofer.
+	if _, hostRoot := hostFolderForRoot(info.spec); !hostRoot {
+		if len(info.goferFDs) < 1 {
+			return nil, nil, fmt.Errorf("rootfs gofer FD not found")
+		}
+		l.startGoferMonitor(info)
 	}
-	l.startGoferMonitor(info)
 
 	if l.root.cid == l.sandboxID {
 		if l.root.conf.InSandboxCgroup == config.InSandboxCgroupV2 {
@@ -1981,6 +2006,14 @@ func (l *Loader) createContainerProcess(info *containerInfo) (*kernel.ThreadGrou
 			cg.Dentry.DecRef(ctx)
 		}
 	}()
+
+	if l.WindowsStdio != nil {
+		tty, err := l.WindowsStdio(ctx, info.procArgs.MountNamespace, fdTable)
+		if err != nil {
+			return nil, nil, fmt.Errorf("setting up stdio: %w", err)
+		}
+		info.procArgs.TTY = tty
+	}
 
 	// Add the HOME environment variable if it is not already set.
 	info.procArgs.Envv, err = user.MaybeAddExecUserHome(ctx, info.procArgs.MountNamespace,

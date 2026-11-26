@@ -38,3 +38,14 @@ jobs:
         run: |
           go test -p 1 -count=20 -timeout 600s -run 'TestVFSNegativeCacheAndQuickChange|TestVFSWindowsChangesReachGuest' ./pkg/sentry/fsimpl/gofer/ 2>&1 | tail -20
           go test -p 1 -count=10 -timeout 600s -run 'TestWatch' ./pkg/sentry/fsimpl/gofer/winhost/ 2>&1 | tail -20
+      - name: The same tests as a standard user (deletes and renames in the user's own folders)
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force C:\ci\bin | Out-Null
+          go test -c -o C:\ci\bin\winhost.test.exe ./pkg/sentry/fsimpl/gofer/winhost
+          go test -c -o C:\ci\bin\gofer.test.exe ./pkg/sentry/fsimpl/gofer
+          & tools/windows/ci/run-as-standard-user.ps1 -Program C:\ci\bin\winhost.test.exe -Arguments '-test.v','-test.count=1','-test.timeout=600s' -GrantPath C:\ci\bin -TimeoutSeconds 900
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & tools/windows/ci/run-as-standard-user.ps1 -Program C:\ci\bin\gofer.test.exe -Arguments '-test.v','-test.count=1','-test.timeout=900s','-test.run','TestVFS' -GrantPath C:\ci\bin -TimeoutSeconds 1200
+          exit $LASTEXITCODE

@@ -47,6 +47,7 @@ type winContext struct {
 	needRestore bool
 	needPull    bool
 	nreq        int
+	spin        bool
 }
 
 const eflagsUser = 0x246 // what a Linux syscall leaves in r11
@@ -76,6 +77,15 @@ func (c *winContext) Switch(ctx pkgcontext.Context, mm platform.MemoryManager, a
 		c.needRestore = false
 	}
 	c.needPull = true
+	// Spin only while no more contexts are running than there are CPUs to spin
+	// on: with more, the spinners keep the thread that has work from running.
+	c.spin = int(t.as.p.active.Add(1)) <= t.as.p.spinLimit
+	defer t.as.p.active.Add(-1)
+	if c.spin {
+		*t.u64(stubasm.PgSpins) = uint64(stubSpin)
+	} else {
+		*t.u64(stubasm.PgSpins) = 1 // the stub counts down from this: 0 would spin 2^64 times
+	}
 	if err := c.resume(t, ac); err != nil {
 		return nil, hostarch.NoAccess, &platform.ContextError{Err: err, Errno: unix.EAGAIN}
 	}
@@ -185,7 +195,11 @@ func (c *winContext) wait(t *thread) (request, error) {
 	as := t.as
 	sleep := t.u32(stubasm.PgCtlSlp)
 	for {
-		for i := 0; i < ctlSpin && t.state() != 1; i++ {
+		spins := ctlSpin
+		if !c.spin {
+			spins = 0
+		}
+		for i := 0; i < spins && t.state() != 1; i++ {
 			if i&1023 == 1023 && (as.dead.Load() || c.intrPending.Load()) {
 				break
 			}

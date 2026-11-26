@@ -84,7 +84,8 @@ func (d *defs) initDefaults() error {
 
 	// Read host limits that directly affect the sandbox and adjust the defaults
 	// based on them.
-	for _, res := range []int{unix.RLIMIT_FSIZE, unix.RLIMIT_NOFILE} {
+	// gvisor-windows: Windows has no rlimits.
+	for _, res := range hostLimitResources {
 		var hl unix.Rlimit
 		if err := unix.Getrlimit(res, &hl); err != nil {
 			return err

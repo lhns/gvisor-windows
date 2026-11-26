@@ -116,6 +116,16 @@ func (fs *FS) Watch(fn func(Change)) error {
 	return nil
 }
 
+// WatchDone returns a channel closed when the watch ends, whether because
+// the folder was closed or because reading the changes failed (never closed
+// if there is no watch).
+func (fs *FS) WatchDone() <-chan struct{} {
+	if w := fs.watcher; w != nil {
+		return w.done
+	}
+	return nil
+}
+
 func (fs *FS) stopWatch() {
 	if w := fs.watcher; w != nil {
 		w.once.Do(func() { close(w.stop) })

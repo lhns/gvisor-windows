@@ -9,8 +9,18 @@ import (
 	"fmt"
 	"os"
 
+	"golang.org/x/sys/unix"
 	"gvisor.dev/gvisor/pkg/memutil"
+	"gvisor.dev/gvisor/pkg/sentry/pgalloc"
 )
+
+// Memory file options and host rlimits that differ per OS.
+const (
+	memoryFileDelayedEviction = pgalloc.DelayedEvictionDefault
+	memoryFileNoAccounting    = false
+)
+
+var hostLimitResources = []int{unix.RLIMIT_FSIZE, unix.RLIMIT_NOFILE}
 
 // createMemoryFileBacking returns the memfd that backs the MemoryFile.
 func createMemoryFileBacking(name string) (*os.File, error) {

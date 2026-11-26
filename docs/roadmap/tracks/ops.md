@@ -10,7 +10,7 @@ Scope: CI, packaging, owner decisions on process.
 ```mermaid
 flowchart TB
     ops_windows_ci_standard_user["✔ Windows CI as a<br/>standard user"]
-    ops_syscall_tests_on_windows["⛔ gVisor syscall tests<br/>on Windows"]
+    ops_syscall_tests_on_windows["▶ gVisor syscall tests<br/>on Windows"]
     ops_upstream_merges["○ Merge upstream<br/>gVisor regularly"]
     ops_portable_packaging["⛔ Portable zip, no<br/>installer"]
     ops_windows_ci_standard_user ~~~ ops_portable_packaging
@@ -31,8 +31,9 @@ flowchart TB
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class ops_windows_ci_standard_user succ
-    class ops_syscall_tests_on_windows,ops_portable_packaging blocked
+    class ops_syscall_tests_on_windows inprog
     class ops_upstream_merges next
+    class ops_portable_packaging blocked
 ```
 <!-- END GENERATED: track-ops -->
 
@@ -48,9 +49,10 @@ flowchart TB
 | `ops-podman-only-the-bar` | Podman only as the bar | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0002-what-done-means.md |
 | `ops-windows-ci-standard-user` | Windows CI as a standard user | tooling | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | ops-phase0-go-no-go |  |  |  | docs/results/2-windows-network.md |
 | `ops-syscall-test-strategy` | Choose how to run gVisor's tests | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0009-running-gvisors-tests.md |
-| `ops-syscall-tests-on-windows` | gVisor syscall tests on Windows | feature | windows-ci | blocked | unrated |  |  | ops-syscall-test-strategy, platform-busybox-on-windows |  |  |  |  |
+| `ops-syscall-tests-on-windows` | gVisor syscall tests on Windows | feature | windows-ci | in-progress | unrated | 2026-11-26 |  | ops-syscall-test-strategy, platform-static-guest-from-memory |  |  |  |  |
 | `ops-upstream-merges` | Merge upstream gVisor regularly | tooling | linux-ci | next | unrated |  |  |  |  |  |  |  |
 | `ops-portable-packaging` | Portable zip, no installer | feature | windows-ci | blocked | unrated |  |  | runsc-container-on-windows |  |  |  |  |
+| `ops-run-on-a-work-machine` | Try it on a real work machine | owner-decision | owner | blocked | n/a |  |  | workloads-podman-on-windows |  |  |  |  |
 
 ### Details per node
 
@@ -66,4 +68,5 @@ flowchart TB
 | `ops-syscall-tests-on-windows` | gVisor syscall tests on Windows |  |  | gVisor's own syscall test suite runs against the Windows port to show which Linux calls work. | Done when: the suite runs in CI on Windows and its pass rate is published. |  |  |  |  |
 | `ops-upstream-merges` | Merge upstream gVisor regularly |  |  | Regularly take in upstream gVisor's Go branch so the port does not drift. | Done when: a scheduled workflow merges upstream/go into windows or opens an issue on conflict. |  |  |  |  |
 | `ops-portable-packaging` | Portable zip, no installer |  |  | Ship runsc for Windows as a zip or per-user installer that needs no admin. | Done when: a release zip runs from a user folder on a clean Windows machine. |  |  |  |  |
+| `ops-run-on-a-work-machine` | Try it on a real work machine |  |  | All evidence comes from GitHub hosted Windows images; the owner runs runsc.exe once on a work machine to check FSGSBASE and whether security software tolerates the generated stub being debugged. | Done when: the owner reports the result of one run of the published artifact. |  |  |  |  |
 <!-- END GENERATED: table-ops -->

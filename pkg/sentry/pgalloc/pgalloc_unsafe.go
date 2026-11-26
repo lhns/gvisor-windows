@@ -25,6 +25,7 @@ import (
 
 // Preconditions: The FileRange represented by c is a superset of fr.
 func (c *chunkInfo) sliceAt(fr memmap.FileRange) []byte {
+	c.hostEnsure(fr) // gvisor-windows: no-op on Linux
 	return unsafe.Slice((*byte)(unsafe.Pointer(c.mapping+uintptr(fr.Start&chunkMask))), fr.Length())
 }
 
