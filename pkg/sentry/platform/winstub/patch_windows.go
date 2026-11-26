@@ -158,11 +158,12 @@ func scanText(code []byte, from int) *scanResult {
 		list[i].off += from
 		list[i].tgt += from
 	}
-	end := from
+	end, lastStart := from, -1
 	if n := len(list); n > 0 {
-		end = list[n-1].off + list[n-1].n
+		end, lastStart = list[n-1].off+list[n-1].n, list[n-1].off
 	}
-	r.tail0f = len(code) > 0 && end == len(code)-1 && code[end] == 0x0F
+	// (the decoder may or may not report a lone 0x0f as an instruction)
+	r.tail0f = len(code) > 0 && (end == len(code)-1 || lastStart == len(code)-1) && code[len(code)-1] == 0x0F
 	isTgt := make([]uint64, (len(code)+63)/64)
 	for _, x := range list {
 		if x.hasTgt && x.tgt >= 0 && x.tgt < len(code) {

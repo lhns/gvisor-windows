@@ -403,6 +403,7 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 		// A syscall instruction may straddle two mapped ranges: 0x0f ends one,
 		// 0x05 starts the next. Whichever range is mapped second turns the 0x05
 		// into 0x0b (ud2, the debugger path) so that the pair is never executable.
+		debugf("edges at %#x: head05 %v from %d tail0f %v", lo, head, from, scan.tail0f)
 		lowE, highE := as.edges[lo], as.edges[hi]
 		if head && lowE.tail0f {
 			content[0] = 0x0B
