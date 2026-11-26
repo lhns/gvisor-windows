@@ -216,6 +216,9 @@ type filesystem struct {
 	// hostRelease releases a host-folder mount (gvisor-windows).
 	hostRelease func() `state:"nosave"`
 
+	// hostCookie pairs the two inotify events of a rename seen on the host.
+	hostCookie atomicbitops.Uint32 `state:"nosave"`
+
 	// clock is a realtime clock used to set timestamps in file operations.
 	clock ktime.Clock
 

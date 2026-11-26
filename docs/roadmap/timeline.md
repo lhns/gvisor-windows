@@ -52,12 +52,12 @@ gantt
     Compatibility layer, not security bound… :fs_compat_layer_not_boundary, 2026-11-26, 2026-11-26
     Test persistent image storage :fs_persistent_image_storage, 2026-11-26, 2026-11-26
     Open Windows files directly :fs_windows_directfs, 2026-11-26, 2026-11-26
-    Windows changes reach the guest :active, fs_change_notifications, 2026-11-26, 2026-11-26
+    Windows changes reach the guest :fs_change_notifications, 2026-11-26, 2026-11-26
     Linux file metadata on NTFS :fs_linux_metadata_on_ntfs, 2026-11-26, 2026-11-26
     Files stay editable on Windows :fs_handles_do_not_block_users, 2026-11-26, 2026-11-26
     Choose the persistent storage :fs_persistent_storage_choice, 2026-11-26, 2026-11-26
-    Root filesystem from an erofs image :active, fs_root_filesystem_source, 2026-11-26, 2026-11-26
-    Editor safe-saves keep Linux metadata :active, fs_safe_save_keeps_metadata, 2026-11-26, 2026-11-26
+    Root filesystem from an erofs image :fs_root_filesystem_source, 2026-11-26, 2026-11-26
+    Editor safe-saves keep Linux metadata :fs_safe_save_keeps_metadata, 2026-11-26, 2026-11-26
     Bring container images onto NTFS :fs_rootfs_import, 2026-11-26, 2026-11-26
     section net - network
     Netstack to Windows sockets :net_netstack_windows_link, 2026-11-26, 2026-11-26
@@ -91,5 +91,5 @@ gantt
     Choose how to run gVisor's tests :ops_syscall_test_strategy, 2026-11-26, 2026-11-26
 ```
 
-Not shown (no `start`): `runsc-container-on-windows`, `runsc-sandbox-lifecycle`, `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-busybox-on-windows`, `platform-hardware-acceleration`, `platform-no-fsgsbase-fallback`, `platform-binary-translation-fallback`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `fs-persistent-storage-impl`, `workloads-podman-on-windows`, `workloads-acceptance-test-windows`, `workloads-podman-harness`, `workloads-podman-api-named-pipe`, `workloads-podman-probe`, `ops-syscall-tests-on-windows`, `ops-upstream-merges`, `ops-portable-packaging`
+Not shown (no `start`): `runsc-container-on-windows`, `runsc-sandbox-lifecycle`, `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-busybox-on-windows`, `platform-hardware-acceleration`, `platform-no-fsgsbase-fallback`, `platform-binary-translation-fallback`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `fs-persistent-storage-impl`, `fs-attribute-cache`, `workloads-podman-on-windows`, `workloads-acceptance-test-windows`, `workloads-podman-harness`, `workloads-podman-api-named-pipe`, `workloads-podman-probe`, `ops-syscall-tests-on-windows`, `ops-upstream-merges`, `ops-portable-packaging`
 <!-- END GENERATED: timeline -->

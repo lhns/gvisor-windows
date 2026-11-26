@@ -11,23 +11,28 @@ Scope: host files, bind mounts, image storage.
 flowchart TB
     fs_persistent_image_storage[/"✔ Test persistent<br/>image storage"/]
     fs_windows_directfs["✔ Open Windows files<br/>directly"]
-    fs_change_notifications["▶ Windows changes<br/>reach the guest"]
+    fs_change_notifications["✔ Windows changes<br/>reach the guest"]
     fs_linux_metadata_on_ntfs["✔ Linux file metadata<br/>on NTFS"]
     fs_handles_do_not_block_users["✔ Files stay editable<br/>on Windows"]
-    fs_root_filesystem_source["▶ Root filesystem from<br/>an erofs image"]
-    fs_safe_save_keeps_metadata>"⚠ Editor safe-saves<br/>keep Linux metadata"]
+    fs_root_filesystem_source["✔ Root filesystem from<br/>an erofs image"]
+    fs_safe_save_keeps_metadata>"✔ Editor safe-saves<br/>keep Linux metadata"]
     fs_persistent_storage_impl["⛔ Storage that<br/>survives restarts"]
+    fs_attribute_cache["○ Faster stat walks on<br/>host folders"]
     fs_persistent_image_storage ~~~ fs_change_notifications
     fs_windows_directfs ~~~ fs_linux_metadata_on_ntfs
     fs_windows_directfs ~~~ fs_handles_do_not_block_users
     fs_change_notifications ~~~ fs_root_filesystem_source
     fs_linux_metadata_on_ntfs ~~~ fs_safe_save_keeps_metadata
     fs_handles_do_not_block_users ~~~ fs_persistent_storage_impl
+    fs_root_filesystem_source ~~~ fs_attribute_cache
+    fs_safe_save_keeps_metadata ~~~ fs_attribute_cache
+    fs_persistent_storage_impl ~~~ fs_attribute_cache
     fs_windows_directfs --> fs_change_notifications
     fs_windows_directfs --> fs_linux_metadata_on_ntfs
     fs_windows_directfs --> fs_handles_do_not_block_users
     fs_windows_directfs --> fs_root_filesystem_source
     fs_windows_directfs --> fs_persistent_storage_impl
+    fs_change_notifications --> fs_attribute_cache
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -43,10 +48,9 @@ flowchart TB
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class fs_persistent_image_storage mixed
-    class fs_windows_directfs,fs_linux_metadata_on_ntfs,fs_handles_do_not_block_users succ
-    class fs_change_notifications,fs_root_filesystem_source inprog
-    class fs_safe_save_keeps_metadata finding
+    class fs_windows_directfs,fs_change_notifications,fs_linux_metadata_on_ntfs,fs_handles_do_not_block_users,fs_root_filesystem_source,fs_safe_save_keeps_metadata succ
     class fs_persistent_storage_impl blocked
+    class fs_attribute_cache next
 ```
 <!-- END GENERATED: track-fs -->
 
@@ -58,14 +62,15 @@ flowchart TB
 | `fs-compat-layer-not-boundary` | Compatibility layer, not security boundary | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0005-host-files-accessed-directly.md |
 | `fs-persistent-image-storage` | Test persistent image storage | experiment | linux-ci | done | mixed | 2026-11-26 | 2026-11-26 | workloads-podman-on-gvisor-linux |  |  | 3.7 s with overlay | docs/results/0a-linux.md |
 | `fs-windows-directfs` | Open Windows files directly | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | sentry-windows-build, fs-compat-layer-not-boundary |  |  |  | docs/results/2-windows-directfs.md |
-| `fs-change-notifications` | Windows changes reach the guest | feature | windows-ci | in-progress | unrated | 2026-11-26 |  | fs-windows-directfs |  |  |  |  |
+| `fs-change-notifications` | Windows changes reach the guest | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | fs-windows-directfs |  |  |  | docs/results/2b-fs-rootfs-and-changes.md |
 | `fs-linux-metadata-on-ntfs` | Linux file metadata on NTFS | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | fs-windows-directfs |  |  |  | docs/results/2-windows-directfs.md |
 | `fs-handles-do-not-block-users` | Files stay editable on Windows | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | fs-windows-directfs |  |  |  | docs/results/2-windows-directfs.md |
 | `fs-persistent-storage-choice` | Choose the persistent storage | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 | fs-persistent-image-storage, fs-windows-directfs |  |  |  | docs/adr/0007-persistent-storage-in-a-windows-folder.md |
-| `fs-root-filesystem-source` | Root filesystem from an erofs image | feature | windows-ci | in-progress | unrated | 2026-11-26 |  | fs-windows-directfs, fs-rootfs-import |  |  |  |  |
+| `fs-root-filesystem-source` | Root filesystem from an erofs image | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | fs-windows-directfs, fs-rootfs-import |  |  |  | docs/results/2b-fs-rootfs-and-changes.md; docs/adr/0015-sandbox-rootfs-as-erofs-image.md |
 | `fs-persistent-storage-impl` | Storage that survives restarts | feature | windows-ci | blocked | unrated |  |  | fs-persistent-storage-choice |  |  |  |  |
-| `fs-safe-save-keeps-metadata` | Editor safe-saves keep Linux metadata | defect | windows-ci | in-progress | unrated | 2026-11-26 |  |  |  |  |  | docs/results/2-windows-directfs.md |
+| `fs-safe-save-keeps-metadata` | Editor safe-saves keep Linux metadata | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/2b-fs-rootfs-and-changes.md |
 | `fs-rootfs-import` | Bring container images onto NTFS | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0015-sandbox-rootfs-as-erofs-image.md |
+| `fs-attribute-cache` | Faster stat walks on host folders | feature | windows-ci | next | unrated |  |  | fs-change-notifications |  |  |  | docs/results/2b-fs-rootfs-and-changes.md |
 
 ### Details per node
 
@@ -74,14 +79,15 @@ flowchart TB
 | `fs-compat-layer-not-boundary` | Compatibility layer, not security boundary |  |  | The sandbox may open the user's files directly with the user's rights; it isolates containers from each other, not from the user. |  |  |  |  |  |
 | `fs-persistent-image-storage` | Test persistent image storage | Podman's image store on a gofer-mounted host directory works for pull, build and run and survives a sandbox restart (python:3-slim pull 3.7 s with overlay, 7.2 s with vfs, against 1.7 s natively; a 3000-file build 5.2 s against 1.7 s natively), while the in-sandbox tmpfs is faster but lost on restar | 3.7 s with overlay | Find a writable filesystem inside the sandbox that survives a restart, and how fast each option is. | Done when: pull/build timings on tmpfs and on a host directory, and the overlay restart test, are in docs/results/0a-linux.md. |  |  |  |  |
 | `fs-windows-directfs` | Open Windows files directly | a Windows folder is served to the Sentry as a Linux filesystem with no gofer, by file ID through short-lived share-all handles with Linux metadata in an NTFS stream |  | The Sentry opens NTFS files itself for bind mounts, with its own caches, instead of going through a file protocol. | Done when: the gofer's Windows backend implements open, create, readdir, stat, rename, unlink, link, symlink and xattr calls; a Linux guest edits a Windows folder correctly. |  |  |  |  |
-| `fs-change-notifications` | Windows changes reach the guest |  |  | Edits made on Windows invalidate the Sentry's caches and arrive in the guest as inotify events. | Done when: a file changed in Explorer is visible in the guest within one second and fires an inotify event. |  |  |  |  |
+| `fs-change-notifications` | Windows changes reach the guest | host folders now pick up Windows changes within milliseconds |  | Edits made on Windows invalidate the Sentry's caches and arrive in the guest as inotify events. | Done when: a file changed in Explorer is visible in the guest within one second and fires an inotify event. |  |  |  |  |
 | `fs-linux-metadata-on-ntfs` | Linux file metadata on NTFS | a Windows folder is served to the Sentry as a Linux filesystem with no gofer, by file ID through short-lived share-all handles with Linux metadata in an NTFS stream |  | Owner, mode bits, symlinks and special files survive on NTFS, using a fixed owner and alternate data streams. | Done when: chmod, chown, symlink and mknod round-trip through a Windows folder. |  |  |  |  |
 | `fs-handles-do-not-block-users` | Files stay editable on Windows | a Windows folder is served to the Sentry as a Linux filesystem with no gofer, by file ID through short-lived share-all handles with Linux metadata in an NTFS stream |  | The Sentry holds Windows file handles only briefly, so editors and git can still rename and delete files. | Done when: git checkout and an editor save on Windows succeed while a guest has the folder open. |  |  |  |  |
 | `fs-persistent-storage-choice` | Choose the persistent storage |  |  | Decided: persistent data lives as real files in a Windows folder, with Linux metadata in an NTFS stream. | Done when: an ADR records the choice with the measurements from Phase 0. |  |  |  |  |
-| `fs-root-filesystem-source` | Root filesystem from an erofs image |  |  | The guest's root filesystem comes from an unpacked OCI bundle directory on Windows. | Done when: runsc boot on Windows mounts an erofs root image (Windows file mapping in pkg/erofs) with an overlay and runs a guest from it. |  |  |  |  |
+| `fs-root-filesystem-source` | Root filesystem from an erofs image | a read-only erofs image built from OCI images (alpine, podman) mounts on Windows under a memory overlay in under 40 ms with every type, mode, owner, device node, hard link and symlink correct |  | The guest's root filesystem comes from an unpacked OCI bundle directory on Windows. | Done as a library (pkg/sentry/fsimpl/rootfs); wiring into runsc boot belongs to Boot runsc on Windows. |  |  |  |  |
 | `fs-persistent-storage-impl` | Storage that survives restarts |  |  | Implement the chosen writable filesystem so data inside the sandbox outlives a restart. | Done when: files and image layers written in the guest are there after the sandbox restarts. |  |  |  |  |
-| `fs-safe-save-keeps-metadata` | Editor safe-saves keep Linux metadata |  |  | An editor's safe-save replaces the file, which drops its metadata stream, so the guest falls back to the mount defaults for mode and owner. | Fixed when: a safe-save (write temp, rename over) from Windows keeps the Linux mode and owner the guest set. |  |  |  |  |
+| `fs-safe-save-keeps-metadata` | Editor safe-saves keep Linux metadata |  |  | An editor's safe-save replaces the file, which drops its metadata stream, so the guest falls back to the mount defaults for mode and owner. | Fixed for the running sandbox (metadata remembered per name in memory); replacements while no sandbox runs still lose it. |  |  |  |  |
 | `fs-rootfs-import` | Bring container images onto NTFS |  |  | Decided: the sandbox root is a read-only erofs image with an overlay on top; persistent data such as Podman storage lives in Windows folders. | Done when: an ADR records the choice, after reading how gVisor opens erofs images and which mode a file without a metadata stream reports. |  |  |  |  |
+| `fs-attribute-cache` | Faster stat walks on host folders |  |  | A git-status-like walk of 20000 files takes 1.2-2.4 s through the host folder; an attribute cache fed by the change watcher would bring stat near native. | Done when: a 20000-file stat walk through the backend is within 2x of native on windows-latest. |  |  |  |  |
 
 ### Folded items per node
 

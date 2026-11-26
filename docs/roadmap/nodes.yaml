@@ -782,17 +782,18 @@
   title: Windows changes reach the guest
   track: fs
   kind: feature
-  state: in-progress
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/2b-fs-rootfs-and-changes.md
+  verdict_quote: host folders now pick up Windows changes within milliseconds
   headline: ''
   depends_on:
   - fs-windows-directfs
   replaced_by: []
   lane: windows-ci
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   plain: Edits made on Windows invalidate the Sentry's caches and arrive in the guest as inotify events.
@@ -1124,10 +1125,12 @@
   title: Root filesystem from an erofs image
   track: fs
   kind: feature
-  state: in-progress
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/2b-fs-rootfs-and-changes.md
+  - docs/adr/0015-sandbox-rootfs-as-erofs-image.md
+  verdict_quote: a read-only erofs image built from OCI images (alpine, podman) mounts on Windows under a memory overlay in under 40 ms with every type, mode, owner, device node, hard link and symlink correct
   headline: ''
   depends_on:
   - fs-windows-directfs
@@ -1135,11 +1138,11 @@
   replaced_by: []
   lane: windows-ci
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   plain: The guest's root filesystem comes from an unpacked OCI bundle directory on Windows.
-  notes: 'Done when: runsc boot on Windows mounts an erofs root image (Windows file mapping in pkg/erofs) with an overlay and runs a guest from it.'
+  notes: Done as a library (pkg/sentry/fsimpl/rootfs); wiring into runsc boot belongs to Boot runsc on Windows.
 - id: sentry-threads-and-signals
   title: Guest threads and signals
   track: sentry
@@ -1743,21 +1746,21 @@
   title: Editor safe-saves keep Linux metadata
   track: fs
   kind: defect
-  state: in-progress
+  state: done
   outcome: unrated
   evidence:
-  - docs/results/2-windows-directfs.md
+  - docs/results/2b-fs-rootfs-and-changes.md
   verdict_quote: ''
   headline: ''
   depends_on: []
   replaced_by: []
   lane: windows-ci
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   plain: An editor's safe-save replaces the file, which drops its metadata stream, so the guest falls back to the mount defaults for mode and owner.
-  notes: 'Fixed when: a safe-save (write temp, rename over) from Windows keeps the Linux mode and owner the guest set.'
+  notes: Fixed for the running sandbox (metadata remembered per name in memory); replacements while no sandbox runs still lose it.
 - outcome: unrated
   evidence:
   - docs/results/1c-windows-platform.md
@@ -1834,3 +1837,23 @@
   lane: windows-ci
   plain: Right after busybox works, run podman --version and podman info inside the sandbox; their failures are the real gap list.
   notes: 'Done when: the gap list is written up in docs/results.'
+- id: fs-attribute-cache
+  title: Faster stat walks on host folders
+  track: fs
+  kind: feature
+  state: next
+  outcome: unrated
+  evidence:
+  - docs/results/2b-fs-rootfs-and-changes.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - fs-change-notifications
+  replaced_by: []
+  lane: windows-ci
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: A git-status-like walk of 20000 files takes 1.2-2.4 s through the host folder; an attribute cache fed by the change watcher would bring stat near native.
+  notes: 'Done when: a 20000-file stat walk through the backend is within 2x of native on windows-latest.'

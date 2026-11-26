@@ -449,6 +449,9 @@ func (i *inode) statTo(stat *linux.Statx) {
 	}
 	stat.Atime = stat.Mtime
 	stat.Ctime = stat.Mtime
+	if i.IsCharDev() || i.IsBlockDev() { // gvisor-windows
+		stat.RdevMajor, stat.RdevMinor = i.Rdev()
+	}
 	stat.DevMajor = linux.UNNAMED_MAJOR
 	stat.DevMinor = i.fs.devMinor
 }
