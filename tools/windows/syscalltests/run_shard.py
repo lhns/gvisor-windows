@@ -12,7 +12,7 @@ running when the kernel died is known. After a crash the rest of the list runs
 in a fresh kernel; a binary that crashed the kernel --crash-limit times has its
 remaining cases marked CRASH without running them (same cause assumed).
 Output tails of failures go to R.out (binary TAB test TAB escaped tail)."""
-import argparse, collections, os, subprocess, sys, tempfile, time
+import argparse, collections, os, re, subprocess, sys, tempfile, time
 
 
 def esc(b):
@@ -96,8 +96,10 @@ def main():
                     finished = True
         if finished:
             continue
-        tail = esc(open(log, 'rb').read()[-1500:])
-        if not saw_start:
+        text = open(log, 'rb').read().decode('utf-8', 'replace')
+        found = re.findall(r'(?m)^(panic: .*|fatal error: .*|unexpected fault address.*|Exception .*|sentryguest: FAIL.*)', text)
+        tail = esc((('panic: ' if False else '') + (found[-1] + chr(10) if found else '') + text[-2500:]).encode('utf-8'))
+        if not saw_start and 'sentryguest: FAIL' in open(log, 'rb').read().decode('utf-8', 'replace'):
             no_start += 1
             if no_start >= 3:
                 # The kernel does not get as far as running the driver.

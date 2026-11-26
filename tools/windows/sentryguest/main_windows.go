@@ -247,12 +247,12 @@ func main() {
 				select {
 				case <-stopStream:
 					return
-				case <-time.After(500 * time.Millisecond):
+				case <-time.After(20 * time.Millisecond):
 				}
-				out := readAll(ctx, vfsObj, creds, root, "/stdout")
-				if len(out) > streamed {
-					os.Stdout.Write(out[streamed:])
-					streamed = len(out)
+				out := readFrom(ctx, vfsObj, creds, root, "/stdout", streamed)
+				if len(out) > 0 {
+					os.Stdout.Write(out)
+					streamed += len(out)
 				}
 			}
 		}()
@@ -315,6 +315,25 @@ func sampler() {
 				}
 			}
 			winstub.Trace("sample: %s", strings.Join(fr, " < "))
+		}
+	}
+}
+
+// readFrom reads what the file holds beyond offset off.
+func readFrom(ctx context.Context, vfsObj *vfs.VirtualFilesystem, creds *auth.Credentials, root vfs.VirtualDentry, path string, off int) []byte {
+	fd, err := vfsObj.OpenAt(ctx, creds, &vfs.PathOperation{Root: root, Start: root, Path: fspath.Parse(path)},
+		&vfs.OpenOptions{Flags: linux.O_RDONLY})
+	if err != nil {
+		return nil
+	}
+	defer fd.DecRef(ctx)
+	var out []byte
+	buf := make([]byte, 64<<10)
+	for {
+		n, err := fd.PRead(ctx, usermem.BytesIOSequence(buf), int64(off+len(out)), vfs.ReadOptions{})
+		out = append(out, buf[:n]...)
+		if n == 0 || err != nil {
+			return out
 		}
 	}
 }
