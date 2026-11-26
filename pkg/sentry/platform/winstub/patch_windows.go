@@ -75,7 +75,26 @@ type scanResult struct {
 // decodeRange decodes code linearly from from to end (instructions that start
 // before end), skipping bytes that do not decode.
 func decodeRange(code []byte, from, end int, list []ins) []ins {
-	for off := from; off < end; {
+	for from < end {
+		var done bool
+		list, from, done = decodeRangeSafe(code, from, end, list)
+		if !done {
+			from++ // the decoder panicked here (a truncated instruction at the end of the range)
+		}
+	}
+	return list
+}
+
+// decodeRangeSafe is decodeRange up to a panic of the decoder; it returns the
+// offset of the instruction being decoded and false in that case.
+func decodeRangeSafe(code []byte, from, end int, list []ins) (res []ins, at int, done bool) {
+	off := from
+	defer func() {
+		if r := recover(); r != nil {
+			res, at, done = list, off, false
+		}
+	}()
+	for ; off < end; {
 		inst, err := x86asm.Decode(code[off:], 64)
 		if err != nil || inst.Len == 0 {
 			off++
@@ -88,7 +107,7 @@ func decodeRange(code []byte, from, end int, list []ins) []ins {
 		list = append(list, x)
 		off += inst.Len
 	}
-	return list
+	return list, off, true
 }
 
 // decodeAll is the linear sweep over the whole range, split over several

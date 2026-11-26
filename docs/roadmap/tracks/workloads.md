@@ -18,7 +18,7 @@ flowchart TB
     workloads_gvisor_cgroupfs_readonly>"✔ Cgroup filesystem<br/>mounted read-only"]
     workloads_podman_api_named_pipe["▶ Podman API on a<br/>named pipe"]
     workloads_podman_on_windows[/"⛔ Podman passes on<br/>Windows"/]
-    workloads_podman_probe[/"⛔ Probe Podman inside<br/>the sandbox"/]
+    workloads_podman_probe[/"○ Probe Podman inside<br/>the sandbox"/]
     workloads_podman_harness["⛔ Serve Podman to<br/>Windows clients"]
     workloads_acceptance_test ~~~ workloads_podman_on_gvisor_linux
     workloads_acceptance_test ~~~ workloads_acceptance_test_windows
@@ -60,7 +60,8 @@ flowchart TB
     class workloads_podman_on_gvisor_linux,workloads_strict_bar_linux mixed
     class workloads_acceptance_test_windows,workloads_podman_api_named_pipe inprog
     class workloads_gvisor_bridge_netlink,workloads_gvisor_port_publishing,workloads_gvisor_cgroupfs_readonly succ
-    class workloads_podman_on_windows,workloads_podman_probe,workloads_podman_harness blocked
+    class workloads_podman_on_windows,workloads_podman_harness blocked
+    class workloads_podman_probe next
 ```
 <!-- END GENERATED: track-workloads -->
 
@@ -80,7 +81,7 @@ flowchart TB
 | `workloads-strict-bar-linux` | Strict bar on stock gVisor | experiment | linux-ci | done | mixed | 2026-11-26 | 2026-11-26 | workloads-podman-on-gvisor-linux |  |  |  | docs/results/0c-linux-strict-bar.md |
 | `workloads-gvisor-cgroupfs-readonly` | Cgroup filesystem mounted read-only | defect | linux-ci | done | unrated | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/1n-bridge-networking.md |
 | `workloads-podman-api-named-pipe` | Podman API on a named pipe | feature | windows-ci | in-progress | unrated | 2026-11-26 |  | runsc-windows-boot |  |  |  |  |
-| `workloads-podman-probe` | Probe Podman inside the sandbox | experiment | windows-ci | blocked | unrated |  |  | platform-busybox-on-windows, platform-map-files-without-sections |  |  |  |  |
+| `workloads-podman-probe` | Probe Podman inside the sandbox | experiment | windows-ci | next | unrated |  |  | platform-busybox-on-windows, platform-map-files-without-sections |  |  |  |  |
 
 ### Details per node
 

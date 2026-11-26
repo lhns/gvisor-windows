@@ -17,19 +17,20 @@
 package winstub
 
 import (
-	"fmt"
-	"sort"
-	"runtime"
-	"syscall"
-	"unsafe"
-	"golang.org/x/sys/windows"
-	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/stubasm"
+	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
+	"golang.org/x/sys/windows"
+	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/stubasm"
 	"os"
+	"runtime"
+	"sort"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
+	"unsafe"
 
 	"gvisor.dev/gvisor/pkg/abi/linux"
 	pkgcontext "gvisor.dev/gvisor/pkg/context"
@@ -562,13 +563,13 @@ func TestFPState(t *testing.T) {
 	h := newHarness(t)
 	mm := h.newMM()
 	a := &asm{base: textBase}
-	start := a.emit(0xc5, 0xfe, 0x6f, 0x07) // vmovdqu ymm0,[rdi]
-	a.emit(0xb8, 39, 0, 0, 0, 0x0f, 0x05)   // syscall
-	a.emit(0xc5, 0xfe, 0x7f, 0x06)          // vmovdqu [rsi],ymm0
-	a.emit(0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05) // syscall 500
+	start := a.emit(0xc5, 0xfe, 0x6f, 0x07)                // vmovdqu ymm0,[rdi]
+	a.emit(0xb8, 39, 0, 0, 0, 0x0f, 0x05)                  // syscall
+	a.emit(0xc5, 0xfe, 0x7f, 0x06)                         // vmovdqu [rsi],ymm0
+	a.emit(0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05)                // syscall 500
 	a.emit(0x48, 0x8b, 0x04, 0x25, 0x00, 0x00, 0x80, 0x00) // mov rax,[0x800000]
-	a.emit(0xc5, 0xfe, 0x7f, 0x46, 0x20)    // vmovdqu [rsi+32],ymm0
-	a.emit(0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05) // syscall 500
+	a.emit(0xc5, 0xfe, 0x7f, 0x46, 0x20)                   // vmovdqu [rsi+32],ymm0
+	a.emit(0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05)                // syscall 500
 	spin := a.emit(0xeb, 0xfe)
 	store := a.emit(0xc5, 0xfe, 0x7f, 0x46, 0x40) // vmovdqu [rsi+64],ymm0
 	a.emit(0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05)
@@ -954,4 +955,289 @@ func TestInterruptStorm(t *testing.T) {
 		}(s.name, s.start)
 	}
 	wg.Wait()
+}
+
+// bytesFile is a memmap.File that is not a memory file: its pages are a Go slice
+// (like the erofs image mapping), with no section to map.
+type bytesFile struct {
+	memmap.DefaultMemoryType
+	memmap.NoBufferedIOFallback
+	data []byte
+}
+
+func (*bytesFile) IncRef(memmap.FileRange, uint32) {}
+func (*bytesFile) DecRef(memmap.FileRange)         {}
+func (b *bytesFile) MapInternal(fr memmap.FileRange, at hostarch.AccessType) (safemem.BlockSeq, error) {
+	return safemem.BlockSeqOf(safemem.BlockFromSafeSlice(b.data[fr.Start:fr.End])), nil
+}
+func (*bytesFile) DataFD(memmap.FileRange) (int, error) { return -1, errors.New("no fd") }
+func (*bytesFile) FD() int                              { return -1 }
+
+// TestMapNonSectionFile maps text and data from a file that is not the memory
+// file and runs the guest.
+func TestMapNonSectionFile(t *testing.T) {
+	h := newHarness(t)
+	g := buildGuest()
+	mm := h.newMM()
+	text := &bytesFile{data: append(append([]byte(nil), g.code...), make([]byte, 4*pageSz-len(g.code))...)}
+	if err := mm.as.MapFile(textBase, text, memmap.FileRange{Start: 0, End: 4 * pageSz}, rx, false); err != nil {
+		t.Fatalf("MapFile of text: %v", err)
+	}
+	data := &bytesFile{data: make([]byte, pageSz)}
+	binary.LittleEndian.PutUint64(data.data, 0xfeedface12345678)
+	if err := mm.as.MapFile(0x1000000, data, memmap.FileRange{Start: 0, End: pageSz}, hostarch.Read, false); err != nil {
+		t.Fatalf("MapFile of data: %v", err)
+	}
+	if err := mm.as.MapFile(0x1100000, data, memmap.FileRange{Start: 0, End: pageSz}, rw, false); err == nil {
+		t.Errorf("a writable mapping of a file without sections must fail")
+	}
+	c := h.p.NewContext(pkgcontext.Background())
+	defer c.Release()
+	ac := newAC(g.readLoop, 0)
+	ac.StateData().Regs.Rdi = 0x1000000
+	if nr := h.syscall(c, mm, ac); nr != 500 || ac.StateData().Regs.Rdi != 0xfeedface12345678 {
+		t.Fatalf("syscall %d rdi %#x", nr, ac.StateData().Regs.Rdi)
+	}
+}
+
+type perfInfo struct {
+	cb                                                                                                  uint32
+	_                                                                                                   uint32
+	commitTotal, commitLimit, commitPeak, physTotal, physAvail, sysCache, kTotal, kPaged, kNP, pageSize uintptr
+	handles, procs, threads                                                                             uint32
+}
+
+type procMem struct {
+	cb, faults                      uint32
+	peakWS, ws                      uintptr
+	qpp, qp, qnpp, qnp              uintptr
+	pagefile, peakPagefile, private uintptr
+}
+
+// memState returns the system commit charge and this process's working set, in MB.
+func memState() (commitMB, wsMB uint64) {
+	var pi perfInfo
+	pi.cb = uint32(unsafe.Sizeof(pi))
+	k := windows.NewLazySystemDLL("kernel32.dll")
+	k.NewProc("K32GetPerformanceInfo").Call(uintptr(unsafe.Pointer(&pi)), uintptr(pi.cb))
+	var pm procMem
+	pm.cb = uint32(unsafe.Sizeof(pm))
+	k.NewProc("K32GetProcessMemoryInfo").Call(uintptr(windows.CurrentProcess()), uintptr(unsafe.Pointer(&pm)), uintptr(pm.cb))
+	return uint64(pi.commitTotal) * uint64(pi.pageSize) >> 20, uint64(pm.ws) >> 20
+}
+
+// TestMemoryRelease allocates and touches 1 GB of guest memory, maps it into a
+// stub, unmaps and frees it, and checks that the working set and the system
+// commit charge go back down.
+func TestMemoryRelease(t *testing.T) {
+	h := newHarness(t)
+	mm := h.newMM()
+	const size = 1 << 30
+	c0, w0 := memState()
+	t0 := time.Now()
+	fr, err := h.mf.Allocate(size, pgalloc.AllocOpts{Kind: usage.Anonymous})
+	if err != nil {
+		t.Fatalf("Allocate: %v", err)
+	}
+	fillRange(t, h.mf, fr, 0x5a)
+	h.mapAt(mm, 0x10000000, fr, rw)
+	c1, w1 := memState()
+	t.Logf("RELEASE allocated, touched and mapped 1 GB in %v: commit %d -> %d MB, working set %d -> %d MB", time.Since(t0).Round(time.Millisecond), c0, c1, w0, w1)
+	if c1 < c0+900 || w1 < w0+900 {
+		t.Fatalf("the allocation did not show up: commit %d -> %d, working set %d -> %d", c0, c1, w0, w1)
+	}
+	mm.as.Unmap(0x10000000, size)
+	h.mf.DecRef(fr)
+	t1 := time.Now()
+	var c2, w2 uint64
+	for time.Since(t1) < 30*time.Second {
+		c2, w2 = memState()
+		if c2 < c0+100 && w2 < w0+100 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Logf("RELEASE freed after %v: commit %d MB (baseline %d), working set %d MB (baseline %d); extents released %d", time.Since(t1).Round(time.Millisecond), c2, c0, w2, w0, pgalloc.ExtentsReleased())
+	if c2 > c0+100 {
+		t.Errorf("commit charge did not come back: %d MB, baseline %d MB", c2, c0)
+	}
+	if w2 > w0+100 {
+		t.Errorf("working set did not come back: %d MB, baseline %d MB", w2, w0)
+	}
+	// the memory is usable again, reads as zero
+	fr2, err := h.mf.Allocate(1<<20, pgalloc.AllocOpts{Kind: usage.Anonymous})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkRange(t, h.mf, fr2, 0)
+}
+
+func fillRange(t *testing.T, f *pgalloc.MemoryFile, fr memmap.FileRange, b byte) {
+	t.Helper()
+	bs, err := f.MapInternal(fr, hostarch.ReadWrite)
+	if err != nil {
+		t.Fatalf("MapInternal(%v): %v", fr, err)
+	}
+	for ; !bs.IsEmpty(); bs = bs.Tail() {
+		s := bs.Head().ToSlice()
+		for i := range s {
+			s[i] = b
+		}
+	}
+}
+
+func checkRange(t *testing.T, f *pgalloc.MemoryFile, fr memmap.FileRange, b byte) {
+	t.Helper()
+	bs, err := f.MapInternal(fr, hostarch.Read)
+	if err != nil {
+		t.Fatalf("MapInternal(%v): %v", fr, err)
+	}
+	for ; !bs.IsEmpty(); bs = bs.Tail() {
+		for i, v := range bs.Head().ToSlice() {
+			if v != b {
+				t.Fatalf("range %v: byte %d is %#x, want %#x", fr, i, v, b)
+			}
+		}
+	}
+}
+
+// splitPage returns a page of NOPs with head at its start and tail at its end.
+func splitPage(head, tail []byte) []byte {
+	b := bytes.Repeat([]byte{0x90}, pageSz)
+	copy(b, head)
+	copy(b[pageSz-len(tail):], tail)
+	return b
+}
+
+// TestSplitSyscallAfterUnmap: the ends a partial unmap leaves behind take part in
+// the split-syscall handling.
+func TestSplitSyscallAfterUnmap(t *testing.T) {
+	later := []byte{0x05, 0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05}
+	t.Run("left remainder", func(t *testing.T) {
+		h := newHarness(t)
+		mm := h.newMM()
+		// One mapping of two pages; the first ends with 0f 1f 00 (a nop) across
+		// the page boundary.
+		a := splitPage([]byte{0xb8, 40, 0, 0, 0}, []byte{0x0f})
+		b := splitPage([]byte{0x1f, 0x00}, nil)
+		h.mapAt(mm, textBase, h.pages(append(a, b...), 2), rx)
+		mm.as.Unmap(textBase+pageSz, pageSz)
+		h.mapAt(mm, textBase+pageSz, h.pages(splitPage(later, nil), 1), rx)
+		c := h.p.NewContext(pkgcontext.Background())
+		defer c.Release()
+		ac := newAC(textBase, 0)
+		if nr := h.syscall(c, mm, ac); nr != 40 {
+			t.Fatalf("split syscall = %d, want 40", nr)
+		}
+		if nr := h.syscall(c, mm, ac); nr != 500 {
+			t.Fatalf("next syscall = %d, want 500", nr)
+		}
+	})
+	t.Run("right remainder", func(t *testing.T) {
+		h := newHarness(t)
+		mm := h.newMM()
+		// The second page starts with 05 (add eax,imm32 as the range was mapped).
+		a := splitPage(nil, nil)
+		b := splitPage(later, nil)
+		h.mapAt(mm, textBase, h.pages(append(a, b...), 2), rx)
+		mm.as.Unmap(textBase, pageSz)
+		h.mapAt(mm, textBase, h.pages(splitPage([]byte{0xb8, 41, 0, 0, 0}, []byte{0x0f}), 1), rx)
+		c := h.p.NewContext(pkgcontext.Background())
+		defer c.Release()
+		ac := newAC(textBase, 0)
+		if nr := h.syscall(c, mm, ac); nr != 41 {
+			t.Fatalf("split syscall = %d, want 41", nr)
+		}
+		if nr := h.syscall(c, mm, ac); nr != 500 {
+			t.Fatalf("next syscall = %d, want 500", nr)
+		}
+	})
+}
+
+// TestSplitSyscallWX: a syscall split by the boundary of two W^X windows.
+func TestSplitSyscallWX(t *testing.T) {
+	h := newHarness(t)
+	mm := h.newMM()
+	data := bytes.Repeat([]byte{0x90}, 2<<20)
+	copy(data, []byte{0xb8, 40, 0, 0, 0})
+	data[wxWindow-1] = 0x0f
+	copy(data[wxWindow:], []byte{0x05, 0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05})
+	h.mapAt(mm, 0xA00000, h.pages(data, 512), hostarch.AnyAccess)
+	c := h.p.NewContext(pkgcontext.Background())
+	defer c.Release()
+	ac := newAC(0xA00000, 0)
+	if nr := h.syscall(c, mm, ac); nr != 40 {
+		t.Fatalf("split syscall = %d, want 40", nr)
+	}
+	if got := ac.StateData().Regs.Rip; got != 0xA00000+wxWindow+1 {
+		t.Fatalf("resume at %#x", got)
+	}
+	if nr := h.syscall(c, mm, ac); nr != 500 {
+		t.Fatalf("next syscall = %d, want 500", nr)
+	}
+}
+
+// TestOversubscribed runs many more busy guest threads than there are vCPUs, all
+// making syscalls in a tight loop, and checks that none starves and that the
+// round trip of one more thread stays bounded.
+func TestOversubscribed(t *testing.T) {
+	h := newHarness(t)
+	g := buildGuest()
+	mm := h.newMM()
+	h.setup(mm, g)
+	threads := 8 * runtime.NumCPU()
+	const dur = 4 * time.Second
+	counts := make([]int, threads)
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	for w := 0; w < threads; w++ {
+		wg.Add(1)
+		go func(w int) {
+			defer wg.Done()
+			c := h.p.NewContext(pkgcontext.Background())
+			defer c.Release()
+			ac := newAC(g.loop, 0)
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				if _, _, err := c.Switch(pkgcontext.Background(), mm, ac, -1); err != nil {
+					return
+				}
+				counts[w]++
+			}
+		}(w)
+	}
+	// the probe: one more thread, its round trips timed one by one
+	var lat []time.Duration
+	probe := h.p.NewContext(pkgcontext.Background())
+	pac := newAC(g.loop, 0)
+	end := time.Now().Add(dur)
+	for time.Now().Before(end) {
+		t0 := qpc()
+		if _, _, err := probe.Switch(pkgcontext.Background(), mm, pac, -1); err != nil {
+			t.Fatalf("probe: %v", err)
+		}
+		lat = append(lat, time.Duration(qpc()-t0))
+	}
+	close(stop)
+	wg.Wait()
+	probe.Release()
+	sort.Slice(lat, func(i, j int) bool { return lat[i] < lat[j] })
+	total, lo, hi := 0, counts[0], counts[0]
+	for _, c := range counts {
+		total += c
+		lo, hi = min(lo, c), max(hi, c)
+	}
+	n := len(lat)
+	t.Logf("OVERSUB %d busy threads on %d vCPUs: %d syscalls in %v (%.0f per second); per thread min %d, mean %d, max %d; probe round trip p50 %v p99 %v p99.9 %v max %v over %d",
+		threads, runtime.NumCPU(), total, dur, float64(total)/dur.Seconds(), lo, total/threads, hi, lat[n/2], lat[n*99/100], lat[n*999/1000], lat[n-1], n)
+	if lo < total/threads/20 {
+		t.Errorf("a thread starved: %d syscalls against a mean of %d", lo, total/threads)
+	}
+	if lat[n*99/100] > 50*time.Millisecond {
+		t.Errorf("probe p99 %v", lat[n*99/100])
+	}
 }

@@ -129,3 +129,13 @@ func (f *MemoryFile) decommitFile(fr memmap.FileRange) error {
 		int64(fr.Length()))
 }
 
+
+// gvisor-windows: the extent state of a chunk exists only on Windows.
+type hostExtents struct{}
+
+func (c *chunkInfo) hostEnsure(fr memmap.FileRange) {}
+
+// decommitRetained is decommitFile for pages that stay allocated.
+func (f *MemoryFile) decommitRetained(fr memmap.FileRange) error {
+	return f.decommitFile(fr)
+}

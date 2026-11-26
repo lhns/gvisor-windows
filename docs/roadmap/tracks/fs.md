@@ -17,6 +17,7 @@ flowchart TB
     fs_root_filesystem_source["✔ Root filesystem from<br/>an erofs image"]
     fs_safe_save_keeps_metadata>"✔ Editor safe-saves<br/>keep Linux metadata"]
     fs_attribute_cache["✔ Faster stat walks on<br/>host folders"]
+    fs_flaky_negative_cache_test>"⚠ Flaky negative-cache<br/>test on host folders"]
     fs_persistent_storage_impl["⛔ Storage that<br/>survives restarts"]
     fs_persistent_image_storage ~~~ fs_change_notifications
     fs_windows_directfs ~~~ fs_linux_metadata_on_ntfs
@@ -24,7 +25,7 @@ flowchart TB
     fs_change_notifications ~~~ fs_root_filesystem_source
     fs_linux_metadata_on_ntfs ~~~ fs_safe_save_keeps_metadata
     fs_handles_do_not_block_users ~~~ fs_attribute_cache
-    fs_root_filesystem_source ~~~ fs_persistent_storage_impl
+    fs_root_filesystem_source ~~~ fs_flaky_negative_cache_test
     fs_safe_save_keeps_metadata ~~~ fs_persistent_storage_impl
     fs_attribute_cache ~~~ fs_persistent_storage_impl
     fs_windows_directfs --> fs_change_notifications
@@ -49,6 +50,7 @@ flowchart TB
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class fs_persistent_image_storage,fs_attribute_cache mixed
     class fs_windows_directfs,fs_change_notifications,fs_linux_metadata_on_ntfs,fs_handles_do_not_block_users,fs_root_filesystem_source,fs_safe_save_keeps_metadata succ
+    class fs_flaky_negative_cache_test finding
     class fs_persistent_storage_impl blocked
 ```
 <!-- END GENERATED: track-fs -->
@@ -70,6 +72,7 @@ flowchart TB
 | `fs-safe-save-keeps-metadata` | Editor safe-saves keep Linux metadata | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/2b-fs-rootfs-and-changes.md |
 | `fs-rootfs-import` | Bring container images onto NTFS | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0015-sandbox-rootfs-as-erofs-image.md |
 | `fs-attribute-cache` | Faster stat walks on host folders | feature | windows-ci | done | mixed | 2026-11-26 | 2026-11-26 | fs-change-notifications |  |  | 1 us per file | docs/results/2c-fs-speed.md |
+| `fs-flaky-negative-cache-test` | Flaky negative-cache test on host folders | defect | windows-ci | next | unrated | 2026-11-26 |  |  |  |  |  | docs/results/1g-platform-memory.md |
 
 ### Details per node
 
@@ -87,6 +90,7 @@ flowchart TB
 | `fs-safe-save-keeps-metadata` | Editor safe-saves keep Linux metadata |  |  | An editor's safe-save replaces the file, which drops its metadata stream, so the guest falls back to the mount defaults for mode and owner. | Fixed for the running sandbox (metadata remembered per name in memory); replacements while no sandbox runs still lose it. |  |  |  |  |
 | `fs-rootfs-import` | Bring container images onto NTFS |  |  | Decided: the sandbox root is a read-only erofs image with an overlay on top; persistent data such as Podman storage lives in Windows folders. | Done when: an ADR records the choice, after reading how gVisor opens erofs images and which mode a file without a metadata stream reports. |  |  |  |  |
 | `fs-attribute-cache` | Faster stat walks on host folders | a watched host folder now answers a repeated stat walk of 20000 files from cache at 1 us per file (native 22-30 us) | 1 us per file | A git-status-like walk of 20000 files takes 1.2-2.4 s through the host folder; an attribute cache fed by the change watcher would bring stat near native. | Done when: a 20000-file stat walk through the backend is within 2x of native on windows-latest. |  |  |  |  |
+| `fs-flaky-negative-cache-test` | Flaky negative-cache test on host folders |  |  | TestVFSNegativeCacheAndQuickChange failed once on windows-fs after passing on the previous head; a timing race in the change watcher or the test. | Fixed when: the test passes 20 runs in a row on windows-latest. |  |  |  |  |
 
 ### Folded items per node
 
