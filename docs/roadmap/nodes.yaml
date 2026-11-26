@@ -617,10 +617,11 @@
   title: Windows platform for the Sentry
   track: platform
   kind: feature
-  state: in-progress
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/1c-windows-platform.md
+  verdict_quote: The Sentry's platform interface runs on stub processes on a hosted Windows runner
   headline: ''
   depends_on:
   - platform-stub-controller
@@ -630,8 +631,9 @@
   replaced_by: []
   lane: windows-ci
   start: '2026-11-26'
-  end: ''
-  folded: []
+  end: '2026-11-26'
+  folded:
+  - Six platform tests pass with the real memory file (2026-11-26, commit 40d02cbde)
   overview: true
   plain: 'gVisor''s platform interface implemented for Windows: address spaces, context switches and syscall delivery through stub processes.'
   notes: 'Done when: pkg/sentry/platform/winstub passes the platform''s own tests on Windows.'
@@ -689,11 +691,12 @@
   title: Guest memory on Windows sections
   track: sentry
   kind: feature
-  state: in-progress
+  state: done
   outcome: unrated
   evidence:
   - docs/results/1b-sentry-host-basics.md
   - docs/adr/0013-memory-file-on-reserved-sections.md
+  - docs/results/1c-windows-platform.md
   verdict_quote: ''
   headline: ''
   depends_on:
@@ -703,12 +706,11 @@
   replaced_by: []
   lane: windows-ci
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   plain: The Sentry's memory file becomes Windows section objects, one per 1 GB chunk.
-  notes: 'Done when: pgalloc allocates, maps into a stub and copy-on-write-breaks memory on Windows; mm tests pass. Done so far: allocation, internal mappings, Decommit and the section accessor, tested
-    on Windows; mapping into a stub and releasing committed memory are open.'
+  notes: Mapping memory-file sections into stubs is exercised by the platform tests; freed memory is only partly returned to Windows (ADR 0013).
 - id: sentry-event-loop-iocp
   title: Event waiting on IOCP
   track: sentry
@@ -1398,6 +1400,7 @@
   - platform-winstub
   - sentry-fault-recovery
   - platform-fs-base-repair
+  - platform-fp-state
   replaced_by: []
   start: ''
   end: ''
@@ -1592,3 +1595,60 @@
   overview: false
   plain: Podman 6's netavark only speaks nftables, and gVisor's nftables package says it is not thread-safe, so --nftables stays off by default.
   notes: 'Fixed when: the nftables package is safe under concurrent rule updates and packet evaluation (race-detector test), and --nftables can default on.'
+- outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - platform-winstub
+  replaced_by: []
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  id: platform-fp-state
+  title: Save and restore FPU and SSE state
+  track: platform
+  kind: feature
+  state: next
+  lane: windows-ci
+  plain: Guest floating-point and vector registers must survive every switch into the Sentry and back; the platform does not carry them yet.
+  notes: 'Done when: a guest using SSE/AVX across syscalls, faults and signals keeps its register values, and the Sentry sees the right xsave size for signal frames.'
+- outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - platform-static-guest-from-memory
+  replaced_by: []
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  id: platform-retire-prototype
+  title: Retire the stub prototype
+  track: platform
+  kind: tooling
+  state: blocked
+  lane: windows-ci
+  plain: The prototype under tools/windows/stubproto duplicates the platform code; once its test guests run under the Sentry, delete it.
+  notes: 'Done when: tools/windows/stubproto and its workflow are removed and its guests run through the Sentry in CI.'
+- outcome: unrated
+  evidence:
+  - docs/adr/0013-memory-file-on-reserved-sections.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-26'
+  end: ''
+  folded: []
+  overview: false
+  id: platform-memory-release
+  title: Give freed guest memory back
+  track: platform
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: Decommitted guest memory only partly leaves the working set and never reduces commit charge, because pages stay committed in 1 GB sections.
+  notes: 'Fixed when: a guest that allocates and frees 1 GB returns it to Windows (working set and commit charge), measured in CI.'

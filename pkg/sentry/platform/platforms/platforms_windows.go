@@ -18,4 +18,9 @@
 package platforms
 
 // gvisor-windows: the Linux platforms (kvm, ptrace, systrap) are excluded
-// from the Windows build; the Windows platform registers itself here later.
+// from the Windows build.
+
+import (
+	// gvisor-windows: the Windows platform registers itself as "winstub".
+	_ "gvisor.dev/gvisor/pkg/sentry/platform/winstub"
+)
