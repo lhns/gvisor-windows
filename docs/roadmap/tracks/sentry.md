@@ -19,6 +19,7 @@ flowchart TB
     sentry_dynamic_elf_and_exec["✔ Dynamic programs,<br/>exec and pipes"]
     sentry_event_loop_iocp["⏸ Event waiting on<br/>IOCP"]
     sentry_timers_and_clocks["⛔ Timers and clocks on<br/>Windows"]
+    sentry_profile_small_file_path[/"○ Profile the slow<br/>file and exec path"/]
     sentry_go_fault_recovery ~~~ sentry_unix_shim
     sentry_unix_shim ~~~ sentry_windows_build
     sentry_windows_build ~~~ sentry_memory_file_sections
@@ -28,8 +29,8 @@ flowchart TB
     sentry_fault_recovery ~~~ sentry_dynamic_elf_and_exec
     sentry_host_stdio_and_tty ~~~ sentry_event_loop_iocp
     sentry_threads_and_signals ~~~ sentry_timers_and_clocks
-    sentry_dynamic_elf_and_exec ~~~ sentry_timers_and_clocks
-    sentry_event_loop_iocp ~~~ sentry_timers_and_clocks
+    sentry_dynamic_elf_and_exec ~~~ sentry_profile_small_file_path
+    sentry_event_loop_iocp ~~~ sentry_profile_small_file_path
     sentry_go_fault_recovery --> sentry_unix_shim
     sentry_unix_shim --> sentry_windows_build
     sentry_windows_build --> sentry_memory_file_sections
@@ -55,6 +56,7 @@ flowchart TB
     class sentry_windows_build,sentry_memory_file_sections unrated
     class sentry_event_loop_iocp parked
     class sentry_timers_and_clocks blocked
+    class sentry_profile_small_file_path next
 ```
 <!-- END GENERATED: track-sentry -->
 
@@ -73,6 +75,7 @@ flowchart TB
 | `sentry-threads-and-signals` | Guest threads and signals | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-winstub |  |  |  | docs/results/1f-exec-signals.md |
 | `sentry-unix-shim` | Make Linux names resolve on Windows | feature | none | done | successful | 2026-11-26 | 2026-11-26 | ops-phase0-go-no-go |  |  | 25 hand-edited shared files | docs/adr/0006-a-linux-abi-shim-for-x-sys-unix.md; docs/results/1b-windows-build.md |
 | `sentry-dynamic-elf-and-exec` | Dynamic programs, exec and pipes | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-static-guest-from-memory |  |  |  | docs/results/1f-exec-signals.md |
+| `sentry-profile-small-file-path` | Profile the slow file and exec path | experiment | windows-ci | next | unrated |  |  | workloads-end-to-end-speed |  |  |  | docs/results/3b-runsc-speed-lifecycle.md |
 
 ### Details per node
 
@@ -88,6 +91,7 @@ flowchart TB
 | `sentry-threads-and-signals` | Guest threads and signals | Under the real Sentry on `windows-latest`, dynamic glibc and musl programs with `dlopen`, execve chains, fork+exec+wait, busybox shell pipelines |  | Multi-threaded guests (such as Go programs) get one stub thread per guest thread, with signals delivered correctly. | Done when: a multi-threaded Go program and a signal-handling test run correctly under the Sentry on Windows. |  |  |  |  |
 | `sentry-unix-shim` | Make Linux names resolve on Windows | the sandbox side compiles for Windows with 25 hand-edited shared files and one x/sys shim | 25 hand-edited shared files | A Windows copy of x/sys/unix defines the Linux constants and types and stubs the calls, so the Sentry compiles with few edits. | Done when: ./runsc/boot type-checks for GOOS=windows with Linux-only subsystems excluded by build tags. |  |  |  |  |
 | `sentry-dynamic-elf-and-exec` | Dynamic programs, exec and pipes | Under the real Sentry on `windows-latest`, dynamic glibc and musl programs with `dlopen`, execve chains, fork+exec+wait, busybox shell pipelines |  | Run dynamically linked programs with their interpreter and shared libraries, exec a second program, and connect processes with pipes. | Done when: a dynamic glibc and a dynamic musl program, an exec chain and a shell pipeline (static busybox sh -c "echo a \| cat") pass under the Sentry on Windows. |  |  |  |  |
+| `sentry-profile-small-file-path` | Profile the slow file and exec path |  |  | Creating a file on tmpfs costs about 1 ms and a fork+exec 32 ms on Windows; find where the time goes (syscall round trips, page faults, debug events, Sentry work) and fix the top causes. | Done when: a profile is written up and untar of 20k files on tmpfs and fork+exec are each at least 4x faster than today. |  |  |  |  |
 
 ### Folded items per node
 

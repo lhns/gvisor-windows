@@ -15,7 +15,9 @@ gantt
     Run a container with runsc :runsc_container_on_windows, 2026-11-26, 2026-11-26
     Measure runsc's command side :runsc_measure_cli, 2026-11-26, 2026-11-26
     Choose runsc commands for Windows :runsc_windows_commands, 2026-11-26, 2026-11-26
+    Start and stop sandboxes on Windows :runsc_sandbox_lifecycle, 2026-11-27, 2026-11-27
     Boot runsc on Windows :runsc_windows_boot, 2026-11-26, 2026-11-26
+    Container lifecycle commands on Windows :runsc_windows_lifecycle_commands, 2026-11-27, 2026-11-27
     section platform - platform
     Survey ELF segment alignment :platform_elf_alignment_survey, 2026-11-26, 2026-11-26
     Measure syscall trap cost :platform_trap_cost, 2026-11-26, 2026-11-26
@@ -84,6 +86,7 @@ gantt
     Cgroup filesystem mounted read-only :workloads_gvisor_cgroupfs_readonly, 2026-11-26, 2026-11-26
     Podman API on a named pipe :workloads_podman_api_named_pipe, 2026-11-26, 2026-11-26
     Probe Podman inside the sandbox :workloads_podman_probe, 2026-11-26, 2026-11-26
+    Measure end-to-end speed on Windows :workloads_end_to_end_speed, 2026-11-27, 2026-11-27
     conmon sees no data on its sync pipe :workloads_conmon_sync_pipe, 2026-11-26, 2026-11-27
     Overlay mounts with userxattr rejected :workloads_overlay_userxattr, 2026-11-26, 2026-11-27
     section research - research
@@ -106,5 +109,5 @@ gantt
     gVisor syscall tests on Windows :active, ops_syscall_tests_on_windows, 2026-11-26, 2026-11-27
 ```
 
-Not shown (no `start`): `runsc-sandbox-lifecycle`, `runsc-windows-lifecycle-commands`, `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-hardware-acceleration`, `platform-no-fsgsbase-fallback`, `platform-binary-translation-fallback`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `fs-persistent-storage-impl`, `workloads-podman-on-windows`, `workloads-end-to-end-speed`, `ops-upstream-merges`, `ops-portable-packaging`, `ops-run-on-a-work-machine`
+Not shown (no `start`): `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-hardware-acceleration`, `platform-no-fsgsbase-fallback`, `platform-binary-translation-fallback`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `sentry-profile-small-file-path`, `fs-persistent-storage-impl`, `workloads-podman-on-windows`, `ops-upstream-merges`, `ops-portable-packaging`, `ops-run-on-a-work-machine`
 <!-- END GENERATED: timeline -->

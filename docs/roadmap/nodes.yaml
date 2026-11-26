@@ -956,17 +956,18 @@
   title: Start and stop sandboxes on Windows
   track: runsc
   kind: feature
-  state: blocked
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/3b-runsc-speed-lifecycle.md
+  verdict_quote: runsc.exe now runs the full create/start/exec/kill/delete lifecycle on a detached sandbox with a user-only control pipe
   headline: ''
   depends_on:
   - runsc-windows-lifecycle-commands
   replaced_by: []
   lane: windows-ci
-  start: ''
-  end: ''
+  start: '2026-11-27'
+  end: '2026-11-27'
   folded: []
   overview: false
   plain: runsc creates, starts, signals and deletes a sandbox process on Windows that outlives runsc.exe.
@@ -1903,22 +1904,24 @@
   lane: windows-ci
   plain: The platform can only map pages of the Sentry memory file; erofs image pages (and any other memmap.File) make the guest fault on its first instruction.
   notes: 'Fixed when: runsc run boots busybox from an erofs image root (mkfs.erofs --all-root) on windows-latest.'
-- outcome: unrated
-  evidence: []
-  verdict_quote: ''
+- outcome: successful
+  evidence:
+  - docs/results/3b-runsc-speed-lifecycle.md
+  - docs/adr/0019-sandbox-process-and-control-pipe.md
+  verdict_quote: runsc.exe now runs the full create/start/exec/kill/delete lifecycle on a detached sandbox with a user-only control pipe
   headline: ''
   depends_on:
   - runsc-windows-boot
   replaced_by: []
-  start: ''
-  end: ''
+  start: '2026-11-27'
+  end: '2026-11-27'
   folded: []
   overview: false
   id: runsc-windows-lifecycle-commands
   title: Container lifecycle commands on Windows
   track: runsc
   kind: feature
-  state: blocked
+  state: done
   lane: windows-ci
   plain: create, start, state, kill, delete, exec, ps and list need a sandbox process that outlives runsc.exe and a named control pipe; only run and version exist today.
   notes: 'Done when: Podman-style lifecycle (create, start, exec, kill, delete, state, list) works on Windows against a sandbox process, tested in CI.'
@@ -1941,33 +1944,34 @@
   overview: false
   plain: TestVFSNegativeCacheAndQuickChange failed once on windows-fs after passing on the previous head; a timing race in the change watcher or the test.
   notes: 'Fixed when: the test passes 20 runs in a row on windows-latest.'
-- outcome: unrated
-  evidence: &id002 []
-  verdict_quote: ''
-  headline: ''
-  replaced_by: &id003 []
-  start: ''
-  end: ''
-  folded: &id004 []
+- outcome: mixed
+  evidence:
+  - docs/results/3b-runsc-speed-lifecycle.md
+  verdict_quote: CPU-bound work runs at native speed, but small-file and process-creation workloads are 16x to 170x slower than na
+  headline: 16x to 170x slower
+  replaced_by: &id002 []
+  start: '2026-11-27'
+  end: '2026-11-27'
+  folded: &id003 []
   overview: false
   id: workloads-end-to-end-speed
   title: Measure end-to-end speed on Windows
   track: workloads
   kind: experiment
-  state: next
+  state: done
   lane: windows-ci
   depends_on:
   - runsc-windows-boot
   plain: Run the Phase 0 workloads (fork+exec loop, untar of small files, a CPU job) through runsc.exe on Windows and compare with runsc and native on Linux.
   notes: 'Done when: a table of Windows vs Linux runsc vs native is in docs/results.'
 - outcome: n/a
-  evidence: *id002
+  evidence: []
   verdict_quote: ''
   headline: ''
-  replaced_by: *id003
+  replaced_by: *id002
   start: ''
   end: ''
-  folded: *id004
+  folded: *id003
   overview: false
   id: ops-run-on-a-work-machine
   title: Try it on a real work machine
@@ -2078,3 +2082,23 @@
   lane: windows-ci
   plain: A syscall through a relocated veneer returns into the veneer; after clone into a new address space the veneers sit elsewhere, so the child resumes on a zero page and crashes.
   notes: 'Fixed when: test/guests/clonesys.c (clonesys, clonesys_ns) passes and podman run starts a container.'
+- outcome: unrated
+  evidence:
+  - docs/results/3b-runsc-speed-lifecycle.md
+  verdict_quote: ''
+  headline: ''
+  replaced_by: []
+  start: ''
+  end: ''
+  folded: []
+  overview: true
+  id: sentry-profile-small-file-path
+  title: Profile the slow file and exec path
+  track: sentry
+  kind: experiment
+  state: next
+  lane: windows-ci
+  depends_on:
+  - workloads-end-to-end-speed
+  plain: Creating a file on tmpfs costs about 1 ms and a fork+exec 32 ms on Windows; find where the time goes (syscall round trips, page faults, debug events, Sentry work) and fix the top causes.
+  notes: 'Done when: a profile is written up and untar of 20k files on tmpfs and fork+exec are each at least 4x faster than today.'

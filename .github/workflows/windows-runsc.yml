@@ -11,7 +11,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: test/guests
+          sparse-checkout: |
+            test/guests
+            tools/windows/bench
       - name: Build guests
         run: |
           sudo apt-get update -qq
@@ -27,6 +29,19 @@ jobs:
           for a in sh cat; do ln -s busybox $r/bin/$a; done
           echo ciguest > $r/etc/hostname
           chmod 755 $r; mkfs.erofs --all-root out/rootfs.erofs $r
+          # The Phase 0 workloads: 20k small files, and the same script on the Linux runner as the native baseline.
+          python3 - <<'PY'
+          import os, random
+          random.seed(1)
+          for d in range(2000):
+              p = os.path.join("/tmp/tree", "pkg%d" % d, "lib"); os.makedirs(p)
+              for f in range(10):
+                  with open(os.path.join(p, "f%d.js" % f), "wb") as fh: fh.write(os.urandom(random.randint(512, 8192)))
+          PY
+          tar -cf out/small.tar -C /tmp/tree .
+          cp tools/windows/bench/bench.sh out/bench.sh
+          W=$PWD; mkdir -p /tmp/bb /tmp/nb && out/busybox --install -s /tmp/bb
+          (cd /tmp/nb && PATH=/tmp/bb:$PATH $W/out/busybox sh $W/out/bench.sh $W/out/small.tar /tmp/nb/bind /tmp/nb/root /tmp/nb/shm) | tee out/native.txt || true
       - uses: actions/upload-artifact@v4
         with: {name: runsc-guests, path: out}
   run:
@@ -52,8 +67,9 @@ jobs:
           $r = 'C:\ci\work\rootfs'
           foreach ($d in 'bin','etc','proc','dev','tmp','www') { New-Item -ItemType Directory -Force "$r\$d" | Out-Null }
           Copy-Item guests\hello "$r\bin\hello"
-          foreach ($a in 'busybox','sh','ls','cat','wget','httpd','sleep','stty','tty') { Copy-Item guests\busybox "$r\bin\$a" }
+          foreach ($a in 'busybox','sh','ls','cat','wget','httpd','sleep','stty','tty','true','tar','head','sha256sum','gzip','awk','cut','mkdir','rm') { Copy-Item guests\busybox "$r\bin\$a" }
           Copy-Item guests\rootfs.erofs C:\ci\work\rootfs.erofs
+          Copy-Item guests\bench.sh "$r\bench.sh"; Copy-Item guests\small.tar "$r\small.tar"
           [IO.File]::WriteAllText("$r\etc\hostname", "ciguest`n")
           [IO.File]::WriteAllText("$r\www\index.html", "hello-from-guest`n")
           Get-ChildItem -Recurse $r | Select-Object FullName, Length | Format-Table -AutoSize | Out-String -Width 200
@@ -74,13 +90,37 @@ jobs:
             -Program C:\ci\bin\runsctest.exe `
             -Arguments '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-erofs','-image','C:\ci\work\rootfs.erofs','-only','erofs' `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 300
-      - name: Host-folder rename, case sensitivity and the port forwarder API as a standard user
+      - name: Host-folder rename and the port forwarder API as a standard user
         shell: pwsh
         run: |
           & tools/windows/ci/run-as-standard-user.ps1 `
             -Program C:\ci\bin\runsctest.exe `
-            -Arguments '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-hostfs','-only','hostfs,case,forward' `
+            -Arguments '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-hostfs','-only','hostfs,forward' `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 300
+      - name: Case sensitivity as a standard user (known gap, Windows denies the flag, see docs/results/5-podman-windows.md)
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          & tools/windows/ci/run-as-standard-user.ps1 `
+            -Program C:\ci\bin\runsctest.exe `
+            -Arguments '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-case','-only','case' `
+            -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 300
+      - name: Phase 0 workloads and start-to-exit as a standard user
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          Get-Content guests\native.txt
+          & tools/windows/ci/run-as-standard-user.ps1 `
+            -Program C:\ci\bin\runsctest.exe `
+            -Arguments '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-bench','-only','bench' `
+            -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 1200
+      - name: Container lifecycle commands as a standard user
+        shell: pwsh
+        run: |
+          & tools/windows/ci/run-as-standard-user.ps1 `
+            -Program C:\ci\bin\runsctest.exe `
+            -Arguments '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-lifecycle','-only','lifecycle' `
+            -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 600
       - name: All tests as a standard user
         shell: pwsh
         run: |
@@ -96,3 +136,8 @@ jobs:
             C:\ci\work\admin\logs
             C:\ci\work\std\logs
             C:\ci\work\std-erofs\logs
+            C:\ci\work\std-hostfs\logs
+            C:\ci\work\std-case\logs
+            C:\ci\work\std-lifecycle\logs
+            C:\ci\work\std-lifecycle\lifecycle-root
+            C:\ci\work\std-bench\logs
