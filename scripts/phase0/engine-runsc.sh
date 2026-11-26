@@ -4,6 +4,7 @@
 # unix socket on the host so the acceptance test sees a plain unix-socket engine.
 # Usage: engine-runsc.sh start|stop|restart
 # Env: RUNTIME=runsc  STORAGE=tmpfs|hostdir  STORAGE_DRIVER=(empty=default)  SHARE_DIR  SOCK  NAME
+unset DOCKER_HOST  # the test exports it for the podman socket; we need the real docker here
 RUNTIME=${RUNTIME:-runsc}
 STORAGE=${STORAGE:-tmpfs}
 STORAGE_DRIVER=${STORAGE_DRIVER:-}

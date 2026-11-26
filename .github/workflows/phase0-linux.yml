@@ -37,7 +37,7 @@ jobs:
       - name: Probe sandbox (before test)
         if: matrix.engine == 'runsc'
         run: |
-          docker exec podman-in-runsc sh -s <scripts/phase0/probe.sh >"$RESULTS_DIR/out/probe-before.txt" 2>&1 || true
+          docker exec -i podman-in-runsc sh -s <scripts/phase0/probe.sh >"$RESULTS_DIR/out/probe-before.txt" 2>&1 || true
           cat "$RESULTS_DIR/out/probe-before.txt"
       - name: Acceptance test
         run: |
@@ -54,7 +54,7 @@ jobs:
       - name: Probe sandbox
         if: always() && matrix.engine == 'runsc'
         run: |
-          docker exec podman-in-runsc sh -s <scripts/phase0/probe.sh >"$RESULTS_DIR/out/probe.txt" 2>&1 || true
+          docker exec -i podman-in-runsc sh -s <scripts/phase0/probe.sh >"$RESULTS_DIR/out/probe.txt" 2>&1 || true
           cp /tmp/socat.log "$RESULTS_DIR/out/" || true
       - name: Diagnostics
         if: always()
