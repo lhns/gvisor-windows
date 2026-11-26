@@ -67,6 +67,10 @@ type Options struct {
 	// Resolver answers the guest's DNS queries; net.DefaultResolver (the
 	// Windows resolver) when nil.
 	Resolver *net.Resolver
+	// HostLoopback maps connections to GatewayIP to 127.0.0.1 of the host,
+	// so the guest can reach host services. Off by default: it exposes
+	// everything listening on the host's loopback to the guest.
+	HostLoopback bool
 }
 
 // NAT is the gateway side of the virtual network.

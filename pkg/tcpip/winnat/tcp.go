@@ -15,8 +15,12 @@ import (
 	"gvisor.dev/gvisor/pkg/waiter"
 )
 
-func hostAddr(a tcpip.Address, port uint16) string {
+// hostAddr is the host address a guest flow to (a, port) is re-originated to.
+func (n *NAT) hostAddr(a tcpip.Address, port uint16) string {
 	ip, _ := netip.AddrFromSlice(a.AsSlice())
+	if n.opts.HostLoopback && ip == GatewayIP {
+		ip = netip.MustParseAddr("127.0.0.1")
+	}
 	return net.JoinHostPort(ip.String(), strconv.Itoa(int(port)))
 }
 
@@ -25,7 +29,7 @@ func hostAddr(a tcpip.Address, port uint16) string {
 // gives the guest an RST instead of a connection that then dies.
 func (n *NAT) handleTCP(r *tcp.ForwarderRequest) {
 	id := r.ID()
-	dst := hostAddr(id.LocalAddress, id.LocalPort)
+	dst := n.hostAddr(id.LocalAddress, id.LocalPort)
 	go func() {
 		host, err := n.opts.Dialer.Dial("tcp", dst)
 		if err != nil {

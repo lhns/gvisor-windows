@@ -25,7 +25,7 @@ func (n *NAT) handleUDP(r *udp.ForwarderRequest) bool {
 		go n.serveDNS(guest)
 		return true
 	}
-	dst := hostAddr(id.LocalAddress, id.LocalPort)
+	dst := n.hostAddr(id.LocalAddress, id.LocalPort)
 	go func() {
 		host, err := n.opts.Dialer.Dial("udp", dst)
 		if err != nil {

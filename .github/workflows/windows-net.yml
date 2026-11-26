@@ -1,0 +1,51 @@
+name: windows-net
+
+on:
+  push:
+    branches: [windows, netstack-windows]
+  workflow_dispatch:
+
+env:
+  CGO_ENABLED: "0"
+
+jobs:
+  net:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Vet
+        shell: bash
+        run: go vet -p 2 ./pkg/tcpip/winnat/
+      - name: Build the test binary (as the runner's administrator)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force C:\ci\bin | Out-Null
+          go test -c -p 2 -o C:\ci\bin\winnat.test.exe ./pkg/tcpip/winnat
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Network tests as a standard user
+        shell: pwsh
+        run: >
+          ./tools/windows/ci/run-as-standard-user.ps1
+          -Program C:\ci\bin\winnat.test.exe
+          -Arguments '-test.v','-test.count=1','-test.timeout=5m'
+          -Environment @{ GVISOR_ADMIN_PROBE = 'denied' }
+          -TimeoutSeconds 400
+      - name: The admin-only probe fails for a standard user (this step must fail inside)
+        shell: pwsh
+        run: |
+          ./tools/windows/ci/run-as-standard-user.ps1 `
+            -Program C:\ci\bin\winnat.test.exe `
+            -Arguments '-test.v','-test.count=1','-test.run=TestAdminProbe' `
+            -Environment @{ GVISOR_ADMIN_PROBE = 'allowed' }
+          if ($LASTEXITCODE -eq 0) { throw 'the admin-only probe succeeded as a standard user' }
+          Write-Host "probe failed as expected (exit $LASTEXITCODE)"
+          $global:LASTEXITCODE = 0
+      - name: The same probe passes as the runner's administrator
+        shell: pwsh
+        run: |
+          $env:GVISOR_ADMIN_PROBE = 'allowed'
+          C:\ci\bin\winnat.test.exe -test.v -test.count=1 -test.run=TestAdminProbe
+          if ($LASTEXITCODE -ne 0) { exit 1 }

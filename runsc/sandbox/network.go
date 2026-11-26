@@ -99,6 +99,8 @@ func (s *Sandbox) setupNetwork(conn *urpc.Client, pid int, spec *specs.Spec, con
 		}
 	case config.NetworkHost:
 		// Nothing to do here.
+	case config.NetworkWindowsNAT:
+		// The sandbox builds its own interfaces and NAT.
 	case config.NetworkPlugin:
 		if err := initPluginStack(conn, pid, conf); err != nil {
 			return fmt.Errorf("failed to initialize external stack, error: %v", err)
