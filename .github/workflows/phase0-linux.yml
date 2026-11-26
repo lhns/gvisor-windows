@@ -1,0 +1,140 @@
+name: phase0-linux
+on:
+  push:
+    branches: [phase0-linux]
+  workflow_dispatch:
+
+env:
+  RESULTS_DIR: ${{ github.workspace }}/results
+
+jobs:
+  # Stage A: podman + crun inside a runsc (systrap) sandbox, acceptance test from the host.
+  # Stage B: the same test against native podman (sanity check of the test).
+  acceptance:
+    name: acceptance-${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: native,             engine: native}
+          - {name: runsc-bridge-tmpfs,        engine: runsc, storage: tmpfs,   driver: "",  hostnet: "0"}
+          - {name: runsc-hostnet-tmpfs,       engine: runsc, storage: tmpfs,   driver: "",  hostnet: "1"}
+          - {name: runsc-hostnet-hostdir-overlay, engine: runsc, storage: hostdir, driver: "", hostnet: "1"}
+          - {name: runsc-hostnet-hostdir-vfs, engine: runsc, storage: hostdir, driver: vfs, hostnet: "1"}
+    steps:
+      - uses: actions/checkout@v4
+        with: {sparse-checkout: "scripts/phase0\ntest/e2e"}
+      - run: mkdir -p "$RESULTS_DIR/out" && scripts/phase0/install.sh
+      - name: Start engine
+        run: |
+          export SHARE_DIR=/tmp/acc-share
+          if [ "${{ matrix.engine }}" = native ]; then
+            scripts/phase0/engine-native.sh start
+          else
+            STORAGE=${{ matrix.storage }} STORAGE_DRIVER=${{ matrix.driver }} scripts/phase0/engine-runsc.sh start
+          fi
+      - name: Probe sandbox (before test)
+        if: matrix.engine == 'runsc'
+        run: |
+          docker exec -i podman-in-runsc sh -s <scripts/phase0/probe.sh >"$RESULTS_DIR/out/probe-before.txt" 2>&1 || true
+          cat "$RESULTS_DIR/out/probe-before.txt"
+      - name: Acceptance test
+        run: |
+          export SHARE_DIR=/tmp/acc-share RESULTS_DIR="$RESULTS_DIR/out"
+          if [ "${{ matrix.engine }}" = native ]; then
+            export CONTAINER_HOST=unix:///tmp/podman-native.sock ENGINE_CTL="$PWD/scripts/phase0/engine-native.sh"
+          else
+            export CONTAINER_HOST=unix:///tmp/podman-runsc.sock
+            export STORAGE=${{ matrix.storage }} STORAGE_DRIVER=${{ matrix.driver }}
+            export ENGINE_CTL="$PWD/scripts/phase0/engine-runsc.sh"
+          fi
+          if [ "${{ matrix.hostnet }}" = 1 ]; then export HOSTNET=1 NETARGS=--network=host; fi
+          test/e2e/podman-acceptance/run.sh || true
+      - name: Probe sandbox
+        if: always() && matrix.engine == 'runsc'
+        run: |
+          docker exec -i podman-in-runsc sh -s <scripts/phase0/probe.sh >"$RESULTS_DIR/out/probe.txt" 2>&1 || true
+          cp /tmp/socat.log "$RESULTS_DIR/out/" || true
+      - name: Diagnostics
+        if: always()
+        run: |
+          cd "$RESULTS_DIR/out"
+          docker logs podman-in-runsc >engine-container.log 2>&1 || true
+          cp /tmp/podman-native.log . 2>/dev/null || true
+          ls /tmp/runsc-logs 2>/dev/null | head -3
+          sudo tar -czf runsc-logs.tgz --warning=no-file-changed -C /tmp runsc-logs 2>/dev/null || true
+          { echo "### acceptance-${{ matrix.name }}"; echo '```'; cat steps.txt; echo '```'; } >>"$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: acceptance-${{ matrix.name }}
+          path: results/out
+          retention-days: 30
+
+  # Stage C: native vs runc vs runsc
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with: {sparse-checkout: "scripts/phase0"}
+      - run: mkdir -p "$RESULTS_DIR" && scripts/phase0/install.sh
+      - run: scripts/phase0/bench.sh
+      - run: |
+          { echo "### bench"; echo '```'; column -t -s $'\t' "$RESULTS_DIR/bench.tsv"; echo '```'; } >>"$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with: {name: bench, path: results, retention-days: 30}
+
+  # Stage D: ELF survey (no runsc needed)
+  elf:
+    name: elf-${{ matrix.image }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [alpine, debian, python, node]
+    steps:
+      - uses: actions/checkout@v4
+        with: {sparse-checkout: "scripts/phase0"}
+      - run: |
+          mkdir -p results
+          img=mirror.gcr.io/library/${{ matrix.image }}:$( case ${{ matrix.image }} in alpine) echo 3.20;; debian) echo 12;; python) echo 3;; node) echo lts;; esac )
+          docker pull -q "$img"
+          cid=$(docker create "$img" true)
+          docker export "$cid" | python3 scripts/phase0/elf-survey.py "${{ matrix.image }}" | tee results/elf.json
+          python3 -m json.tool results/elf.json >>"$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v4
+        with: {name: "elf-${{ matrix.image }}", path: results, retention-days: 30}
+
+  # Stage E: image storage (gate 0a.4)
+  storage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with: {sparse-checkout: "scripts/phase0"}
+      - run: mkdir -p "$RESULTS_DIR" && scripts/phase0/install.sh
+      - run: scripts/phase0/storage-test.sh
+      - if: always()
+        run: |
+          { echo "### storage"; echo '```'; column -t -s $'\t' "$RESULTS_DIR/storage.tsv"; cat "$RESULTS_DIR/overlay-dir.txt"; echo '```'; } >>"$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: storage, path: results, retention-days: 30}
+
+  summary:
+    needs: [acceptance, bench, elf, storage]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {sparse-checkout: "scripts/phase0"}
+      - uses: actions/download-artifact@v4
+        with: {path: all}
+      - run: |
+          python3 scripts/phase0/summarize.py all | tee summary.md >>"$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with: {name: summary, path: summary.md, retention-days: 30}
