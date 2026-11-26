@@ -110,3 +110,23 @@ Verdict: FAIL. WHPX cannot be used on this machine as a standard user (QEMU repo
 | S4, S5 | same results as above; S5 1.6 us per fault and recover |
 
 Verdict: On a CPU with FSGSBASE, a standard-user Windows process can set its %fs base with `wrfsbase`, but Windows did not keep the value across `Sleep(1)`, so the design needs a way to restore the base after context switches; how often it is lost and whether a fault handler can restore it is measured next.
+
+## S3 on a hosted runner (bare-metal-like CPU)
+
+Source: `test/spikes/windows/s3`, workflow `windows-spikes` (runs 45848754957 failed on a scheduler stall that was fixed; final runs 45850082445, 45850582599, 45850991877 on `windows-latest`, AMD EPYC 9V45/7763 class, 4 vCPUs, CPUID.7.0:EBX bit 0 = 1). Ranges below are over the three clean runs; one run is quoted for the single-number lines.
+
+Method: after `wrfsbase`, a raw-assembly vectored handler (registered first) catches an access violation whose address is below 0x10000 or non-user, compares the thread's current FS base with the expected one (per-thread slot indexed by the TEB thread id), and, if they differ, re-executes `wrfsbase` with the expected base and continues, so the faulting instruction is retried. Every repair is one observed loss. Guest-like loops read `fs:[0]`, `fs:[0x28]` and `fs:[-8]` and compare against known values.
+
+Loss rates (base lost = it reads as 0):
+- `Sleep(1)`: 2015-2021 losses in 2000 calls (about 100%); `Sleep(0)`: 0.1-0.3%; `SwitchToThread`: 0-0.3% (these rarely deschedule).
+- Involuntary preemption, one guest thread, idle runner: 21-31 losses/s; with 8 non-yielding spinner threads on 4 vCPUs: 54-68 losses/s.
+- Exception dispatch (2000 `ud2` + handler): 1-2 losses total, matching the background rate; the base is still set inside the handler and after resume, so dispatch itself does not clear it.
+- Suspend/Get/SetThreadContext/Resume from another thread (300 rounds each, 3 ms apart): idle baseline 24-54%, Suspend+Resume 37-70%, Suspend+GetThreadContext+Resume 116-127%, plus SetThreadContext with the same context 123-143% (losses per round). Suspending a running thread deschedules it and loses the base; `CONTEXT` has no FS base field, so Set/Get cannot carry it.
+- FS selector: stays 0x53 (also in `CONTEXT.SegFs`) before and at every loss; 0 selector mismatches in about 45000 losses. Only the base is lost, it goes to 0.
+
+Self-healing:
+- 4 guest threads plus 8 spinners for 10 s: 1301-1532 repairs (126-148/s), 4.4-13.1 billion loop iterations, 0 wrong values read.
+- Cost per repair (`wrfsbase 0`, faulting read, handler, retry; 20000 repeats): 1.1-2.2 us for `fs:[0]` and `fs:[-8]`.
+- A negative offset (`fs:[-8]` with base 0) faults at address 0xFFFFFFFFFFFFFFF8 and is repaired too; small positive offsets fault at their address (below 0x10000). Not covered: an access at an offset of 0x10000 or more from a lost (zero) base that lands on mapped user memory would silently read wrong data (Linux static TLS uses negative offsets and small positive ones, so this should not happen for glibc, but the stub must keep the low 64 KB unmapped, which Windows already enforces for a standard user).
+
+Verdict: On a CPU with FSGSBASE, `wrfsbase` works from user mode and the base is lost to 0 at every deschedule (always across `Sleep(1)`, 20-70 times per second on a busy thread), but a raw vectored exception handler that re-executes `wrfsbase` restores it transparently: guest-like `fs:[0]`/`fs:[0x28]`/`fs:[-8]` loops ran 10 s under contention with 0 wrong reads and about 1.1-2.2 us per repair, so native %fs-based execution is feasible on FSGSBASE hardware (but not on CPUs or VMs without FSGSBASE).
