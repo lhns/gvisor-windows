@@ -42,8 +42,8 @@ func mountSystem(ctx context.Context, vfsObj *vfs.VirtualFilesystem, creds *auth
 	must(memdev.Register(vfsObj), "registering memdev")
 	must(ttydev.Register(vfsObj), "registering ttydev")
 
-	pop := func(p string) *vfs.PathOperation {
-		return &vfs.PathOperation{Root: root, Start: root, Path: fspath.Parse(p), FollowFinalSymlink: true}
+	pop := func(p string, follow bool) *vfs.PathOperation {
+		return &vfs.PathOperation{Root: root, Start: root, Path: fspath.Parse(p), FollowFinalSymlink: follow}
 	}
 	for _, m := range []struct{ dir, fs, data string }{
 		{"/proc", proc.Name, ""},
@@ -51,10 +51,10 @@ func mountSystem(ctx context.Context, vfsObj *vfs.VirtualFilesystem, creds *auth
 		{"/dev", dev.Name, ""},
 		{"/dev/pts", devpts.Name, "newinstance,ptmxmode=0666"},
 	} {
-		if err := vfsObj.MkdirAt(ctx, creds, pop(m.dir), &vfs.MkdirOptions{Mode: 0o755}); err != nil && !strings.Contains(err.Error(), "exists") {
+		if err := vfsObj.MkdirAt(ctx, creds, pop(m.dir, false), &vfs.MkdirOptions{Mode: 0o755}); err != nil && !strings.Contains(err.Error(), "exists") {
 			must(err, "mkdir "+m.dir)
 		}
-		_, err := vfsObj.MountAt(ctx, creds, "", pop(m.dir), m.fs, &vfs.MountOptions{
+		_, err := vfsObj.MountAt(ctx, creds, "", pop(m.dir, true), m.fs, &vfs.MountOptions{
 			GetFilesystemOptions: vfs.GetFilesystemOptions{InternalMount: true, Data: m.data},
 		})
 		must(err, "mounting "+m.dir)

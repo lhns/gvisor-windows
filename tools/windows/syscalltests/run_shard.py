@@ -34,6 +34,7 @@ def main():
     tails = {}
     workdir = tempfile.mkdtemp()
     t_start = time.time()
+    idle_crashes = 0
     for run in range(a.max_runs):
         todo = [c for c in cases if c not in done]
         if not todo:
@@ -67,6 +68,7 @@ def main():
                     proc.wait()
                     break
         finished, last = False, None
+        before = len(done)
         with open(log, 'rb') as lf:
             for raw in lf:
                 line = raw.decode('utf-8', 'replace').rstrip('\r\n')
@@ -81,6 +83,20 @@ def main():
                     finished = True
         if finished:
             continue
+        if len(done) == before:
+            idle_crashes += 1
+        else:
+            idle_crashes = 0
+        if idle_crashes >= 3:
+            # The harness itself fails before any case runs: give up on the shard.
+            tail = open(log, 'rb').read()[-1500:].decode('utf-8', 'replace').replace('', '').replace('
+', '\n').replace('	', ' ')
+            for c in cases:
+                if c not in done:
+                    done[c] = ('HARNESS', '-1', '0')
+                    tails[c] = tail
+            print('run %d: the kernel fails to start the driver, giving up' % run, flush=True)
+            break
         # The kernel died or hung: the first case not yet reported is the culprit.
         rest = [c for c in cases if c not in done]
         if rest:
