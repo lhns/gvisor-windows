@@ -547,6 +547,7 @@ func (as *addressSpace) Release() {
 			pCloseHandle.Call(t.evReply)
 			if t.hThread != 0 && t.idx != 0 {
 				pCloseHandle.Call(t.hThread)
+				t.hThread = 0 // a later freeThread must not close it again: the value may be reused
 			}
 		}
 	}
