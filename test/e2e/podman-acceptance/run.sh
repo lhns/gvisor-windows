@@ -10,7 +10,7 @@
 #   NETARGS         extra args for run/build, e.g. "--network=host"
 #   HOSTNET=1       containers use host net: step 7 uses httpd on 8080, step 8 uses 127.0.0.1
 #   PROBE_URL       URL for the port test            (default http://127.0.0.1:8080)
-#   IMG_PREFIX      registry prefix for library images (default public.ecr.aws/docker/library)
+#   IMG_PREFIX      registry prefix for library images (default mirror.gcr.io/library)
 #   RESULTS_DIR     where logs go                     (default ./results)
 #   ONLY            space separated step numbers to run
 set -u
@@ -20,7 +20,7 @@ SHARE_DIR="${SHARE_DIR:-/tmp/podman-acceptance-share}"
 NETARGS="${NETARGS:-}"
 HOSTNET="${HOSTNET:-0}"
 PROBE_URL="${PROBE_URL:-http://127.0.0.1:8080}"
-IMG_PREFIX="${IMG_PREFIX:-public.ecr.aws/docker/library}"
+IMG_PREFIX="${IMG_PREFIX:-mirror.gcr.io/library}"
 RESULTS_DIR="${RESULTS_DIR:-./results}"
 ENGINE_CTL="${ENGINE_CTL:-}"
 PODMAN_BIN="${PODMAN_BIN:-podman}"

@@ -5,10 +5,13 @@ set -euxo pipefail
 ARCH=$(uname -m)
 URL=https://storage.googleapis.com/gvisor/releases/release/latest/${ARCH}
 W=$(mktemp -d); cd "$W"
+# Releases are now a single bundle (gvisor.tar.bz2) instead of loose binaries.
+wget -q "$URL/gvisor.tar.bz2" "$URL/gvisor.tar.bz2.sha512"
+sha512sum -c gvisor.tar.bz2.sha512
+mkdir x && tar -xjf gvisor.tar.bz2 -C x
+find x -type f | head -20
 for f in runsc containerd-shim-runsc-v1; do
-  wget -q "$URL/$f" "$URL/$f.sha512"
-  sha512sum -c "$f.sha512"
-  chmod a+rx "$f"; sudo mv "$f" /usr/local/bin/
+  p=$(find x -type f -name "$f" | head -1); chmod a+rx "$p"; sudo cp "$p" /usr/local/bin/
 done
 runsc --version | tee "${RESULTS_DIR:-.}/runsc-version.txt" || true
 
@@ -30,5 +33,5 @@ sudo tee /etc/docker/daemon.json >/dev/null <<EOF
 EOF
 sudo systemctl restart docker
 docker info --format '{{.Runtimes}}'
-docker run --rm --runtime runsc public.ecr.aws/docker/library/alpine:3.20 sh -c 'uname -a; dmesg | head -3' || true
+docker run --rm --runtime runsc mirror.gcr.io/library/alpine:3.20 sh -c 'uname -a; dmesg | head -3' || true
 docker pull -q quay.io/podman/stable:latest

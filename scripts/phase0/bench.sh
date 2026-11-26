@@ -2,7 +2,7 @@
 # Stage C: same workload native (host), in runc and in runsc. Output: $RESULTS_DIR/bench.tsv
 set -u
 R=${RESULTS_DIR:-results}; mkdir -p "$R"
-IMG=public.ecr.aws/docker/library/debian:12-slim
+IMG=mirror.gcr.io/library/debian:12-slim
 W=$(mktemp -d); HERE=$(cd "$(dirname "$0")" && pwd)
 # node_modules-like tree: 20k files of 0.5-8 KiB in ~2000 dirs
 python3 - "$W" <<'PY'

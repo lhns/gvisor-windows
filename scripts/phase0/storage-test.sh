@@ -5,7 +5,7 @@
 set -u
 R=${RESULTS_DIR:-results}; mkdir -p "$R"
 HERE=$(cd "$(dirname "$0")" && pwd)
-P=public.ecr.aws/docker/library
+P=mirror.gcr.io/library
 OUT=$R/storage.tsv; : >"$OUT"
 export SOCK=/tmp/podman-storage.sock NAME=podman-storage
 now() { date +%s.%N; }
