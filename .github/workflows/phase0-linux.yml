@@ -21,6 +21,7 @@ jobs:
           - {name: native,             engine: native}
           - {name: runsc-bridge-tmpfs,        engine: runsc, storage: tmpfs,   driver: "",  hostnet: "0"}
           - {name: runsc-hostnet-tmpfs,       engine: runsc, storage: tmpfs,   driver: "",  hostnet: "1"}
+          - {name: runsc-hostnet-hostdir-overlay, engine: runsc, storage: hostdir, driver: "", hostnet: "1"}
           - {name: runsc-hostnet-hostdir-vfs, engine: runsc, storage: hostdir, driver: vfs, hostnet: "1"}
     steps:
       - uses: actions/checkout@v4
