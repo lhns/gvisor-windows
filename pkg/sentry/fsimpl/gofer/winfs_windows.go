@@ -178,8 +178,17 @@ func (fs *filesystem) hostChange(ctx context.Context, ch winhost.Change) {
 	}
 	if child != nil {
 		child.InotifyWithParent(ctx, mask, cookie, vfs.PathEvent)
-		if ch.Action == winhost.Modified && fs.opts.interop == InteropModeShared {
+		if ch.Action == winhost.Modified {
 			child.inode.updateMetadata(ctx)
+			if fs.opts.interop != InteropModeShared && child.inode.isRegularFile() {
+				// Cached file data is stale. Unflushed guest writes win.
+				in := child.inode
+				in.dataMu.Lock()
+				if in.dirty.IsEmpty() {
+					in.cache.DropAll(fs.mf)
+				}
+				in.dataMu.Unlock()
+			}
 		} else {
 			child.invalidate(ctx, fs.vfsfs.VirtualFilesystem(), &ds)
 		}
