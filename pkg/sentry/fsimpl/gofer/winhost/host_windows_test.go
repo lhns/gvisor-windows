@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"golang.org/x/sys/unix"
+	"golang.org/x/sys/windows"
 )
 
 func newFS(t *testing.T, opts Options) (*FS, string) {
@@ -719,4 +720,40 @@ func TestMetadataCodec(t *testing.T) {
 	if UnescapeName(EscapeName("a:b\\c")) != "a:b\\c" {
 		t.Errorf("name escaping does not round trip")
 	}
+}
+
+// Diagnostic: which way of opening a directory can be enumerated.
+func TestProbeEnumeration(t *testing.T) {
+	fs, dir := newFS(t, Options{})
+	mustCreate(t, fs, fs.Root(), "x", Spec{Mode: 0o644})
+	try := func(what string, h windows.Handle) {
+		buf := make([]byte, 4096)
+		for _, class := range []uint32{20, 11, 15, 2} {
+			err := windows.GetFileInformationByHandleEx(h, class, &buf[0], uint32(len(buf)))
+			t.Logf("%s class %d: %v", what, class, err)
+		}
+	}
+	p, _ := windows.UTF16PtrFromString(dir)
+	h, err := windows.CreateFile(p, 1|0x80|synchronize, shareAll, nil, windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	try("CreateFile", h)
+	windows.CloseHandle(h)
+	for _, acc := range []uint32{1, 1 | 0x80, 1 | 0x20 | 0x80} {
+		h, err = ntOpenByID(fs.root, fs.Root(), acc, shareAll, 0)
+		t.Logf("by id access %#x: %v", acc, err)
+		if err == nil {
+			try(fmt.Sprintf("byid %#x", acc), h)
+			windows.CloseHandle(h)
+		}
+	}
+	h, err = ntOpenByID(fs.root, fs.Root(), 1|0x80, shareAll, windows.FILE_DIRECTORY_FILE)
+	t.Logf("by id with FILE_DIRECTORY_FILE: %v", err)
+	if err == nil {
+		try("byid dirfile", h)
+		windows.CloseHandle(h)
+	}
+	h, err = ntOpen(fs.root, "", 1|0x80, shareAll, windows.FILE_OPEN, 0, 0)
+	t.Logf("relative empty open: %v", err)
 }
