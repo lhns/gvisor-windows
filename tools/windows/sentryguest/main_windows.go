@@ -40,6 +40,7 @@ import (
 	"gvisor.dev/gvisor/pkg/log"
 	"gvisor.dev/gvisor/pkg/rand"
 
+	"gvisor.dev/gvisor/pkg/sentry/fsimpl/cgroup2fs"
 	"gvisor.dev/gvisor/pkg/sentry/fsimpl/tmpfs"
 	"gvisor.dev/gvisor/pkg/sentry/inet"
 	"gvisor.dev/gvisor/pkg/sentry/kernel"
@@ -117,6 +118,7 @@ func main() {
 		RootIPCNamespace:     kernel.NewIPCNamespace(userns),
 		RootPIDNamespace:     kernel.NewRootPIDNamespace(userns),
 		MaxFDLimit:           kernel.MaxFdLimit,
+		Cgroup2FSInit:        cgroup2fs.NewFilesystem,
 	}), "kernel init")
 	vfsObj := k.VFS()
 	vfsObj.MustRegisterFilesystemType(tmpfs.Name, &tmpfs.FilesystemType{}, &vfs.RegisterFilesystemTypeOptions{
