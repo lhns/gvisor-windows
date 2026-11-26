@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// gvisor-windows: the Linux VDSO call is not built for Windows (vdso_windows.go).
+//go:build !windows
+
 package time
 
 import (

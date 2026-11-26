@@ -1,0 +1,39 @@
+name: windows-sentry
+
+on:
+  push:
+    branches: [windows, sentry-host-basics]
+  workflow_dispatch:
+
+jobs:
+  sentry-host:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Tests (safecopy, pgalloc)
+        shell: bash
+        run: |
+          set +e
+          CGO_ENABLED=0 go test -p 2 -count=1 -v ./pkg/safecopy/ ./pkg/sentry/pgalloc/ 2>&1 | tee test.log
+          echo "go test exit: ${PIPESTATUS[0]}"
+          grep -E "^(--- FAIL|FAIL|ok|panic)" test.log | head -50
+          exit ${PIPESTATUS[0]}
+      - name: Sentry smoke program
+        shell: bash
+        run: CGO_ENABLED=0 go run ./tools/windows/sentrysmoke
+      - name: Init of each package alone
+        if: always()
+        shell: bash
+        run: |
+          # One failing init must not hide the others, so each runs in its own program.
+          fail=0
+          for p in pkg/hosttid pkg/cpuid pkg/hostarch pkg/rand pkg/safecopy pkg/sentry/time pkg/sentry/pgalloc pkg/sentry/kernel pkg/sentry/vfs pkg/sentry/loader runsc/boot; do
+            d=$(mktemp -d -p .)
+            printf 'package main\nimport _ "gvisor.dev/gvisor/%s"\nfunc main() { println("init ok") }\n' "$p" > "$d/main.go"
+            if CGO_ENABLED=0 go run "$d" > "$d/out.txt" 2>&1; then echo "PASS init $p"; else echo "FAIL init $p"; head -30 "$d/out.txt"; fail=1; fi
+            rm -rf "$d"
+          done
+          exit $fail

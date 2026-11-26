@@ -39,7 +39,6 @@ import (
 	"gvisor.dev/gvisor/pkg/fd"
 	"gvisor.dev/gvisor/pkg/gomaxprocs"
 	"gvisor.dev/gvisor/pkg/log"
-	"gvisor.dev/gvisor/pkg/memutil"
 	"gvisor.dev/gvisor/pkg/metric"
 	"gvisor.dev/gvisor/pkg/pinring"
 	"gvisor.dev/gvisor/pkg/rand"
@@ -1289,11 +1288,12 @@ func createPlatform(conf *config.Config, numCPU int, deviceFile *fd.FD, sandboxI
 
 func createMemoryFile(appHugePages bool, hostTHP HostTHP) (*pgalloc.MemoryFile, error) {
 	const memfileName = "runsc-memory"
-	memfd, err := memutil.CreateMemFD(memfileName, 0)
+	// gvisor-windows: creating the backing file is per OS (a memfd on Linux;
+	// nil on Windows, where pgalloc creates its own sections).
+	memfile, err := createMemoryFileBacking(memfileName)
 	if err != nil {
-		return nil, fmt.Errorf("error creating memfd: %w", err)
+		return nil, err
 	}
-	memfile := os.NewFile(uintptr(memfd), memfileName)
 
 	mfopts := pgalloc.MemoryFileOpts{
 		// We can't enable pgalloc.MemoryFileOpts.UseHostMemcgPressure even if
