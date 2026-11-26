@@ -10,6 +10,7 @@ gVisor's `go` branch is a synthetic branch buildable with standard Go tools; `ma
 - Repo `lhns/gvisor-windows`, an unofficial port, not a Google project; work happens on branch `windows`, based on upstream `go`.
 - Windows code lives in new packages and `_windows.go` files; edits to shared code stay minimal and are marked.
 - Code borrowed from other projects carries its origin in `NOTICE` and a comment; licences are reviewed later by the owner.
+- Fixes that would also help upstream stay on our branches; only the owner opens pull requests or issues upstream.
 
 ## Consequences
 - Upstream is merged in regularly from `upstream/go`.
