@@ -18,12 +18,14 @@ package winstub
 
 import (
 	"encoding/binary"
+	"os"
 	"errors"
 	"sync"
 	"testing"
 	"time"
 
 	"gvisor.dev/gvisor/pkg/abi/linux"
+	"gvisor.dev/gvisor/pkg/cpuid"
 	pkgcontext "gvisor.dev/gvisor/pkg/context"
 	"gvisor.dev/gvisor/pkg/hostarch"
 	"gvisor.dev/gvisor/pkg/safemem"
@@ -540,4 +542,9 @@ func TestWriteExecute(t *testing.T) {
 	if nr := h.syscall(c, mm, ac); nr != 110 {
 		t.Fatalf("rewritten jit syscall %d", nr)
 	}
+}
+
+func TestMain(m *testing.M) {
+	cpuid.Initialize()
+	os.Exit(m.Run())
 }
