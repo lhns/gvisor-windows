@@ -78,6 +78,7 @@ function Start-Engine {
     @{ destination = '/dev/pts'; type = 'devpts'; source = 'devpts'; options = @('nosuid', 'noexec', 'newinstance', 'ptmxmode=0666', 'mode=0620') },
     @{ destination = '/dev/shm'; type = 'tmpfs'; source = 'shm'; options = @('nosuid', 'noexec', 'nodev', 'mode=1777', 'size=65536k') },
     @{ destination = '/sys'; type = 'sysfs'; source = 'sysfs'; options = @('nosuid', 'noexec', 'nodev', 'ro') },
+    @{ destination = '/sys/fs/cgroup'; type = 'cgroup2'; source = 'cgroup2'; options = @('nosuid', 'noexec', 'nodev') },
     @{ destination = '/run'; type = 'tmpfs'; source = 'tmpfs'; options = @('mode=755') },
     @{ destination = '/tmp'; type = 'tmpfs'; source = 'tmpfs'; options = @('mode=1777') },
     @{ destination = '/var/lib/containers'; type = 'bind'; source = $storage; options = @('rbind', 'rw', 'case-sensitive') }
