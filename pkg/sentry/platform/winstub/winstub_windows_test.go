@@ -17,19 +17,19 @@
 package winstub
 
 import (
-	"fmt"
-	"sort"
-	"runtime"
-	"syscall"
-	"unsafe"
-	"golang.org/x/sys/windows"
-	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/stubasm"
 	"encoding/binary"
 	"errors"
+	"fmt"
+	"golang.org/x/sys/windows"
+	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/stubasm"
 	"os"
+	"runtime"
+	"sort"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
+	"unsafe"
 
 	"gvisor.dev/gvisor/pkg/abi/linux"
 	pkgcontext "gvisor.dev/gvisor/pkg/context"
@@ -562,13 +562,13 @@ func TestFPState(t *testing.T) {
 	h := newHarness(t)
 	mm := h.newMM()
 	a := &asm{base: textBase}
-	start := a.emit(0xc5, 0xfe, 0x6f, 0x07) // vmovdqu ymm0,[rdi]
-	a.emit(0xb8, 39, 0, 0, 0, 0x0f, 0x05)   // syscall
-	a.emit(0xc5, 0xfe, 0x7f, 0x06)          // vmovdqu [rsi],ymm0
-	a.emit(0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05) // syscall 500
+	start := a.emit(0xc5, 0xfe, 0x6f, 0x07)                // vmovdqu ymm0,[rdi]
+	a.emit(0xb8, 39, 0, 0, 0, 0x0f, 0x05)                  // syscall
+	a.emit(0xc5, 0xfe, 0x7f, 0x06)                         // vmovdqu [rsi],ymm0
+	a.emit(0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05)                // syscall 500
 	a.emit(0x48, 0x8b, 0x04, 0x25, 0x00, 0x00, 0x80, 0x00) // mov rax,[0x800000]
-	a.emit(0xc5, 0xfe, 0x7f, 0x46, 0x20)    // vmovdqu [rsi+32],ymm0
-	a.emit(0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05) // syscall 500
+	a.emit(0xc5, 0xfe, 0x7f, 0x46, 0x20)                   // vmovdqu [rsi+32],ymm0
+	a.emit(0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05)                // syscall 500
 	spin := a.emit(0xeb, 0xfe)
 	store := a.emit(0xc5, 0xfe, 0x7f, 0x46, 0x40) // vmovdqu [rsi+64],ymm0
 	a.emit(0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05)
@@ -996,5 +996,106 @@ func TestMapNonSectionFile(t *testing.T) {
 	ac.StateData().Regs.Rdi = 0x1000000
 	if nr := h.syscall(c, mm, ac); nr != 500 || ac.StateData().Regs.Rdi != 0xfeedface12345678 {
 		t.Fatalf("syscall %d rdi %#x", nr, ac.StateData().Regs.Rdi)
+	}
+}
+
+type perfInfo struct {
+	cb                                                                                                  uint32
+	_                                                                                                   uint32
+	commitTotal, commitLimit, commitPeak, physTotal, physAvail, sysCache, kTotal, kPaged, kNP, pageSize uintptr
+	handles, procs, threads                                                                             uint32
+}
+
+type procMem struct {
+	cb, faults                      uint32
+	peakWS, ws                      uintptr
+	qpp, qp, qnpp, qnp              uintptr
+	pagefile, peakPagefile, private uintptr
+}
+
+// memState returns the system commit charge and this process's working set, in MB.
+func memState() (commitMB, wsMB uint64) {
+	var pi perfInfo
+	pi.cb = uint32(unsafe.Sizeof(pi))
+	k := windows.NewLazySystemDLL("kernel32.dll")
+	k.NewProc("K32GetPerformanceInfo").Call(uintptr(unsafe.Pointer(&pi)), uintptr(pi.cb))
+	var pm procMem
+	pm.cb = uint32(unsafe.Sizeof(pm))
+	k.NewProc("K32GetProcessMemoryInfo").Call(uintptr(windows.CurrentProcess()), uintptr(unsafe.Pointer(&pm)), uintptr(pm.cb))
+	return uint64(pi.commitTotal) * uint64(pi.pageSize) >> 20, uint64(pm.ws) >> 20
+}
+
+// TestMemoryRelease allocates and touches 1 GB of guest memory, maps it into a
+// stub, unmaps and frees it, and checks that the working set and the system
+// commit charge go back down.
+func TestMemoryRelease(t *testing.T) {
+	h := newHarness(t)
+	mm := h.newMM()
+	const size = 1 << 30
+	c0, w0 := memState()
+	t0 := time.Now()
+	fr, err := h.mf.Allocate(size, pgalloc.AllocOpts{Kind: usage.Anonymous})
+	if err != nil {
+		t.Fatalf("Allocate: %v", err)
+	}
+	fillRange(t, h.mf, fr, 0x5a)
+	h.mapAt(mm, 0x10000000, fr, rw)
+	c1, w1 := memState()
+	t.Logf("RELEASE allocated, touched and mapped 1 GB in %v: commit %d -> %d MB, working set %d -> %d MB", time.Since(t0).Round(time.Millisecond), c0, c1, w0, w1)
+	if c1 < c0+900 || w1 < w0+900 {
+		t.Fatalf("the allocation did not show up: commit %d -> %d, working set %d -> %d", c0, c1, w0, w1)
+	}
+	mm.as.Unmap(0x10000000, size)
+	h.mf.DecRef(fr)
+	t1 := time.Now()
+	var c2, w2 uint64
+	for time.Since(t1) < 30*time.Second {
+		c2, w2 = memState()
+		if c2 < c0+100 && w2 < w0+100 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Logf("RELEASE freed after %v: commit %d MB (baseline %d), working set %d MB (baseline %d); extents released %d", time.Since(t1).Round(time.Millisecond), c2, c0, w2, w0, pgalloc.ExtentsReleased())
+	if c2 > c0+100 {
+		t.Errorf("commit charge did not come back: %d MB, baseline %d MB", c2, c0)
+	}
+	if w2 > w0+100 {
+		t.Errorf("working set did not come back: %d MB, baseline %d MB", w2, w0)
+	}
+	// the memory is usable again, reads as zero
+	fr2, err := h.mf.Allocate(1<<20, pgalloc.AllocOpts{Kind: usage.Anonymous})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkRange(t, h.mf, fr2, 0)
+}
+
+func fillRange(t *testing.T, f *pgalloc.MemoryFile, fr memmap.FileRange, b byte) {
+	t.Helper()
+	bs, err := f.MapInternal(fr, hostarch.ReadWrite)
+	if err != nil {
+		t.Fatalf("MapInternal(%v): %v", fr, err)
+	}
+	for ; !bs.IsEmpty(); bs = bs.Tail() {
+		s := bs.Head().ToSlice()
+		for i := range s {
+			s[i] = b
+		}
+	}
+}
+
+func checkRange(t *testing.T, f *pgalloc.MemoryFile, fr memmap.FileRange, b byte) {
+	t.Helper()
+	bs, err := f.MapInternal(fr, hostarch.Read)
+	if err != nil {
+		t.Fatalf("MapInternal(%v): %v", fr, err)
+	}
+	for ; !bs.IsEmpty(); bs = bs.Tail() {
+		for i, v := range bs.Head().ToSlice() {
+			if v != b {
+				t.Fatalf("range %v: byte %d is %#x, want %#x", fr, i, v, b)
+			}
+		}
 	}
 }

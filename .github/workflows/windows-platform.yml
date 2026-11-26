@@ -24,7 +24,7 @@ jobs:
         env: {WINSTUB_DEBUG: "1"}
         run: |
           $fail = 0
-          foreach ($t in 'TestSyscallsFaultsInterrupt','TestExecuteFault','TestUnmapAndRemap','TestNewThreadsAndSpeed','TestForkedAddressSpace','TestWriteExecute','TestFPState','TestSyscallLatency','TestStubStart','TestStubStartExperiment','TestDecodeAllMatchesSerial','TestSplitSyscall','TestInterruptStorm','TestMapNonSectionFile') {
+          foreach ($t in 'TestSyscallsFaultsInterrupt','TestExecuteFault','TestUnmapAndRemap','TestNewThreadsAndSpeed','TestForkedAddressSpace','TestWriteExecute','TestFPState','TestSyscallLatency','TestStubStart','TestStubStartExperiment','TestDecodeAllMatchesSerial','TestSplitSyscall','TestInterruptStorm','TestMapNonSectionFile','TestMemoryRelease') {
             "===== $t" | Tee-Object -Append -FilePath ../../../../tests.txt
             $a = @(("-test.run=^" + $t + [char]36), "-test.v=true", "-test.timeout=3m"); & ../../../../winstub.test.exe @a 2>&1 | Tee-Object -Append -FilePath ../../../../tests.txt
             "exit: $LASTEXITCODE" | Tee-Object -Append -FilePath ../../../../tests.txt
