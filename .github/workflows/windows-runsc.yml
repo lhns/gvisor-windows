@@ -27,7 +27,7 @@ jobs:
           cp out/hello $r/bin/hello; cp out/busybox $r/bin/busybox
           for a in sh cat; do ln -s busybox $r/bin/$a; done
           echo ciguest > $r/etc/hostname
-          mkfs.erofs out/rootfs.erofs $r
+          chmod 755 $r; mkfs.erofs --all-root out/rootfs.erofs $r
       - uses: actions/upload-artifact@v4
         with: {name: runsc-guests, path: out}
   run:
