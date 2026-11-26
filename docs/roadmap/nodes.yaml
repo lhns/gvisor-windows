@@ -643,10 +643,12 @@
   title: Run busybox under the Sentry
   track: platform
   kind: feature
-  state: blocked
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/3-runsc-boot.md
+  - docs/results/1f-exec-signals.md
+  verdict_quote: runs a glibc guest and busybox from a Windows-folder rootfs with stdio, exit codes, stdin, a windows-nat network, a published port
   headline: ''
   depends_on:
   - platform-winstub
@@ -658,11 +660,10 @@
   - platform-static-guest-from-memory
   - sentry-dynamic-elf-and-exec
   - runsc-windows-boot
-  - platform-map-files-without-sections
   replaced_by: []
   lane: windows-ci
-  start: ''
-  end: ''
+  start: '2026-11-26'
+  end: '2026-11-26'
   folded: []
   overview: true
   plain: 'First end-to-end milestone: gVisor''s kernel runs an unmodified busybox shell on Windows.'
@@ -1833,6 +1834,7 @@
   headline: ''
   depends_on:
   - platform-busybox-on-windows
+  - platform-map-files-without-sections
   replaced_by: []
   start: ''
   end: ''
