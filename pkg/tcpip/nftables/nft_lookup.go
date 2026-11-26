@@ -167,16 +167,13 @@ func initLookup(tab *Table, exprInfo ExprInfo) (*lookupOp, *syserr.AnnotatedErro
 	}
 
 	setName := setAttr.String()
-	set, ok := tab.sets[setName]
+	setID, hasSetID := AttrNetToHost[uint32](linux.NFTA_LOOKUP_SET_ID, lookupAttrs)
+	set, ok := tab.findSet(setName, setID, hasSetID)
 	if !ok {
-		setID, ok := AttrNetToHost[uint32](linux.NFTA_LOOKUP_SET_ID, lookupAttrs)
-		if !ok {
+		if !hasSetID {
 			return nil, syserr.NewAnnotatedError(syserr.ErrNoFileOrDir, "NFTA_LOOKUP_SET_ID attribute not found")
 		}
-		set, ok = tab.setHandles[uint64(setID)]
-		if !ok {
-			return nil, syserr.NewAnnotatedError(syserr.ErrNoFileOrDir, fmt.Sprintf("set with id %d not found", setID))
-		}
+		return nil, syserr.NewAnnotatedError(syserr.ErrNoFileOrDir, fmt.Sprintf("set with id %d not found", setID))
 	}
 
 	sregIdx, err := regNumToIdx(uint8(sreg), int(set.keyLen))

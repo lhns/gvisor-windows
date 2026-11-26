@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strconv"
+	"strings"
 
 	"gvisor.dev/gvisor/pkg/abi/linux"
 	"gvisor.dev/gvisor/pkg/log"
@@ -27,6 +29,42 @@ import (
 	"gvisor.dev/gvisor/pkg/syserr"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 )
+
+// allocSetName expands a "%d" in a set name to the first number that makes the
+// name unique in the table, as nf_tables_set_alloc_name does (nft names
+// anonymous sets "__set%d").
+func (t *Table) allocSetName(name string) string {
+	if !strings.Contains(name, "%d") {
+		return name
+	}
+	for i := 0; ; i++ {
+		n := strings.Replace(name, "%d", strconv.Itoa(i), 1)
+		if _, exists := t.sets[n]; !exists {
+			return n
+		}
+	}
+}
+
+// findSet finds a set by name, or, for a name that is still a "%d" template,
+// the newest anonymous set created with the given id. Ids repeat across
+// batches (each nft process counts from 1), so the highest handle wins.
+// Ref: net/netfilter/nf_tables_api.c:nft_set_lookup_byid
+func (t *Table) findSet(name string, id uint32, hasID bool) (*nftSet, bool) {
+	if !strings.Contains(name, "%d") {
+		set, ok := t.sets[name]
+		return set, ok
+	}
+	if !hasID {
+		return nil, false
+	}
+	var best *nftSet
+	for _, s := range t.sets {
+		if s.flags&linux.NFT_SET_ANONYMOUS != 0 && s.id == id && (best == nil || s.handle > best.handle) {
+			best = s
+		}
+	}
+	return best, best != nil
+}
 
 // isSame checks if the set is the same as the given set description.
 // Ref: net/netfilter/nf_tables_api.c:nft_set_is_same
@@ -423,9 +461,11 @@ func (nf *NFTables) NewSet(attrs map[uint16]nlmsg.BytesView, family stack.Addres
 		}
 	}
 
-	setName := setNameBytes.String()
+	setID, _ := AttrNetToHost[uint32](linux.NFTA_SET_ID, attrs)
+	setName := tab.allocSetName(setNameBytes.String())
 	newSet := &nftSet{
 		name:       setName,
+		id:         setID,
 		keyType:    keyType,
 		dataType:   dataType,
 		objType:    objType,
@@ -1004,8 +1044,9 @@ func (nf *NFTables) NewSetElements(atr nlmsg.AttrsView, family stack.AddressFami
 		return syserr.NewAnnotatedError(syserr.ErrInvalidArgument, "set elem list set attribute is missing")
 	}
 	setName := setNameBytes.String()
+	elemSetID, hasElemSetID := AttrNetToHost[uint32](linux.NFTA_SET_ELEM_LIST_SET_ID, attrs)
 	var set *nftSet
-	if set, ok = tab.sets[setName]; !ok {
+	if set, ok = tab.findSet(setName, elemSetID, hasElemSetID); !ok {
 		return syserr.NewAnnotatedError(syserr.ErrInvalidArgument, "set does not exist")
 	}
 
