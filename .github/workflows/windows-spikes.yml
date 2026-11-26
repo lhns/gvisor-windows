@@ -1,0 +1,38 @@
+# Re-runs the Phase 0b Windows spikes on GitHub's hosted Windows runners.
+# The development machine is a QEMU guest without FSGSBASE, so S3 (setting
+# the %fs base from user mode) needs a host whose CPU exposes it.
+name: windows-spikes
+on:
+  push:
+    branches: [windows]
+    paths: ["test/spikes/windows/**", ".github/workflows/windows-spikes.yml"]
+  workflow_dispatch:
+jobs:
+  spikes:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        spike: [s1, s2, s3, s4, s5]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: test/spikes/windows
+      - uses: actions/setup-go@v5
+        with: {go-version: "1.26.x", cache: false}
+      - name: CPU
+        shell: pwsh
+        run: Get-CimInstance Win32_Processor | Select-Object Name, NumberOfLogicalProcessors | Format-List
+      - name: Run ${{ matrix.spike }}
+        shell: pwsh
+        env: {GODEBUG: asyncpreemptoff=1}
+        working-directory: test/spikes/windows/${{ matrix.spike }}
+        run: |
+          go build -o spike.exe .
+          ./spike.exe 2>&1 | Tee-Object -FilePath ../${{ matrix.spike }}-output.txt
+          "exit: $LASTEXITCODE" | Tee-Object -Append -FilePath ../${{ matrix.spike }}-output.txt
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.spike }}-output
+          path: test/spikes/windows/${{ matrix.spike }}-output.txt
