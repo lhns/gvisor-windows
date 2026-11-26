@@ -1,0 +1,5 @@
+gvisor-windows is an unofficial port of gVisor (https://gvisor.dev) to Windows hosts.
+It is not a Google project. gVisor is Copyright The gVisor Authors, Apache License 2.0.
+
+Code borrowed from other projects is listed here with its origin:
+(none yet)

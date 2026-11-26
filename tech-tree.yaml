@@ -1,0 +1,27 @@
+# Tech tree for gvisor-windows (skill: lhns/design-skills, tech-tree). Paths relative to this file.
+nodes: docs/roadmap/nodes.yaml
+page: docs/roadmap.md
+
+tracks:
+  research: {name: "research", scope: "choosing the base and rejected designs"}
+  platform: {name: "platform", scope: "stub processes, syscall trap, memory mapping, TLS"}
+  sentry:   {name: "sentry", scope: "Windows host layers for gVisor's Sentry"}
+  fs:       {name: "files", scope: "host files, bind mounts, image storage"}
+  net:      {name: "network", scope: "netstack to Windows sockets, port forwarding"}
+  podman:   {name: "podman", scope: "Podman engine inside the sandbox, Windows front-end, acceptance test"}
+  ops:      {name: "operations", scope: "CI, packaging, owner decisions on process"}
+
+kinds:
+  feature: {}
+  experiment: {shape: slant}
+  tooling: {}
+  defect: {shape: flag, rated: false, blocks: false}
+  owner-decision: {shape: hexagon, owner_gate: true}
+
+lanes: [linux-ci, windows-local, owner, none]
+
+overview: {min: 3, max: 14}
+
+history:
+  weak_refs:
+    adr: 'ADR[- ]?0*(\d{1,4})'

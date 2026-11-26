@@ -1,0 +1,19 @@
+name: tech-tree
+on:
+  push:
+    paths: ["docs/**", "tech-tree.yaml", ".github/workflows/tech-tree.yml"]
+  pull_request:
+    paths: ["docs/**", "tech-tree.yaml"]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: lhns/design-skills
+          path: .design-skills
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install pyyaml
+      - run: python .design-skills/skills/tech-tree/scripts/check.py --config tech-tree.yaml

@@ -1,0 +1,419 @@
+- id: research-gvisor-base
+  title: Pick gVisor as the base
+  track: research
+  kind: experiment
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/adr/0001-gvisor-sentry-as-the-base.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: none
+  start: '2026-11-17'
+  end: '2026-11-26'
+  folded: []
+  overview: true
+  plain: Of all ways to run Linux code on Windows without admin, gVisor's user-space Linux kernel is the only one that already runs containers.
+- id: research-lkl-nommu
+  title: Revive LKL or nommu UML
+  track: research
+  kind: experiment
+  state: abandoned
+  outcome: dead-end
+  evidence:
+  - docs/adr/0001-gvisor-sentry-as-the-base.md
+  verdict_quote: Real Linux kernel, but nommu mode has no `fork()` and no memory protection between processes; LKL dropped Windows hosts in 2020; nommu UML is unmerged (v14, Feb 2026).
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: none
+  start: '2026-11-26'
+  end: '2026-11-26'
+  folded: []
+  overview: false
+  plain: 'Running the real Linux kernel as a library was rejected: without memory management it cannot fork, and its Windows support is gone.'
+- id: research-unkernel
+  title: Build on unkernel
+  track: research
+  kind: experiment
+  state: abandoned
+  outcome: dead-end
+  evidence:
+  - docs/adr/0001-gvisor-sentry-as-the-base.md
+  verdict_quote: Runs Linux compiled to wasm off Linux today, but guest code is always emulated (aarch64 only), so it cannot run x86 user code natively.
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: none
+  start: '2026-11-26'
+  end: '2026-11-26'
+  folded: []
+  overview: false
+  plain: Linux compiled to WebAssembly runs anywhere, but it always emulates the programs, so it cannot reach native speed.
+- id: research-flinux-translation
+  title: Translate syscalls like flinux
+  track: research
+  kind: experiment
+  state: abandoned
+  outcome: dead-end
+  evidence:
+  - docs/adr/0001-gvisor-sentry-as-the-base.md
+  verdict_quote: Translates Linux syscalls onto Windows calls; has no namespaces, cgroups or overlay, so it cannot host a container engine without writing a kernel.
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: none
+  start: '2026-11-26'
+  end: '2026-11-26'
+  folded: []
+  overview: false
+  plain: Mapping each Linux call onto a Windows call cannot provide what containers need, such as namespaces and cgroups.
+- id: research-qemu-emulation
+  title: QEMU software emulation
+  track: research
+  kind: experiment
+  state: abandoned
+  outcome: dead-end
+  evidence:
+  - docs/adr/0001-gvisor-sentry-as-the-base.md
+  verdict_quote: Works today, but software emulation of the whole machine is several times slower; WHPX needs a one-time admin step.
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: none
+  start: '2026-11-26'
+  end: '2026-11-26'
+  folded: []
+  overview: false
+  plain: Emulating a whole computer in software works today but is several times slower; it stays only as a stopgap.
+- id: ops-name-and-fork
+  title: Name it gvisor-windows
+  track: ops
+  kind: owner-decision
+  state: done
+  outcome: n/a
+  evidence:
+  - docs/adr/0003-fork-of-the-go-branch.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: owner
+  start: '2026-11-26'
+  end: '2026-11-26'
+  folded: []
+  overview: true
+  plain: The project is an unofficial fork of gVisor's Go branch called gvisor-windows.
+- id: ops-linux-tests-on-actions
+  title: Run Linux tests on GitHub Actions
+  track: ops
+  kind: owner-decision
+  state: done
+  outcome: n/a
+  evidence:
+  - docs/adr/0003-fork-of-the-go-branch.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: owner
+  start: '2026-11-26'
+  end: '2026-11-26'
+  folded: []
+  overview: false
+  plain: Everything that needs a Linux host runs on GitHub's hosted runners.
+- id: ops-borrow-code
+  title: Borrow code, check licenses later
+  track: ops
+  kind: owner-decision
+  state: done
+  outcome: n/a
+  evidence:
+  - docs/adr/0003-fork-of-the-go-branch.md
+  - NOTICE
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: owner
+  start: '2026-11-26'
+  end: '2026-11-26'
+  folded: []
+  overview: false
+  plain: Code from other projects may be reused; its origin is recorded so the owner can review licences later.
+- id: fs-compat-layer-not-boundary
+  title: Compatibility layer, not security boundary
+  track: fs
+  kind: owner-decision
+  state: done
+  outcome: n/a
+  evidence:
+  - docs/adr/0005-host-files-accessed-directly.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: owner
+  start: '2026-11-26'
+  end: '2026-11-26'
+  folded: []
+  overview: true
+  plain: The sandbox may open the user's files directly with the user's rights; it isolates containers from each other, not from the user.
+- id: podman-acceptance-test
+  title: Write the Podman acceptance test
+  track: podman
+  kind: tooling
+  state: in-progress
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - research-gvisor-base
+  replaced_by: []
+  lane: linux-ci
+  start: '2026-11-26'
+  end: ''
+  folded: []
+  overview: false
+  plain: 'One test of ten steps defines when Podman counts as working: pull, run, build, mounts, ports, compose, restart, isolation.'
+  notes: 'Done when: the test exists under test/e2e/podman-acceptance and passes against native Podman on Linux.'
+- id: podman-inside-gvisor-linux
+  title: Podman inside gVisor on Linux
+  track: podman
+  kind: experiment
+  state: in-progress
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - podman-acceptance-test
+  replaced_by: []
+  lane: linux-ci
+  start: '2026-11-26'
+  end: ''
+  folded: []
+  overview: true
+  plain: Check on Linux whether Podman's engine runs inside gVisor at all; this is the baseline for the Windows port.
+  notes: 'Done when: the acceptance test ran against Podman inside runsc and docs/results/0a-linux.md records each step.'
+- id: research-gvisor-benchmark
+  title: Benchmark gVisor against native Linux
+  track: research
+  kind: experiment
+  state: in-progress
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - research-gvisor-base
+  replaced_by: []
+  lane: linux-ci
+  start: '2026-11-26'
+  end: ''
+  folded: []
+  overview: false
+  plain: Measure how much slower process start, small files and CPU work are inside gVisor than natively.
+  notes: 'Done when: the benchmark table is in docs/results/0a-linux.md.'
+- id: platform-elf-alignment-survey
+  title: Survey ELF segment alignment
+  track: platform
+  kind: experiment
+  state: in-progress
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - research-gvisor-base
+  replaced_by: []
+  lane: linux-ci
+  start: '2026-11-26'
+  end: ''
+  folded: []
+  overview: false
+  plain: Count how often program files place code at addresses Windows cannot map directly (64 KB alignment).
+  notes: 'Done when: per-image counts are in docs/results/0a-linux.md.'
+- id: fs-persistent-image-storage
+  title: Test persistent image storage
+  track: fs
+  kind: experiment
+  state: in-progress
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - podman-inside-gvisor-linux
+  replaced_by: []
+  lane: linux-ci
+  start: '2026-11-26'
+  end: ''
+  folded: []
+  overview: false
+  plain: Find out where Podman's images can live so they survive a restart of the sandbox, and how fast each option is.
+  notes: 'Done when: pull/build timings on tmpfs and on a host directory, and the overlay restart test, are in docs/results/0a-linux.md.'
+- id: platform-trap-cost
+  title: Measure syscall trap cost
+  track: platform
+  kind: experiment
+  state: in-progress
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - research-gvisor-base
+  replaced_by: []
+  lane: windows-local
+  start: '2026-11-26'
+  end: ''
+  folded: []
+  overview: false
+  plain: Measure what it costs to catch one Linux system call on Windows and hand it to another process.
+  notes: 'Done when: S1 results are in docs/results/0b-windows.md.'
+- id: platform-4k-section-views
+  title: Test 4 KB section views
+  track: platform
+  kind: experiment
+  state: in-progress
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - research-gvisor-base
+  replaced_by: []
+  lane: windows-local
+  start: '2026-11-26'
+  end: ''
+  folded: []
+  overview: false
+  plain: Check whether Windows can map shared memory at the 4 KB steps Linux programs expect, instead of 64 KB.
+  notes: 'Done when: S2 results are in docs/results/0b-windows.md.'
+- id: platform-tls-register
+  title: Set the TLS register
+  track: platform
+  kind: experiment
+  state: in-progress
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - research-gvisor-base
+  replaced_by: []
+  lane: windows-local
+  start: '2026-11-26'
+  end: ''
+  folded: []
+  overview: true
+  plain: Check whether a normal Windows program can set the register Linux programs use for thread-local data; without it native execution fails.
+  notes: 'Go/no-go. Done when: S3 results are in docs/results/0b-windows.md.'
+- id: platform-restricted-stub
+  title: Restrict the stub process
+  track: platform
+  kind: experiment
+  state: in-progress
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - research-gvisor-base
+  replaced_by: []
+  lane: windows-local
+  start: '2026-11-26'
+  end: ''
+  folded: []
+  overview: false
+  plain: Check that the process running Linux code can be locked down, so a missed system call does little harm.
+  notes: 'Done when: S4 results are in docs/results/0b-windows.md.'
+- id: sentry-go-fault-recovery
+  title: Recover faults in Go
+  track: sentry
+  kind: experiment
+  state: in-progress
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - research-gvisor-base
+  replaced_by: []
+  lane: windows-local
+  start: '2026-11-26'
+  end: ''
+  folded: []
+  overview: false
+  plain: Check that the Go kernel process can survive reading bad guest memory on Windows, as it does on Linux.
+  notes: 'Done when: S5 results are in docs/results/0b-windows.md.'
+- id: research-whpx-this-machine
+  title: Test WHPX on this machine
+  track: research
+  kind: experiment
+  state: in-progress
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - research-gvisor-base
+  replaced_by: []
+  lane: windows-local
+  start: '2026-11-26'
+  end: ''
+  folded: []
+  overview: false
+  plain: Check whether QEMU can use the Windows hypervisor here without admin, as a fast stopgap.
+  notes: 'Done when: S6 results are in docs/results/0b-windows.md.'
+- id: ops-phase0-go-no-go
+  title: Go or no-go after Phase 0
+  track: ops
+  kind: owner-decision
+  state: blocked
+  outcome: n/a
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - podman-inside-gvisor-linux
+  - research-gvisor-benchmark
+  - platform-elf-alignment-survey
+  - fs-persistent-image-storage
+  - platform-trap-cost
+  - platform-4k-section-views
+  - platform-tls-register
+  - platform-restricted-stub
+  - sentry-go-fault-recovery
+  - research-whpx-this-machine
+  replaced_by: []
+  lane: owner
+  start: '2026-11-26'
+  end: ''
+  folded: []
+  overview: true
+  plain: The owner decides, from the Phase 0 results, whether the port goes ahead.
+  notes: 'Input: docs/adr/0004-phase-0-results.md.'
+- id: podman-acceptance-on-windows
+  title: Run Podman on Windows
+  track: podman
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - ops-phase0-go-no-go
+  replaced_by: []
+  lane: windows-local
+  start: '2026-11-26'
+  end: ''
+  folded: []
+  overview: true
+  plain: 'The goal: a standard Windows user runs Podman containers with no admin, VM, WSL or Hyper-V.'
+  notes: 'Done when: all 10 acceptance steps pass in CI on windows-latest as a standard user.'

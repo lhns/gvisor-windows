@@ -1,3 +1,13 @@
+# gvisor-windows
+
+**Unofficial** port of [gVisor](https://gvisor.dev) to Windows hosts: Linux containers (Podman) for a standard Windows user, without admin, Hyper-V, WSL or a VM. Not a Google project.
+
+Status: Phase 0 (feasibility gates). Roadmap: [docs/roadmap.md](docs/roadmap.md). Decisions: [docs/adr/](docs/adr/).
+
+---
+
+Upstream README of the `go` branch:
+
 # gVisor
 
 This branch is a synthetic branch, containing Go sources and the C sources of
