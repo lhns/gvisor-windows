@@ -18,22 +18,35 @@ package winstub
 
 import (
 	"fmt"
+	"os"
 	"runtime"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
 
+	"golang.org/x/sys/windows"
 	"gvisor.dev/gvisor/pkg/hostarch"
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/pe"
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/stubasm"
 )
 
-const (
-	stubSpin = 3000  // pause iterations on the stub side before it sleeps
-	ctlSpin  = 20000 // polls on the Sentry side before it sleeps
+// Spin budgets before a waiting side goes to sleep on its event: pause
+// iterations on the stub side, polls on the Sentry side. WINSTUB_STUBSPIN and
+// WINSTUB_CTLSPIN override them for tuning.
+var (
+	stubSpin = envInt("WINSTUB_STUBSPIN", 3000)
+	ctlSpin  = envInt("WINSTUB_CTLSPIN", 20000)
 )
+
+func envInt(name string, def int) int {
+	if v, err := strconv.Atoi(os.Getenv(name)); err == nil {
+		return v
+	}
+	return def
+}
 
 // Request kinds a stopped thread publishes (state 1).
 const (
@@ -97,7 +110,7 @@ func (as *addressSpace) slot(idx int) *thread {
 	*t.u64(stubasm.PgHReq) = uint64(dupInto(as.h, t.evReq))
 	*t.u64(stubasm.PgHReply) = uint64(dupInto(as.h, t.evReply))
 	*t.u64(stubasm.PgStkTop) = addr + stubasm.ThreadRegion - 0x100
-	*t.u64(stubasm.PgSpins) = stubSpin
+	*t.u64(stubasm.PgSpins) = uint64(stubSpin)
 	*t.u64(stubasm.PgXMask) = as.p.xmask
 	code := stubasm.RepairCode(addr)
 	copy(unsafe.Slice((*byte)(unsafe.Add(t.page, stubasm.PgRepair)), len(code)), code)
@@ -163,6 +176,7 @@ func (as *addressSpace) startThread(t *thread) error {
 	if r, _, e := pResumeThread.Call(h); int32(r) == -1 {
 		return fmt.Errorf("ResumeThread: %v", e)
 	}
+	Trace("thread %d started (tid %d)", t.idx, tid)
 	return nil
 }
 
@@ -173,12 +187,14 @@ func (as *addressSpace) startThread(t *thread) error {
 // process, so that goroutine stays locked to its OS thread for the process's
 // lifetime.
 func (p *Platform) newAS() (*addressSpace, error) {
+	Trace("as: start")
 	as := newAddressSpace(p)
 	go as.debugLoop()
 	if err := <-as.started; err != nil {
 		<-as.loopDone
 		return nil, err
 	}
+	Trace("as: process set up")
 	// Wait for the anchor thread to reach its wait: Windows finishes initializing
 	// the process on it, and CreateRemoteThread needs that.
 	anchor := as.slots[0]
@@ -190,6 +206,7 @@ func (p *Platform) newAS() (*addressSpace, error) {
 		}
 		time.Sleep(200 * time.Microsecond)
 	}
+	Trace("as: anchor parked")
 	return as, nil
 }
 
@@ -214,9 +231,11 @@ func (as *addressSpace) start() error {
 	}
 	as.mu.Lock()
 	defer as.mu.Unlock()
+	Trace("start: CreateProcess done")
 	if err := as.reserve(queryUsed(as.h, stubasm.ReserveMin, stubasm.ReserveMax)); err != nil {
 		return fail(err)
 	}
+	Trace("start: placeholders reserved")
 	section := func(size uint64) (uintptr, unsafe.Pointer, error) {
 		s, err := call(pCreateMapping, ^uintptr(0), 0, pageExecRW, uintptr(size>>32), uintptr(size&0xFFFFFFFF), 0)
 		if err != nil {
@@ -235,6 +254,7 @@ func (as *addressSpace) start() error {
 	if as.ctlSec, as.ctlView, err = section(stubasm.CtlSize); err != nil {
 		return fail(fmt.Errorf("control area: %w", err))
 	}
+	Trace("start: sections created")
 	for _, m := range []struct {
 		lo, size uint64
 		prot     int
@@ -251,6 +271,7 @@ func (as *addressSpace) start() error {
 	if err := as.mapSys(stubasm.CtlBase, stubasm.CtlSize, as.ctlSec, 0, protR|protW|protX); err != nil {
 		return fail(err)
 	}
+	Trace("start: views mapped")
 	as.areaWrite(stubasm.StubCode, as.p.image)
 
 	// Slot 0 is the anchor: the initial thread, parked for good, so that the
@@ -264,6 +285,7 @@ func (as *addressSpace) start() error {
 	if r, _, e := pResumeThread.Call(as.hMain); int32(r) == -1 {
 		return fail(fmt.Errorf("ResumeThread: %v", e))
 	}
+	Trace("start: main thread resumed")
 	return nil
 }
 
@@ -288,6 +310,16 @@ func (as *addressSpace) debugLoop() {
 		}
 		status := uint32(dbgContinue)
 		exited := false
+		if traceOn && ev.code() != 1 {
+			name := ""
+			if h := uintptr(ev.u64(16)); (ev.code() == 6 || ev.code() == 3) && h != 0 {
+				var buf [260]uint16
+				if n, _ := windows.GetFinalPathNameByHandle(windows.Handle(h), &buf[0], 260, 0); n > 0 {
+					name = windows.UTF16ToString(buf[:])
+				}
+			}
+			Trace("debug event %d (tid %d) %s", ev.code(), ev.tid(), name)
+		}
 		switch ev.code() {
 		case 1: // EXCEPTION_DEBUG_EVENT
 			status = as.onException(&ev, &ctx, &seenBP)
@@ -343,6 +375,9 @@ func (as *addressSpace) onException(ev *debugEvent, ctx *ctxBuf, seenBP *bool) u
 		return dbgContinue
 	}
 	excAddr := ev.u64(32)
+	if traceOn {
+		Trace("exception %#x at %#x (thread %d)", code, excAddr, t.idx)
+	}
 	t.stopMu.Lock()
 	defer t.stopMu.Unlock()
 	t.mu.Lock()

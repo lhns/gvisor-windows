@@ -105,6 +105,7 @@ type addressSpace struct {
 	restartAt map[uint64]uint64
 	ud2Sites  map[uint64]bool
 	privs     []*privSection
+	edges     map[uint64]edge
 
 	tmu       sync.Mutex
 	byTid     map[uint32]*thread
@@ -118,7 +119,7 @@ func newAddressSpace(p *Platform) *addressSpace {
 	return &addressSpace{
 		p: p, loopDone: make(chan struct{}), started: make(chan error, 1),
 		vcur: stubasm.Veneers, siteCache: map[uint64]siteInfo{}, restartAt: map[uint64]uint64{},
-		ud2Sites: map[uint64]bool{}, byTid: map[uint32]*thread{},
+		ud2Sites: map[uint64]bool{}, byTid: map[uint32]*thread{}, edges: map[uint64]edge{},
 	}
 }
 
@@ -128,6 +129,8 @@ func newAddressSpace(p *Platform) *addressSpace {
 // placeholder, so that Windows can never place an allocation of its own there.
 func (as *addressSpace) reserve(used []rng) error {
 	cur := stubasm.ReserveMin
+	used = append(append([]rng(nil), used...), rng{stubasm.WinWindow, stubasm.WinWindow + stubasm.WinWindowSize})
+	sort.Slice(used, func(i, j int) bool { return used[i].lo < used[j].lo })
 	add := func(s, e uint64) error {
 		s = (s + 0xFFFF) &^ 0xFFFF
 		e &^= 0xFFFF
@@ -257,6 +260,15 @@ func (as *addressSpace) removeRange(lo, hi uint64) error {
 	if i == j {
 		return nil
 	}
+	for k, e := range as.edges {
+		if k > lo && k <= hi {
+			e.tail0f = false
+		}
+		if k >= lo && k < hi {
+			e.head05 = false
+		}
+		as.edges[k] = e
+	}
 	olds := append([]*view(nil), as.views[i:j]...)
 	as.views = append(as.views[:i], as.views[j:]...)
 	var pieces []*view
@@ -381,8 +393,32 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 		return err
 	}
 	if content != nil {
-		st := as.patchCode(content, lo)
+		head := content[0] == 0x05
+		from := 0
+		if head && as.edges[lo].tail0f {
+			from = 1 // the 0x05 belongs to a syscall that starts in the range below
+		}
+		st, scan := as.patchCode(content, lo, from)
 		debugf("text %#x-%#x: %+v", lo, hi, st)
+		// A syscall instruction may straddle two mapped ranges: 0x0f ends one,
+		// 0x05 starts the next. Whichever range is mapped second turns the 0x05
+		// into 0x0b (ud2, the debugger path) so that the pair is never executable.
+		debugf("edges at %#x: head05 %v from %d tail0f %v", lo, head, from, scan.tail0f)
+		lowE, highE := as.edges[lo], as.edges[hi]
+		if head && lowE.tail0f {
+			content[0] = 0x0B
+			as.ud2Sites[lo-1] = true
+		}
+		lowE.head05 = head
+		highE.tail0f = scan.tail0f
+		as.edges[lo], as.edges[hi] = lowE, highE
+		if scan.tail0f && highE.head05 {
+			if as.fixHead(hi) {
+				as.ud2Sites[hi-1] = true
+				highE.head05 = false
+				as.edges[hi] = highE
+			}
+		}
 		ps, err := as.newPrivate(content)
 		if err != nil {
 			return err
@@ -443,9 +479,11 @@ func (as *addressSpace) Release() {
 	if as.released.Swap(true) {
 		return
 	}
+	Trace("as: release")
 	as.markDead()
 	pTerminateProcess.Call(as.h, 0)
 	<-as.loopDone
+	Trace("as: process gone")
 	as.mu.Lock()
 	defer as.mu.Unlock()
 	as.tmu.Lock()
@@ -491,22 +529,26 @@ func (as *addressSpace) reserveHoles(ctx context.Context, mm platform.MemoryMana
 	if as.holesDone.Swap(true) {
 		return
 	}
-	ar := hostarch.AddrRange{Start: holeStart, End: holeEnd}
-	if _, _, err := mm.FindVMAByName(ar, holeName); err == nil {
-		return // inherited through fork
-	}
-	_, err := mm.MMap(ctx, memmap.MMapOpts{
-		Force:   true,
-		Unmap:   true,
-		Fixed:   true,
-		Addr:    holeStart,
-		Length:  uint64(holeEnd - holeStart),
-		Private: true,
-		Name:    holeName,
-		Sealed:  true,
-	})
-	if err != nil {
-		debugf("reserving the Windows holes failed: %v", err)
+	for _, h := range []hostarch.AddrRange{
+		{Start: holeStart, End: holeEnd},
+		{Start: hostarch.Addr(stubasm.WinWindow), End: hostarch.Addr(stubasm.WinWindow + stubasm.WinWindowSize)},
+	} {
+		if _, _, err := mm.FindVMAByName(h, holeName); err == nil {
+			continue // inherited through fork
+		}
+		_, err := mm.MMap(ctx, memmap.MMapOpts{
+			Force:   true,
+			Unmap:   true,
+			Fixed:   true,
+			Addr:    h.Start,
+			Length:  uint64(h.Length()),
+			Private: true,
+			Name:    holeName,
+			Sealed:  true,
+		})
+		if err != nil {
+			debugf("reserving %v for Windows failed: %v", h, err)
+		}
 	}
 }
 
@@ -539,7 +581,7 @@ func (as *addressSpace) wxExec(a uint64) bool {
 		return false
 	}
 	ws, wo := v.wxSec, v.wxOff+(lo-v.lo)
-	st := as.patchCode(buf, lo)
+	st, _ := as.patchCode(buf, lo, 0)
 	debugf("wx rescan %#x-%#x: %+v", lo, hi, st)
 	ps, err := as.newPrivate(buf)
 	if err != nil {
@@ -576,6 +618,45 @@ func (as *addressSpace) wxWrite(a uint64) bool {
 		debugf("wxWrite map: %v", err)
 		return false
 	}
+	return true
+}
+
+// edge records, for an address where two ranges meet, what the range ending
+// there ends with (tail0f) and the range starting there begins with (head05).
+type edge struct{ tail0f, head05 bool }
+
+// fixHead handles the range mapped at a whose first byte (0x05) completes a
+// syscall instruction that starts in the range below, which was mapped later:
+// the first byte becomes 0x0b (ud2) and, because the sweep over the range began
+// at the wrong offset, the rest is scanned again from offset 1 and the private
+// text updated in place.
+func (as *addressSpace) fixHead(a uint64) bool {
+	v := as.findView(a)
+	if v == nil || v.priv == nil || v.lo != a {
+		return false
+	}
+	buf, ok := as.readStub(v.lo, int(v.hi-v.lo))
+	if !ok {
+		return false
+	}
+	orig := append([]byte(nil), buf...)
+	as.patchCode(buf, v.lo, 1)
+	buf[0] = 0x0B
+	off := v.off
+	base := off &^ 0xFFFF
+	n := off - base + uint64(len(buf))
+	m, err := call(pMapViewOfFile, v.priv.h, fileMapWrite, uintptr(base>>32), uintptr(base&0xFFFFFFFF), uintptr(n))
+	if err != nil {
+		debugf("fixHead: %v", err)
+		return false
+	}
+	dst := unsafe.Slice((*byte)(ptr(m+uintptr(off-base))), len(buf))
+	for i := range buf {
+		if buf[i] != orig[i] {
+			dst[i] = buf[i]
+		}
+	}
+	pUnmapViewOfFile.Call(m)
 	return true
 }
 

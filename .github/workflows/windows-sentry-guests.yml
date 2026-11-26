@@ -26,6 +26,7 @@ jobs:
           gcc -static -no-pie -O1 -o out/fork_glibc $G/fork.c
           gcc -static -no-pie -O1 -o out/jit_glibc $G/jit.c
           (cd $G/gohello && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $GITHUB_WORKSPACE/out/hello_go .)
+          (cd $G/gospin && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $GITHUB_WORKSPACE/out/gospin_go .)
           # Dynamic, exec, shell, signal and thread guests run from a root filesystem tar.
           sudo apt-get update -qq && sudo apt-get install -y busybox-static
           gcc -O1 -fstack-protector-all -o out/hello_dyn $G/hello.c
@@ -84,6 +85,7 @@ jobs:
             @{n='hello_glibc_pie'; out="hello from glibc: argc=1 tv=5 work=10 heap=ok${nl}"; code=7},
             @{n='fork_glibc'; out="child${nl}parent: child exited 3${nl}"; code=0},
             @{n='hello_go'; out="hello from go${nl}"; code=0},
+            @{n='gospin_go'; out="gospin ok${nl}"; code=0},
             @{n='jit_glibc'; out="jit1 ok${nl}jit2 ok${nl}jit3 ok${nl}"; code=0}
           )
           $hello = "hello from glibc: argc=1 tv=5 work=10 heap=ok${nl}"
@@ -120,6 +122,29 @@ jobs:
             if ($LASTEXITCODE -ne 0) { $fail = 1 }
           }
           exit $fail
+      - name: Timing
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          foreach ($n in "hello_asm","hello_glibc","fork_glibc","hello_go") {
+            $t = @()
+            for ($i = 0; $i -lt 9; $i++) {
+              $o = & ./sentryguest.exe "-code=$(if ($n -eq 'hello_glibc') {7} else {0})" "out/$n" 2>&1 | Out-String
+              if ($o -match 'run ([0-9.]+)(ms|s)') { $v = [double]$Matches[1]; if ($Matches[2] -eq 's') { $v *= 1000 }; $t += $v }
+            }
+            $t = $t | Sort-Object
+            "TIMING $n median $($t[4]) ms (min $($t[0]), max $($t[8])) all: $($t -join ' ')" | Tee-Object -Append -FilePath timing.txt
+          }
+      - name: Trace
+        if: always()
+        continue-on-error: true
+        shell: pwsh
+        env: {WINSTUB_TRACE: "1"}
+        run: |
+          foreach ($n in "hello_asm","hello_glibc","fork_glibc") {
+            "===== trace $n" | Tee-Object -Append -FilePath trace.txt
+            & ./sentryguest.exe "-sample" "-timeout=90s" "-code=$(if ($n -eq 'hello_glibc') {7} else {0})" "out/$n" 2>&1 | Tee-Object -Append -FilePath trace.txt
+          }
       - uses: actions/upload-artifact@v4
         if: always()
-        with: {name: sentry-guests-output, path: guests.txt}
+        with: {name: sentry-guests-output, path: "guests.txt\ntrace.txt\ntiming.txt"}

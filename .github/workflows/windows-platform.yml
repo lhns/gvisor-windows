@@ -24,13 +24,26 @@ jobs:
         env: {WINSTUB_DEBUG: "1"}
         run: |
           $fail = 0
-          foreach ($t in 'TestSyscallsFaultsInterrupt','TestExecuteFault','TestUnmapAndRemap','TestNewThreadsAndSpeed','TestForkedAddressSpace','TestWriteExecute','TestFPState') {
+          foreach ($t in 'TestSyscallsFaultsInterrupt','TestExecuteFault','TestUnmapAndRemap','TestNewThreadsAndSpeed','TestForkedAddressSpace','TestWriteExecute','TestFPState','TestSyscallLatency','TestStubStart','TestStubStartExperiment','TestDecodeAllMatchesSerial','TestSplitSyscall','TestInterruptStorm') {
             "===== $t" | Tee-Object -Append -FilePath ../../../../tests.txt
             $a = @(("-test.run=^" + $t + [char]36), "-test.v=true", "-test.timeout=3m"); & ../../../../winstub.test.exe @a 2>&1 | Tee-Object -Append -FilePath ../../../../tests.txt
             "exit: $LASTEXITCODE" | Tee-Object -Append -FilePath ../../../../tests.txt
             if ($LASTEXITCODE -ne 0) { $fail = 1 }
           }
           exit $fail
+      - name: Spin tuning
+        continue-on-error: true
+        shell: pwsh
+        working-directory: pkg/sentry/platform/winstub
+        run: |
+          foreach ($s in 300, 1000, 3000) {
+            foreach ($c in 2000, 20000) {
+              $env:WINSTUB_STUBSPIN = "$s"; $env:WINSTUB_CTLSPIN = "$c"
+              "===== stub spin $s, sentry spin $c" | Tee-Object -Append -FilePath ../../../../tuning.txt
+              $a = @("-test.run=^TestSyscallLatency$", "-test.v=true")
+              & ../../../../winstub.test.exe @a 2>&1 | Select-String "LATENCY" | Tee-Object -Append -FilePath ../../../../tuning.txt
+            }
+          }
       - uses: actions/upload-artifact@v4
         if: always()
-        with: {name: winstub-output, path: tests.txt}
+        with: {name: winstub-output, path: "tests.txt\ntuning.txt"}
