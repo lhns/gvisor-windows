@@ -8,7 +8,7 @@
 #   SHARE_DIR       directory visible at the SAME path to client and engine (bind-mount test)
 #   ENGINE_CTL      command taking "restart"; must block until the engine answers again
 #   NETARGS         extra args for run/build, e.g. "--network=host"
-#   HOSTNET=1       containers use host net: step 7 uses httpd on 8080, step 8 uses 127.0.0.1
+#   HOSTNET=1       containers use host net: step 7 uses nginx on 8080, step 8 uses 127.0.0.1
 #   PROBE_URL       URL for the port test            (default http://127.0.0.1:8080)
 #   IMG_PREFIX      registry prefix for library images (default mirror.gcr.io/library)
 #   RESULTS_DIR     where logs go                     (default ./results)
@@ -82,7 +82,7 @@ step6() { local L=$RESULTS_DIR/step-6.log rc=0 d="" w="$SHARE_DIR/proj" cid
 step7() { local L=$RESULTS_DIR/step-7.log rc=0 cid ok=1 i
   tp rm -f -t 0 acc-web >/dev/null 2>&1
   if [ "$HOSTNET" = 1 ]; then
-    cid=$(tp run -d --name acc-web --network=host "$ALPINE" busybox httpd -f -p 8080 -h /etc 2>"$L")
+    cid=$(tp run -d --name acc-web --network=host "$NGINX" sh -c "sed -i 's/listen  *80;/listen 8080;/' /etc/nginx/conf.d/default.conf && exec nginx -g 'daemon off;'" 2>"$L")
   else
     cid=$(tp run -d --name acc-web -p 8080:80 "$NGINX" 2>"$L")
   fi
@@ -97,8 +97,8 @@ step8() { local L=$RESULTS_DIR/step-8.log rc=0 d target=web nm=""
   cat >"$d/compose.yaml" <<YML
 services:
   web:
-    image: $ALPINE
-    command: ["sh","-c","mkdir -p /www && echo compose-ok > /www/index.html && busybox httpd -f -p 80 -h /www"]
+    image: $NGINX
+    # nginx serves its welcome page on 80
     $nm
   cli:
     image: $ALPINE
@@ -108,7 +108,7 @@ services:
 YML
   command -v docker >/dev/null || { report 8 compose 1 "docker CLI missing"; return; }
   t docker compose -p acc -f "$d/compose.yaml" up --abort-on-container-exit --exit-code-from cli >"$L" 2>&1 || rc=1
-  grep -q compose-ok "$L" || rc=1
+  grep -q "Welcome to nginx" "$L" || rc=1
   docker compose -p acc -f "$d/compose.yaml" down -v >>"$L" 2>&1
   report 8 compose $rc "$(lastline "$L")"; rm -rf "$d"; }
 step9() { local L=$RESULTS_DIR/step-9.log rc=0 d="" before after

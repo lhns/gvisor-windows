@@ -19,9 +19,9 @@ jobs:
       matrix:
         include:
           - {name: native,             engine: native}
-          - {name: runsc-tmpfs,        engine: runsc, storage: tmpfs,   driver: "",    hostnet: "0"}
-          - {name: runsc-hostdir-vfs,  engine: runsc, storage: hostdir, driver: vfs,   hostnet: "0"}
-          - {name: runsc-tmpfs-hostnet, engine: runsc, storage: tmpfs,  driver: "",    hostnet: "1"}
+          - {name: runsc-bridge-tmpfs,        engine: runsc, storage: tmpfs,   driver: "",  hostnet: "0"}
+          - {name: runsc-hostnet-tmpfs,       engine: runsc, storage: tmpfs,   driver: "",  hostnet: "1"}
+          - {name: runsc-hostnet-hostdir-vfs, engine: runsc, storage: hostdir, driver: vfs, hostnet: "1"}
     steps:
       - uses: actions/checkout@v4
         with: {sparse-checkout: "scripts/phase0\ntest/e2e"}

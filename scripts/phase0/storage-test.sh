@@ -21,8 +21,8 @@ workload() { # variant sock
   tm "$v" pull_alpine $pm pull -q $P/alpine:3.20
   tm "$v" pull_debian_slim $pm pull -q $P/debian:12-slim
   tm "$v" pull_python_slim $pm pull -q $P/python:3-slim
-  tm "$v" build_3000_files $pm build -t st-build "$b"
-  tm "$v" run_after $pm run --rm $P/alpine:3.20 true
+  tm "$v" build_3000_files $pm build --network=host -t st-build "$b"
+  tm "$v" run_after $pm run --rm --network=host $P/alpine:3.20 true
 }
 # native reference
 SOCK=/tmp/podman-native.sock bash "$HERE/engine-native.sh" start && workload native /tmp/podman-native.sock
@@ -45,7 +45,7 @@ variant runsc-hostdir-default hostdir ""
 {
   echo "## --overlay2=root:dir=/srv/overlay-dir"
   docker rm -f ovl >/dev/null 2>&1
-  docker run -d --name ovl --runtime runsc-ovldir $P/alpine:3.20 sh -c 'echo persisted >/in-upper; sleep 600' && sleep 5
+  docker run -d --name ovl --runtime runsc-ovldir $P/alpine:3.20 sleep 600 && sleep 3 && docker exec ovl sh -c 'echo persisted >/in-upper; mkdir /in-upper-dir; echo x >/in-upper-dir/f'; sleep 1
   echo "files in host dir while running:"; ls -la /srv/overlay-dir
   docker exec ovl cat /in-upper
   docker restart -t 0 ovl >/dev/null; sleep 5
@@ -55,7 +55,7 @@ variant runsc-hostdir-default hostdir ""
   echo "files in host dir at end:"; ls -la /srv/overlay-dir
   docker rm -f ovl >/dev/null
   echo "## --overlay2=root:self (default) for comparison"
-  docker run -d --name ovl2 --runtime runsc $P/alpine:3.20 sh -c 'echo persisted >/in-upper; sleep 600' && sleep 5
+  docker run -d --name ovl2 --runtime runsc $P/alpine:3.20 sleep 600 && sleep 3 && docker exec ovl2 sh -c 'echo persisted >/in-upper'; sleep 1
   docker restart -t 0 ovl2 >/dev/null; sleep 5
   docker exec ovl2 cat /in-upper && echo "SURVIVED restart" || echo "LOST on restart"
   docker rm -f ovl2 >/dev/null
