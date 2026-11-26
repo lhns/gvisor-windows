@@ -126,7 +126,7 @@ function Start-Engine {
   & icacls $sockDir /inheritance:r /grant:r "$($env:USERNAME):(OI)(CI)F" /Q | Out-Null
   $sock = Join-Path $sockDir 'podman.sock'
   $sock | Set-Content (Join-Path $Work 'sock.path')
-  $args = @('--debug', "--debug-log=$logs\", '--network=windows-nat', '--overlay2=root:memory', '--in-sandbox-cgroup=v2', "--pipe-forward=8888:$pipe", "--unix-forward=8888:$sock",'run', '-bundle', $bundle, "podman-$Name")
+  $args = @('--debug', "--debug-log=$logs\", '--network=windows-nat', '--overlay2=root:memory', '--in-sandbox-cgroup=v2', "--pipe-forward=8888:$pipe", "--unix-forward=8888:$sock") + @($env:RUNSC_EXTRA_FLAGS -split ' ' | Where-Object { $_ }) + @('run', '-bundle', $bundle, "podman-$Name")
   $p = Start-Process -FilePath $Runsc -ArgumentList $args -PassThru -WindowStyle Hidden `
     -RedirectStandardOutput (Join-Path $logs 'engine.out') -RedirectStandardError (Join-Path $logs 'engine.err')
   $p.Id | Set-Content $pidFile

@@ -1,0 +1,96 @@
+# Podman acceptance on Windows: stock Windows podman client and docker CLI against Podman
+# running in a runsc.exe sandbox, through a named pipe, as a standard user. Expected to fail at
+# first; docs/results/5-podman-windows.md lists the gaps per step.
+name: podman-diag
+on:
+  push:
+    branches: [podman-sentry-gaps]
+    paths: ["pkg/**", "runsc/**", "tools/windows/podman/**", ".github/workflows/podman-diag.yml"]
+env:
+  PODMAN_VERSION: "6.2.0"
+  DOCKER_VERSION: "27.3.1"
+  COMPOSE_VERSION: "2.29.7"
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Erofs image from the podman image
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq erofs-utils
+          podman pull -q quay.io/podman/stable:v${PODMAN_VERSION}
+          c=$(podman create quay.io/podman/stable:v${PODMAN_VERSION} sh)
+          sudo rm -rf /tmp/root && mkdir /tmp/root
+          podman export "$c" | sudo tar -x -C /tmp/root --numeric-owner --same-owner -p --xattrs --xattrs-include="*"
+          # Engine settings baked into the read-only image (same files as the Linux harness; the
+          # sqlite database goes to a tmpfs until sqlite works on a host folder, see the results).
+          h=test/e2e/podman-acceptance/harness
+          sudo mkdir -p /tmp/root/etc/containers /tmp/root/run /tmp/root/tmp /tmp/root/var/lib/containers
+          sudo cp $h/containers.conf /tmp/root/etc/containers/containers.conf
+          sudo sed -i '/^\[engine\]/a static_dir = "/run/podman-static"' /tmp/root/etc/containers/containers.conf
+          sudo sed 's/^driver = .*/driver = "vfs"/' $h/storage.conf | sudo tee /tmp/root/etc/containers/storage.conf >/dev/null
+          # Marker that makes Podman ask the gateway to expose published ports (libpod/networking_machine.go);
+          # the windows-nat gateway answers at gateway.containers.internal (10.0.2.2:80).
+          echo qemu | sudo tee /tmp/root/etc/containers/podman-machine >/dev/null
+          echo "10.0.2.2 gateway.containers.internal host.containers.internal" | sudo tee -a /tmp/root/etc/hosts >/dev/null
+          echo "nameserver 10.0.2.3" | sudo tee /tmp/root/etc/resolv.conf >/dev/null
+          sudo mkfs.erofs -b 4096 -T 0 podman.erofs /tmp/root >/dev/null
+          ls -l podman.erofs
+      - uses: actions/upload-artifact@v4
+        with: {name: podman-rootfs, path: podman.erofs, compression-level: 0}
+  acceptance:
+    needs: image
+    runs-on: windows-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version-file: go.mod, cache: false}
+      - uses: actions/download-artifact@v4
+        with: {name: podman-rootfs, path: dl}
+      - name: Build
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force C:\ci\bin | Out-Null
+          go build -p 2 -o C:\ci\bin\runsc.exe ./runsc
+          go build -o C:\ci\bin\ttydrive.exe ./tools/windows/podman/ttydrive
+      - name: Clients
+        shell: pwsh
+        run: |
+          $t = 'C:\ci\tools'; New-Item -ItemType Directory -Force $t | Out-Null
+          Invoke-WebRequest "https://github.com/containers/podman/releases/download/v$env:PODMAN_VERSION/podman-remote-release-windows_amd64.zip" -OutFile $t\podman.zip
+          Expand-Archive $t\podman.zip $t\podman
+          Invoke-WebRequest "https://download.docker.com/win/static/stable/x86_64/docker-$env:DOCKER_VERSION.zip" -OutFile $t\docker.zip
+          Expand-Archive $t\docker.zip $t\docker
+          # the compose plugin, found by the docker CLI next to its config
+          New-Item -ItemType Directory -Force "$t\dockercfg\cli-plugins" | Out-Null
+          Invoke-WebRequest "https://github.com/docker/compose/releases/download/v$env:COMPOSE_VERSION/docker-compose-windows-x86_64.exe" -OutFile "$t\dockercfg\cli-plugins\docker-compose.exe"
+          Get-ChildItem -Recurse $t -Include podman.exe,docker.exe | ForEach-Object { $_.FullName; & $_.FullName --version }
+      - name: Diagnostics as a standard user
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          New-Item -ItemType Directory -Force C:\ci\std | Out-Null
+          Copy-Item dl\podman.erofs C:\ci\podman.erofs
+          icacls C:\ci /grant 'Users:(OI)(CI)M' /Q
+          New-Item -ItemType Directory -Force C:\ci\std\engine\storage | Out-Null
+          fsutil file setCaseSensitiveInfo C:\ci\std\engine\storage enable
+          & tools/windows/ci/run-as-standard-user.ps1 `
+            -Program 'C:\Program Files\PowerShell\pwsh.exe' `
+            -Arguments '-NoProfile','-File',"$PWD	ools\windows\podman\diag-run.ps1",'-Root','C:\ci' `
+            -Environment @{ RUNSC_EXTRA_FLAGS = '--strace' } `
+            -GrantPath C:\ciin,C:\ci	ools,$PWD -WritablePath C:\ci\std -TimeoutSeconds 1500
+      - name: Summary
+        if: always()
+        shell: pwsh
+        run: |
+          Get-Content C:\ci\stdesults\diag.log -ErrorAction SilentlyContinue
+          Get-ChildItem C:\ci\std\engine\logs -ErrorAction SilentlyContinue | ForEach-Object { "$($_.Name) $($_.Length)" }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: podman-diag-logs
+          path: |
+            C:\ci\std\results
+            C:\ci\std\engine\logs
