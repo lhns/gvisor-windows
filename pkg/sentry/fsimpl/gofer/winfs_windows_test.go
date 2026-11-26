@@ -84,7 +84,9 @@ func newEnv(t *testing.T, hf HostFolderOptions) *env {
 	}
 	v.MustRegisterFilesystemType("gofer", &FilesystemType{}, &vfs.RegisterFilesystemTypeOptions{})
 	creds := auth.NewRootCredentials(auth.NewRootUserNamespace())
-	hf.Path = t.TempDir()
+	if hf.Path == "" {
+		hf.Path = t.TempDir()
+	}
 	mns, err := v.NewMountNamespace(ctx, creds, "", "gofer", &vfs.MountOptions{
 		GetFilesystemOptions: vfs.GetFilesystemOptions{InternalData: hf, InternalMount: true},
 	}, nil)
@@ -367,8 +369,6 @@ func TestVFSWindowsChangesReachGuest(t *testing.T) {
 	ino.AddWatch(rootVD.Dentry(), linux.IN_CREATE|linux.IN_DELETE|linux.IN_MODIFY)
 	ino.AddWatch(fileVD.Dentry(), linux.IN_MODIFY)
 
-	// The backend leaves out events of its own changes for a short while.
-	time.Sleep(900 * time.Millisecond)
 	start := time.Now()
 	if err := os.WriteFile(filepath.Join(e.dir, "watched"), []byte("0123456789"), 0o666); err != nil {
 		t.Fatal(err)
@@ -450,15 +450,32 @@ func TestVFSSafeSaveKeepsMetadata(t *testing.T) {
 
 // Speed of the backend, which opens a host handle per call: an untar of 20000
 // small files and a git-status-like walk of stat calls, against plain os calls
-// on the same disk. Only logged; the numbers decide whether a handle or
-// attribute cache is needed.
+// on the same disk. The walk runs warm (dentries cached by the untar) and cold
+// (a fresh mount of the same folder). Only logged.
 func TestVFSPerf(t *testing.T) {
 	const dirs, perDir, size = 400, 50, 2048
+	n := dirs * perDir
 	payload := string(make([]byte, size))
+	per := func(d time.Duration) time.Duration { return (d / time.Duration(n)).Round(time.Microsecond) }
+	walk := func(e *env) time.Duration {
+		start := time.Now()
+		for d := 0; d < dirs; d++ {
+			for f := 0; f < perDir; f++ {
+				if _, err := e.stat(fmt.Sprintf("/d%03d/f%02d", d, f)); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		return time.Since(start)
+	}
 	for _, mode := range []struct {
 		name string
 		hf   HostFolderOptions
-	}{{"shared", HostFolderOptions{}}, {"exclusive", HostFolderOptions{Exclusive: true}}} {
+	}{
+		{"watched (write-through cache)", HostFolderOptions{}},
+		{"revalidating (no cache trust)", HostFolderOptions{Revalidate: true}},
+		{"exclusive", HostFolderOptions{Exclusive: true}},
+	} {
 		e := newEnv(t, mode.hf)
 		start := time.Now()
 		for d := 0; d < dirs; d++ {
@@ -473,26 +490,11 @@ func TestVFSPerf(t *testing.T) {
 			}
 		}
 		untar := time.Since(start)
-		start = time.Now()
-		for d := 0; d < dirs; d++ {
-			for f := 0; f < perDir; f++ {
-				if _, err := e.stat(fmt.Sprintf("/d%03d/f%02d", d, f)); err != nil {
-					t.Fatal(err)
-				}
-			}
-		}
-		walk := time.Since(start)
-		start = time.Now()
-		for d := 0; d < dirs; d++ {
-			e.list(fmt.Sprintf("/d%03d", d))
-		}
-		lists := time.Since(start)
-		n := dirs * perDir
-		t.Logf("%s: untar of %d files (create+write, mode 0751 so a metadata stream each) %v = %v/file; stat walk %v = %v/stat; %d directory listings %v",
-			mode.name, n, untar.Round(time.Millisecond), (untar / time.Duration(n)).Round(time.Microsecond),
-			walk.Round(time.Millisecond), (walk / time.Duration(n)).Round(time.Microsecond), dirs, lists.Round(time.Millisecond))
+		warm := walk(e)
+		warm2 := walk(e)
+		cold := walk(newEnv(t, HostFolderOptions{Path: e.dir, Exclusive: mode.hf.Exclusive, Revalidate: mode.hf.Revalidate}))
+		t.Logf("%s: untar %v/file; stat walk warm %v/stat (second %v), cold %v/stat", mode.name, per(untar), per(warm), per(warm2), per(cold))
 	}
-	// Baseline: the same with os calls.
 	base := t.TempDir()
 	start := time.Now()
 	for d := 0; d < dirs; d++ {
@@ -502,14 +504,52 @@ func TestVFSPerf(t *testing.T) {
 		}
 	}
 	untar := time.Since(start)
-	start = time.Now()
-	for d := 0; d < dirs; d++ {
-		for f := 0; f < perDir; f++ {
-			os.Lstat(filepath.Join(base, fmt.Sprintf("d%03d", d), fmt.Sprintf("f%02d", f)))
+	var lstat [2]time.Duration
+	for pass := range lstat {
+		start = time.Now()
+		for d := 0; d < dirs; d++ {
+			for f := 0; f < perDir; f++ {
+				os.Lstat(filepath.Join(base, fmt.Sprintf("d%03d", d), fmt.Sprintf("f%02d", f)))
+			}
+		}
+		lstat[pass] = time.Since(start)
+	}
+	t.Logf("baseline os calls: untar %v/file; lstat walk %v/stat then %v/stat", per(untar), per(lstat[0]), per(lstat[1]))
+}
+
+// A name looked up before it existed (cached as missing) is found once
+// Windows creates it, and a Windows write right after a guest write is seen.
+func TestVFSNegativeCacheAndQuickChange(t *testing.T) {
+	e := newEnv(t, HostFolderOptions{})
+	if _, err := e.stat("/later"); !linuxerr.Equals(linuxerr.ENOENT, err) {
+		t.Fatalf("stat of a missing file: %v", err)
+	}
+	os.WriteFile(filepath.Join(e.dir, "later"), []byte("x"), 0o666)
+	found := false
+	for start := time.Now(); time.Since(start) < time.Second; time.Sleep(10 * time.Millisecond) {
+		if _, err := e.stat("/later"); err == nil {
+			found = true
+			t.Logf("file made on Windows found after %v", time.Since(start))
+			break
 		}
 	}
-	walk := time.Since(start)
-	n := dirs * perDir
-	t.Logf("baseline os calls: untar %v = %v/file; stat walk %v = %v/stat", untar.Round(time.Millisecond),
-		(untar / time.Duration(n)).Round(time.Microsecond), walk.Round(time.Millisecond), (walk / time.Duration(n)).Round(time.Microsecond))
+	if !found {
+		t.Errorf("a file created on Windows is not found within 1s")
+	}
+	e.write("/g", "guest", 0o644)
+	if st, _ := e.stat("/g"); st.Size != 5 {
+		t.Fatalf("size %d", st.Size)
+	}
+	os.WriteFile(filepath.Join(e.dir, "g"), []byte("windows wrote more"), 0o666) // right after the guest write
+	seen := false
+	for start := time.Now(); time.Since(start) < time.Second; time.Sleep(10 * time.Millisecond) {
+		if st, err := e.stat("/g"); err == nil && st.Size == 18 {
+			seen = true
+			t.Logf("write right after a guest write seen after %v", time.Since(start))
+			break
+		}
+	}
+	if !seen {
+		t.Errorf("a Windows write right after a guest write was not seen within 1s")
+	}
 }

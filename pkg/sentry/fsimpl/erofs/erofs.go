@@ -889,12 +889,12 @@ func (fd *fileDescription) StatFS(ctx context.Context) (linux.Statfs, error) {
 
 // ListXattr implements vfs.FileDescriptionImpl.ListXattr.
 func (fd *fileDescription) ListXattr(ctx context.Context, size uint64) ([]string, error) {
-	return nil, linuxerr.ENOTSUP
+	return fd.inode().listXattr(auth.CredentialsFromContext(ctx))
 }
 
 // GetXattr implements vfs.FileDescriptionImpl.GetXattr.
 func (fd *fileDescription) GetXattr(ctx context.Context, opts vfs.GetXattrOptions) (string, error) {
-	return "", linuxerr.ENOTSUP
+	return fd.inode().getXattr(auth.CredentialsFromContext(ctx), opts.Name)
 }
 
 // SetXattr implements vfs.FileDescriptionImpl.SetXattr.

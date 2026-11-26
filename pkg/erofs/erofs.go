@@ -453,10 +453,7 @@ func (i *Image) Inode(nid uint64) (Inode, error) {
 			return Inode{}, err
 		}
 
-		if ino.XattrCount != 0 {
-			log.Warningf("Unsupported xattr at inode (nid=%v)", nid)
-			return Inode{}, linuxerr.ENOTSUP
-		}
+		inode.xattrSize = xattrIsize(ino.XattrCount)
 
 		rawBlockAddr = ino.RawBlockAddr
 		inodeSize = ino.SizeBytes()
@@ -475,10 +472,7 @@ func (i *Image) Inode(nid uint64) (Inode, error) {
 			return Inode{}, err
 		}
 
-		if ino.XattrCount != 0 {
-			log.Warningf("Unsupported xattr at inode (nid=%v)", nid)
-			return Inode{}, linuxerr.ENOTSUP
-		}
+		inode.xattrSize = xattrIsize(ino.XattrCount)
 
 		rawBlockAddr = ino.RawBlockAddr
 		inodeSize = ino.SizeBytes()
@@ -507,7 +501,8 @@ func (i *Image) Inode(nid uint64) (Inode, error) {
 	// map starts at the first entry-aligned offset after it. Linux also adds
 	// xattr_isize to inodeSize to find both. Safe to skip here because
 	// XattrCount != 0 is rejected above; revisit if EROFS xattr support is added.
-	inodeEnd := off + uint64(inodeSize)
+	inode.xattrOff = off + uint64(inodeSize)
+	inodeEnd := inode.xattrOff + inode.xattrSize
 
 	switch dataLayout := inode.DataLayout(); dataLayout {
 	case InodeDataLayoutFlatInline:
@@ -577,6 +572,10 @@ type Inode struct {
 	// rdev is the encoded device number of a character or block device
 	// (gvisor-windows: it was ignored, so devices in an image read as 0:0).
 	rdev uint32 `state:"nosave"`
+
+	// xattrOff and xattrSize locate the inline xattr area (gvisor-windows).
+	xattrOff  uint64 `state:"nosave"`
+	xattrSize uint64 `state:"nosave"`
 }
 
 // bitRange returns the bits within the range [bit, bit+bits) in value.

@@ -1844,19 +1844,21 @@
   title: Faster stat walks on host folders
   track: fs
   kind: feature
-  state: next
-  outcome: unrated
+  state: done
+  outcome: mixed
   evidence:
-  - docs/results/2b-fs-rootfs-and-changes.md
-  verdict_quote: ''
-  headline: ''
+  - docs/results/2c-fs-speed.md
+  verdict_quote: a watched host folder now answers a repeated stat walk of 20000 files from cache at 1 us per file (native 22-30 us)
+  headline: 1 us per file
   depends_on:
   - fs-change-notifications
   replaced_by: []
   lane: windows-ci
-  start: ''
-  end: ''
-  folded: []
+  start: '2026-11-26'
+  end: '2026-11-26'
+  folded:
+  - Cold stat walk on a fresh mount is still about 4x native, 99-105 us per file (2026-11-26, commit 5f7bcfee2)
+  - erofs xattrs and a persistent safe-save index added (2026-11-26, commit 5f7bcfee2)
   overview: false
   plain: A git-status-like walk of 20000 files takes 1.2-2.4 s through the host folder; an attribute cache fed by the change watcher would bring stat near native.
   notes: 'Done when: a 20000-file stat walk through the backend is within 2x of native on windows-latest.'

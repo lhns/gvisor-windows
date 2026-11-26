@@ -79,11 +79,17 @@ func (fstype FilesystemType) getHostFolderFilesystem(ctx context.Context, vfsObj
 	}
 	var fsopts filesystemOptions
 	fsopts.aname = "/"
-	fsopts.interop = InteropModeShared
-	if hf.Exclusive {
+	// With the watch running, cached dentries and attributes stay valid until
+	// a change event drops them (write-through, so Windows readers see
+	// guest writes at once); otherwise every use is revalidated.
+	fsopts.interop = InteropModeWritethrough
+	switch {
+	case hf.Exclusive:
 		fsopts.interop = InteropModeExclusive
+	case hf.NoWatch || hf.Revalidate:
+		fsopts.interop = InteropModeShared
 	}
-	fsopts.dcache = defaultMaxCachedDentries
+	fsopts.dcache = hostFolderMaxCachedDentries
 	fsopts.dfltuid = auth.KUID(hf.UID)
 	fsopts.dfltgid = auth.KGID(hf.GID)
 	fsopts.forcePageCache = true
@@ -117,6 +123,9 @@ func (fstype FilesystemType) getHostFolderFilesystem(ctx context.Context, vfsObj
 	fs.root.refs = atomicbitops.FromInt64(2)
 	if !hf.NoWatch {
 		if err := host.Watch(func(ch winhost.Change) { fs.hostChange(ctx, ch) }); err != nil {
+			if fs.opts.interop == InteropModeWritethrough {
+				fs.opts.interop = InteropModeShared
+			}
 			ctx.Warningf("gofer: cannot watch host folder %q, changes made from Windows are noticed only when looked at: %v", hf.Path, err)
 		}
 	}
@@ -155,6 +164,9 @@ func (fs *filesystem) hostChange(ctx context.Context, ch winhost.Change) {
 	child := parent.children[leaf]
 	if ch.Action != winhost.Modified {
 		parent.clearDirentsLocked()
+		if child == nil {
+			delete(parent.children, leaf) // a cached "does not exist"
+		}
 	}
 	parent.childrenMu.Unlock()
 
@@ -570,3 +582,7 @@ var (
 	_            = io.EOF
 	_            = fmt.Sprint
 )
+
+// hostFolderMaxCachedDentries is how many unreferenced dentries a host folder
+// keeps: a stat walk of a big tree should not look every file up again.
+const hostFolderMaxCachedDentries = 200000

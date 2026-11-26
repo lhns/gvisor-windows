@@ -98,7 +98,7 @@ func (fs *FS) defaultMeta(h windows.Handle) (*Metadata, error) {
 
 // updateMeta reads the metadata (or the defaults), applies fn and stores the
 // result. fs.metaMu must be held.
-func (fs *FS) updateMeta(h windows.Handle, fn func(*Metadata) error) error {
+func (fs *FS) updateMeta(id ID, h windows.Handle, fn func(*Metadata) error) error {
 	m := fs.readMeta(h)
 	if m == nil {
 		var err error
@@ -109,7 +109,11 @@ func (fs *FS) updateMeta(h windows.Handle, fn func(*Metadata) error) error {
 	if err := fn(m); err != nil {
 		return err
 	}
-	return fs.writeMeta(h, m)
+	if err := fs.writeMeta(h, m); err != nil {
+		return err
+	}
+	fs.touchShadow(id, m)
+	return nil
 }
 
 const xattrAccess = fileReadAttributes | fileWriteAttributes | fileReadEA | fileWriteEA
@@ -142,7 +146,7 @@ func (fs *FS) GetXattr(id ID, name string) ([]byte, error) {
 
 // SetXattr sets an extended attribute. flags is XATTR_CREATE or XATTR_REPLACE.
 func (fs *FS) SetXattr(id ID, name string, value []byte, flags uint32) error {
-	fs.markID(id)
+	defer fs.noteSelf(id)
 	if len(name) > xattrNameMax || name == "" {
 		return unix.ERANGE
 	}
@@ -156,7 +160,7 @@ func (fs *FS) SetXattr(id ID, name string, value []byte, flags uint32) error {
 	defer fs.closeID(id, h)
 	fs.metaMu.Lock()
 	defer fs.metaMu.Unlock()
-	return fs.updateMeta(h, func(m *Metadata) error {
+	return fs.updateMeta(id, h, func(m *Metadata) error {
 		_, exists := m.Xattrs[name]
 		if flags&xattrCreate != 0 && exists {
 			return unix.EEXIST
@@ -193,7 +197,7 @@ func (fs *FS) ListXattr(id ID) ([]string, error) {
 
 // RemoveXattr deletes an extended attribute.
 func (fs *FS) RemoveXattr(id ID, name string) error {
-	fs.markID(id)
+	defer fs.noteSelf(id)
 	h, err := fs.openID(id, xattrAccess)
 	if err != nil {
 		return err
@@ -201,7 +205,7 @@ func (fs *FS) RemoveXattr(id ID, name string) error {
 	defer fs.closeID(id, h)
 	fs.metaMu.Lock()
 	defer fs.metaMu.Unlock()
-	return fs.updateMeta(h, func(m *Metadata) error {
+	return fs.updateMeta(id, h, func(m *Metadata) error {
 		if _, ok := m.Xattrs[name]; !ok {
 			return unix.ENODATA
 		}

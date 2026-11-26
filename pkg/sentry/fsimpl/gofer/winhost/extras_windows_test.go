@@ -142,3 +142,78 @@ func TestWatchReportsWindowsChanges(t *testing.T) {
 	}
 	c.mu.Unlock()
 }
+
+// A replacement made while no sandbox runs still keeps the metadata, because
+// the memory is persisted in the folder.
+func TestSafeSaveAcrossRestart(t *testing.T) {
+	dir := t.TempDir()
+	fs1, err := Open(dir, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := fs1.Root()
+	a := mustCreate(t, fs1, root, "keep.txt", Spec{Mode: 0o640, UID: 11, GID: 12})
+	if err := fs1.SetXattr(a.ID, "user.tag", []byte("t"), 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fs1.Lookup(root, "keep.txt"); err != nil {
+		t.Fatal(err)
+	}
+	gone := mustCreate(t, fs1, root, "removed.txt", Spec{Mode: 0o600, UID: 3})
+	_ = gone
+	if _, err := fs1.Lookup(root, "removed.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if err := fs1.Unlink(root, "removed.txt", false); err != nil {
+		t.Fatal(err)
+	}
+	fs1.Close() // flushes the index
+
+	// While nothing is mounted: save by replacement, and a new file at a
+	// removed name.
+	tmp := filepath.Join(dir, "tmp")
+	os.WriteFile(tmp, []byte("edited offline"), 0o666)
+	if err := os.Rename(tmp, filepath.Join(dir, "keep.txt")); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(dir, "removed.txt"), []byte("new"), 0o666)
+
+	fs2, err := Open(dir, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fs2.Close()
+	b, err := fs2.Lookup(fs2.Root(), "keep.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.ID == a.ID || b.Mode != SIFREG|0o640 || b.UID != 11 || b.GID != 12 {
+		t.Errorf("after offline replacement: id changed %v, mode %#o uid %d gid %d", b.ID != a.ID, b.Mode, b.UID, b.GID)
+	}
+	if v, err := fs2.GetXattr(b.ID, "user.tag"); err != nil || string(v) != "t" {
+		t.Errorf("xattr after offline replacement: %q %v", v, err)
+	}
+	if c, err := fs2.Lookup(fs2.Root(), "removed.txt"); err != nil || c.Mode != SIFREG|0o644 || c.UID != 0 {
+		t.Errorf("a file at a name the guest removed got old metadata: %+v %v", c, err)
+	}
+}
+
+// A Windows write right after a write of the backend's own is still reported.
+func TestWatchSeesChangeRightAfterOwnWrite(t *testing.T) {
+	fs, dir := newFS(t, Options{})
+	var c changes
+	if err := fs.Watch(c.add); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(100 * time.Millisecond)
+	a := mustCreate(t, fs, fs.Root(), "q.txt", Spec{Mode: 0o644})
+	fs.WriteAt(a.ID, []byte("guest"), 0)
+	if err := os.WriteFile(filepath.Join(dir, "q.txt"), []byte("windows wrote more than the guest"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	if d, ok := c.waitFor("q.txt", Modified); !ok {
+		t.Errorf("a Windows write right after a guest write was not reported")
+	} else {
+		t.Logf("reported after %v", d)
+	}
+}

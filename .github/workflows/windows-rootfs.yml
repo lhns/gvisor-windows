@@ -15,7 +15,7 @@ jobs:
       - name: Tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq erofs-utils
+          sudo apt-get install -y -qq erofs-utils attr libcap2-bin
           mkfs.erofs --version || true
           dpkg -s erofs-utils | grep Version
           podman --version
@@ -29,7 +29,7 @@ jobs:
             echo "$name: $(podman image inspect "$image" --format '{{.Id}} {{.Digest}}')" | tee -a out-versions.txt
             c=$(podman create "$image" sh)
             sudo rm -rf /tmp/root-$name && mkdir /tmp/root-$name
-            podman export "$c" | sudo tar -x -C /tmp/root-$name --numeric-owner --same-owner -p
+            podman export "$c" | sudo tar -x -C /tmp/root-$name --numeric-owner --same-owner -p --xattrs --xattrs-include="*"
             podman rm "$c" >/dev/null
             sudo bash tools/windows/mkrootfs.sh "$name" /tmp/root-$name "$out"
             sudo rm -rf /tmp/root-$name
@@ -52,6 +52,7 @@ jobs:
             for i in \$(seq 1 20000); do : > synth/big/entry-\$i; done
             chmod 1777 synth/sub
           "
+          sudo bash tools/windows/synth-xattrs.sh $r
           sudo bash tools/windows/mkrootfs.sh synth $r "$PWD/out"
       - uses: actions/upload-artifact@v4
         with:

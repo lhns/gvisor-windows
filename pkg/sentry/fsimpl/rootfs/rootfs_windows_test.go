@@ -248,6 +248,45 @@ func checkImage(t *testing.T, img, base string) {
 		t.Logf("%d symlink targets checked", cnt)
 	}
 
+	// Extended attributes stored in the image.
+	if xf, err := os.Open(base + ".xattrs"); err == nil {
+		defer xf.Close()
+		sc := bufio.NewScanner(xf)
+		sc.Buffer(make([]byte, 1<<20), 1<<20)
+		cnt, bad := 0, 0
+		for sc.Scan() {
+			parts := strings.Split(sc.Text(), "\t")
+			if len(parts) != 3 {
+				continue
+			}
+			p := strings.TrimPrefix(parts[0], ".")
+			got, err := e.v.GetXattrAt(e.ctx, e.creds, e.pop(p, false), &vfs.GetXattrOptions{Name: parts[1], Size: 65536})
+			cnt++
+			if err != nil || hex.EncodeToString([]byte(got)) != parts[2] {
+				bad++
+				if bad < 10 {
+					t.Errorf("getxattr %s %s = %x, %v; want %s", p, parts[1], got, err, parts[2])
+				}
+				continue
+			}
+			names, err := e.v.ListXattrAt(e.ctx, e.creds, e.pop(p, false), 65536)
+			found := false
+			for _, nm := range names {
+				found = found || nm == parts[1]
+			}
+			if err != nil || !found {
+				bad++
+				if bad < 10 {
+					t.Errorf("listxattr %s lacks %s: %v %v", p, parts[1], names, err)
+				}
+			}
+		}
+		t.Logf("%d extended attributes checked, %d wrong", cnt, bad)
+		if strings.HasSuffix(base, "synth") && cnt < 50 {
+			t.Errorf("only %d xattrs in the synthetic image, the setup did not work", cnt)
+		}
+	}
+
 	// File contents.
 	if hf, err := os.Open(base + ".hashes"); err == nil {
 		defer hf.Close()
