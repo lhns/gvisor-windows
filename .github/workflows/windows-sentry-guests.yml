@@ -1,0 +1,72 @@
+# Phase 1d: the real Sentry on Windows runs static Linux guests from an in-memory
+# tmpfs on the winstub platform (tools/windows/sentryguest).
+name: windows-sentry-guests
+on:
+  push:
+    branches: [static-guest]
+    paths: ["pkg/**", "tools/windows/sentryguest/**", "test/guests/**", "tools/windows/stubproto/guests/**", ".github/workflows/windows-sentry-guests.yml"]
+  workflow_dispatch:
+jobs:
+  guests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            test/guests
+            tools/windows/stubproto/guests
+            go.mod
+      - uses: actions/setup-go@v5
+        with: {go-version: "1.26.x", cache: false}
+      - name: Build guests
+        run: |
+          G=$(ls -d test/guests tools/windows/stubproto/guests 2>/dev/null | head -1)
+          mkdir -p out
+          gcc -nostdlib -static -no-pie -o out/hello_asm $G/hello.S
+          gcc -nostdlib -static -no-pie -o out/bench_asm $G/bench.S
+          gcc -static -no-pie -O1 -fstack-protector-all -o out/hello_glibc $G/hello.c
+          gcc -static-pie -O1 -fstack-protector-all -o out/hello_glibc_pie $G/hello.c
+          gcc -static -no-pie -O1 -o out/fork_glibc $G/fork.c
+          gcc -static -no-pie -O1 -o out/jit_glibc $G/jit.c
+          (cd $G/gohello && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $GITHUB_WORKSPACE/out/hello_go .)
+          file out/*
+      - uses: actions/upload-artifact@v4
+        with: {name: guests, path: out}
+  run:
+    needs: guests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version-file: go.mod, cache: false}
+      - uses: actions/download-artifact@v4
+        with: {name: guests, path: out}
+      - name: Build
+        shell: pwsh
+        run: |
+          go vet ./tools/windows/sentryguest
+          go build -o sentryguest.exe ./tools/windows/sentryguest
+      - name: Guests
+        shell: pwsh
+        run: |
+          $fail = 0
+          $nl = "`n"
+          $cases = @(
+            @{n='hello_asm'; out="hello from asm${nl}ud2 path ok${nl}"; code=0},
+            @{n='hello_glibc'; out="hello from glibc: argc=1 tv=5 work=10 heap=ok${nl}"; code=7},
+            @{n='hello_glibc_pie'; out="hello from glibc: argc=1 tv=5 work=10 heap=ok${nl}"; code=7},
+            @{n='fork_glibc'; out="child${nl}parent: child exited 3${nl}"; code=0},
+            @{n='hello_go'; out="hello from go${nl}"; code=0},
+            @{n='jit_glibc'; out="jit1 ok${nl}jit2 ok${nl}jit3 ok${nl}"; code=0}
+          )
+          foreach ($c in $cases) {
+            "===== $($c.n)" | Tee-Object -Append -FilePath guests.txt
+            $a = @("-check", "-out=$($c.out)", "-code=$($c.code)", "-timeout=90s", "out/$($c.n)")
+            & ./sentryguest.exe @a 2>&1 | Tee-Object -Append -FilePath guests.txt
+            "exit: $LASTEXITCODE" | Tee-Object -Append -FilePath guests.txt
+            if ($LASTEXITCODE -ne 0) { $fail = 1 }
+          }
+          exit $fail
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: sentry-guests-output, path: guests.txt}
