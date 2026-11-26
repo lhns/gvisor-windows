@@ -39,6 +39,10 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq busybox-static libc6-dev python3 file
+          # The crosstool links with -fuse-ld=gold; current Ubuntu has no gold.
+          sudo apt-get install -y -qq binutils-gold || true
+          [ -e /usr/bin/ld.gold ] || sudo ln -s /usr/bin/ld.bfd /usr/bin/ld.gold
+          [ -e /usr/bin/x86_64-linux-gnu-ld.gold ] || sudo ln -s /usr/bin/x86_64-linux-gnu-ld.bfd /usr/bin/x86_64-linux-gnu-ld.gold
           mkdir -p "$HOME/bin"
           curl -fsSL -o "$HOME/bin/bazel" https://github.com/bazelbuild/bazelisk/releases/download/v1.26.0/bazelisk-linux-amd64
           chmod +x "$HOME/bin/bazel"
