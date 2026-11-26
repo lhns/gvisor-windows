@@ -60,15 +60,19 @@ def cause(k):
     if s == 'TIMEOUT':
         return 'timeout (case did not finish in time)'
     t = win_t.get(k, '')
+    # The first failed check (file:line and what it says) is the signature.
+    m = re.search(r'(\S+\.cc:\d+): Failure\\n([^\\]*(?:\\n[^\\]*)?)', t)
+    where = ''
+    if m:
+        where = '%s %s' % (m.group(1), re.sub(r'\s+', ' ', re.sub(r'\d{3,}', 'N', m.group(2)))[:110])
     if s == 'SIGNAL':
-        return 'guest killed by a signal'
+        return 'killed by signal %s%s' % (win.get(k, ('', '?', ''))[1], (' after ' + where) if where else ' in ' + k[0])
+    if where:
+        return where
     for name, rx in CAUSES:
         if re.search(rx, t):
             return name
-    m = re.search(r'Failure\\n(.{0,160})', t)
-    if m:
-        return 'other: ' + re.sub(r'\d+', 'N', m.group(1))[:110]
-    return 'other: exit code ' + win.get(k, ('', '?'))[1]
+    return 'other: exit code ' + win.get(k, ('', '?'))[1] + ' in ' + k[0]
 
 
 by_bin = collections.defaultdict(lambda: collections.Counter())
