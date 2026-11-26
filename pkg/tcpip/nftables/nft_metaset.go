@@ -15,6 +15,7 @@
 package nftables
 
 import (
+	"encoding/binary"
 	"fmt"
 
 	"gvisor.dev/gvisor/pkg/abi/linux"
@@ -36,10 +37,10 @@ type metaSet struct {
 func checkMetaKeySetCompatible(key metaKey) *syserr.AnnotatedError {
 	switch key {
 	// Supported meta keys.
-	case linux.NFT_META_PKTTYPE:
+	case linux.NFT_META_PKTTYPE, linux.NFT_META_MARK:
 		return nil
 	// Should be supported but not yet implemented.
-	case linux.NFT_META_MARK, linux.NFT_META_PRIORITY,
+	case linux.NFT_META_PRIORITY,
 		linux.NFT_META_NFTRACE, linux.NFT_META_SECMARK:
 
 		return syserr.NewAnnotatedError(syserr.ErrNotSupported, fmt.Sprintf("meta key %v is not supported", key))
@@ -70,6 +71,10 @@ func (op metaSet) evaluate(regs *registerSet, evalCtx opEvalCtx) {
 	// Only Packet Type is supported for now.
 	case linux.NFT_META_PKTTYPE:
 		evalCtx.pkt.PktType = tcpip.PacketType(src[0])
+		return
+	// Packet mark, host order like the load side (nft_meta_set_eval: skb->mark).
+	case linux.NFT_META_MARK:
+		evalCtx.pkt.Mark = binary.NativeEndian.Uint32(src)
 		return
 	}
 }
