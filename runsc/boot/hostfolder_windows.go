@@ -6,6 +6,7 @@
 package boot
 
 import (
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -20,6 +21,10 @@ const RootfsOptionsAnnotation = "dev.gvisor.windows.rootfs-options"
 
 func hostFolderForRoot(spec *specs.Spec) (gofer.HostFolderOptions, bool) {
 	if spec.Root == nil || spec.Root.Path == "" {
+		return gofer.HostFolderOptions{}, false
+	}
+	// A root that is a file is an erofs image, mounted through GoferFDs.
+	if fi, err := os.Stat(spec.Root.Path); err == nil && !fi.IsDir() {
 		return gofer.HostFolderOptions{}, false
 	}
 	// The root has no mount options in an OCI spec; this annotation carries

@@ -20,6 +20,7 @@ import (
 	specs "github.com/opencontainers/runtime-spec/specs-go"
 	"gvisor.dev/gvisor/pkg/cpuid"
 	"gvisor.dev/gvisor/pkg/log"
+	"gvisor.dev/gvisor/pkg/sentry/fsimpl/rootfs"
 	"gvisor.dev/gvisor/runsc/boot"
 	"gvisor.dev/gvisor/runsc/config"
 	"gvisor.dev/gvisor/runsc/flag"
@@ -131,6 +132,13 @@ func runCmd(args []string) int {
 	applyWindowsConfig(conf)
 
 	mountConfs, err := goferMountConfs(spec, conf)
+	var goferFDs []int
+	if err == nil && mountConfs[0].Lower == specutils.Erofs {
+		var h int
+		if h, err = rootfs.OpenImage(spec.Root.Path); err == nil {
+			goferFDs = []int{h}
+		}
+	}
 	if err != nil {
 		return fatalf("%v", err)
 	}
@@ -150,6 +158,7 @@ func runCmd(args []string) int {
 		PodInitConfigFD:  -1,
 		RootfsUpperTarFD: -1,
 		GoferMountConfs:  mountConfs,
+		GoferFDs:         goferFDs,
 		NumCPU:           runtime.NumCPU(),
 	})
 	if err != nil {
@@ -201,12 +210,14 @@ func goferMountConfs(spec *specs.Spec, conf *config.Config) ([]specutils.GoferMo
 	if err != nil {
 		return nil, fmt.Errorf("root filesystem %q: %w", spec.Root.Path, err)
 	}
-	if !fi.IsDir() {
-		return nil, fmt.Errorf("root filesystem %q is a file: an erofs image root is not wired into runsc.exe yet (ADR 0015)", spec.Root.Path)
-	}
+	erofsRoot := !fi.IsDir()
 	o := conf.GetOverlay2()
 	rootConf := specutils.GoferMountConf{Lower: specutils.Lisafs, Upper: specutils.NoOverlay}
-	if o.RootOverlayMedium() != config.NoOverlay {
+	if erofsRoot {
+		// An image is read-only: its changes live in a memory overlay (ADR 0015).
+		rootConf.Lower = specutils.Erofs
+		rootConf.Upper = specutils.MemoryOverlay
+	} else if o.RootOverlayMedium() != config.NoOverlay {
 		rootConf.Upper = specutils.MemoryOverlay
 		rootConf.Size = o.RootOverlaySize()
 	}

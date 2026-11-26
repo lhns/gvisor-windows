@@ -32,6 +32,7 @@ var (
 	runscExe = flag.String("runsc", "runsc.exe", "runsc.exe")
 	rootfs   = flag.String("rootfs", "", "rootfs folder (bin/busybox, bin/hello, ...)")
 	workDir  = flag.String("work", "", "writable folder for bundles and logs")
+	image    = flag.String("image", "", "erofs image of the same rootfs (enables the erofs test)")
 	only     = flag.String("only", "", "comma-separated test names (default all)")
 	timeout  = flag.Duration("timeout", 120*time.Second, "per test")
 )
@@ -58,6 +59,7 @@ func main() {
 	}{
 		{"hello", testHello},
 		{"busybox", testBusybox},
+		{"erofs", testErofs},
 		{"stdin", testStdin},
 		{"net", testNet},
 		{"publish", testPublish},
@@ -106,6 +108,10 @@ func must(err error) {
 
 // bundle writes an OCI bundle for args and returns its folder.
 func bundle(name string, args []string, terminal bool) string {
+	rootPath := *rootfs
+	if name == "erofs" {
+		rootPath = *image
+	}
 	dir := filepath.Join(*workDir, "bundle-"+name)
 	must(os.MkdirAll(dir, 0o755))
 	mounts := []map[string]any{
@@ -123,7 +129,7 @@ func bundle(name string, args []string, terminal bool) string {
 			"env":      []string{"PATH=/bin", "HOME=/", "TERM=xterm"},
 			"cwd":      "/",
 		},
-		"root":     map[string]any{"path": *rootfs, "readonly": false},
+		"root":     map[string]any{"path": rootPath, "readonly": false},
 		"hostname": "runsc-win",
 		"mounts":   mounts,
 		// The files were made by Windows tools and have no Linux modes.
@@ -194,6 +200,19 @@ func testBusybox() error {
 		return fmt.Errorf("stdout %q exit %d (stderr %q), want hostname file last and exit 3", r.stdout, r.code, r.stderr)
 	}
 	return nil
+}
+
+func testErofs() error {
+	if *image == "" {
+		fmt.Println("no -image, skipped")
+		return nil
+	}
+	*image, _ = filepath.Abs(*image)
+	r, err := runsc("erofs", []string{"/bin/sh", "-c", "echo hi; cat /etc/hostname; echo x > /tmp/f && cat /tmp/f; exit 3"}, nil)
+	return expect(r, err, "hi
+ciguest
+x
+", 3)
 }
 
 func testStdin() error {
