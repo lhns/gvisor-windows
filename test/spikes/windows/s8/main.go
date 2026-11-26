@@ -151,11 +151,14 @@ func childPass(stack string) {
 	trap(0, rsp)
 	vehArmed = 0
 	m := (*[8]uint64)(unsafe.Pointer(mk))
-	on := 0
-	if m[2] < uint64(rsp) && m[2] > uint64(rsp)-4096 {
-		on = 1
+	if m[0] == 0 {
+		os.Exit(1000)
 	}
-	os.Exit(1000 + int(m[0])*10 + on)
+	d := int64(rsp) - int64(m[2]) + 30000 // handler SP below guest RSP, offset so it is positive
+	if d < 0 || d > 60000 {
+		d = 0
+	}
+	os.Exit(100000 + int(d))
 }
 
 func childEvt() {
@@ -523,8 +526,10 @@ func passRun() {
 		run([]*proc{p}, c.variant, 0)
 		runtime.UnlockOSThread()
 		d := fmt.Sprintf("debugger saw %d first-chance and %d second-chance exception events (incl. loader breakpoint); child exit %#x", p.fcFirst, p.fcSecond, p.exit)
-		if p.exit >= 1000 && p.exit < 1100 {
-			d += fmt.Sprintf(" => child VEH ran %d time(s), handler on guest stack: %v", (p.exit-1000)/10, (p.exit-1000)%10 == 1)
+		if p.exit == 1000 {
+			d += " => child VEH did not run"
+		} else if p.exit >= 100000 && p.exit <= 160000 {
+			d += fmt.Sprintf(" => child VEH ran; its SP at entry = guest RSP-%d (0 = unknown/out of range)", int(p.exit)-100000-30000)
 		} else {
 			d += " => child died"
 		}
@@ -662,6 +667,6 @@ func main() {
 	for _, c := range [][2]int{{1, 1}, {1, 4}, {1, 16}, {2, 4}, {4, 4}, {4, 1}} {
 		conc(c[0], c[1])
 	}
-	fmt.Println("===== S8.5 %fs repair")
+	fmt.Println("===== S8.5 FS-base repair")
 	fsRun()
 }
