@@ -47,5 +47,5 @@ jobs:
         shell: pwsh
         run: |
           $env:GVISOR_ADMIN_PROBE = 'allowed'
-          C:\ci\bin\winnat.test.exe -test.v -test.count=1 -test.run=TestAdminProbe
+          & C:\ci\bin\winnat.test.exe '-test.v' '-test.count=1' '-test.run=TestAdminProbe'
           if ($LASTEXITCODE -ne 0) { exit 1 }
