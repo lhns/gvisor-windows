@@ -17,6 +17,7 @@ package platform
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -46,6 +47,13 @@ func (*MMapMinAddr) MinUserAddress() hostarch.Addr {
 }
 
 func init() {
+	// gvisor-windows: there is no /proc; the lowest address Windows lets a process
+	// allocate is the first 64 KB allocation unit.
+	if runtime.GOOS == "windows" {
+		systemMMapMinAddr = 0x10000
+		return
+	}
+
 	// Open the source file.
 	b, err := os.ReadFile(systemMMapMinAddrSource)
 	if err != nil {

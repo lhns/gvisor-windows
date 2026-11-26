@@ -21,20 +21,11 @@ import (
 	"gvisor.dev/gvisor/pkg/sentry/memmap"
 )
 
+// gvisor-windows: mincore moved to mincore_linux.go (Windows: mincore_windows.go).
+
 // Preconditions: The FileRange represented by c is a superset of fr.
 func (c *chunkInfo) sliceAt(fr memmap.FileRange) []byte {
 	return unsafe.Slice((*byte)(unsafe.Pointer(c.mapping+uintptr(fr.Start&chunkMask))), fr.Length())
-}
-
-func mincore(s []byte, buf []byte) error {
-	if _, _, errno := unix.RawSyscall(
-		unix.SYS_MINCORE,
-		uintptr(unsafe.Pointer(&s[0])),
-		uintptr(len(s)),
-		uintptr(unsafe.Pointer(&buf[0]))); errno != 0 {
-		return errno
-	}
-	return nil
 }
 
 func canMergeIovecAndSlice(iov unix.Iovec, bs []byte) bool {

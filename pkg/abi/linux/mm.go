@@ -16,6 +16,7 @@ package linux
 
 import (
 	"fmt"
+	"runtime"
 
 	"golang.org/x/sys/unix"
 )
@@ -139,6 +140,11 @@ const (
 
 // TaskSize is the address space size.
 var TaskSize = func() uintptr {
+	// gvisor-windows: probing with mmap(2) is Linux only; 47 bits is what the
+	// Windows user address space (128 TB) allows.
+	if runtime.GOOS == "windows" {
+		return 0x7ffffffff000
+	}
 	pageSize := uintptr(unix.Getpagesize())
 	for _, s := range feasibleTaskSizes {
 		// mmap returns ENOMEM if addr is greater than TASK_SIZE,

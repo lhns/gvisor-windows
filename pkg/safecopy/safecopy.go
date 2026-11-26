@@ -20,10 +20,8 @@ import (
 	"fmt"
 	"runtime"
 
-	"golang.org/x/sys/unix"
 	"gvisor.dev/gvisor/pkg/errors"
 	"gvisor.dev/gvisor/pkg/errors/linuxerr"
-	"gvisor.dev/gvisor/pkg/sighandling"
 )
 
 // SegvError is returned when a safecopy function receives SIGSEGV.
@@ -79,23 +77,10 @@ var (
 	loadUint32Begin           uintptr
 	loadUint32End             uintptr
 
-	// savedSigSegVHandler is a pointer to the SIGSEGV handler that was
-	// configured before we replaced it with our own. We still call into it
-	// when we get a SIGSEGV that is not interesting to us.
-	savedSigSegVHandler uintptr
-
-	// Same as above, but for SIGBUS signals.
-	savedSigBusHandler uintptr
+	// gvisor-windows: the saved signal handlers and signalHandler moved to
+	// safecopy_linux.go; Windows uses a vectored exception handler
+	// (safecopy_windows.go).
 )
-
-// signalHandler is our replacement signal handler for SIGSEGV and SIGBUS
-// signals.
-func signalHandler()
-
-// addrOfSignalHandler returns the start address of signalHandler.
-//
-// See comment on addrOfMemcpy for more details.
-func addrOfSignalHandler() uintptr
 
 // FindEndAddress returns the end address (one byte beyond the last) of the
 // function that contains the specified address (begin).
@@ -134,12 +119,8 @@ func initializeAddresses() {
 
 func init() {
 	initializeAddresses()
-	if err := sighandling.ReplaceSignalHandler(unix.SIGSEGV, addrOfSignalHandler(), &savedSigSegVHandler); err != nil {
-		panic(fmt.Sprintf("Unable to set handler for SIGSEGV: %v", err))
-	}
-	if err := sighandling.ReplaceSignalHandler(unix.SIGBUS, addrOfSignalHandler(), &savedSigBusHandler); err != nil {
-		panic(fmt.Sprintf("Unable to set handler for SIGBUS: %v", err))
-	}
+	// gvisor-windows: the handler installation is per OS.
+	installFaultHandlers()
 	linuxerr.AddErrorUnwrapper(func(e error) (*errors.Error, bool) {
 		switch e.(type) {
 		case SegvError, BusError, AlignmentError:

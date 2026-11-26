@@ -1,0 +1,58 @@
+name: windows-sentry
+
+on:
+  push:
+    branches: [windows, sentry-host-basics]
+  workflow_dispatch:
+
+env:
+  CGO_ENABLED: "0"
+
+jobs:
+  sentry-host:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Sentry smoke program
+        shell: bash
+        run: timeout 300 go run ./tools/windows/sentrysmoke
+      - name: Diagnostics of memclr faults
+        if: always()
+        shell: bash
+        run: go test -p 2 -count=1 -v -run TestWindowsFaultMatrix -timeout 60s ./pkg/safecopy/ 2>&1 | grep -E "DIAG|hasERMS|panic|FAIL|ok" | head -400
+      - name: Tests of pkg/safecopy
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          go test -p 2 -count=1 -v -timeout 100s ./pkg/safecopy/ > safecopy.log 2>&1
+          rc=$?
+          grep -E "^([[:space:]]*--- FAIL|FAIL|ok|panic|fatal)" safecopy.log | head -60
+          echo "top-level: $(grep -cE "^--- PASS" safecopy.log) passed, $(grep -cE "^--- FAIL" safecopy.log) failed, $(grep -cE "^--- SKIP" safecopy.log) skipped; subtests: $(grep -cE "^[[:space:]]+--- PASS" safecopy.log) passed, $(grep -cE "^[[:space:]]+--- FAIL" safecopy.log) failed, $(grep -cE "^[[:space:]]+--- SKIP" safecopy.log) skipped"
+          exit $rc
+      - name: Tests of pkg/sentry/pgalloc
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          go test -p 2 -count=1 -v -timeout 200s ./pkg/sentry/pgalloc/ > pgalloc.log 2>&1
+          rc=$?
+          grep -E "^([[:space:]]*--- (FAIL|SKIP|PASS)|FAIL|ok|panic|fatal)" pgalloc.log | head -60
+          echo "top-level: $(grep -cE "^--- PASS" pgalloc.log) passed, $(grep -cE "^--- FAIL" pgalloc.log) failed, $(grep -cE "^--- SKIP" pgalloc.log) skipped"
+          exit $rc
+      - name: Init of each package alone
+        if: always()
+        shell: bash
+        run: |
+          # One failing init must not hide the others, so each runs in its own program.
+          fail=0
+          for p in pkg/hosttid pkg/cpuid pkg/hostarch pkg/rand pkg/safecopy pkg/sentry/time pkg/sentry/pgalloc pkg/sentry/kernel pkg/sentry/vfs pkg/sentry/loader runsc/boot; do
+            d=$(mktemp -d -p .)
+            printf 'package main\nimport _ "gvisor.dev/gvisor/%s"\nfunc main() { println("init ok") }\n' "$p" > "$d/main.go"
+            if timeout 300 go run "$d" > "$d/out.txt" 2>&1; then echo "PASS init $p"; else echo "FAIL init $p"; head -12 "$d/out.txt"; fail=1; fi
+            rm -rf "$d"
+          done
+          exit $fail

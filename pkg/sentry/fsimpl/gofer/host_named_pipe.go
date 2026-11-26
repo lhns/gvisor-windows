@@ -16,6 +16,7 @@ package gofer
 
 import (
 	"fmt"
+	"runtime"
 	"sync"
 	"time"
 
@@ -35,6 +36,11 @@ var (
 )
 
 func init() {
+	// gvisor-windows: there are no host pipes to block on (host files are
+	// replaced, ADR 0005).
+	if runtime.GOOS == "windows" {
+		return
+	}
 	var pipeFDs [2]int
 	if err := unix.Pipe(pipeFDs[:]); err != nil {
 		panic(fmt.Sprintf("failed to create pipe for gofer.blockUntilNonblockingPipeHasWriter: %v", err))

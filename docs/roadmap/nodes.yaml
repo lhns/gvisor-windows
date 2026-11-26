@@ -664,31 +664,34 @@
   title: Sentry builds for Windows
   track: sentry
   kind: feature
-  state: in-progress
+  state: done
   outcome: unrated
   evidence:
   - docs/results/1b-windows-build.md
+  - docs/results/1b-sentry-host-basics.md
   verdict_quote: ''
   headline: ''
   depends_on:
   - sentry-unix-shim
   - sentry-go-fault-recovery
   replaced_by: []
-  lane: windows-ci
+  lane: none
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded:
   - GOOS=windows build of runsc/boot succeeds, CI green (2026-11-26, commit 3b38a4660)
   overview: false
   plain: gVisor's kernel compiles as a Windows program, with host-specific parts stubbed out.
-  notes: 'Done when: the Sentry process starts on Windows and reaches its init without a guest. Compiling is done; Linux-specific assembly (safecopy handler, hosttid, cpuid) still has to be replaced.'
+  notes: 'Done when: the Sentry process starts on Windows and reaches its init without a guest. Reached on 2026-11-26: the init of every package up to runsc/boot passes on windows-latest (safecopy handler, clocks, task size and minimum address replaced; hosttid and cpuid worked as they are).'
 - id: sentry-memory-file-sections
   title: Guest memory on Windows sections
   track: sentry
   kind: feature
-  state: blocked
+  state: in-progress
   outcome: unrated
-  evidence: []
+  evidence:
+  - docs/results/1b-sentry-host-basics.md
+  - docs/adr/0013-memory-file-on-reserved-sections.md
   verdict_quote: ''
   headline: ''
   depends_on:
@@ -697,12 +700,12 @@
   - ops-syscall-test-strategy
   replaced_by: []
   lane: windows-ci
-  start: ''
+  start: '2026-11-26'
   end: ''
   folded: []
   overview: false
-  plain: The Sentry's memory file becomes a Windows section object, allocated in 64 KB units.
-  notes: 'Done when: pgalloc allocates, maps into a stub and copy-on-write-breaks memory on Windows; mm tests pass.'
+  plain: The Sentry's memory file becomes Windows section objects, one per 1 GB chunk.
+  notes: 'Done when: pgalloc allocates, maps into a stub and copy-on-write-breaks memory on Windows; mm tests pass. Done so far: allocation, internal mappings, Decommit and the section accessor, tested on Windows; mapping into a stub and releasing committed memory are open.'
 - id: sentry-event-loop-iocp
   title: Event waiting on IOCP
   track: sentry
@@ -1057,18 +1060,19 @@
   title: Port fault recovery to Windows
   track: sentry
   kind: feature
-  state: blocked
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/1b-sentry-host-basics.md
+  verdict_quote: pkg/safecopy recovers faults on Windows through a vectored exception handler (1.3 us per fault, 292 upstream subtests passing)
+  headline: 1.3 us per fault
   depends_on:
   - sentry-windows-build
   - sentry-go-fault-recovery
   replaced_by: []
-  lane: windows-ci
-  start: ''
-  end: ''
+  lane: none
+  start: '2026-11-26'
+  end: '2026-11-26'
   folded: []
   overview: false
   plain: The Sentry's safe copies of guest memory recover from access violations on Windows instead of crashing.
