@@ -27,7 +27,7 @@ jobs:
           $fail = 0
           foreach ($t in 'TestSyscallsFaultsInterrupt','TestExecuteFault','TestUnmapAndRemap','TestNewThreadsAndSpeed','TestForkedAddressSpace','TestWriteExecute') {
             "===== $t" | Tee-Object -Append -FilePath ../../../../tests.txt
-            & ../../../../winstub.test.exe -test.run "^$t$" -test.v -test.timeout 3m 2>&1 | Tee-Object -Append -FilePath ../../../../tests.txt
+            $a = @(("-test.run=^" + $t + [char]36), "-test.v=true", "-test.timeout=3m"); & ../../../../winstub.test.exe @a 2>&1 | Tee-Object -Append -FilePath ../../../../tests.txt
             "exit: $LASTEXITCODE" | Tee-Object -Append -FilePath ../../../../tests.txt
             if ($LASTEXITCODE -ne 0) { $fail = 1 }
           }
