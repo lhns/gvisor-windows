@@ -107,7 +107,8 @@ Verdict: FAIL. WHPX cannot be used on this machine as a standard user (QEMU repo
 | S1 event round trip | median 24385 ns, p99 58744 ns |
 | S2 | same placeholder results as above |
 | S3 | `rdfsbase`/`wrfsbase` execute; FS base set and `fs:[0]` reads correctly; after `Sleep(1)` the next `fs:[0]` faults at address 0 |
-| S4, S5 | same results as above; S5 1.6 us per fault and recover |
+| S4 | correction found by S7: the low-integrity restricted child dies at startup with 0xC0000142 on the hosted runner (it ran on the dev VM); normal-token children stay fully controllable |
+| S5 | same results as above; 1.6 us per fault and recover |
 
 Verdict: On a CPU with FSGSBASE, a standard-user Windows process can set its %fs base with `wrfsbase`, but Windows did not keep the value across `Sleep(1)`, so the design needs a way to restore the base after context switches; how often it is lost and whether a fault handler can restore it is measured next.
 

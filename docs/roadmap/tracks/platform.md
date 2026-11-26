@@ -15,10 +15,14 @@ flowchart TB
     platform_tls_register[/"✔ Set the TLS register"/]
     platform_restricted_stub[/"✔ Restrict the stub<br/>process"/]
     platform_zpoline_hooks[/"✖ Hook syscalls like<br/>zpoline"/]
-    platform_exception_stack[/"▶ Check what<br/>exceptions do to<br/>stacks"/]
+    platform_exception_stack[/"✔ Check what<br/>exceptions do to<br/>stacks"/]
+    platform_veh_on_guest_stack_unsafe>"✔ Exceptions overwrite<br/>guest stacks"]
+    platform_debug_event_cost[/"▶ Measure debugger<br/>fault handling"/]
+    platform_syscall_site_survey[/"▶ Survey patchable<br/>syscall sites"/]
+    platform_faults_per_exec[/"▶ Count page faults<br/>per exec"/]
     platform_stub_controller["⛔ Stub and controller<br/>prototype"]
     platform_page_verification["⛔ Scan code pages for<br/>syscalls"]
-    platform_syscall_fast_path[/"⛔ Patch hot syscall<br/>sites"/]
+    platform_syscall_fast_path[/"⛔ Patch syscall sites<br/>into jumps"/]
     platform_own_vdso["⛔ Own vDSO for clock<br/>calls"]
     platform_fs_base_repair["⛔ Restore the TLS<br/>register after<br/>switches"]
     platform_no_fsgsbase_fallback["⏸ Support CPUs without<br/>FSGSBASE"]
@@ -33,7 +37,13 @@ flowchart TB
     platform_tls_register ~~~ platform_exception_stack
     platform_restricted_stub ~~~ platform_exception_stack
     platform_zpoline_hooks ~~~ platform_exception_stack
-    platform_exception_stack ~~~ platform_stub_controller
+    platform_exception_stack ~~~ platform_veh_on_guest_stack_unsafe
+    platform_exception_stack ~~~ platform_debug_event_cost
+    platform_exception_stack ~~~ platform_syscall_site_survey
+    platform_veh_on_guest_stack_unsafe ~~~ platform_faults_per_exec
+    platform_debug_event_cost ~~~ platform_faults_per_exec
+    platform_syscall_site_survey ~~~ platform_faults_per_exec
+    platform_faults_per_exec ~~~ platform_stub_controller
     platform_stub_controller ~~~ platform_page_verification
     platform_page_verification ~~~ platform_syscall_fast_path
     platform_page_verification ~~~ platform_own_vdso
@@ -46,12 +56,18 @@ flowchart TB
     platform_winstub ~~~ platform_static_guest_from_memory
     platform_hardware_acceleration ~~~ platform_busybox_on_windows
     platform_static_guest_from_memory ~~~ platform_busybox_on_windows
+    platform_trap_cost -.-> platform_veh_on_guest_stack_unsafe
+    platform_tls_register -.-> platform_veh_on_guest_stack_unsafe
     platform_trap_cost --> platform_exception_stack
-    platform_elf_alignment_survey --> platform_stub_controller
+    platform_exception_stack --> platform_veh_on_guest_stack_unsafe
+    platform_exception_stack --> platform_debug_event_cost
+    platform_elf_alignment_survey --> platform_syscall_site_survey
     platform_4k_section_views --> platform_stub_controller
     platform_tls_register --> platform_stub_controller
     platform_restricted_stub --> platform_stub_controller
-    platform_exception_stack --> platform_stub_controller
+    platform_debug_event_cost --> platform_stub_controller
+    platform_syscall_site_survey --> platform_stub_controller
+    platform_faults_per_exec --> platform_stub_controller
     platform_stub_controller --> platform_page_verification
     platform_page_verification --> platform_syscall_fast_path
     platform_stub_controller --> platform_own_vdso
@@ -62,6 +78,7 @@ flowchart TB
     platform_winstub --> platform_static_guest_from_memory
     platform_fs_base_repair --> platform_static_guest_from_memory
     platform_static_guest_from_memory --> platform_busybox_on_windows
+    linkStyle 25,26 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -76,10 +93,10 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class platform_elf_alignment_survey,platform_trap_cost,platform_4k_section_views succ
+    class platform_elf_alignment_survey,platform_trap_cost,platform_4k_section_views,platform_exception_stack,platform_veh_on_guest_stack_unsafe succ
     class platform_tls_register,platform_restricted_stub mixed
     class platform_zpoline_hooks dead
-    class platform_exception_stack inprog
+    class platform_debug_event_cost,platform_syscall_site_survey,platform_faults_per_exec inprog
     class platform_stub_controller,platform_page_verification,platform_syscall_fast_path,platform_own_vdso,platform_fs_base_repair,platform_winstub,platform_static_guest_from_memory,platform_busybox_on_windows blocked
     class platform_no_fsgsbase_fallback,platform_64k_mapping_conflicts,platform_hardware_acceleration parked
 ```
@@ -91,13 +108,13 @@ flowchart TB
 | id | title | kind | lane | state | outcome | start | end | depends_on | replaced_by | qualified_by | headline | evidence |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `platform-elf-alignment-survey` | Survey ELF segment alignment | experiment | linux-ci | done | successful | 2026-11-26 | 2026-11-26 | research-gvisor-base |  |  |  | docs/results/0a-linux.md |
-| `platform-trap-cost` | Measure syscall trap cost | experiment | windows-local | done | successful | 2026-11-26 | 2026-11-26 | research-gvisor-base |  |  | about 8 us per trap | docs/results/0b-windows.md |
+| `platform-trap-cost` | Measure syscall trap cost | experiment | windows-local | done | successful | 2026-11-26 | 2026-11-26 | research-gvisor-base |  | platform-veh-on-guest-stack-unsafe | about 8 us per trap | docs/results/0b-windows.md |
 | `platform-4k-section-views` | Test 4 KB section views | experiment | windows-local | done | successful | 2026-11-26 | 2026-11-26 | research-gvisor-base |  |  |  | docs/results/0b-windows.md |
-| `platform-tls-register` | Set the TLS register | experiment | windows-local | done | mixed | 2026-11-26 | 2026-11-26 | research-gvisor-base |  |  | about 1.1-2.2 us per repair | docs/results/0b-windows.md |
+| `platform-tls-register` | Set the TLS register | experiment | windows-local | done | mixed | 2026-11-26 | 2026-11-26 | research-gvisor-base |  | platform-veh-on-guest-stack-unsafe | about 1.1-2.2 us per repair | docs/results/0b-windows.md |
 | `platform-restricted-stub` | Restrict the stub process | experiment | windows-local | done | mixed | 2026-11-26 | 2026-11-26 | research-gvisor-base |  |  |  | docs/results/0b-windows.md |
-| `platform-stub-controller` | Stub and controller prototype | feature | windows-ci | blocked | unrated |  |  | ops-phase0-go-no-go, platform-trap-cost, platform-4k-section-views, platform-tls-register, platform-restricted-stub, platform-exception-stack |  |  |  |  |
+| `platform-stub-controller` | Stub and controller prototype | feature | windows-ci | blocked | unrated |  |  | ops-phase0-go-no-go, platform-trap-cost, platform-4k-section-views, platform-tls-register, platform-restricted-stub, platform-exception-stack, platform-debug-event-cost, platform-syscall-site-survey, platform-faults-per-exec |  |  |  |  |
 | `platform-page-verification` | Scan code pages for syscalls | feature | windows-ci | blocked | unrated |  |  | platform-stub-controller |  |  |  |  |
-| `platform-syscall-fast-path` | Patch hot syscall sites | experiment | windows-ci | blocked | unrated |  |  | platform-page-verification |  |  |  |  |
+| `platform-syscall-fast-path` | Patch syscall sites into jumps | experiment | windows-ci | blocked | unrated |  |  | platform-page-verification |  |  |  |  |
 | `platform-own-vdso` | Own vDSO for clock calls | feature | windows-ci | blocked | unrated |  |  | platform-stub-controller |  |  |  |  |
 | `platform-64k-mapping-conflicts` | Handle 64 KB mapping conflicts | feature | windows-ci | parked | unrated |  |  | sentry-memory-file-sections, platform-elf-alignment-survey |  |  |  |  |
 | `platform-winstub` | Windows platform for the Sentry | feature | windows-ci | blocked | unrated |  |  | platform-stub-controller, platform-page-verification, sentry-memory-file-sections, ops-syscall-test-strategy |  |  |  |  |
@@ -106,8 +123,12 @@ flowchart TB
 | `platform-zpoline-hooks` | Hook syscalls like zpoline | experiment | windows-local | abandoned | dead-end | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/0b-windows.md |
 | `platform-fs-base-repair` | Restore the TLS register after switches | feature | windows-ci | blocked | unrated |  |  | platform-stub-controller |  |  |  |  |
 | `platform-no-fsgsbase-fallback` | Support CPUs without FSGSBASE | feature | windows-ci | parked | unrated |  |  | platform-page-verification |  |  |  |  |
-| `platform-exception-stack` | Check what exceptions do to stacks | experiment | windows-ci | in-progress | unrated | 2026-11-26 |  | platform-trap-cost |  |  |  |  |
+| `platform-exception-stack` | Check what exceptions do to stacks | experiment | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-trap-cost |  |  |  | docs/results/0b-windows.md |
 | `platform-static-guest-from-memory` | Run a static guest from memory | feature | windows-ci | blocked | unrated |  |  | platform-winstub, sentry-fault-recovery, platform-fs-base-repair |  |  |  |  |
+| `platform-veh-on-guest-stack-unsafe` | Exceptions overwrite guest stacks | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 | platform-exception-stack |  |  |  | docs/results/0b-windows.md; docs/adr/0010-guest-faults-via-the-debugger-syscalls-via-patching.md |
+| `platform-debug-event-cost` | Measure debugger fault handling | experiment | windows-ci | in-progress | unrated | 2026-11-26 |  | platform-exception-stack |  |  |  |  |
+| `platform-syscall-site-survey` | Survey patchable syscall sites | experiment | linux-ci | in-progress | unrated | 2026-11-26 |  | platform-elf-alignment-survey |  |  |  |  |
+| `platform-faults-per-exec` | Count page faults per exec | experiment | linux-ci | in-progress | unrated | 2026-11-26 |  | research-gvisor-benchmark |  |  |  |  |
 
 ### Details per node
 
@@ -118,23 +139,29 @@ flowchart TB
 | `platform-4k-section-views` | Test 4 KB section views | With placeholders, a non-elevated process can map section views into a child at 4 KB-aligned addresses (not 64 KB-aligned), at 4 KB-multiple file offsets, with 4 KB view sizes, and change protection per 4 KB page |  | Check whether Windows can map shared memory at the 4 KB steps Linux programs expect, instead of 64 KB. | Done when: S2 results are in docs/results/0b-windows.md. |  |  |  |  |
 | `platform-tls-register` | Set the TLS register | a raw vectored exception handler that re-executes `wrfsbase` restores it transparently: guest-like `fs:[0]`/`fs:[0x28]`/`fs:[-8]` loops ran 10 s under contention with 0 wrong reads and about 1.1-2.2 us per repair | about 1.1-2.2 us per repair | Check whether a normal Windows program can set the register Linux programs use for thread-local data; without it native execution fails. | Go/no-go. Done when: S3 results are in docs/results/0b-windows.md. |  |  |  |  |
 | `platform-restricted-stub` | Restrict the stub process | so the restriction reduces what it could do but does not make a missed trap harmless. |  | Check that the process running Linux code can be locked down, so a missed system call does little harm. | Done when: S4 results are in docs/results/0b-windows.md. |  |  |  |  |
-| `platform-stub-controller` | Stub and controller prototype |  |  | A tiny Windows process runs a static Linux program while a second process catches and answers its system calls. | Done when: a static x86-64 binary writes, forks and exits correctly under the controller, without the Sentry; per-syscall cost recorded. First number: cost of creating a stub process and mapping its memory. |  |  |  |  |
-| `platform-page-verification` | Scan code pages for syscalls |  |  | Before guest code may run, each page is scanned for every instruction that enters the Windows kernel and those are rewritten to traps. | Done when: no page is ever writable and executable at once; a test binary with syscall, sysenter, int and JIT-generated code never reaches the NT kernel. |  |  |  |  |
-| `platform-syscall-fast-path` | Patch hot syscall sites |  |  | Call sites that trapped once are patched to jump straight into the controller hand-off, avoiding the exception cost. | Done when: a getpid loop runs measurably faster than the trap-only path, with the numbers written up. |  |  |  |  |
+| `platform-stub-controller` | Stub and controller prototype |  |  | The Sentry debugs a tiny Windows stub process that runs a static Linux program; patched syscalls arrive over shared memory and faults as debug events. | Done when: a static x86-64 binary writes, forks and exits correctly under the controller, without the Sentry; per-syscall cost recorded. First number: cost of creating a stub process and mapping its memory. |  |  |  |  |
+| `platform-page-verification` | Scan code pages for syscalls |  |  | Before guest code may run, each page is scanned for syscall instructions; patchable sites become jumps into the stub trampoline, the rest are made to fault into the debugger. | Done when: no page is ever writable and executable at once; a test binary with syscall, sysenter, int and JIT-generated code never reaches the NT kernel. |  |  |  |  |
+| `platform-syscall-fast-path` | Patch syscall sites into jumps |  |  | Syscall sites are patched like gVisor's usertrap into a jump through a table at 0x60000, so syscalls never raise an exception. | Done when: a getpid loop runs measurably faster than the trap-only path, with the numbers written up. |  |  |  |  |
 | `platform-own-vdso` | Own vDSO for clock calls |  |  | Time and CPU queries are answered inside the stub, so they need no trap at all. | Done when: clock_gettime, gettimeofday and getcpu run without a trap and return correct values. |  |  |  |  |
 | `platform-64k-mapping-conflicts` | Handle 64 KB mapping conflicts |  |  | When Linux puts two file pieces inside one 64 KB Windows window, the Sentry copies them into one fresh range instead. | Parked: the ELF survey shows non-64K-aligned segments in 73-82% of files, but S2 showed 4 KB section views work with placeholders on Windows 10.0.26300, so no conflict path is needed there. Done when: needed only on Windows builds without 4 KB placeholder views. |  |  |  |  |
 | `platform-winstub` | Windows platform for the Sentry |  |  | gVisor's platform interface implemented for Windows: address spaces, context switches and syscall delivery through stub processes. | Done when: pkg/sentry/platform/winstub passes the platform's own tests on Windows. |  |  |  |  |
 | `platform-busybox-on-windows` | Run busybox under the Sentry |  |  | First end-to-end milestone: gVisor's kernel runs an unmodified busybox shell on Windows. | Done when: busybox sh runs a script with fork, exec, pipes and mmap under the Sentry on Windows as a standard user. |  |  |  |  |
 | `platform-hardware-acceleration` | Use hardware acceleration when available |  |  | Where the Windows Hypervisor Platform is enabled, a second platform could run guests in a hardware VM, chosen automatically like runsc's autoplatform. | Done when: a WHPX platform is picked automatically when available and falls back to stub processes. |  |  |  |  |
 | `platform-zpoline-hooks` | Hook syscalls like zpoline | A standard user cannot map memory below 0x10000, so zpoline's trampoline at address 0 cannot be ported to Windows and syscall sites must be rewritten to traps or jumps instead. |  | Rewriting each syscall into a call to a trampoline at address 0 cannot work on Windows. |  |  |  |  |  |
-| `platform-fs-base-repair` | Restore the TLS register after switches |  |  | Windows resets the guest's thread-local register on every context switch; the stub's fault handler puts it back before the guest notices. | Done when: a multi-threaded guest under CPU contention never reads a wrong %fs value, with repairs counted per second. |  |  |  |  |
+| `platform-fs-base-repair` | Restore the TLS register after switches |  |  | The stub sets the guest thread-local register on every return to the guest; losses from preemption arrive as debug events and the Sentry restores it. | Done when: a multi-threaded guest under CPU contention never reads a wrong %fs value, with repairs counted per second. |  |  |  |  |
 | `platform-no-fsgsbase-fallback` | Support CPUs without FSGSBASE |  |  | On CPUs or VMs without the instruction to set the register, rewrite the guest's %fs accesses instead. | Done when: a glibc program runs on a machine without FSGSBASE. |  |  |  |  |
-| `platform-exception-stack` | Check what exceptions do to stacks |  |  | Windows writes exception data onto the faulting thread stack; check whether that destroys data Linux code keeps there, and what happens on unmapped stacks. | Done when: S7 results are in docs/results/0b-windows.md. |  |  |  |  |
+| `platform-exception-stack` | Check what exceptions do to stacks | A VEH on the guest stack is not safe |  | Windows writes exception data onto the faulting thread stack; check whether that destroys data Linux code keeps there, and what happens on unmapped stacks. | Done when: S7 results are in docs/results/0b-windows.md. |  |  |  |  |
 | `platform-static-guest-from-memory` | Run a static guest from memory |  |  | Thinnest end-to-end slice: the Sentry on Windows runs one embedded static program from its own memory filesystem, without host files, network or threads. | Done when: a static hello-world and a static program that forks and execs run under the Sentry in Windows CI. |  |  |  |  |
+| `platform-veh-on-guest-stack-unsafe` | Exceptions overwrite guest stacks |  |  | Windows writes about 3 KB of exception data below the faulting thread stack pointer, so in-process handlers can corrupt Linux code; faults must go to the Sentry as debugger instead. |  |  |  |  |  |
+| `platform-debug-event-cost` | Measure debugger fault handling |  |  | Measure what handling a guest fault as debugger costs without touching thread context, how many events a process start makes, and whether many stubs can be debugged at once. | Done when: S8 results are in docs/results/0b-windows.md. |  |  |  |  |
+| `platform-syscall-site-survey` | Survey patchable syscall sites |  |  | Count how many syscall instructions in real images can be patched into jumps, and how many would need the slow debugger path. | Done when: per-image counts by site class are in docs/results/0d-syscall-sites.md. |  |  |  |  |
+| `platform-faults-per-exec` | Count page faults per exec |  |  | Count how many page faults gVisor takes for one fork plus exec on Linux; times the debugger cost this gives the Windows process-start cost. | Done when: faults per fork+exec and the mm MapUnit/precommit behaviour are in docs/results/0d-syscall-sites.md. |  |  |  |  |
 
 ### Folded items per node
 
 - `platform-tls-register`: Set the TLS register
   - Fails on the QEMU-guest dev machine without FSGSBASE (2026-11-26, commit 22d422737)
   - Base lost on every deschedule, repaired by a fault handler (2026-11-26, commit 0b867b6a3)
+- `platform-restricted-stub`: Restrict the stub process
+  - Low-integrity child dies at startup on the hosted runner, 0xC0000142 (2026-11-26, session record)
 <!-- END GENERATED: table-platform -->

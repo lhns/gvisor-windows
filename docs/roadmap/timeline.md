@@ -21,7 +21,11 @@ gantt
     Set the TLS register :platform_tls_register, 2026-11-26, 2026-11-26
     Restrict the stub process :platform_restricted_stub, 2026-11-26, 2026-11-26
     Hook syscalls like zpoline :crit, platform_zpoline_hooks, 2026-11-26, 2026-11-26
-    Check what exceptions do to stacks :active, platform_exception_stack, 2026-11-26, 2026-11-26
+    Check what exceptions do to stacks :platform_exception_stack, 2026-11-26, 2026-11-26
+    Exceptions overwrite guest stacks :platform_veh_on_guest_stack_unsafe, 2026-11-26, 2026-11-26
+    Measure debugger fault handling :active, platform_debug_event_cost, 2026-11-26, 2026-11-26
+    Survey patchable syscall sites :active, platform_syscall_site_survey, 2026-11-26, 2026-11-26
+    Count page faults per exec :active, platform_faults_per_exec, 2026-11-26, 2026-11-26
     section sentry - sentry
     Recover faults in Go :sentry_go_fault_recovery, 2026-11-26, 2026-11-26
     section fs - files

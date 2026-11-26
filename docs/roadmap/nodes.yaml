@@ -291,6 +291,8 @@
   overview: false
   plain: Measure what it costs to catch one Linux system call on Windows and hand it to another process.
   notes: 'Done when: S1 results are in docs/results/0b-windows.md.'
+  qualified_by:
+  - platform-veh-on-guest-stack-unsafe
 - id: platform-4k-section-views
   title: Test 4 KB section views
   track: platform
@@ -335,6 +337,8 @@
   overview: true
   plain: Check whether a normal Windows program can set the register Linux programs use for thread-local data; without it native execution fails.
   notes: 'Go/no-go. Done when: S3 results are in docs/results/0b-windows.md.'
+  qualified_by:
+  - platform-veh-on-guest-stack-unsafe
 - id: platform-restricted-stub
   title: Restrict the stub process
   track: platform
@@ -351,7 +355,8 @@
   lane: windows-local
   start: '2026-11-26'
   end: '2026-11-26'
-  folded: []
+  folded:
+  - Low-integrity child dies at startup on the hosted runner, 0xC0000142 (2026-11-26, session record)
   overview: false
   plain: Check that the process running Linux code can be locked down, so a missed system call does little harm.
   notes: 'Done when: S4 results are in docs/results/0b-windows.md.'
@@ -504,13 +509,16 @@
   - platform-tls-register
   - platform-restricted-stub
   - platform-exception-stack
+  - platform-debug-event-cost
+  - platform-syscall-site-survey
+  - platform-faults-per-exec
   replaced_by: []
   lane: windows-ci
   start: ''
   end: ''
   folded: []
   overview: false
-  plain: A tiny Windows process runs a static Linux program while a second process catches and answers its system calls.
+  plain: The Sentry debugs a tiny Windows stub process that runs a static Linux program; patched syscalls arrive over shared memory and faults as debug events.
   notes: 'Done when: a static x86-64 binary writes, forks and exits correctly under the controller, without the Sentry; per-syscall cost recorded. First number: cost of creating a stub process and mapping
     its memory.'
 - id: platform-page-verification
@@ -530,10 +538,10 @@
   end: ''
   folded: []
   overview: false
-  plain: Before guest code may run, each page is scanned for every instruction that enters the Windows kernel and those are rewritten to traps.
+  plain: Before guest code may run, each page is scanned for syscall instructions; patchable sites become jumps into the stub trampoline, the rest are made to fault into the debugger.
   notes: 'Done when: no page is ever writable and executable at once; a test binary with syscall, sysenter, int and JIT-generated code never reaches the NT kernel.'
 - id: platform-syscall-fast-path
-  title: Patch hot syscall sites
+  title: Patch syscall sites into jumps
   track: platform
   kind: experiment
   state: blocked
@@ -549,7 +557,7 @@
   end: ''
   folded: []
   overview: false
-  plain: Call sites that trapped once are patched to jump straight into the controller hand-off, avoiding the exception cost.
+  plain: Syscall sites are patched like gVisor's usertrap into a jump through a table at 0x60000, so syscalls never raise an exception.
   notes: 'Done when: a getpid loop runs measurably faster than the trap-only path, with the numbers written up.'
 - id: platform-own-vdso
   title: Own vDSO for clock calls
@@ -1256,7 +1264,7 @@
   end: ''
   folded: []
   overview: false
-  plain: Windows resets the guest's thread-local register on every context switch; the stub's fault handler puts it back before the guest notices.
+  plain: The stub sets the guest thread-local register on every return to the guest; losses from preemption arrive as debug events and the Sentry restores it.
   notes: 'Done when: a multi-threaded guest under CPU contention never reads a wrong %fs value, with repairs counted per second.'
 - id: platform-no-fsgsbase-fallback
   title: Support CPUs without FSGSBASE
@@ -1315,22 +1323,23 @@
   lane: none
   plain: A Windows copy of x/sys/unix defines the Linux constants and types and stubs the calls, so the Sentry compiles with few edits.
   notes: 'Done when: ./runsc/boot type-checks for GOOS=windows with Linux-only subsystems excluded by build tags.'
-- outcome: unrated
-  evidence: []
-  verdict_quote: ''
+- outcome: successful
+  evidence:
+  - docs/results/0b-windows.md
+  verdict_quote: A VEH on the guest stack is not safe
   headline: ''
   depends_on:
   - platform-trap-cost
   replaced_by: []
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   id: platform-exception-stack
   title: Check what exceptions do to stacks
   track: platform
   kind: experiment
-  state: in-progress
+  state: done
   lane: windows-ci
   plain: Windows writes exception data onto the faulting thread stack; check whether that destroys data Linux code keeps there, and what happens on unmapped stacks.
   notes: 'Done when: S7 results are in docs/results/0b-windows.md.'
@@ -1393,3 +1402,80 @@
   overview: true
   plain: Podman's default network creates a bridge and veth pairs over netlink; gVisor lacks part of that, so it fails today. Fix it in gVisor itself, first on Linux, then it carries over to Windows.
   notes: 'Done when: the acceptance test passes with the default bridge network on runsc (Linux CI), including -p and compose service names. Fixes defect workloads-gvisor-bridge-netlink.'
+- outcome: unrated
+  evidence:
+  - docs/results/0b-windows.md
+  - docs/adr/0010-guest-faults-via-the-debugger-syscalls-via-patching.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - platform-exception-stack
+  replaced_by: []
+  start: '2026-11-26'
+  end: '2026-11-26'
+  folded: []
+  overview: true
+  id: platform-veh-on-guest-stack-unsafe
+  title: Exceptions overwrite guest stacks
+  track: platform
+  kind: defect
+  state: done
+  lane: windows-ci
+  plain: Windows writes about 3 KB of exception data below the faulting thread stack pointer, so in-process handlers can corrupt Linux code; faults must go to the Sentry as debugger instead.
+- outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - platform-exception-stack
+  replaced_by: []
+  start: '2026-11-26'
+  end: ''
+  folded: []
+  overview: false
+  id: platform-debug-event-cost
+  title: Measure debugger fault handling
+  track: platform
+  kind: experiment
+  state: in-progress
+  lane: windows-ci
+  plain: Measure what handling a guest fault as debugger costs without touching thread context, how many events a process start makes, and whether many stubs can be debugged at once.
+  notes: 'Done when: S8 results are in docs/results/0b-windows.md.'
+- outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - platform-elf-alignment-survey
+  replaced_by: []
+  start: '2026-11-26'
+  end: ''
+  folded: []
+  overview: false
+  id: platform-syscall-site-survey
+  title: Survey patchable syscall sites
+  track: platform
+  kind: experiment
+  state: in-progress
+  lane: linux-ci
+  plain: Count how many syscall instructions in real images can be patched into jumps, and how many would need the slow debugger path.
+  notes: 'Done when: per-image counts by site class are in docs/results/0d-syscall-sites.md.'
+- outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - research-gvisor-benchmark
+  replaced_by: []
+  start: '2026-11-26'
+  end: ''
+  folded: []
+  overview: false
+  id: platform-faults-per-exec
+  title: Count page faults per exec
+  track: platform
+  kind: experiment
+  state: in-progress
+  lane: linux-ci
+  plain: Count how many page faults gVisor takes for one fork plus exec on Linux; times the debugger cost this gives the Windows process-start cost.
+  notes: 'Done when: faults per fork+exec and the mm MapUnit/precommit behaviour are in docs/results/0d-syscall-sites.md.'

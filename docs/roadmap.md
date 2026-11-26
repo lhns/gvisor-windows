@@ -89,9 +89,9 @@ Owner calls are the purple shape. A decided owner call is drawn in the overview 
 ## Ratings
 
 <!-- BEGIN GENERATED: ratings -->
-0 of 17 rated nodes are confirmed by the owner.
+0 of 18 rated nodes are confirmed by the owner.
 
-Not yet confirmed: `research-lkl-nommu`, `research-unkernel`, `research-flinux-translation`, `research-qemu-emulation`, `workloads-podman-on-gvisor-linux`, `research-gvisor-benchmark`, `platform-elf-alignment-survey`, `fs-persistent-image-storage`, `platform-trap-cost`, `platform-4k-section-views`, `platform-tls-register`, `platform-restricted-stub`, `sentry-go-fault-recovery`, `research-whpx-this-machine`, `runsc-measure-cli`, `research-file-protocol`, `platform-zpoline-hooks`.
+Not yet confirmed: `research-lkl-nommu`, `research-unkernel`, `research-flinux-translation`, `research-qemu-emulation`, `workloads-podman-on-gvisor-linux`, `research-gvisor-benchmark`, `platform-elf-alignment-survey`, `fs-persistent-image-storage`, `platform-trap-cost`, `platform-4k-section-views`, `platform-tls-register`, `platform-restricted-stub`, `sentry-go-fault-recovery`, `research-whpx-this-machine`, `runsc-measure-cli`, `research-file-protocol`, `platform-zpoline-hooks`, `platform-exception-stack`.
 <!-- END GENERATED: ratings -->
 
 ## Overview
@@ -106,6 +106,7 @@ flowchart TB
         workloads_podman_on_gvisor_linux[/"workloads · ✔ Podman<br/>on gVisor on Linux"/]
         platform_tls_register[/"platform · ✔ Set the<br/>TLS register"/]
         ops_phase0_go_no_go{{"ops · ✔ Go or no-go<br/>after Phase 0"}}
+        platform_veh_on_guest_stack_unsafe>"platform · ✔<br/>Exceptions overwrite<br/>guest stacks"]
     end
     subgraph bd_1["Later (blocked or parked)"]
         platform_winstub["platform · ⛔ Windows<br/>platform for the<br/>Sentry"]
@@ -121,10 +122,10 @@ flowchart TB
     ops_name_and_fork ~~~ platform_tls_register
     fs_compat_layer_not_boundary ~~~ platform_tls_register
     workloads_podman_on_gvisor_linux ~~~ ops_phase0_go_no_go
-    platform_tls_register ~~~ ops_phase0_go_no_go
+    platform_tls_register ~~~ platform_veh_on_guest_stack_unsafe
     ops_phase0_go_no_go ~~~ platform_winstub
-    ops_phase0_go_no_go ~~~ fs_windows_directfs
-    ops_phase0_go_no_go ~~~ net_netstack_windows_link
+    platform_veh_on_guest_stack_unsafe ~~~ fs_windows_directfs
+    platform_veh_on_guest_stack_unsafe ~~~ net_netstack_windows_link
     platform_winstub ~~~ platform_static_guest_from_memory
     fs_windows_directfs ~~~ platform_static_guest_from_memory
     net_netstack_windows_link ~~~ platform_static_guest_from_memory
@@ -135,6 +136,7 @@ flowchart TB
     runsc_container_on_windows ~~~ workloads_podman_on_windows
     net_bridge_networking ~~~ workloads_podman_on_windows
     research_gvisor_base --> platform_tls_register
+    platform_tls_register -.-> platform_veh_on_guest_stack_unsafe
     platform_tls_register --> ops_phase0_go_no_go
     fs_compat_layer_not_boundary --> fs_windows_directfs
     platform_winstub --> platform_static_guest_from_memory
@@ -142,6 +144,7 @@ flowchart TB
     net_netstack_windows_link --> runsc_container_on_windows
     runsc_container_on_windows --> workloads_podman_on_windows
     net_bridge_networking --> workloads_podman_on_windows
+    linkStyle 18 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -160,6 +163,7 @@ flowchart TB
     class ops_name_and_fork,fs_compat_layer_not_boundary,ops_phase0_go_no_go decided
     class workloads_podman_on_gvisor_linux,platform_tls_register mixed
     class workloads_podman_on_windows,runsc_container_on_windows,platform_winstub,platform_busybox_on_windows,fs_windows_directfs,net_netstack_windows_link,platform_static_guest_from_memory,net_bridge_networking blocked
+    class platform_veh_on_guest_stack_unsafe succ
 ```
 <!-- END GENERATED: overview -->
 
@@ -170,19 +174,22 @@ flowchart TB
 |---|---|---|
 | Run a container with runsc | ⛔ blocked | The main goal: gVisor's runtime runs an OCI container on Windows for a standard user, with no admin, VM, WSL or Hyper-V. |
 | Start and stop sandboxes on Windows | ⛔ blocked | runsc creates, starts, signals and deletes a sandbox process on Windows. |
-| Set the TLS register | ✔ done · mixed | Check whether a normal Windows program can set the register Linux programs use for thread-local data; without it native execution fails. |
-| Stub and controller prototype | ⛔ blocked | A tiny Windows process runs a static Linux program while a second process catches and answers its system calls. |
-| Scan code pages for syscalls | ⛔ blocked | Before guest code may run, each page is scanned for every instruction that enters the Windows kernel and those are rewritten to traps. |
-| Patch hot syscall sites | ⛔ blocked | Call sites that trapped once are patched to jump straight into the controller hand-off, avoiding the exception cost. |
+| Set the TLS register | ✔ done · mixed ⚠ | Check whether a normal Windows program can set the register Linux programs use for thread-local data; without it native execution fails. |
+| Stub and controller prototype | ⛔ blocked | The Sentry debugs a tiny Windows stub process that runs a static Linux program; patched syscalls arrive over shared memory and faults as debug events. |
+| Scan code pages for syscalls | ⛔ blocked | Before guest code may run, each page is scanned for syscall instructions; patchable sites become jumps into the stub trampoline, the rest are made to fault into the debugger. |
+| Patch syscall sites into jumps | ⛔ blocked | Syscall sites are patched like gVisor's usertrap into a jump through a table at 0x60000, so syscalls never raise an exception. |
 | Own vDSO for clock calls | ⛔ blocked | Time and CPU queries are answered inside the stub, so they need no trap at all. |
 | Handle 64 KB mapping conflicts | ⏸ parked | When Linux puts two file pieces inside one 64 KB Windows window, the Sentry copies them into one fresh range instead. |
 | Windows platform for the Sentry | ⛔ blocked | gVisor's platform interface implemented for Windows: address spaces, context switches and syscall delivery through stub processes. |
 | Run busybox under the Sentry | ⛔ blocked | First end-to-end milestone: gVisor's kernel runs an unmodified busybox shell on Windows. |
 | Use hardware acceleration when available | ⏸ parked | Where the Windows Hypervisor Platform is enabled, a second platform could run guests in a hardware VM, chosen automatically like runsc's autoplatform. |
-| Restore the TLS register after switches | ⛔ blocked | Windows resets the guest's thread-local register on every context switch; the stub's fault handler puts it back before the guest notices. |
+| Restore the TLS register after switches | ⛔ blocked | The stub sets the guest thread-local register on every return to the guest; losses from preemption arrive as debug events and the Sentry restores it. |
 | Support CPUs without FSGSBASE | ⏸ parked | On CPUs or VMs without the instruction to set the register, rewrite the guest's %fs accesses instead. |
-| Check what exceptions do to stacks | ▶ in progress | Windows writes exception data onto the faulting thread stack; check whether that destroys data Linux code keeps there, and what happens on unmapped stacks. |
 | Run a static guest from memory | ⛔ blocked | Thinnest end-to-end slice: the Sentry on Windows runs one embedded static program from its own memory filesystem, without host files, network or threads. |
+| Exceptions overwrite guest stacks | ✔ fixed | Windows writes about 3 KB of exception data below the faulting thread stack pointer, so in-process handlers can corrupt Linux code; faults must go to the Sentry as debugger instead. |
+| Measure debugger fault handling | ▶ in progress | Measure what handling a guest fault as debugger costs without touching thread context, how many events a process start makes, and whether many stubs can be debugged at once. |
+| Survey patchable syscall sites | ▶ in progress | Count how many syscall instructions in real images can be patched into jumps, and how many would need the slow debugger path. |
+| Count page faults per exec | ▶ in progress | Count how many page faults gVisor takes for one fork plus exec on Linux; times the debugger cost this gives the Windows process-start cost. |
 | Sentry builds for Windows | ⛔ blocked | gVisor's kernel compiles as a Windows program, with host-specific parts stubbed out. |
 | Guest memory on Windows sections | ⛔ blocked | The Sentry's memory file becomes a Windows section object, allocated in 64 KB units. |
 | Event waiting on IOCP | ⛔ blocked | Waiting for many host events at once (epoll on Linux) moves to Windows completion ports. |
@@ -241,10 +248,12 @@ flowchart TB
 **linux-ci**
 
 - `workloads-strict-bar-linux`: Strict bar on stock gVisor
+- `platform-syscall-site-survey`: Survey patchable syscall sites
+- `platform-faults-per-exec`: Count page faults per exec
 
 **windows-ci**
 
-- `platform-exception-stack`: Check what exceptions do to stacks
+- `platform-debug-event-cost`: Measure debugger fault handling
 <!-- END GENERATED: running -->
 
 ## Built, waiting
@@ -270,7 +279,7 @@ Generated on 2026-11-26.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 22 done, 7 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 24 done, 7 abandoned</summary>
 
 - `fs-compat-layer-not-boundary`: Compatibility layer, not security boundary (✔ done · n/a). The sandbox may open the user's files directly with the user's rights; it isolates containers from each other, not from the user.
 - `fs-persistent-image-storage`: Test persistent image storage (✔ done · mixed). Find a writable filesystem inside the sandbox that survives a restart, and how fast each option is.
@@ -283,11 +292,14 @@ Generated on 2026-11-26.
 - `ops-syscall-test-strategy`: Choose how to run gVisor's tests (✔ done · n/a). The Go branch ships no tests; decide whether gVisor's unit and syscall tests run from a master checkout with Bazel or get ported.
 - `platform-4k-section-views`: Test 4 KB section views (✔ done · successful). Check whether Windows can map shared memory at the 4 KB steps Linux programs expect, instead of 64 KB.
 - `platform-elf-alignment-survey`: Survey ELF segment alignment (✔ done · successful). Count how often program files place code at addresses Windows cannot map directly (64 KB alignment).
+- `platform-exception-stack`: Check what exceptions do to stacks (✔ done · successful). Windows writes exception data onto the faulting thread stack; check whether that destroys data Linux code keeps there, and what happens on unmapped stacks.
 - `platform-restricted-stub`: Restrict the stub process (✔ done · mixed). Check that the process running Linux code can be locked down, so a missed system call does little harm.
+  - Low-integrity child dies at startup on the hosted runner, 0xC0000142 (2026-11-26)
 - `platform-tls-register`: Set the TLS register (✔ done · mixed). Check whether a normal Windows program can set the register Linux programs use for thread-local data; without it native execution fails.
   - Fails on the QEMU-guest dev machine without FSGSBASE (2026-11-26)
   - Base lost on every deschedule, repaired by a fault handler (2026-11-26)
 - `platform-trap-cost`: Measure syscall trap cost (✔ done · successful). Measure what it costs to catch one Linux system call on Windows and hand it to another process.
+- `platform-veh-on-guest-stack-unsafe`: Exceptions overwrite guest stacks (✔ fixed). Windows writes about 3 KB of exception data below the faulting thread stack pointer, so in-process handlers can corrupt Linux code; faults must go to the Sentry as debugger instead.
 - `platform-zpoline-hooks`: Hook syscalls like zpoline (✖ dead end). Rewriting each syscall into a call to a trampoline at address 0 cannot work on Windows.
 - `research-file-protocol`: Reach host files over a protocol (✖ dead end). Serving Windows files to the sandbox over NFS, 9P or gVisor's lisafs was rejected: the sandbox runs on the same machine and can open them itself.
 - `research-flinux-translation`: Translate syscalls like flinux (✖ dead end). Mapping each Linux call onto a Windows call cannot provide what containers need, such as namespaces and cgroups.
@@ -317,7 +329,7 @@ Generated on 2026-11-26.
 Each track has its own page with its tree, node table and per-node details.
 
 - [runsc - runsc](roadmap/tracks/runsc.md): 4 nodes (2 done, 2 blocked)
-- [platform - platform](roadmap/tracks/platform.md): 18 nodes (5 done, 1 in progress, 8 blocked, 3 parked, 1 abandoned)
+- [platform - platform](roadmap/tracks/platform.md): 22 nodes (7 done, 3 in progress, 8 blocked, 3 parked, 1 abandoned)
 - [sentry - sentry](roadmap/tracks/sentry.md): 9 nodes (1 done, 1 next, 7 blocked)
 - [fs - files](roadmap/tracks/fs.md): 9 nodes (3 done, 6 blocked)
 - [net - network](roadmap/tracks/net.md): 3 nodes (3 blocked)
