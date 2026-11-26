@@ -455,10 +455,10 @@ func TestVFSPerf(t *testing.T) {
 		e := newEnv(t, mode.hf)
 		start := time.Now()
 		for d := 0; d < dirs; d++ {
-			e.must("mkdir", e.v.MkdirAt(e.ctx, e.creds, e.pop(fmt.Sprintf("/d%03d", d), false), &vfs.MkdirOptions{Mode: 0o755}))
+			e.must("mkdir", e.v.MkdirAt(e.ctx, e.creds, e.pop(fmt.Sprintf("/d%03d", d)), &vfs.MkdirOptions{Mode: 0o755}))
 			for f := 0; f < perDir; f++ {
 				p := fmt.Sprintf("/d%03d/f%02d", d, f)
-				fd, err := e.v.OpenAt(e.ctx, e.creds, e.pop(p, false), &vfs.OpenOptions{Flags: linux.O_CREAT | linux.O_WRONLY, Mode: 0o751})
+				fd, err := e.v.OpenAt(e.ctx, e.creds, e.pop(p), &vfs.OpenOptions{Flags: linux.O_CREAT | linux.O_WRONLY, Mode: 0o751})
 				e.must("create", err)
 				_, err = fd.Write(e.ctx, usermem.BytesIOSequence([]byte(payload)), vfs.WriteOptions{})
 				e.must("write", err)
