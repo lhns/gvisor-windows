@@ -15,14 +15,26 @@ jobs:
   image:
     runs-on: ubuntu-latest
     steps:
-      - name: Rootfs tar from the podman image
+      - name: Erofs image from the podman image
         run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq erofs-utils
           podman pull -q quay.io/podman/stable:v${PODMAN_VERSION}
           c=$(podman create quay.io/podman/stable:v${PODMAN_VERSION} sh)
-          podman export "$c" | gzip -1 > rootfs.tar.gz
-          ls -l rootfs.tar.gz
+          sudo rm -rf /tmp/root && mkdir /tmp/root
+          podman export "$c" | sudo tar -x -C /tmp/root --numeric-owner --same-owner -p --xattrs --xattrs-include="*"
+          # Engine settings baked into the read-only image (same files as the Linux harness; the
+          # sqlite database goes to a tmpfs until sqlite works on a host folder, see the results).
+          h=test/e2e/podman-acceptance/harness
+          sudo mkdir -p /tmp/root/etc/containers /tmp/root/run /tmp/root/tmp /tmp/root/var/lib/containers
+          sudo cp $h/containers.conf /tmp/root/etc/containers/containers.conf
+          sudo sed -i '/^\[engine\]/a static_dir = "/run/podman-static"' /tmp/root/etc/containers/containers.conf
+          sudo sed 's/^driver = .*/driver = "vfs"/' $h/storage.conf | sudo tee /tmp/root/etc/containers/storage.conf >/dev/null
+          echo "nameserver 10.0.2.3" | sudo tee /tmp/root/etc/resolv.conf >/dev/null
+          sudo mkfs.erofs -b 4096 -T 0 podman.erofs /tmp/root >/dev/null
+          ls -l podman.erofs
       - uses: actions/upload-artifact@v4
-        with: {name: podman-rootfs, path: rootfs.tar.gz, compression-level: 0}
+        with: {name: podman-rootfs, path: podman.erofs, compression-level: 0}
   acceptance:
     needs: image
     runs-on: windows-latest
@@ -51,19 +63,13 @@ jobs:
           New-Item -ItemType Directory -Force "$t\dockercfg\cli-plugins" | Out-Null
           Invoke-WebRequest "https://github.com/docker/compose/releases/download/v$env:COMPOSE_VERSION/docker-compose-windows-x86_64.exe" -OutFile "$t\dockercfg\cli-plugins\docker-compose.exe"
           Get-ChildItem -Recurse $t -Include podman.exe,docker.exe | ForEach-Object { $_.FullName; & $_.FullName --version }
-      - name: Rootfs folder from the image
-        shell: pwsh
-        run: |
-          # Everything below C:\ci inherits access for the standard user (icacls /T would trip over the symlinks).
-          icacls C:\ci /grant 'Users:(OI)(CI)M' /Q
-          New-Item -ItemType Directory -Force C:\ci\rootfs | Out-Null
-          tar -xzf dl\rootfs.tar.gz -C C:\ci\rootfs 2>&1 | Select-Object -Last 20
-          "extracted: $((Get-ChildItem C:\ci\rootfs).Count) top-level entries"
       - name: Acceptance as a standard user
         shell: pwsh
         continue-on-error: true
         run: |
-          # The docker CLI looks for plugins in DOCKER_CONFIG/cli-plugins.
+          New-Item -ItemType Directory -Force C:\ci\std | Out-Null
+          Copy-Item dl\podman.erofs C:\ci\podman.erofs
+          icacls C:\ci /grant 'Users:(OI)(CI)M' /Q
           New-Item -ItemType Directory -Force C:\ci\std | Out-Null
           & tools/windows/ci/run-as-standard-user.ps1 `
             -Program 'C:\Program Files\PowerShell\7\pwsh.exe' `

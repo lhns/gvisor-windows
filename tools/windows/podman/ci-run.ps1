@@ -10,7 +10,7 @@ $env:DOCKER_CONFIG = "$Root\tools\dockercfg"
 $ctl = "$work\engine-ctl.ps1"
 @"
 param([string]`$Action = 'start')
-& '$repo\tools\windows\podman\start-engine.ps1' -Action `$Action -Runsc '$Root\bin\runsc.exe' -Work '$work\engine' -Rootfs '$Root\rootfs' -Share '$work\share' -Name ci -StorageDriver $StorageDriver -StaticOnTmpfs -Podman '$podman'
+& '$repo\tools\windows\podman\start-engine.ps1' -Action `$Action -Runsc '$Root\bin\runsc.exe' -Work '$work\engine' -Image '$Root\podman.erofs' -Share '$work\share' -Name ci -StorageDriver $StorageDriver -Podman '$podman'
 "@ | Set-Content $ctl
 try { & $ctl -Action start } catch { Write-Host "engine start failed: $_" }
 if ($LASTEXITCODE -ne 0 -and -not (Test-Path "$work\engine\runsc.pid")) { Write-Host 'engine did not start' }
