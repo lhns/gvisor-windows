@@ -6,6 +6,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -88,6 +89,10 @@ func register(base uintptr) {
 }
 
 func main() {
+	// Spinners never yield (async preemption is off): keep more Ps than spinning goroutines so the
+	// runtime itself cannot stall; CPU contention then comes from the OS scheduler only.
+	runtime.GOMAXPROCS(runtime.NumCPU()*2 + 16)
+	time.AfterFunc(5*time.Minute, func() { fmt.Println("FAIL watchdog: spike hung"); os.Exit(3) })
 	runtime.LockOSThread()
 	h, _, _ := pAddVEH.Call(1, vehAddr())
 	_, b7, _, _ := cpuid(7, 0)
