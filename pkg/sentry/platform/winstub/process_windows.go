@@ -144,6 +144,8 @@ func (as *addressSpace) allocThread() (*thread, error) {
 	t.started, t.parked, t.lastKind = false, false, reqSyscall
 	t.req = request{}
 	*t.u32(0), *t.u32(stubasm.PgStubSlp), *t.u32(stubasm.PgCtlSlp), *t.u32(stubasm.PgMode) = 0, 0, 0, 0
+	pResetEvent.Call(t.evReq) // no stale signal from the previous thread of the slot
+	pResetEvent.Call(t.evReply)
 	return t, nil
 }
 
@@ -153,6 +155,10 @@ func (as *addressSpace) freeThread(t *thread) {
 	defer as.tmu.Unlock()
 	if t.started && !as.dead.Load() {
 		pTerminateThread.Call(t.hThread, 0)
+		// TerminateThread is asynchronous. Until the thread is gone it may still
+		// be waiting on the slot's reply event, and would take the wake-up meant
+		// for the next thread of the slot.
+		pWaitSingle.Call(t.hThread, 5000)
 	}
 	if t.hThread != 0 {
 		pCloseHandle.Call(t.hThread)
