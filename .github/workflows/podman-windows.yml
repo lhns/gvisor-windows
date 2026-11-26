@@ -48,8 +48,8 @@ jobs:
           Invoke-WebRequest "https://download.docker.com/win/static/stable/x86_64/docker-$env:DOCKER_VERSION.zip" -OutFile $t\docker.zip
           Expand-Archive $t\docker.zip $t\docker
           # the compose plugin, found by the docker CLI next to its config
-          New-Item -ItemType Directory -Force "$t\docker\docker\cli-plugins" | Out-Null
-          Invoke-WebRequest "https://github.com/docker/compose/releases/download/v$env:COMPOSE_VERSION/docker-compose-windows-x86_64.exe" -OutFile "$t\docker\docker\cli-plugins\docker-compose.exe"
+          New-Item -ItemType Directory -Force "$t\dockercfg\cli-plugins" | Out-Null
+          Invoke-WebRequest "https://github.com/docker/compose/releases/download/v$env:COMPOSE_VERSION/docker-compose-windows-x86_64.exe" -OutFile "$t\dockercfg\cli-plugins\docker-compose.exe"
           Get-ChildItem -Recurse $t -Include podman.exe,docker.exe | ForEach-Object { $_.FullName; & $_.FullName --version }
       - name: Rootfs folder from the image
         shell: pwsh
