@@ -104,6 +104,11 @@ func (as *addressSpace) slot(idx int) *thread {
 	addr := stubasm.CtlBase + uint64(idx)*stubasm.ThreadRegion
 	t := &thread{as: as, idx: idx, addr: addr,
 		page: unsafe.Add(as.ctlView, uint64(idx)*stubasm.ThreadRegion)}
+	// The control section is reserved, not committed; commit this slot (shared
+	// by all views of the section, so the stub sees it too).
+	if _, err := windows.VirtualAlloc(uintptr(t.page), uintptr(stubasm.ThreadRegion), windows.MEM_COMMIT, windows.PAGE_READWRITE); err != nil {
+		panic(fmt.Sprintf("winstub: cannot commit a thread slot: %v", err))
+	}
 	t.evReq, t.evReply = newEvent(), newEvent()
 	*t.u64(stubasm.PgNtSet) = as.p.ntSet
 	*t.u64(stubasm.PgNtWait) = as.p.ntWait
@@ -236,8 +241,12 @@ func (as *addressSpace) start() error {
 		return fail(err)
 	}
 	Trace("start: placeholders reserved")
-	section := func(size uint64) (uintptr, unsafe.Pointer, error) {
-		s, err := call(pCreateMapping, ^uintptr(0), 0, pageExecRW, uintptr(size>>32), uintptr(size&0xFFFFFFFF), 0)
+	section := func(size uint64, reserve bool) (uintptr, unsafe.Pointer, error) {
+		prot := uintptr(pageExecRW)
+		if reserve {
+			prot |= secReserveAttr // pages are committed when a thread slot is first used
+		}
+		s, err := call(pCreateMapping, ^uintptr(0), 0, prot, uintptr(size>>32), uintptr(size&0xFFFFFFFF), 0)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -248,10 +257,10 @@ func (as *addressSpace) start() error {
 		return s, ptr(b), nil
 	}
 	var err error
-	if as.areaSec, as.areaView, err = section(stubasm.AreaHi - stubasm.AreaLo); err != nil {
+	if as.areaSec, as.areaView, err = section(stubasm.AreaHi-stubasm.AreaLo, false); err != nil {
 		return fail(fmt.Errorf("stub area: %w", err))
 	}
-	if as.ctlSec, as.ctlView, err = section(stubasm.CtlSize); err != nil {
+	if as.ctlSec, as.ctlView, err = section(stubasm.CtlSize, true); err != nil {
 		return fail(fmt.Errorf("control area: %w", err))
 	}
 	Trace("start: sections created")

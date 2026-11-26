@@ -74,8 +74,8 @@ const (
 
 	// Per-thread regions: a view of a per-process control section (not guest memory).
 	CtlBase      uint64 = 0x6FFF_8000_0000
-	ThreadRegion uint64 = 0x8000 // page, xsave area (at XsaveOff), stub stack
-	MaxThreads          = 128
+	ThreadRegion uint64 = 0x4000 // page, xsave area (at XsaveOff), stub stack
+	MaxThreads          = 1024
 	XsaveOff            = 0x1000
 	XsaveSize           = 0x1000
 	CtlSize      uint64 = ThreadRegion * uint64(MaxThreads)

@@ -218,3 +218,5 @@ func dupInto(proc, h uintptr) uintptr {
 	pDuplicateHandle.Call(^uintptr(0), h, proc, uintptr(unsafe.Pointer(&d)), 0, 0, 2)
 	return d
 }
+
+const secReserveAttr = 0x4000000 // SEC_RESERVE

@@ -1412,3 +1412,44 @@ func TestPolicyMatrix(t *testing.T) {
 		}
 	}
 }
+
+// TestManyThreads keeps 600 guest threads alive in one address space.
+func TestManyThreads(t *testing.T) {
+	h := newHarness(t)
+	g := buildGuest()
+	mm := h.newMM()
+	h.setup(mm, g)
+	const n = 600
+	ctxs := make([]platform.Context, n)
+	acs := make([]*arch.Context64, n)
+	var wg sync.WaitGroup
+	errs := make(chan error, n)
+	for i := 0; i < n; i++ {
+		ctxs[i] = h.p.NewContext(pkgcontext.Background())
+		acs[i] = newAC(g.loop, 0)
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			for r := 0; r < 3; r++ {
+				if _, _, err := ctxs[i].Switch(pkgcontext.Background(), mm, acs[i], -1); err != nil {
+					errs <- fmt.Errorf("thread %d round %d: %v", i, r, err)
+					return
+				}
+			}
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
+	}
+	for _, c := range ctxs {
+		c.Release()
+	}
+	// the slots come back
+	c := h.p.NewContext(pkgcontext.Background())
+	defer c.Release()
+	if nr := h.syscall(c, mm, newAC(g.loop, 0)); nr != 39 {
+		t.Fatalf("syscall %d", nr)
+	}
+}
