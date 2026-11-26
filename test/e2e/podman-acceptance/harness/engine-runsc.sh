@@ -43,6 +43,8 @@ start() {
     [ "$SHIM" = 1 ] && st+=(-v "$SHIM_SO:/opt/shim.so:ro")
     PRE_LOAD=""; [ "$SHIM" = 1 ] && PRE_LOAD="LD_PRELOAD=/opt/shim.so"
     pre="$pre; NV=\$(ls /usr/libexec/podman/netavark /usr/lib/podman/netavark 2>/dev/null | head -1); mv \$NV \$NV.real; printf '#!/bin/sh\nRUST_LOG=trace $PRE_LOAD exec %s.real \"\$@\" 2>>/var/log/netavark.log\n' \$NV >\$NV; chmod +x \$NV"
+    # also record what netavark feeds to nft, and nft's error, for firewall-driver debugging
+    pre="$pre; NF=\$(command -v nft); if [ -n \"\$NF\" ]; then mv \$NF \$NF.real; printf '#!/bin/sh\ncat > /tmp/nft.in\n{ echo ARGS \"\$@\"; cat /tmp/nft.in; } >> /var/log/nft-in.log\nexec %s.real \"\$@\" < /tmp/nft.in\n' \$NF >\$NF; chmod +x \$NF; fi"
   fi
   CONF=/tmp/containers-$NAME.conf; sed "s/^cgroups = .*/cgroups = \"$CGROUPS\"/" "$HERE/containers.conf" >"$CONF"
   docker rm -f "$NAME" >/dev/null 2>&1
