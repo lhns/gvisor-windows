@@ -21,7 +21,7 @@ podman --version; crun --version | head -1
 
 # Docker runtimes. --net-raw is needed by dockerd/podman inside (gVisor docs); packet-socket-write for
 # newer docker; podman's netavark may need it too. All sandboxes use systrap.
-COMMON='"--platform=systrap","--net-raw","--allow-packet-socket-write","--debug-log=/tmp/runsc-logs/%ID%/","--debug","--strace=false"'
+COMMON='"--platform=systrap","--net-raw","--in-sandbox-cgroup=v2","--allow-packet-socket-write","--debug-log=/tmp/runsc-logs/%ID%/","--debug","--strace=false"'
 sudo mkdir -p /srv/overlay-dir /tmp/runsc-logs && sudo chmod 777 /tmp/runsc-logs
 sudo tee /etc/docker/daemon.json >/dev/null <<EOF
 {
