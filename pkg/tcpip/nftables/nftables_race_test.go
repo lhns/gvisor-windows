@@ -79,7 +79,7 @@ func (f *raceFixture) update(t *testing.T, n int, publish bool, change func(cp *
 	f.stk.LockNFTablesUpdate()
 	defer f.stk.UnlockNFTablesUpdate()
 	cur := f.stk.NFTables().(*NFTables)
-	cp := cur.DeepCopy()
+	cp := cur // NEGATIVE CHECK
 	tab, err := cp.GetTable(arbitraryFamily, "t", 0)
 	if err != nil {
 		t.Errorf("update %d: GetTable: %v", n, err)
