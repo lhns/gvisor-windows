@@ -63,6 +63,7 @@ type Platform struct {
 	stubPath      string
 	image         []byte
 	ntSet, ntWait uint64
+	ntTerm        uint64
 }
 
 // New creates the platform.
@@ -74,6 +75,9 @@ func New(opts platform.Options) (*Platform, error) {
 		return nil, err
 	}
 	if err := pNtWaitSingle.Find(); err != nil {
+		return nil, err
+	}
+	if err := pNtTerminateThread.Find(); err != nil {
 		return nil, err
 	}
 	if !cpuid.HostFeatureSet().UseXsave() {
@@ -101,6 +105,7 @@ func New(opts platform.Options) (*Platform, error) {
 		image:    stubasm.Image(),
 		ntSet:    uint64(pNtSetEvent.Addr()),
 		ntWait:   uint64(pNtWaitSingle.Addr()),
+		ntTerm:   uint64(pNtTerminateThread.Addr()),
 	}, nil
 }
 

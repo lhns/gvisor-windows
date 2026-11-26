@@ -101,6 +101,7 @@ const (
 	PgMode    = 0x78  // uint32: 0 return from a syscall, 1 restore the full context
 	PgFlags   = 0x80  // rflags restored in mode 1
 	PgXMask   = 0x88  // uint64: the xsave feature mask (XCR0 without AMX)
+	PgNtTerm  = 0x90  // ntdll!NtTerminateThread; mode 2 on a reply makes the thread end itself
 	PgRegs    = 0x100 // 16 qwords in hardware order: rax rcx rdx rbx rsp rbp rsi rdi r8..r15
 	PgRepair  = 0x200 // per-thread %fs repair code
 )

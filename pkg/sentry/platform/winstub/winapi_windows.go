@@ -224,3 +224,5 @@ const secReserveAttr = 0x4000000 // SEC_RESERVE
 var pGetExitCode = k32.NewProc("GetExitCodeThread")
 
 var pResetEvent = k32.NewProc("ResetEvent")
+
+var pNtTerminateThread = ntd.NewProc("NtTerminateThread")

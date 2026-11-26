@@ -112,6 +112,7 @@ func (as *addressSpace) slot(idx int) *thread {
 	t.evReq, t.evReply = newEvent(), newEvent()
 	*t.u64(stubasm.PgNtSet) = as.p.ntSet
 	*t.u64(stubasm.PgNtWait) = as.p.ntWait
+	*t.u64(stubasm.PgNtTerm) = as.p.ntTerm
 	*t.u64(stubasm.PgHReq) = uint64(dupInto(as.h, t.evReq))
 	*t.u64(stubasm.PgHReply) = uint64(dupInto(as.h, t.evReply))
 	*t.u64(stubasm.PgStkTop) = addr + stubasm.ThreadRegion - 0x100
@@ -156,7 +157,20 @@ func (as *addressSpace) freeThread(t *thread) {
 	terminate := t.started && !as.dead.Load() && h != 0
 	as.tmu.Unlock()
 	if terminate {
-		pTerminateThread.Call(h, 0)
+		// A thread waiting for its reply ends itself when answered with mode 2: it
+		// leaves no ntdll lock behind, which TerminateThread may.
+		if t.state() == 1 {
+			*t.u32(stubasm.PgMode) = 2
+			atomic.StoreUint32(t.u32(0), 2)
+			if atomic.LoadUint32(t.u32(stubasm.PgStubSlp)) != 0 {
+				pSetEvent.Call(t.evReply)
+			}
+			if r, _, _ := pWaitSingle.Call(h, 2000); r != 0 {
+				pTerminateThread.Call(h, 0)
+			}
+		} else {
+			pTerminateThread.Call(h, 0)
+		}
 		// TerminateThread is asynchronous. Until the thread is gone it may still
 		// be waiting on the slot's reply event, and would take the wake-up meant
 		// for the next thread of the slot. (Not under tmu: the thread's exit
