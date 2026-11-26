@@ -1,0 +1,506 @@
+// Copyright 2026 The gVisor Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//go:build windows && amd64
+
+package winstub
+
+import (
+	"fmt"
+	"runtime"
+	"sync"
+	"sync/atomic"
+	"syscall"
+	"time"
+	"unsafe"
+
+	"gvisor.dev/gvisor/pkg/hostarch"
+	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/pe"
+	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/stubasm"
+)
+
+const (
+	stubSpin = 3000  // pause iterations on the stub side before it sleeps
+	ctlSpin  = 20000 // polls on the Sentry side before it sleeps
+)
+
+// Request kinds a stopped thread publishes (state 1).
+const (
+	reqSyscall   = iota // the page holds a syscall's registers
+	reqFault            // the page holds the full context at a fault
+	reqInterrupt        // the page holds the full context at an interrupt
+)
+
+type request struct {
+	kind int
+	sig  int   // Linux signal number for reqFault
+	code int32 // si_code
+	addr uint64
+	at   hostarch.AccessType
+}
+
+// thread is one stub thread slot: a control page shared with the stub plus the
+// Windows thread running there.
+type thread struct {
+	as      *addressSpace
+	idx     int
+	addr    uint64         // address of the page in the stub
+	page    unsafe.Pointer // the page in the Sentry
+	evReq   uintptr        // the stub signals it after publishing a request
+	evReply uintptr        // the Sentry signals it after a reply
+	hThread uintptr
+	tid     uint32
+
+	// stopMu serializes stopping the thread (debug event handler, interrupt).
+	stopMu sync.Mutex
+	// mu guards req and parked.
+	mu     sync.Mutex
+	req    request
+	parked bool // stopped at a fault or interrupt and not yet resumed
+	// started: the Windows thread exists. lastKind: the kind of the last request
+	// handed to the Sentry.
+	started  bool
+	lastKind int
+
+	lastRepairRIP uint64
+	lastRepair    time.Time
+	repairN       int
+}
+
+func (t *thread) u64(off int) *uint64 { return (*uint64)(unsafe.Add(t.page, off)) }
+func (t *thread) u32(off int) *uint32 { return (*uint32)(unsafe.Add(t.page, off)) }
+func (t *thread) state() uint32       { return atomic.LoadUint32(t.u32(0)) }
+func (t *thread) reg(i int) *uint64   { return t.u64(stubasm.PgRegs + 8*i) }
+
+// slot returns thread slot idx, creating its page and events on first use.
+func (as *addressSpace) slot(idx int) *thread {
+	if t := as.slots[idx]; t != nil {
+		return t
+	}
+	addr := stubasm.CtlBase + uint64(idx)*stubasm.ThreadRegion
+	t := &thread{as: as, idx: idx, addr: addr,
+		page: unsafe.Add(as.ctlView, uint64(idx)*stubasm.ThreadRegion)}
+	t.evReq, t.evReply = newEvent(), newEvent()
+	*t.u64(stubasm.PgNtSet) = as.p.ntSet
+	*t.u64(stubasm.PgNtWait) = as.p.ntWait
+	*t.u64(stubasm.PgHReq) = uint64(dupInto(as.h, t.evReq))
+	*t.u64(stubasm.PgHReply) = uint64(dupInto(as.h, t.evReply))
+	*t.u64(stubasm.PgStkTop) = addr + stubasm.ThreadRegion - 0x100
+	*t.u64(stubasm.PgSpins) = stubSpin
+	code := stubasm.RepairCode(addr)
+	copy(unsafe.Slice((*byte)(unsafe.Add(t.page, stubasm.PgRepair)), len(code)), code)
+	as.slots[idx] = t
+	return t
+}
+
+// allocThread returns a free thread slot (slot 0 is the anchor thread).
+func (as *addressSpace) allocThread() (*thread, error) {
+	as.tmu.Lock()
+	defer as.tmu.Unlock()
+	if as.dead.Load() {
+		return nil, errDead
+	}
+	var idx int
+	if n := len(as.freeSlots); n > 0 {
+		idx, as.freeSlots = as.freeSlots[n-1], as.freeSlots[:n-1]
+	} else {
+		for idx = 1; idx < len(as.slots) && as.slots[idx] != nil; idx++ {
+		}
+		if idx == len(as.slots) {
+			return nil, fmt.Errorf("winstub: more than %d threads in one address space", len(as.slots)-1)
+		}
+	}
+	t := as.slot(idx)
+	t.started, t.parked, t.lastKind = false, false, reqSyscall
+	t.req = request{}
+	*t.u32(0), *t.u32(stubasm.PgStubSlp), *t.u32(stubasm.PgCtlSlp), *t.u32(stubasm.PgMode) = 0, 0, 0, 0
+	return t, nil
+}
+
+// freeThread terminates a thread and returns its slot.
+func (as *addressSpace) freeThread(t *thread) {
+	as.tmu.Lock()
+	defer as.tmu.Unlock()
+	if t.started && !as.dead.Load() {
+		pTerminateThread.Call(t.hThread, 0)
+	}
+	if t.hThread != 0 {
+		pCloseHandle.Call(t.hThread)
+		t.hThread = 0
+	}
+	delete(as.byTid, t.tid)
+	t.started = false
+	if t.idx != 0 {
+		as.freeSlots = append(as.freeSlots, t.idx)
+	}
+}
+
+// startThread creates the Windows thread of t; it begins at the page's registers.
+func (as *addressSpace) startThread(t *thread) error {
+	var tid uint32
+	const createSuspended = 4
+	h, err := call(pCreateRemoteThr, as.h, 0, 0, uintptr(stubasm.StubCode+stubasm.OffThreadEnt), uintptr(t.addr), createSuspended, uintptr(unsafe.Pointer(&tid)))
+	if err != nil {
+		return fmt.Errorf("CreateRemoteThread: %w", err)
+	}
+	t.hThread, t.tid = h, tid
+	as.tmu.Lock()
+	as.byTid[tid] = t
+	as.tmu.Unlock()
+	t.started = true
+	if r, _, e := pResumeThread.Call(h); int32(r) == -1 {
+		return fmt.Errorf("ResumeThread: %v", e)
+	}
+	return nil
+}
+
+// ---- starting a stub ----------------------------------------------------------
+
+// newAS starts a stub process on a goroutine of its own, which becomes its
+// debugger: Windows delivers debug events only to the thread that created the
+// process, so that goroutine stays locked to its OS thread for the process's
+// lifetime.
+func (p *Platform) newAS() (*addressSpace, error) {
+	as := newAddressSpace(p)
+	go as.debugLoop()
+	if err := <-as.started; err != nil {
+		<-as.loopDone
+		return nil, err
+	}
+	// Wait for the anchor thread to reach its wait: Windows finishes initializing
+	// the process on it, and CreateRemoteThread needs that.
+	anchor := as.slots[0]
+	deadline := time.Now().Add(30 * time.Second)
+	for atomic.LoadUint32(anchor.u32(stubasm.PgStubSlp)) == 0 {
+		if as.dead.Load() || time.Now().After(deadline) {
+			as.Release()
+			return nil, fmt.Errorf("winstub: the stub did not start")
+		}
+		time.Sleep(200 * time.Microsecond)
+	}
+	return as, nil
+}
+
+func (as *addressSpace) mapSys(lo, size uint64, sec uintptr, secOff uint64, prot int) error {
+	v := &view{lo: lo, hi: lo + size, sec: sec, off: secOff, prot: prot, sys: true}
+	return as.mapView(v)
+}
+
+func (as *addressSpace) start() error {
+	cl, _ := syscall.UTF16PtrFromString(`"` + as.p.stubPath + `"`)
+	var si syscall.StartupInfo
+	si.Cb = uint32(unsafe.Sizeof(si))
+	var pi syscall.ProcessInformation
+	const createSuspended, debugOnlyThis, noWindow = 0x4, 0x2, 0x08000000
+	if err := syscall.CreateProcess(nil, cl, nil, nil, false, createSuspended|debugOnlyThis|noWindow, nil, nil, &si, &pi); err != nil {
+		return fmt.Errorf("CreateProcess: %w", err)
+	}
+	as.h, as.hMain, as.wpid = uintptr(pi.Process), uintptr(pi.Thread), pi.ProcessId
+	fail := func(err error) error {
+		pTerminateProcess.Call(as.h, 1)
+		return err
+	}
+	as.mu.Lock()
+	defer as.mu.Unlock()
+	if err := as.reserve(queryUsed(as.h, stubasm.ReserveMin, stubasm.ReserveMax)); err != nil {
+		return fail(err)
+	}
+	section := func(size uint64) (uintptr, unsafe.Pointer, error) {
+		s, err := call(pCreateMapping, ^uintptr(0), 0, pageExecRW, uintptr(size>>32), uintptr(size&0xFFFFFFFF), 0)
+		if err != nil {
+			return 0, nil, err
+		}
+		b, err := call(pMapViewOfFile, s, fileMapAllExec, 0, 0, 0)
+		if err != nil {
+			return 0, nil, err
+		}
+		return s, ptr(b), nil
+	}
+	var err error
+	if as.areaSec, as.areaView, err = section(stubasm.AreaHi - stubasm.AreaLo); err != nil {
+		return fail(fmt.Errorf("stub area: %w", err))
+	}
+	if as.ctlSec, as.ctlView, err = section(stubasm.CtlSize); err != nil {
+		return fail(fmt.Errorf("control area: %w", err))
+	}
+	for _, m := range []struct {
+		lo, size uint64
+		prot     int
+	}{
+		{stubasm.TrapPtrs, stubasm.TrapPtrsSize, protR},
+		{stubasm.TrapCode, stubasm.TrapCodeSize, protR | protX},
+		{stubasm.StubCode, stubasm.StubCodeSize, protR | protX},
+		{stubasm.Veneers, stubasm.VeneersSize, protR | protX},
+	} {
+		if err := as.mapSys(m.lo, m.size, as.areaSec, m.lo-stubasm.AreaLo, m.prot); err != nil {
+			return fail(err)
+		}
+	}
+	if err := as.mapSys(stubasm.CtlBase, stubasm.CtlSize, as.ctlSec, 0, protR|protW|protX); err != nil {
+		return fail(err)
+	}
+	as.areaWrite(stubasm.StubCode, as.p.image)
+
+	// Slot 0 is the anchor: the initial thread, parked for good, so that the
+	// process outlives any guest thread.
+	t := as.slot(0)
+	*t.reg(4) = t.addr + stubasm.ThreadRegion - 0x100 // rsp
+	*t.u64(stubasm.PgRIP) = stubasm.StubCode + stubasm.OffTrampWait
+	*t.u32(0) = 1
+	t.hThread, t.tid, t.started = as.hMain, pi.ThreadId, true
+	as.byTid[pi.ThreadId] = t
+	if r, _, e := pResumeThread.Call(as.hMain); int32(r) == -1 {
+		return fail(fmt.Errorf("ResumeThread: %v", e))
+	}
+	return nil
+}
+
+// ---- the debugger goroutine ---------------------------------------------------
+
+func (as *addressSpace) debugLoop() {
+	runtime.LockOSThread() // never unlocked: the OS thread ends with the goroutine
+	defer close(as.loopDone)
+	if err := as.start(); err != nil {
+		as.dead.Store(true)
+		as.started <- err
+		return
+	}
+	as.started <- nil
+	var ev debugEvent
+	var ctx ctxBuf
+	seenBP := false
+	for {
+		if r, _, _ := pWaitDebugEvent.Call(ev.base(), infinite); r == 0 {
+			as.markDead()
+			return
+		}
+		status := uint32(dbgContinue)
+		exited := false
+		switch ev.code() {
+		case 1: // EXCEPTION_DEBUG_EVENT
+			status = as.onException(&ev, &ctx, &seenBP)
+		case 3, 6: // CREATE_PROCESS, LOAD_DLL: close the file handle
+			if h := uintptr(ev.u64(16)); h != 0 {
+				pCloseHandle.Call(h)
+			}
+		case 4: // EXIT_THREAD
+			as.tmu.Lock()
+			delete(as.byTid, ev.tid())
+			as.tmu.Unlock()
+		case 5: // EXIT_PROCESS
+			exited = true
+		}
+		pContinueDebug.Call(uintptr(ev.pid()), uintptr(ev.tid()), uintptr(status))
+		if exited {
+			as.markDead()
+			return
+		}
+	}
+}
+
+// Windows exception codes the platform maps to Linux signals.
+const (
+	excAccessViolation = 0xC0000005
+	excBreakpoint      = 0x80000003
+	excSingleStep      = 0x80000004
+	excIllegalInstr    = 0xC000001D
+	excPrivileged      = 0xC0000096
+	excIntDivide       = 0xC0000094
+	excIntOverflow     = 0xC0000095
+	excStackOverflow   = 0xC00000FD
+	excGuardPage       = 0x80000001
+	excDatatypeMisalgn = 0x80000002
+	excInPageError     = 0xC0000006
+)
+
+func (as *addressSpace) onException(ev *debugEvent, ctx *ctxBuf, seenBP *bool) uint32 {
+	code := ev.u32(16)
+	as.tmu.Lock()
+	t := as.byTid[ev.tid()]
+	as.tmu.Unlock()
+	if t == nil || t.idx == 0 {
+		if code == excBreakpoint && !*seenBP {
+			*seenBP = true // the loader breakpoint
+			return dbgContinue
+		}
+		debugf("exception %#x in an unknown thread %d", code, ev.tid())
+		return dbgNotHandled
+	}
+	if code == excBreakpoint && !*seenBP {
+		*seenBP = true
+		return dbgContinue
+	}
+	excAddr := ev.u64(32)
+	t.stopMu.Lock()
+	defer t.stopMu.Unlock()
+	t.mu.Lock()
+	parked := t.parked
+	t.mu.Unlock()
+	if parked {
+		return dbgContinue // an interrupt got the thread first
+	}
+	// A stale event for a thread that was moved away meanwhile.
+	if !ctx.get(t.hThread, ctxControlInt) {
+		return dbgContinue
+	}
+	rip := *ctx.u64(ctxRipOff)
+	if rip != excAddr && code != excBreakpoint && code != excSingleStep {
+		return dbgContinue
+	}
+
+	switch code {
+	case excAccessViolation:
+		kind, addr := ev.u64(48), ev.u64(56)
+		switch {
+		case kind == 1 && as.wxWrite(addr):
+			return dbgContinue
+		case kind == 8 && as.wxExec(addr):
+			return dbgContinue
+		}
+		if (addr < 0x10000 || addr >= 0xFFFF800000000000) && *t.u64(stubasm.PgFS) != 0 {
+			if as.repairFS(t, ctx, rip) {
+				return dbgContinue
+			}
+		}
+		at := hostarch.AccessType{Read: true}
+		switch kind {
+		case 1:
+			at = hostarch.AccessType{Write: true}
+		case 8:
+			at = hostarch.AccessType{Execute: true}
+		}
+		sc := int32(1) // SEGV_MAPERR
+		if as.mapped(addr) {
+			sc = 2 // SEGV_ACCERR
+		}
+		as.park(t, ctx, request{kind: reqFault, sig: 11, code: sc, addr: addr, at: at})
+	case excIllegalInstr:
+		if b, ok := as.readStub(rip, 2); ok && b[0] == 0x0F && b[1] == 0x0B && as.isUD2Site(rip) {
+			// A rewritten syscall that could not be patched: make it a request.
+			as.parkAs(t, ctx, request{kind: reqSyscall}, rip+2)
+		} else {
+			as.park(t, ctx, request{kind: reqFault, sig: 4, code: 1, addr: rip})
+		}
+	case excBreakpoint:
+		as.park(t, ctx, request{kind: reqFault, sig: 5, code: 128, addr: rip})
+	case excSingleStep:
+		as.park(t, ctx, request{kind: reqFault, sig: 5, code: 2, addr: rip})
+	case excIntDivide, excIntOverflow:
+		as.park(t, ctx, request{kind: reqFault, sig: 8, code: 1, addr: rip})
+	case excPrivileged, excStackOverflow, excGuardPage, excInPageError:
+		as.park(t, ctx, request{kind: reqFault, sig: 11, code: 1, addr: ev.u64(56)})
+	case excDatatypeMisalgn:
+		as.park(t, ctx, request{kind: reqFault, sig: 7, code: 1, addr: rip})
+	default:
+		debugf("unexpected exception %#x at %#x", code, rip)
+		as.park(t, ctx, request{kind: reqFault, sig: 11, code: 1, addr: rip})
+	}
+	return dbgContinue
+}
+
+func (as *addressSpace) readStub(a uint64, n int) ([]byte, bool) {
+	b := make([]byte, n)
+	var got uintptr
+	if _, err := call(pReadProcMem, as.h, uintptr(a), uintptr(unsafe.Pointer(&b[0])), uintptr(n), uintptr(unsafe.Pointer(&got))); err != nil {
+		return nil, false
+	}
+	return b, true
+}
+
+// repairFS handles an access violation that looks like a lost %fs base: the CPU
+// loses the base when Windows deschedules the thread. The thread continues in
+// its repair routine, which reloads the base and returns to the instruction.
+func (as *addressSpace) repairFS(t *thread, ctx *ctxBuf, rip uint64) bool {
+	now := time.Now()
+	if rip == t.lastRepairRIP && now.Sub(t.lastRepair) < 5*time.Millisecond {
+		t.repairN++
+	} else {
+		t.repairN = 0
+	}
+	t.lastRepairRIP, t.lastRepair = rip, now
+	if t.repairN >= 20 {
+		return false // a genuine fault at a low address
+	}
+	*t.u64(stubasm.PgRetRIP) = rip
+	*ctx.u64(ctxRipOff) = t.addr + stubasm.PgRepair
+	return ctx.set(t.hThread)
+}
+
+// park saves the context of t (stopped at a debug event, or suspended) into its
+// page, makes it continue in the stub's wait routine and publishes req. rip is
+// taken from ctx.
+func (as *addressSpace) park(t *thread, ctx *ctxBuf, req request) {
+	as.parkAs(t, ctx, req, *ctx.u64(ctxRipOff))
+}
+
+// parkAs is park with the resume address chosen by the caller (a ud2 syscall
+// resumes after the instruction). For a request of kind reqSyscall the registers
+// are those of a syscall: rcx and r11 are the caller's to ignore.
+func (as *addressSpace) parkAs(t *thread, ctx *ctxBuf, req request, resume uint64) {
+	for i := 0; i < 16; i++ {
+		*t.reg(i) = *ctx.u64(ctxRegsOff + uintptr(8*i))
+	}
+	*t.u64(stubasm.PgRIP) = resume
+	*t.u64(stubasm.PgFlags) = uint64(ctx.eflags())
+	*ctx.u64(ctxRipOff) = stubasm.StubCode + stubasm.OffTrampWait
+	ctx.set(t.hThread) // CONTEXT_CONTROL only: rip (and rsp, flags, unchanged)
+	t.mu.Lock()
+	t.req = req
+	t.parked = true
+	t.mu.Unlock()
+	atomic.StoreUint32(t.u32(0), 1)
+	pSetEvent.Call(t.evReq)
+}
+
+// interrupt stops a running thread at its current instruction and publishes an
+// interrupt request. It reports false if the thread is not (yet) somewhere that
+// can be captured exactly (inside the stub's own code, or in ntdll during thread
+// start); the caller retries.
+func (as *addressSpace) interrupt(t *thread) bool {
+	t.stopMu.Lock()
+	defer t.stopMu.Unlock()
+	if t.state() == 1 || !t.started {
+		return true // a request is already there
+	}
+	t.mu.Lock()
+	if t.parked {
+		t.mu.Unlock()
+		return true
+	}
+	t.mu.Unlock()
+	if r, _, _ := pSuspendThread.Call(t.hThread); int32(r) == -1 {
+		return false
+	}
+	var ctx ctxBuf
+	if !ctx.get(t.hThread, ctxControlInt) {
+		pResumeThread.Call(t.hThread)
+		return false
+	}
+	rip := *ctx.u64(ctxRipOff)
+	inStub := rip >= stubasm.StubCode && rip < stubasm.StubCode+stubasm.StubCodeSize
+	inRepair := rip >= stubasm.CtlBase
+	if inStub || inRepair || rip < stubasm.AreaLo {
+		pResumeThread.Call(t.hThread)
+		return false
+	}
+	as.park(t, &ctx, request{kind: reqInterrupt})
+	pResumeThread.Call(t.hThread)
+	return true
+}
+
+// ---- the stub image -----------------------------------------------------------
+
+func stubImage() []byte {
+	return pe.Stub(stubasm.CtlBase, stubasm.StubCode+stubasm.OffThreadEnt)
+}
