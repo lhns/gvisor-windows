@@ -38,7 +38,7 @@ gantt
     Controller waits without busy polling :platform_controller_wakeups, 2026-11-26, 2026-11-26
     Save and restore FPU and SSE state :platform_fp_state, 2026-11-26, 2026-11-26
     Retire the stub prototype :platform_retire_prototype, 2026-11-26, 2026-11-26
-    Give freed guest memory back :active, platform_memory_release, 2026-11-26, 2026-11-26
+    Give freed guest memory back :platform_memory_release, 2026-11-26, 2026-11-26
     Start guest processes fast :platform_fast_process_start, 2026-11-26, 2026-11-26
     Syscalls split across mappings :platform_split_syscall_unpatched, 2026-11-26, 2026-11-26
     Map files not in the memory file :platform_map_files_without_sections, 2026-11-26, 2026-11-26
@@ -63,6 +63,7 @@ gantt
     Editor safe-saves keep Linux metadata :fs_safe_save_keeps_metadata, 2026-11-26, 2026-11-26
     Bring container images onto NTFS :fs_rootfs_import, 2026-11-26, 2026-11-26
     Faster stat walks on host folders :fs_attribute_cache, 2026-11-26, 2026-11-26
+    Flaky negative-cache test on host folde… :fs_flaky_negative_cache_test, 2026-11-26, 2026-11-26
     section net - network
     Netstack to Windows sockets :net_netstack_windows_link, 2026-11-26, 2026-11-26
     Publish guest ports on localhost :net_port_forwarding, 2026-11-26, 2026-11-26

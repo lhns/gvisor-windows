@@ -1671,21 +1671,22 @@
   plain: The prototype under tools/windows/stubproto duplicates the platform code; once its test guests run under the Sentry, delete it.
   notes: 'Done when: tools/windows/stubproto and its workflow are removed and its guests run through the Sentry in CI.'
 - outcome: unrated
-  evidence:
-  - docs/adr/0013-memory-file-on-reserved-sections.md
+  evidence: &id001
+  - docs/results/1g-platform-memory.md
+  - docs/adr/0016-memory-file-on-extent-sections.md
   verdict_quote: ''
   headline: ''
   depends_on: []
   replaced_by: []
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   id: platform-memory-release
   title: Give freed guest memory back
   track: platform
   kind: defect
-  state: in-progress
+  state: done
   lane: windows-ci
   plain: Decommitted guest memory only partly leaves the working set and never reduces commit charge, because pages stay committed in 1 GB sections.
   notes: 'Fixed when: a guest that allocates and frees 1 GB returns it to Windows (working set and commit charge), measured in CI.'
@@ -1847,7 +1848,7 @@
   title: Probe Podman inside the sandbox
   track: workloads
   kind: experiment
-  state: blocked
+  state: next
   lane: windows-ci
   plain: Right after busybox works, run podman --version and podman info inside the sandbox; their failures are the real gap list.
   notes: 'Done when: the gap list is written up in docs/results.'
@@ -1874,21 +1875,20 @@
   plain: A git-status-like walk of 20000 files takes 1.2-2.4 s through the host folder; an attribute cache fed by the change watcher would bring stat near native.
   notes: 'Done when: a 20000-file stat walk through the backend is within 2x of native on windows-latest.'
 - outcome: unrated
-  evidence:
-  - docs/results/3-runsc-boot.md
+  evidence: *id001
   verdict_quote: ''
   headline: ''
   depends_on: []
   replaced_by: []
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   id: platform-map-files-without-sections
   title: Map files not in the memory file
   track: platform
   kind: defect
-  state: next
+  state: done
   lane: windows-ci
   plain: The platform can only map pages of the Sentry memory file; erofs image pages (and any other memmap.File) make the guest fault on its first instruction.
   notes: 'Fixed when: runsc run boots busybox from an erofs image root (mkfs.erofs --all-root) on windows-latest.'
@@ -1911,3 +1911,22 @@
   lane: windows-ci
   plain: create, start, state, kill, delete, exec, ps and list need a sandbox process that outlives runsc.exe and a named control pipe; only run and version exist today.
   notes: 'Done when: Podman-style lifecycle (create, start, exec, kill, delete, state, list) works on Windows against a sandbox process, tested in CI.'
+- id: fs-flaky-negative-cache-test
+  title: Flaky negative-cache test on host folders
+  track: fs
+  kind: defect
+  state: next
+  outcome: unrated
+  evidence:
+  - docs/results/1g-platform-memory.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: windows-ci
+  start: '2026-11-26'
+  end: ''
+  folded: []
+  overview: false
+  plain: TestVFSNegativeCacheAndQuickChange failed once on windows-fs after passing on the previous head; a timing race in the change watcher or the test.
+  notes: 'Fixed when: the test passes 20 runs in a row on windows-latest.'

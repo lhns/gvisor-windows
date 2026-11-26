@@ -268,7 +268,11 @@ func probePgalloc() {
 
 	// A second view of the section, like the one a stub process will have.
 	srs := f.Sections(fr)
-	report(len(srs) == 1, "pgalloc.Sections", "%+v", srs)
+	var covered uint64
+	for _, sr := range srs {
+		covered += sr.Length
+	}
+	report(len(srs) >= 1 && covered == uint64(size), "pgalloc.Sections", "%d extent ranges covering %d bytes", len(srs), covered)
 	view, verr := windows.MapViewOfFile(srs[0].Section, windows.FILE_MAP_READ|windows.FILE_MAP_WRITE, 0, 0, 0)
 	if verr != nil {
 		report(false, "pgalloc second view", "MapViewOfFile: %v", verr)
@@ -283,7 +287,7 @@ func probePgalloc() {
 	f.Decommit(fr)
 	wsAfter := workingSetMB()
 	info("pgalloc working set", "%d MB before Decommit, %d MB after (the range is %d MB)", wsBefore, wsAfter, size>>20)
-	report(isZero(other[:size]), "pgalloc.Decommit zeroes (second view)", "")
+	report(isZero(other), "pgalloc.Decommit zeroes (second view)", "")
 	zb, _ := f.MapInternal(fr, hostarch.Read)
 	allZero := true
 	for ; !zb.IsEmpty(); zb = zb.Tail() {
