@@ -1,0 +1,80 @@
+# Phase 1a stub/controller prototype: builds static Linux guests on Linux, runs them
+# on a hosted Windows runner (FSGSBASE) through the stub process design of ADR 0010/0011.
+name: windows-stubproto
+on:
+  push:
+    branches: [stub-prototype]
+    paths: ["tools/windows/stubproto/**", ".github/workflows/windows-stubproto.yml"]
+  workflow_dispatch:
+jobs:
+  guests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools/windows/stubproto
+      - uses: actions/setup-go@v5
+        with: {go-version: "1.26.x", cache: false}
+      - name: Build guests
+        working-directory: tools/windows/stubproto
+        run: |
+          mkdir -p out
+          gcc -nostdlib -static -no-pie -o out/hello_asm guests/hello.S
+          gcc -nostdlib -static -no-pie -o out/bench_asm guests/bench.S
+          gcc -nostdlib -static -no-pie -o out/spin_asm guests/spin.S
+          gcc -nostdlib -static -no-pie -o out/threads_asm guests/threads.S
+          gcc -static -no-pie -O1 -fstack-protector-all -o out/hello_glibc guests/hello.c
+          gcc -static-pie -O1 -fstack-protector-all -o out/hello_glibc_pie guests/hello.c
+          gcc -static -no-pie -O1 -o out/fork_glibc guests/fork.c
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o out/hello_go ./guests/gohello
+          file out/*
+          ldd --version | head -1
+      - uses: actions/upload-artifact@v4
+        with: {name: guests, path: tools/windows/stubproto/out}
+  stubproto:
+    needs: guests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools/windows/stubproto
+      - uses: actions/setup-go@v5
+        with: {go-version: "1.26.x", cache: false}
+      - uses: actions/download-artifact@v4
+        with: {name: guests, path: tools/windows/stubproto/out}
+      - name: Build
+        shell: pwsh
+        working-directory: tools/windows/stubproto
+        run: |
+          go vet ./...
+          go build -o stubproto.exe .
+          ./stubproto.exe mkstub stub-sample.exe
+          Get-CimInstance Win32_Processor | Select-Object Name, NumberOfLogicalProcessors | Format-List
+          $v = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
+          "Windows build: $($v.ProductName) $($v.DisplayVersion) $($v.CurrentBuild).$($v.UBR)"
+      - name: Suite
+        shell: pwsh
+        working-directory: tools/windows/stubproto
+        run: |
+          ./stubproto.exe suite -dir out 2>&1 | Tee-Object -FilePath suite.txt
+          "suite exit: $LASTEXITCODE" | Tee-Object -Append -FilePath suite.txt
+          exit $LASTEXITCODE
+      - name: Probes
+        if: always()
+        continue-on-error: true
+        shell: pwsh
+        working-directory: tools/windows/stubproto
+        run: |
+          foreach ($p in 'layout','unmap','interrupt','threads') {
+            "===== probe $p" | Tee-Object -Append -FilePath probes.txt
+            ./stubproto.exe probe $p -dir out 2>&1 | Tee-Object -Append -FilePath probes.txt
+            "exit: $LASTEXITCODE" | Tee-Object -Append -FilePath probes.txt
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stubproto-output
+          path: |
+            tools/windows/stubproto/suite.txt
+            tools/windows/stubproto/probes.txt
+            tools/windows/stubproto/stub-sample.exe
