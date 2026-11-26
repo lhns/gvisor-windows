@@ -25,6 +25,7 @@ import (
 	"time"
 	"unsafe"
 
+	"golang.org/x/sys/windows"
 	"gvisor.dev/gvisor/pkg/hostarch"
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/pe"
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/stubasm"
@@ -298,7 +299,14 @@ func (as *addressSpace) debugLoop() {
 		status := uint32(dbgContinue)
 		exited := false
 		if traceOn && ev.code() != 1 {
-			Trace("debug event %d (pid %d tid %d)", ev.code(), ev.pid(), ev.tid())
+			name := ""
+			if h := uintptr(ev.u64(16)); (ev.code() == 6 || ev.code() == 3) && h != 0 {
+				var buf [260]uint16
+				if n, _ := windows.GetFinalPathNameByHandle(windows.Handle(h), &buf[0], 260, 0); n > 0 {
+					name = windows.UTF16ToString(buf[:])
+				}
+			}
+			Trace("debug event %d (tid %d) %s", ev.code(), ev.tid(), name)
 		}
 		switch ev.code() {
 		case 1: // EXCEPTION_DEBUG_EVENT

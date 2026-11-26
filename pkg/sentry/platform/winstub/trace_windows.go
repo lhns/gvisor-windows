@@ -20,12 +20,12 @@ import (
 	"fmt"
 	"os"
 	"sync"
-	"time"
+	"unsafe"
 )
 
 var (
 	traceOn = os.Getenv("WINSTUB_TRACE") != ""
-	trace0  = time.Now()
+	trace0  = qpc()
 	traceMu sync.Mutex
 )
 
@@ -37,6 +37,25 @@ func Trace(format string, a ...any) {
 		return
 	}
 	traceMu.Lock()
-	fmt.Fprintf(os.Stderr, "trace %9.3fms %s\n", float64(time.Since(trace0).Nanoseconds())/1e6, fmt.Sprintf(format, a...))
+	fmt.Fprintf(os.Stderr, "trace %9.3fms %s\n", float64(qpc()-trace0)/1e6, fmt.Sprintf(format, a...))
 	traceMu.Unlock()
+}
+
+var (
+	pQPC     = k32.NewProc("QueryPerformanceCounter")
+	pQPF     = k32.NewProc("QueryPerformanceFrequency")
+	qpcFreq  float64
+)
+
+// qpc returns a high-resolution monotonic time in ns (Go's own clock ticks only
+// every 0.5-15 ms on Windows).
+func qpc() int64 {
+	if qpcFreq == 0 {
+		var f int64
+		pQPF.Call(uintptr(unsafe.Pointer(&f)))
+		qpcFreq = float64(f)
+	}
+	var c int64
+	pQPC.Call(uintptr(unsafe.Pointer(&c)))
+	return int64(float64(c) / qpcFreq * 1e9)
 }

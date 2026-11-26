@@ -677,3 +677,22 @@ func TestSyscallLatency(t *testing.T) {
 		t.Logf("LATENCY threads=%d: %v per syscall round trip per thread (%v each)", n, sum/time.Duration(n), durs)
 	}
 }
+
+// TestStubStart logs how long a new address space takes (process creation to a
+// parked anchor thread) and how long releasing one takes.
+func TestStubStart(t *testing.T) {
+	h := newHarness(t)
+	var starts, rels []time.Duration
+	for i := 0; i < 8; i++ {
+		t0 := time.Now()
+		as, err := h.p.NewAddressSpace(platform.AddressSpaceOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t1 := time.Now()
+		as.Release()
+		starts = append(starts, t1.Sub(t0))
+		rels = append(rels, time.Since(t1))
+	}
+	t.Logf("STUBSTART new address space: %v; release: %v", starts, rels)
+}
