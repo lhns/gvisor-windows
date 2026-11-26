@@ -45,7 +45,8 @@ type watcher struct {
 // called from a single goroutine and must not block for long. Watch can be
 // called once.
 func (fs *FS) Watch(fn func(Change)) error {
-	p, err := windows.UTF16PtrFromString(`\?\` + strings.TrimPrefix(fs.path, `\?\`))
+	lp := string([]rune{92, 92, 63, 92}) // the long-path prefix
+	p, err := windows.UTF16PtrFromString(lp + strings.TrimPrefix(fs.path, lp))
 	if err != nil {
 		return err
 	}
