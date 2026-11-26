@@ -1376,6 +1376,12 @@ func (p *Protocol) processBatchMessage(ctx context.Context, buf []byte, ms *nlms
 	// **********************************************************************
 	// No need to hold our own lock
 	nftCopy := nft.DeepCopy()
+	committed := false
+	defer func() {
+		if !committed {
+			nftCopy.Discard(nft)
+		}
+	}()
 
 	// Maintain a list of new chains created in the batch to
 	// verify chain bindings before commit.
@@ -1426,6 +1432,7 @@ func (p *Protocol) processBatchMessage(ctx context.Context, buf []byte, ms *nlms
 				nftCopy.PruneUnused()
 				// Commit the new nftables instance.
 				commitNftables(st, nftCopy)
+				committed = true
 			}
 
 			return nil

@@ -19,7 +19,10 @@
 // the nftables binary, along with network packets (as a stack.PacketBuffer) to
 // filter, modify, and evaluate packets.
 // We support a subset of the functionality of the nftables binary.
-// The package is not yet thread-safe.
+// Concurrency: a published NFTables is immutable apart from atomic counters and
+// the conntrack, so packets are evaluated against it without locks. Updates
+// work on DeepCopy under the caller's update lock and publish the copy with an
+// atomic pointer swap (see the architecture note in netfilter/protocol.go).
 //
 // To use the package, construct a ruleset using the official nft binary and
 // then pass the ruleset as a string (with flag --debug=netlink on to get the
@@ -56,9 +59,6 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 )
-
-// TODO(b/345684870): Make the nftables package thread-safe! Must be done before
-// the package is used in production.
 
 // enableNFTables is a flag that indicates whether NFTables is enabled.
 var enableNFTables atomicbitops.Bool
