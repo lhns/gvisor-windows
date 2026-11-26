@@ -21,6 +21,7 @@ start() {
     tmpfs) st=(--tmpfs /var/lib/containers) ;;
     hostdir) st=(-v "$HOSTDIR:/var/lib/containers") ;;
   esac
+  st+=(-e CONTAINERS_STORAGE_CONF=/etc/containers/storage.conf)  # ignore the image's fuse-overlayfs drop-ins
   [ -n "$STORAGE_DRIVER" ] && st+=(-e "STORAGE_DRIVER=$STORAGE_DRIVER")
   docker rm -f "$NAME" >/dev/null 2>&1
   docker run -d --name "$NAME" --runtime "$RUNTIME" \
