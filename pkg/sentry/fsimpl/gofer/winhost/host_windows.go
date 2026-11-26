@@ -707,17 +707,17 @@ func (fs *FS) ReadDir(dir ID, fn func(Dirent) bool) error {
 		return err
 	}
 	defer fs.closeID(dir, dh)
-	buf := make([]byte, 64*1024)
-	class := uint32(classIDExtdDirRestart)
+	backing := make([]uint64, 8*1024) // 64 KB, 8-byte aligned
+	buf := unsafe.Slice((*byte)(unsafe.Pointer(&backing[0])), len(backing)*8)
+	restart := true
 	for {
-		err := windows.GetFileInformationByHandleEx(dh, class, &buf[0], uint32(len(buf)))
-		if err != nil {
-			if err == windows.ERROR_NO_MORE_FILES {
+		if err := queryDirectory(dh, buf, restart); err != nil {
+			if err == errNoMoreFiles {
 				return nil
 			}
-			return toErrno(err)
+			return err
 		}
-		class = classIDExtdDir
+		restart = false
 		off := 0
 		for {
 			e := buf[off:]

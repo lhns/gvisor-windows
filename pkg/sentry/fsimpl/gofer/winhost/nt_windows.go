@@ -239,3 +239,30 @@ func ftToUnixNs(ft int64) int64 { return (ft - filetimeToUnix) * 100 }
 
 // unixNsToFt is the inverse of ftToUnixNs.
 func unixNsToFt(ns int64) int64 { return ns/100 + filetimeToUnix }
+
+var errNoMoreFiles = errors.New("no more files")
+
+var procNtQueryDirectoryFile = windows.NewLazySystemDLL("ntdll.dll").NewProc("NtQueryDirectoryFile")
+
+// fileIDExtdDirectoryInformation is the NT class of FILE_ID_EXTD_DIR_INFO.
+const fileIDExtdDirectoryInformation = 60
+
+// queryDirectory reads a batch of FILE_ID_EXTD_DIR_INFO entries into buf. It
+// returns errNoMoreFiles at the end of the directory.
+func queryDirectory(h windows.Handle, buf []byte, restart bool) error {
+	var iosb windows.IO_STATUS_BLOCK
+	var r uintptr
+	if restart {
+		r = 1
+	}
+	st, _, _ := procNtQueryDirectoryFile.Call(uintptr(h), 0, 0, 0, uintptr(unsafe.Pointer(&iosb)),
+		uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)), fileIDExtdDirectoryInformation, 0, 0, r)
+	switch s := windows.NTStatus(st); s {
+	case windows.STATUS_SUCCESS:
+		return nil
+	case windows.STATUS_NO_MORE_FILES:
+		return errNoMoreFiles
+	default:
+		return toErrno(s)
+	}
+}
