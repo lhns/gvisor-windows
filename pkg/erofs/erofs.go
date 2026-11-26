@@ -29,7 +29,6 @@ import (
 	"math"
 	"os"
 
-	"golang.org/x/sys/unix"
 	"gvisor.dev/gvisor/pkg/abi/linux"
 	"gvisor.dev/gvisor/pkg/cleanup"
 	"gvisor.dev/gvisor/pkg/errors/linuxerr"
@@ -251,11 +250,11 @@ func OpenImage(src *os.File) (*Image, error) {
 	if err != nil {
 		return nil, err
 	}
-	i.bytes, err = unix.Mmap(int(i.src.Fd()), 0, int(stat.Size()), unix.PROT_READ, unix.MAP_SHARED)
+	i.bytes, err = mapImage(i.src, stat.Size()) // gvisor-windows: per-OS mapping
 	if err != nil {
 		return nil, err
 	}
-	cu.Add(func() { unix.Munmap(i.bytes) })
+	cu.Add(func() { unmapImage(i.bytes) })
 
 	if err := i.initSuperBlock(); err != nil {
 		return nil, err
@@ -266,7 +265,7 @@ func OpenImage(src *os.File) (*Image, error) {
 
 // Close closes the image.
 func (i *Image) Close() {
-	unix.Munmap(i.bytes)
+	unmapImage(i.bytes)
 	i.src.Close()
 }
 
