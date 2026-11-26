@@ -202,7 +202,7 @@ jobs:
           export CONTAINER_HOST=unix:///tmp/podman-runsc.sock
           export ENGINE_CTL="$PWD/test/e2e/podman-acceptance/harness/engine-runsc.sh"
           [ "${{ matrix.v }}" = slirp ] && export NETARGS=--network=slirp4netns
-          if [ "${{ matrix.v }}" = cgfs-host ]; then export HOSTNET=1 NETARGS=--network=host RUNTIME=runsc; fi
+          if [ "${{ matrix.v }}" = cgfs-host ]; then export HOSTNET=1 NETARGS=--network=host RUNTIME=runsc CGROUPS=enabled REMOUNT_CG=1 PODMAN_IMAGE=quay.io/podman/stable:${{ matrix.podman }}; fi
           test/e2e/podman-acceptance/run.sh || true
       - name: Diagnostics
         if: always()
