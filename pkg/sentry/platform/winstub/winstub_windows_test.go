@@ -1453,3 +1453,53 @@ func TestManyThreads(t *testing.T) {
 		t.Fatalf("syscall %d", nr)
 	}
 }
+
+// TestVeneerSurvivesNewAddressSpace: a clone child with a new address space
+// resumes at the return address of its parent's syscall; that must also be valid
+// when the site was patched with a veneer (a syscall behind register moves).
+func TestVeneerSurvivesNewAddressSpace(t *testing.T) {
+	a := &asm{base: textBase}
+	// no displaced instruction after the syscall: it returns into the text
+	noPost := a.emit(0xbf, 41, 0, 0, 0) // mov edi,41
+	a.emit(0x48, 0x89, 0xf8)            // mov rax,rdi
+	a.emit(0x0f, 0x05)                  // syscall
+	a.emit(0x48, 0x89, 0xc7)            // mov rdi,rax
+	a.emit(0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05)
+	// a site that needs an instruction after it: xor eax,eax; syscall; mov rdi,rax
+	// at a branch target behind a jump
+	a.emit(0xeb, 0x00) // jmp +0
+	withPost := a.emit(0x31, 0xc0)
+	a.emit(0x0f, 0x05)
+	a.emit(0x48, 0x89, 0xc7) // mov rdi,rax
+	a.emit(0xb8, 0xf5, 1, 0, 0, 0x0f, 0x05)
+	for _, c := range []struct {
+		name  string
+		start uint64
+		nr    uint64
+		next  uint64
+	}{{"returns into the text", noPost, 41, 500}, {"returns into the veneer", withPost, 0, 501}} {
+		t.Run(c.name, func(t *testing.T) {
+			h := newHarness(t)
+			mm1, mm2 := h.newMM(), h.newMM()
+			fr := h.pages(a.b, 1)
+			h.mapAt(mm1, textBase, fr, rx)
+			c1 := h.p.NewContext(pkgcontext.Background())
+			defer c1.Release()
+			ac1 := newAC(c.start, 0)
+			if nr := h.syscall(c1, mm1, ac1); nr != c.nr {
+				t.Fatalf("syscall %d, want %d", nr, c.nr)
+			}
+			t.Logf("rip after the syscall: %#x", ac1.StateData().Regs.Rip)
+			// the child: another address space, text patched on its own
+			h.mapAt(mm2, textBase, fr, rx)
+			c2 := h.p.NewContext(pkgcontext.Background())
+			defer c2.Release()
+			ac2 := newAC(0, 0)
+			ac2.StateData().Regs = ac1.StateData().Regs
+			ac2.StateData().Regs.Rax = 77
+			if nr := h.syscall(c2, mm2, ac2); nr != c.next || ac2.StateData().Regs.Rdi != 77 {
+				t.Fatalf("child: syscall %d rdi %d, want %d 77", nr, ac2.StateData().Regs.Rdi, c.next)
+			}
+		})
+	}
+}

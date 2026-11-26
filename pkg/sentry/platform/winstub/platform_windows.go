@@ -53,6 +53,7 @@ type Platform struct {
 	platform.NoCPUNumbers
 
 	scans         scanCache
+	veneers       veneerRegistry
 	active        atomic.Int32 // contexts inside Switch
 	tokens        atomic.Int32 // spinning tokens held (policyTokens)
 	maxTokens     int32

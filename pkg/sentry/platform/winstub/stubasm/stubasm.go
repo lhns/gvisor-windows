@@ -68,6 +68,9 @@ const (
 
 	Veneers     uint64 = 0x110000 // displaced instructions of relocated syscall sites
 	VeneersSize uint64 = 0x70000
+	// Veneers whose syscall returns inside them live in the upper part, at
+	// addresses chosen platform-wide (the same in every address space).
+	VeneersShared uint64 = 0x148000
 
 	AreaLo uint64 = TrapPtrs // the low stub area is one section of this range
 	AreaHi uint64 = Veneers + VeneersSize
