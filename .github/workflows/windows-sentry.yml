@@ -19,10 +19,14 @@ jobs:
       - name: Sentry smoke program
         shell: bash
         run: timeout 300 go run ./tools/windows/sentrysmoke
+      - name: Diagnostics of memclr faults
+        if: always()
+        shell: bash
+        run: go test -p 2 -count=1 -v -run TestWindowsMemclrDiag -timeout 60s ./pkg/safecopy/ 2>&1 | grep -E "DIAG|hasERMS|panic|FAIL|ok" | head -400
       - name: Tests of pkg/safecopy
         if: always()
         shell: bash
-        run: go test -p 2 -count=1 -v -timeout 240s ./pkg/safecopy/ 2>&1 | grep -vE "^\s*(=== (RUN|PAUSE|CONT)|--- PASS)" | head -150; exit ${PIPESTATUS[0]}
+        run: go test -p 2 -count=1 -v -timeout 100s ./pkg/safecopy/ 2>&1 | grep -vE "^\s*(=== (RUN|PAUSE|CONT)|--- PASS)" | head -150; exit ${PIPESTATUS[0]}
       - name: Tests of pkg/sentry/pgalloc
         if: always()
         shell: bash
