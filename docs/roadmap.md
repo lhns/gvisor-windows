@@ -190,6 +190,7 @@ flowchart TB
 | Measure debugger fault handling | ▶ in progress | Measure what handling a guest fault as debugger costs without touching thread context, how many events a process start makes, and whether many stubs can be debugged at once. |
 | Survey patchable syscall sites | ▶ in progress | Count how many syscall instructions in real images can be patched into jumps, and how many would need the slow debugger path. |
 | Count page faults per exec | ▶ in progress | Count how many page faults gVisor takes for one fork plus exec on Linux; times the debugger cost this gives the Windows process-start cost. |
+| Binary translation as a fallback | ⏸ parked | Translate guest code (as the owner's v3compat does with DynamoRIO on Linux) only if debugger faults or unpatchable syscalls prove too slow, or to support CPUs without FSGSBASE. |
 | Sentry builds for Windows | ⛔ blocked | gVisor's kernel compiles as a Windows program, with host-specific parts stubbed out. |
 | Guest memory on Windows sections | ⛔ blocked | The Sentry's memory file becomes a Windows section object, allocated in 64 KB units. |
 | Event waiting on IOCP | ⛔ blocked | Waiting for many host events at once (epoll on Linux) moves to Windows completion ports. |
@@ -329,7 +330,7 @@ Generated on 2026-11-26.
 Each track has its own page with its tree, node table and per-node details.
 
 - [runsc - runsc](roadmap/tracks/runsc.md): 4 nodes (2 done, 2 blocked)
-- [platform - platform](roadmap/tracks/platform.md): 22 nodes (7 done, 3 in progress, 8 blocked, 3 parked, 1 abandoned)
+- [platform - platform](roadmap/tracks/platform.md): 23 nodes (7 done, 3 in progress, 8 blocked, 4 parked, 1 abandoned)
 - [sentry - sentry](roadmap/tracks/sentry.md): 9 nodes (1 done, 1 next, 7 blocked)
 - [fs - files](roadmap/tracks/fs.md): 9 nodes (3 done, 6 blocked)
 - [net - network](roadmap/tracks/net.md): 3 nodes (3 blocked)

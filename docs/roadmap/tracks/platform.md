@@ -25,12 +25,13 @@ flowchart TB
     platform_syscall_fast_path[/"⛔ Patch syscall sites<br/>into jumps"/]
     platform_own_vdso["⛔ Own vDSO for clock<br/>calls"]
     platform_fs_base_repair["⛔ Restore the TLS<br/>register after<br/>switches"]
-    platform_no_fsgsbase_fallback["⏸ Support CPUs without<br/>FSGSBASE"]
     platform_64k_mapping_conflicts["⏸ Handle 64 KB mapping<br/>conflicts"]
     platform_winstub["⛔ Windows platform for<br/>the Sentry"]
     platform_hardware_acceleration["⏸ Use hardware<br/>acceleration when<br/>available"]
     platform_static_guest_from_memory["⛔ Run a static guest<br/>from memory"]
     platform_busybox_on_windows["⛔ Run busybox under<br/>the Sentry"]
+    platform_binary_translation_fallback["⏸ Binary translation<br/>as a fallback"]
+    platform_no_fsgsbase_fallback["⏸ Support CPUs without<br/>FSGSBASE"]
     platform_elf_alignment_survey ~~~ platform_tls_register
     platform_trap_cost ~~~ platform_restricted_stub
     platform_4k_section_views ~~~ platform_zpoline_hooks
@@ -48,14 +49,15 @@ flowchart TB
     platform_page_verification ~~~ platform_syscall_fast_path
     platform_page_verification ~~~ platform_own_vdso
     platform_page_verification ~~~ platform_fs_base_repair
-    platform_syscall_fast_path ~~~ platform_no_fsgsbase_fallback
-    platform_own_vdso ~~~ platform_64k_mapping_conflicts
+    platform_syscall_fast_path ~~~ platform_64k_mapping_conflicts
+    platform_own_vdso ~~~ platform_winstub
     platform_fs_base_repair ~~~ platform_winstub
-    platform_no_fsgsbase_fallback ~~~ platform_hardware_acceleration
-    platform_64k_mapping_conflicts ~~~ platform_static_guest_from_memory
+    platform_64k_mapping_conflicts ~~~ platform_hardware_acceleration
     platform_winstub ~~~ platform_static_guest_from_memory
     platform_hardware_acceleration ~~~ platform_busybox_on_windows
-    platform_static_guest_from_memory ~~~ platform_busybox_on_windows
+    platform_static_guest_from_memory ~~~ platform_binary_translation_fallback
+    platform_busybox_on_windows ~~~ platform_no_fsgsbase_fallback
+    platform_binary_translation_fallback ~~~ platform_no_fsgsbase_fallback
     platform_trap_cost -.-> platform_veh_on_guest_stack_unsafe
     platform_tls_register -.-> platform_veh_on_guest_stack_unsafe
     platform_trap_cost --> platform_exception_stack
@@ -72,13 +74,14 @@ flowchart TB
     platform_page_verification --> platform_syscall_fast_path
     platform_stub_controller --> platform_own_vdso
     platform_stub_controller --> platform_fs_base_repair
-    platform_page_verification --> platform_no_fsgsbase_fallback
     platform_page_verification --> platform_winstub
     platform_winstub --> platform_hardware_acceleration
     platform_winstub --> platform_static_guest_from_memory
     platform_fs_base_repair --> platform_static_guest_from_memory
     platform_static_guest_from_memory --> platform_busybox_on_windows
-    linkStyle 25,26 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    platform_debug_event_cost --> platform_binary_translation_fallback
+    platform_binary_translation_fallback --> platform_no_fsgsbase_fallback
+    linkStyle 26,27 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -98,7 +101,7 @@ flowchart TB
     class platform_zpoline_hooks dead
     class platform_debug_event_cost,platform_syscall_site_survey,platform_faults_per_exec inprog
     class platform_stub_controller,platform_page_verification,platform_syscall_fast_path,platform_own_vdso,platform_fs_base_repair,platform_winstub,platform_static_guest_from_memory,platform_busybox_on_windows blocked
-    class platform_no_fsgsbase_fallback,platform_64k_mapping_conflicts,platform_hardware_acceleration parked
+    class platform_64k_mapping_conflicts,platform_hardware_acceleration,platform_binary_translation_fallback,platform_no_fsgsbase_fallback parked
 ```
 <!-- END GENERATED: track-platform -->
 
@@ -122,13 +125,14 @@ flowchart TB
 | `platform-hardware-acceleration` | Use hardware acceleration when available | feature | windows-ci | parked | unrated |  |  | platform-winstub |  |  |  |  |
 | `platform-zpoline-hooks` | Hook syscalls like zpoline | experiment | windows-local | abandoned | dead-end | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/0b-windows.md |
 | `platform-fs-base-repair` | Restore the TLS register after switches | feature | windows-ci | blocked | unrated |  |  | platform-stub-controller |  |  |  |  |
-| `platform-no-fsgsbase-fallback` | Support CPUs without FSGSBASE | feature | windows-ci | parked | unrated |  |  | platform-page-verification |  |  |  |  |
+| `platform-no-fsgsbase-fallback` | Support CPUs without FSGSBASE | feature | windows-ci | parked | unrated |  |  | platform-binary-translation-fallback |  |  |  |  |
 | `platform-exception-stack` | Check what exceptions do to stacks | experiment | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-trap-cost |  |  |  | docs/results/0b-windows.md |
 | `platform-static-guest-from-memory` | Run a static guest from memory | feature | windows-ci | blocked | unrated |  |  | platform-winstub, sentry-fault-recovery, platform-fs-base-repair |  |  |  |  |
 | `platform-veh-on-guest-stack-unsafe` | Exceptions overwrite guest stacks | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 | platform-exception-stack |  |  |  | docs/results/0b-windows.md; docs/adr/0010-guest-faults-via-the-debugger-syscalls-via-patching.md |
 | `platform-debug-event-cost` | Measure debugger fault handling | experiment | windows-ci | in-progress | unrated | 2026-11-26 |  | platform-exception-stack |  |  |  |  |
 | `platform-syscall-site-survey` | Survey patchable syscall sites | experiment | linux-ci | in-progress | unrated | 2026-11-26 |  | platform-elf-alignment-survey |  |  |  |  |
 | `platform-faults-per-exec` | Count page faults per exec | experiment | linux-ci | in-progress | unrated | 2026-11-26 |  | research-gvisor-benchmark |  |  |  |  |
+| `platform-binary-translation-fallback` | Binary translation as a fallback | feature | windows-ci | parked | unrated |  |  | platform-debug-event-cost |  |  |  |  |
 
 ### Details per node
 
@@ -156,6 +160,7 @@ flowchart TB
 | `platform-debug-event-cost` | Measure debugger fault handling |  |  | Measure what handling a guest fault as debugger costs without touching thread context, how many events a process start makes, and whether many stubs can be debugged at once. | Done when: S8 results are in docs/results/0b-windows.md. |  |  |  |  |
 | `platform-syscall-site-survey` | Survey patchable syscall sites |  |  | Count how many syscall instructions in real images can be patched into jumps, and how many would need the slow debugger path. | Done when: per-image counts by site class are in docs/results/0d-syscall-sites.md. |  |  |  |  |
 | `platform-faults-per-exec` | Count page faults per exec |  |  | Count how many page faults gVisor takes for one fork plus exec on Linux; times the debugger cost this gives the Windows process-start cost. | Done when: faults per fork+exec and the mm MapUnit/precommit behaviour are in docs/results/0d-syscall-sites.md. |  |  |  |  |
+| `platform-binary-translation-fallback` | Binary translation as a fallback |  |  | Translate guest code (as the owner's v3compat does with DynamoRIO on Linux) only if debugger faults or unpatchable syscalls prove too slow, or to support CPUs without FSGSBASE. | Parked to keep complexity down (ADR 0010). Reopen if S8, the syscall-site survey or faults per exec give tens of ms per exec. Starting points from v3compat: unseg() %fs/%gs rewrite in src/expand.c, off-stack helper thunk, cmake/FetchDynamoRIO.cmake, translation stress tests; its measured DynamoRIO overhead is 1.15-1.67x on plain code but 2.4x (Node) to 13x (Java) on JIT startup. |  |  |  |  |
 
 ### Folded items per node
 
