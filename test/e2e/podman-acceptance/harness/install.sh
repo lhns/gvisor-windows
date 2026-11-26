@@ -22,11 +22,13 @@ podman --version; crun --version | head -1
 # Docker runtimes. --net-raw is needed by dockerd/podman inside (gVisor docs); packet-socket-write for
 # newer docker; podman's netavark may need it too. All sandboxes use systrap.
 COMMON='"--platform=systrap","--net-raw","--in-sandbox-cgroup=v2","--allow-packet-socket-write","--debug-log=/tmp/runsc-logs/%ID%/","--debug","--strace=false"'
+COMMON_NS='"--platform=systrap","--net-raw","--in-sandbox-cgroup=v2","--allow-packet-socket-write","--debug-log=/tmp/runsc-logs/%ID%/","--debug"'
 sudo mkdir -p /srv/overlay-dir /tmp/runsc-logs && sudo chmod 777 /tmp/runsc-logs
 sudo tee /etc/docker/daemon.json >/dev/null <<EOF
 {
   "runtimes": {
     "runsc": { "path": "/usr/local/bin/runsc", "runtimeArgs": [$COMMON] },
+    "runsc-strace": { "path": "/usr/local/bin/runsc", "runtimeArgs": [$COMMON_NS,"--strace=true","--strace-log-size=4096"] },
     "runsc-ovldir": { "path": "/usr/local/bin/runsc", "runtimeArgs": [$COMMON,"--overlay2=root:dir=/srv/overlay-dir"] }
   }
 }
@@ -34,4 +36,4 @@ EOF
 sudo systemctl restart docker
 docker info --format '{{.Runtimes}}'
 docker run --rm --runtime runsc mirror.gcr.io/library/alpine:3.20 sh -c 'uname -a; dmesg | head -3' || true
-docker pull -q quay.io/podman/stable:latest
+docker pull -q "${PODMAN_IMAGE:-quay.io/podman/stable:latest}"

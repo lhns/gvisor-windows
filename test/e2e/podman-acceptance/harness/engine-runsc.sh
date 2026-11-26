@@ -12,6 +12,8 @@ SHARE_DIR=${SHARE_DIR:-/tmp/podman-acceptance-share}
 SOCK=${SOCK:-/tmp/podman-runsc.sock}
 NAME=${NAME:-podman-in-runsc}
 HOSTDIR=${HOSTDIR:-/srv/podman-storage}
+PODMAN_IMAGE=${PODMAN_IMAGE:-quay.io/podman/stable:latest}
+CGROUPS=${CGROUPS:-disabled}   # disabled | enabled (cgroupfs manager, needs runsc --in-sandbox-cgroup=v2)
 HERE=$(cd "$(dirname "$0")" && pwd)
 
 start() {
@@ -23,13 +25,14 @@ start() {
   esac
   st+=(-e CONTAINERS_STORAGE_CONF=/etc/containers/storage.conf)  # ignore the image's fuse-overlayfs drop-ins
   [ -n "$STORAGE_DRIVER" ] && st+=(-e "STORAGE_DRIVER=$STORAGE_DRIVER")
+  CONF=/tmp/containers-$NAME.conf; sed "s/^cgroups = .*/cgroups = \"$CGROUPS\"/" "$HERE/containers.conf" >"$CONF"
   docker rm -f "$NAME" >/dev/null 2>&1
   docker run -d --name "$NAME" --runtime "$RUNTIME" \
     --cap-add all --security-opt seccomp=unconfined --security-opt label=disable \
     --user root --entrypoint '' \
-    -v "$SHARE_DIR:$SHARE_DIR" -v "$HERE/containers.conf:/etc/containers/containers.conf:ro" -v "$HERE/storage.conf:/etc/containers/storage.conf:ro" \
+    -v "$SHARE_DIR:$SHARE_DIR" -v "$CONF:/etc/containers/containers.conf:ro" -v "$HERE/storage.conf:/etc/containers/storage.conf:ro" \
     -p 127.0.0.1:8888:8888 -p 8080:8080 "${st[@]}" \
-    quay.io/podman/stable:latest podman system service --time=0 tcp://0.0.0.0:8888 || return 1
+    "$PODMAN_IMAGE" podman system service --time=0 tcp://0.0.0.0:8888 || return 1
   rm -f "$SOCK"
   # restart-looped so the socket survives a dying socat; own session so runner step cleanup keeps it
   setsid nohup bash -c "while :; do socat UNIX-LISTEN:$SOCK,unlink-early,fork,mode=666 TCP:127.0.0.1:8888; echo socat exited \$? >&2; sleep 1; done" >/tmp/socat.log 2>&1 &

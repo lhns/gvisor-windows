@@ -8,7 +8,9 @@
 #   SHARE_DIR       directory visible at the SAME path to client and engine (bind-mount test)
 #   ENGINE_CTL      command taking "restart"; must block until the engine answers again
 #   NETARGS         extra args for run/build, e.g. "--network=host"
-#   HOSTNET=1       containers use host net: step 7 uses nginx on 8080, step 8 uses 127.0.0.1
+#   HOSTNET=1       host-net variant: step 7 uses nginx on 8080, step 8 uses 127.0.0.1
+#                   (unset/0 = STRICT: step 7 is -p 8080:80 probed from outside the sandbox, step 8 is
+#                   compose with the default network and the second service reached by service name)
 #   PROBE_URL       URL for the port test            (default http://127.0.0.1:8080)
 #   IMG_PREFIX      registry prefix for library images (default mirror.gcr.io/library)
 #   RESULTS_DIR     where logs go                     (default ./results)
@@ -84,7 +86,7 @@ step7() { local L=$RESULTS_DIR/step-7.log rc=0 cid ok=1 i
   if [ "$HOSTNET" = 1 ]; then
     cid=$(tp run -d --name acc-web --network=host "$NGINX" sh -c "sed -i 's/listen  *80;/listen 8080;/' /etc/nginx/conf.d/default.conf && exec nginx -g 'daemon off;'" 2>"$L")
   else
-    cid=$(tp run -d --name acc-web -p 8080:80 "$NGINX" 2>"$L")
+    cid=$(tp run -d --name acc-web $NETARGS -p 8080:80 "$NGINX" 2>"$L")
   fi
   [ -n "$cid" ] || rc=1
   for i in $(seq 1 30); do curl -fsS -m 3 -o /dev/null "$PROBE_URL" >>"$L" 2>&1 && { ok=0; break; }; sleep 1; done
