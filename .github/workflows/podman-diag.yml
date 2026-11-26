@@ -77,15 +77,15 @@ jobs:
           New-Item -ItemType Directory -Force C:\ci\std\engine\storage | Out-Null
           fsutil file setCaseSensitiveInfo C:\ci\std\engine\storage enable
           & tools/windows/ci/run-as-standard-user.ps1 `
-            -Program 'C:\Program Files\PowerShell\pwsh.exe' `
-            -Arguments '-NoProfile','-File',"$PWD	ools\windows\podman\diag-run.ps1",'-Root','C:\ci' `
+            -Program 'C:\Program Files\PowerShell\7\pwsh.exe' `
+            -Arguments '-NoProfile','-File',"$PWD\tools\windows\podman\diag-run.ps1",'-Root','C:\ci' `
             -Environment @{ RUNSC_EXTRA_FLAGS = '--strace' } `
-            -GrantPath C:\ciin,C:\ci	ools,$PWD -WritablePath C:\ci\std -TimeoutSeconds 1500
+            -GrantPath C:\ci\bin,C:\ci\tools,$PWD -WritablePath C:\ci\std -TimeoutSeconds 1500
       - name: Summary
         if: always()
         shell: pwsh
         run: |
-          Get-Content C:\ci\stdesults\diag.log -ErrorAction SilentlyContinue
+          Get-Content C:\ci\std\results\diag.log -ErrorAction SilentlyContinue
           Get-ChildItem C:\ci\std\engine\logs -ErrorAction SilentlyContinue | ForEach-Object { "$($_.Name) $($_.Length)" }
       - uses: actions/upload-artifact@v4
         if: always()
