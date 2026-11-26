@@ -59,7 +59,7 @@ jobs:
       - name: All tests as a standard user
         shell: pwsh
         run: |
-          pwsh tools/windows/ci/run-as-standard-user.ps1 `
+          & tools/windows/ci/run-as-standard-user.ps1 `
             -Program C:\ci\bin\runsctest.exe `
             -Arguments '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std' `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 1500

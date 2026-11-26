@@ -18,6 +18,7 @@ import (
 	"time"
 
 	specs "github.com/opencontainers/runtime-spec/specs-go"
+	"gvisor.dev/gvisor/pkg/cpuid"
 	"gvisor.dev/gvisor/pkg/log"
 	"gvisor.dev/gvisor/runsc/boot"
 	"gvisor.dev/gvisor/runsc/config"
@@ -134,6 +135,7 @@ func runCmd(args []string) int {
 		return fatalf("%v", err)
 	}
 
+	cpuid.Initialize()
 	l, err := boot.New(boot.Args{
 		ID:               id,
 		Spec:             spec,
