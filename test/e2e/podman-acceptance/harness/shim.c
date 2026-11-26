@@ -5,7 +5,7 @@
 #include <errno.h>
 #include <sys/socket.h>
 int setsockopt(int fd, int level, int name, const void *val, socklen_t len) {
-  static int (*real)(int, int, const void *, socklen_t);
+  static int (*real)(int, int, int, const void *, socklen_t);
   if (!real) real = dlsym(RTLD_NEXT, "setsockopt");
   int r = real(fd, level, name, val, len);
   if (r < 0 && errno == ENOPROTOOPT && level == 270 /* SOL_NETLINK */) return 0;

@@ -181,7 +181,7 @@ jobs:
         with: {sparse-checkout: "test/e2e"}
       - run: mkdir -p "$RESULTS_DIR/out" && test/e2e/podman-acceptance/harness/install.sh
       - name: Build shim
-        run: gcc -shared -fPIC -O2 -o /tmp/shim.so test/e2e/podman-acceptance/harness/shim.c -ldl
+        run: gcc -Wall -shared -fPIC -O2 -o /tmp/shim.so test/e2e/podman-acceptance/harness/shim.c -ldl
       - name: Start engine
         run: |
           export SHARE_DIR=/tmp/acc-share STORAGE=hostdir PODMAN_IMAGE=quay.io/podman/stable:${{ matrix.podman }} CGROUPS=disabled
