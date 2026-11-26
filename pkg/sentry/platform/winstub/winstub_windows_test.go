@@ -17,6 +17,7 @@
 package winstub
 
 import (
+	"fmt"
 	"sort"
 	"runtime"
 	"syscall"
@@ -806,4 +807,151 @@ func TestDecodeAllMatchesSerial(t *testing.T) {
 		}
 	}
 	t.Logf("DECODE %d bytes, %d instructions: serial %v, parallel %v", len(b), len(serial), t1.Sub(t0), t2.Sub(t1))
+}
+
+// TestSplitSyscall: a syscall instruction whose 0x0f and 0x05 lie in two
+// separately mapped ranges must not reach the NT kernel, whichever range is
+// mapped first; a 0x0f that ends another instruction must not change the next
+// range.
+func TestSplitSyscall(t *testing.T) {
+	pad := func(head []byte, tail []byte) []byte {
+		b := make([]byte, pageSz)
+		for i := range b {
+			b[i] = 0x90
+		}
+		copy(b, head)
+		copy(b[pageSz-len(tail):], tail)
+		return b
+	}
+	pageA := pad([]byte{0xb8, 40, 0, 0, 0}, []byte{0x0f})
+	pageB := pad([]byte{0x05, 0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05}, nil)
+	for _, order := range []string{"low first", "high first"} {
+		t.Run(order, func(t *testing.T) {
+			h := newHarness(t)
+			mm := h.newMM()
+			a, b := h.pages(pageA, 1), h.pages(pageB, 1)
+			if order == "low first" {
+				h.mapAt(mm, textBase, a, rx)
+				h.mapAt(mm, textBase+pageSz, b, rx)
+			} else {
+				h.mapAt(mm, textBase+pageSz, b, rx)
+				h.mapAt(mm, textBase, a, rx)
+			}
+			c := h.p.NewContext(pkgcontext.Background())
+			defer c.Release()
+			ac := newAC(textBase, 0)
+			if nr := h.syscall(c, mm, ac); nr != 40 {
+				t.Fatalf("split syscall = %d, want 40", nr)
+			}
+			if got := ac.StateData().Regs.Rip; got != textBase+pageSz+1 {
+				t.Fatalf("resume at %#x, want %#x", got, textBase+pageSz+1)
+			}
+			if nr := h.syscall(c, mm, ac); nr != 500 {
+				t.Fatalf("next syscall = %d, want 500", nr)
+			}
+		})
+	}
+	t.Run("not a boundary", func(t *testing.T) {
+		h := newHarness(t)
+		mm := h.newMM()
+		// A ends with mov eax,0x0f0f0f0f (its last byte is 0x0f but not an opcode);
+		// B starts with add eax,1 (05 01 00 00 00).
+		a := h.pages(pad(nil, []byte{0xb8, 0x0f, 0x0f, 0x0f, 0x0f}), 1)
+		b := h.pages(pad([]byte{0x05, 1, 0, 0, 0, 0x89, 0xc7, 0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05}, nil), 1)
+		h.mapAt(mm, textBase, a, rx)
+		h.mapAt(mm, textBase+pageSz, b, rx)
+		c := h.p.NewContext(pkgcontext.Background())
+		defer c.Release()
+		ac := newAC(textBase+pageSz-5-16, 0)
+		ac.StateData().Regs.Rip = textBase + pageSz - 5 // the mov
+		if nr := h.syscall(c, mm, ac); nr != 500 {
+			t.Fatalf("syscall = %d, want 500", nr)
+		}
+		if got := ac.StateData().Regs.Rdi; got != 0x0f0f0f10 {
+			t.Fatalf("rdi = %#x, want 0x0f0f0f10 (the add must run)", got)
+		}
+	})
+}
+
+// TestInterruptStorm interrupts threads that make syscalls in a tight loop, so
+// that some interrupts land inside the trampoline, a trap-table entry or a
+// veneer, and checks that no register is lost: rbx counts the loop iterations.
+func TestInterruptStorm(t *testing.T) {
+	h := newHarness(t)
+	mm := h.newMM()
+	a := &asm{base: textBase}
+	imm := a.emit(0x48, 0xff, 0xc3)       // inc rbx
+	a.emit(0xb8, 39, 0, 0, 0, 0x0f, 0x05) // mov eax,39; syscall
+	a.emit(0xeb, 0xf4)                    // jmp imm
+	rel := a.emit(0x48, 0xff, 0xc3)       // inc rbx
+	a.emit(0xbf, 39, 0, 0, 0)             // mov edi,39
+	a.emit(0x48, 0x89, 0xf8)              // mov rax,rdi
+	a.emit(0x0f, 0x05)                    // syscall (veneer)
+	a.emit(0xeb, 0xf1)                    // jmp rel
+	h.mapAt(mm, textBase, h.pages(a.b, 1), rx)
+	const dur = 4 * time.Second
+	type stats struct{ syscalls, interrupts, low int }
+	run := func(start uint64) (stats, error) {
+		c := h.p.NewContext(pkgcontext.Background())
+		defer c.Release()
+		ac := newAC(start, 0)
+		r := &ac.StateData().Regs
+		var st stats
+		stop := make(chan struct{})
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() { // the interrupter
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				c.Interrupt()
+				for t0 := time.Now(); time.Since(t0) < 30*time.Microsecond; {
+				}
+			}
+		}()
+		defer func() { close(stop); wg.Wait() }()
+		deadline := time.Now().Add(dur)
+		for time.Now().Before(deadline) {
+			_, _, err := c.Switch(pkgcontext.Background(), mm, ac, -1)
+			switch {
+			case err == nil:
+				st.syscalls++
+				if r.Orig_rax != 39 || r.Rbx != uint64(st.syscalls) {
+					return st, fmt.Errorf("syscall %d: nr %d rbx %d", st.syscalls, r.Orig_rax, r.Rbx)
+				}
+				r.Rax = 0
+			case err == platform.ErrContextInterrupt:
+				st.interrupts++
+				if r.Rip < textBase {
+					st.low++
+				}
+				if r.Rbx != uint64(st.syscalls) && r.Rbx != uint64(st.syscalls)+1 {
+					return st, fmt.Errorf("interrupt at %#x after %d syscalls: rbx %d", r.Rip, st.syscalls, r.Rbx)
+				}
+			default:
+				return st, fmt.Errorf("Switch: %v", err)
+			}
+		}
+		return st, nil
+	}
+	var wg sync.WaitGroup
+	for _, s := range []struct {
+		name  string
+		start uint64
+	}{{"trap table", imm}, {"veneer", rel}} {
+		wg.Add(1)
+		go func(name string, start uint64) {
+			defer wg.Done()
+			st, err := run(start)
+			if err != nil {
+				t.Errorf("%s: %v", name, err)
+			}
+			t.Logf("STORM %s: %d syscalls, %d interrupts (%d outside the guest text)", name, st.syscalls, st.interrupts, st.low)
+		}(s.name, s.start)
+	}
+	wg.Wait()
 }

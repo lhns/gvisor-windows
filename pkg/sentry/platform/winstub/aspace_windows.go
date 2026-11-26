@@ -105,6 +105,7 @@ type addressSpace struct {
 	restartAt map[uint64]uint64
 	ud2Sites  map[uint64]bool
 	privs     []*privSection
+	edges     map[uint64]edge
 
 	tmu       sync.Mutex
 	byTid     map[uint32]*thread
@@ -118,7 +119,7 @@ func newAddressSpace(p *Platform) *addressSpace {
 	return &addressSpace{
 		p: p, loopDone: make(chan struct{}), started: make(chan error, 1),
 		vcur: stubasm.Veneers, siteCache: map[uint64]siteInfo{}, restartAt: map[uint64]uint64{},
-		ud2Sites: map[uint64]bool{}, byTid: map[uint32]*thread{},
+		ud2Sites: map[uint64]bool{}, byTid: map[uint32]*thread{}, edges: map[uint64]edge{},
 	}
 }
 
@@ -259,6 +260,15 @@ func (as *addressSpace) removeRange(lo, hi uint64) error {
 	if i == j {
 		return nil
 	}
+	for k, e := range as.edges {
+		if k > lo && k <= hi {
+			e.tail0f = false
+		}
+		if k >= lo && k < hi {
+			e.head05 = false
+		}
+		as.edges[k] = e
+	}
 	olds := append([]*view(nil), as.views[i:j]...)
 	as.views = append(as.views[:i], as.views[j:]...)
 	var pieces []*view
@@ -383,8 +393,27 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 		return err
 	}
 	if content != nil {
-		st := as.patchCode(content, lo)
+		head := content[0] == 0x05
+		st, scan := as.patchCode(content, lo)
 		debugf("text %#x-%#x: %+v", lo, hi, st)
+		// A syscall instruction may straddle two mapped ranges: 0x0f ends one,
+		// 0x05 starts the next. Whichever range is mapped second turns the 0x05
+		// into 0x0b (ud2, the debugger path) so that the pair is never executable.
+		lowE, highE := as.edges[lo], as.edges[hi]
+		if head && lowE.tail0f {
+			content[0] = 0x0B
+			as.ud2Sites[lo-1] = true
+		}
+		lowE.head05 = head
+		highE.tail0f = scan.tail0f
+		as.edges[lo], as.edges[hi] = lowE, highE
+		if scan.tail0f && highE.head05 {
+			if as.patchByte(hi, 0x0B) {
+				as.ud2Sites[hi-1] = true
+				highE.head05 = false
+				as.edges[hi] = highE
+			}
+		}
 		ps, err := as.newPrivate(content)
 		if err != nil {
 			return err
@@ -547,7 +576,7 @@ func (as *addressSpace) wxExec(a uint64) bool {
 		return false
 	}
 	ws, wo := v.wxSec, v.wxOff+(lo-v.lo)
-	st := as.patchCode(buf, lo)
+	st, _ := as.patchCode(buf, lo)
 	debugf("wx rescan %#x-%#x: %+v", lo, hi, st)
 	ps, err := as.newPrivate(buf)
 	if err != nil {
@@ -584,6 +613,29 @@ func (as *addressSpace) wxWrite(a uint64) bool {
 		debugf("wxWrite map: %v", err)
 		return false
 	}
+	return true
+}
+
+// edge records, for an address where two ranges meet, what the range ending
+// there ends with (tail0f) and the range starting there begins with (head05).
+type edge struct{ tail0f, head05 bool }
+
+// patchByte changes one byte of the private text mapped at a.
+func (as *addressSpace) patchByte(a uint64, b byte) bool {
+	v := as.findView(a)
+	if v == nil || v.priv == nil {
+		return false
+	}
+	off := v.off + (a - v.lo)
+	base := off &^ 0xFFFF
+	n := off - base + 1
+	m, err := call(pMapViewOfFile, v.priv.h, fileMapWrite, uintptr(base>>32), uintptr(base&0xFFFFFFFF), uintptr(n))
+	if err != nil {
+		debugf("patchByte: %v", err)
+		return false
+	}
+	*(*byte)(ptr(m + uintptr(off-base))) = b
+	pUnmapViewOfFile.Call(m)
 	return true
 }
 

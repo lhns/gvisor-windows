@@ -67,6 +67,9 @@ type scanSite struct {
 type scanResult struct {
 	pairs int // 0f 05 byte pairs
 	sites []scanSite
+	// tail0f: the last byte is 0x0f and starts an instruction (the sweep reaches
+	// it): a `syscall` whose second byte is the first byte of the next range.
+	tail0f bool
 }
 
 // decodeRange decodes code linearly from from to end (instructions that start
@@ -94,7 +97,7 @@ func decodeRange(code []byte, from, end int, list []ins) []ins {
 // chunk's decoding agrees with the true stream (it almost always does within a few
 // instructions), and the stream is decoded serially until then.
 func decodeAll(code []byte) []ins {
-	const minChunk = 256 << 10
+	const minChunk = 128 << 10
 	workers := min(runtime.GOMAXPROCS(0), len(code)/minChunk)
 	if workers < 2 {
 		return decodeRange(code, 0, len(code), make([]ins, 0, len(code)/4))
@@ -147,10 +150,15 @@ func scanText(code []byte) *scanResult {
 			r.pairs++
 		}
 	}
-	if r.pairs == 0 {
+	if r.pairs == 0 && (len(code) == 0 || code[len(code)-1] != 0x0F) {
 		return r
 	}
 	list := decodeAll(code)
+	end := 0
+	if n := len(list); n > 0 {
+		end = list[n-1].off + list[n-1].n
+	}
+	r.tail0f = len(code) > 0 && end == len(code)-1 && code[end] == 0x0F
 	isTgt := make([]uint64, (len(code)+63)/64)
 	for _, x := range list {
 		if x.hasTgt && x.tgt >= 0 && x.tgt < len(code) {
@@ -219,7 +227,7 @@ func (as *addressSpace) areaWrite(addr uint64, b []byte) {
 //
 // Bookkeeping for restarts and ud2 sites goes to as.restartAt and as.ud2Sites.
 // The caller holds as.mu.
-func (as *addressSpace) patchCode(code []byte, base uint64) siteStats {
+func (as *addressSpace) patchCode(code []byte, base uint64) (siteStats, *scanResult) {
 	var st siteStats
 	scan := as.p.scans.scan(code)
 	st.pairs = scan.pairs
@@ -238,7 +246,7 @@ func (as *addressSpace) patchCode(code []byte, base uint64) siteStats {
 		st.ud2++
 		debugf("ud2 site %#x", base+uint64(site.off))
 	}
-	return st
+	return st, scan
 }
 
 func (as *addressSpace) newSlot() (idx uint64, ok bool) {

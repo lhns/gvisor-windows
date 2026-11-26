@@ -18,7 +18,9 @@ package winstub
 
 import (
 	"fmt"
+	"os"
 	"runtime"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -31,10 +33,20 @@ import (
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/stubasm"
 )
 
-const (
-	stubSpin = 3000  // pause iterations on the stub side before it sleeps
-	ctlSpin  = 20000 // polls on the Sentry side before it sleeps
+// Spin budgets before a waiting side goes to sleep on its event: pause
+// iterations on the stub side, polls on the Sentry side. WINSTUB_STUBSPIN and
+// WINSTUB_CTLSPIN override them for tuning.
+var (
+	stubSpin = envInt("WINSTUB_STUBSPIN", 3000)
+	ctlSpin  = envInt("WINSTUB_CTLSPIN", 20000)
 )
+
+func envInt(name string, def int) int {
+	if v, err := strconv.Atoi(os.Getenv(name)); err == nil {
+		return v
+	}
+	return def
+}
 
 // Request kinds a stopped thread publishes (state 1).
 const (
@@ -98,7 +110,7 @@ func (as *addressSpace) slot(idx int) *thread {
 	*t.u64(stubasm.PgHReq) = uint64(dupInto(as.h, t.evReq))
 	*t.u64(stubasm.PgHReply) = uint64(dupInto(as.h, t.evReply))
 	*t.u64(stubasm.PgStkTop) = addr + stubasm.ThreadRegion - 0x100
-	*t.u64(stubasm.PgSpins) = stubSpin
+	*t.u64(stubasm.PgSpins) = uint64(stubSpin)
 	*t.u64(stubasm.PgXMask) = as.p.xmask
 	code := stubasm.RepairCode(addr)
 	copy(unsafe.Slice((*byte)(unsafe.Add(t.page, stubasm.PgRepair)), len(code)), code)
