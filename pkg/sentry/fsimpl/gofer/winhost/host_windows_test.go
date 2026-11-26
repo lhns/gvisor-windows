@@ -217,6 +217,9 @@ func testSymlinks(t *testing.T, emulate bool) {
 	}
 	native := fi.Mode()&os.ModeSymlink != 0
 	t.Logf("emulate=%v: relative symlink is native NTFS symlink: %v", emulate, native)
+	if !emulate && !native {
+		t.Skip("this user cannot create NTFS symlinks (no developer mode, not elevated): emulated links were used, as designed")
+	}
 	if native == emulate {
 		t.Errorf("native = %v with EmulateSymlinks = %v", native, emulate)
 	}

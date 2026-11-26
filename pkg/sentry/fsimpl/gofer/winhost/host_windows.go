@@ -599,8 +599,14 @@ func (fs *FS) Link(dir ID, name string, target ID) (Attr, error) {
 // setDisposition marks an open file for deletion with POSIX semantics: the
 // name disappears at once even if handles are open.
 func setDisposition(h windows.Handle) error {
-	flags := uint32(dispositionDelete | dispositionPosix | dispositionIgnoreReadOnly)
+	// The flag that deletes read-only files too is asked for only when the
+	// plain delete is refused: it needs more rights.
+	flags := uint32(dispositionDelete | dispositionPosix)
 	err := setInfo(h, classDispositionEx, unsafe.Pointer(&flags), 4)
+	if err == unix.EACCES {
+		flags |= dispositionIgnoreReadOnly
+		err = setInfo(h, classDispositionEx, unsafe.Pointer(&flags), 4)
+	}
 	if err == unix.EINVAL || err == unix.EOPNOTSUPP {
 		// Older Windows: classic delete-on-close.
 		d := uint32(1)
@@ -614,7 +620,10 @@ func (fs *FS) Unlink(dir ID, name string, rmdir bool) error {
 	fs.dirs.flush()
 	fs.forget(dir, name)
 	fs.expect(tokGone, name)
-	dh, err := fs.openID(dir, dirAccess|fileDeleteChild)
+	// No FILE_DELETE_CHILD on the parent: a standard user usually has DELETE on
+	// the child (inherited) but not that right on the directory, and the
+	// child's DELETE is enough.
+	dh, err := fs.openID(dir, dirAccess)
 	if err != nil {
 		return err
 	}
@@ -734,7 +743,7 @@ func renameHandle(h windows.Handle, full string, replace bool) error {
 	b := unsafe.Slice((*byte)(unsafe.Pointer(&buf[0])), len(buf)*8)
 	flags := uint32(0)
 	if replace {
-		flags = renameReplace | renamePosix | renameIgnoreReadOnly
+		flags = renameReplace | renamePosix
 	}
 	*(*uint32)(unsafe.Pointer(&b[0])) = flags
 	*(*uint32)(unsafe.Pointer(&b[16])) = uint32(len(name) * 2)
@@ -742,6 +751,12 @@ func renameHandle(h windows.Handle, full string, replace bool) error {
 		*(*uint16)(unsafe.Pointer(&b[hdr+2*i])) = c
 	}
 	err := setInfo(h, classRenameEx, unsafe.Pointer(&b[0]), uint32(size))
+	if err == unix.EACCES && replace {
+		// Replacing a read-only file needs the flag that ignores the attribute;
+		// it is not asked for first because it needs more rights.
+		*(*uint32)(unsafe.Pointer(&b[0])) = flags | renameIgnoreReadOnly
+		err = setInfo(h, classRenameEx, unsafe.Pointer(&b[0]), uint32(size))
+	}
 	if err == unix.EINVAL || err == unix.EOPNOTSUPP {
 		// No POSIX rename (before Windows 10 1809): classic rename.
 		r := uint32(0)
