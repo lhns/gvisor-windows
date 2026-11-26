@@ -13,6 +13,7 @@ gantt
     axisFormat %Y-%m-%d
     section runsc - runsc
     Measure runsc's command side :runsc_measure_cli, 2026-11-26, 2026-11-26
+    Choose runsc commands for Windows :runsc_windows_commands, 2026-11-26, 2026-11-26
     section platform - platform
     Survey ELF segment alignment :platform_elf_alignment_survey, 2026-11-26, 2026-11-26
     Measure syscall trap cost :platform_trap_cost, 2026-11-26, 2026-11-26
@@ -20,14 +21,18 @@ gantt
     Set the TLS register :platform_tls_register, 2026-11-26, 2026-11-26
     Restrict the stub process :platform_restricted_stub, 2026-11-26, 2026-11-26
     Hook syscalls like zpoline :crit, platform_zpoline_hooks, 2026-11-26, 2026-11-26
+    Check what exceptions do to stacks :active, platform_exception_stack, 2026-11-26, 2026-11-26
     section sentry - sentry
     Recover faults in Go :sentry_go_fault_recovery, 2026-11-26, 2026-11-26
     section fs - files
     Compatibility layer, not security bound… :fs_compat_layer_not_boundary, 2026-11-26, 2026-11-26
     Test persistent image storage :fs_persistent_image_storage, 2026-11-26, 2026-11-26
+    Choose the persistent storage :fs_persistent_storage_choice, 2026-11-26, 2026-11-26
     section workloads - workloads
     Write the Podman acceptance test :workloads_acceptance_test, 2026-11-26, 2026-11-26
     Podman on gVisor on Linux :workloads_podman_on_gvisor_linux, 2026-11-26, 2026-11-26
+    Does host networking meet the bar :workloads_bar_host_network, 2026-11-26, 2026-11-26
+    Strict bar on stock gVisor :active, workloads_strict_bar_linux, 2026-11-26, 2026-11-26
     section research - research
     Pick gVisor as the base :research_gvisor_base, 2026-11-17, 2026-11-26
     Revive LKL or nommu UML :crit, research_lkl_nommu, 2026-11-26, 2026-11-26
@@ -41,8 +46,10 @@ gantt
     Name it gvisor-windows :ops_name_and_fork, 2026-11-26, 2026-11-26
     Run Linux tests on GitHub Actions :ops_linux_tests_on_actions, 2026-11-26, 2026-11-26
     Borrow code, check licenses later :ops_borrow_code, 2026-11-26, 2026-11-26
+    Go or no-go after Phase 0 :ops_phase0_go_no_go, 2026-11-26, 2026-11-26
     Podman only as the bar :ops_podman_only_the_bar, 2026-11-26, 2026-11-26
+    Choose how to run gVisor's tests :ops_syscall_test_strategy, 2026-11-26, 2026-11-26
 ```
 
-Not shown (no `start`): `runsc-container-on-windows`, `runsc-windows-commands`, `runsc-sandbox-lifecycle`, `platform-stub-controller`, `platform-page-verification`, `platform-syscall-fast-path`, `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-winstub`, `platform-busybox-on-windows`, `platform-hardware-acceleration`, `platform-fs-base-repair`, `platform-no-fsgsbase-fallback`, `sentry-windows-build`, `sentry-memory-file-sections`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `sentry-fault-recovery`, `sentry-host-stdio-and-tty`, `sentry-threads-and-signals`, `fs-windows-directfs`, `fs-change-notifications`, `fs-linux-metadata-on-ntfs`, `fs-handles-do-not-block-users`, `fs-persistent-storage-choice`, `fs-root-filesystem-source`, `fs-persistent-storage-impl`, `net-netstack-windows-link`, `net-port-forwarding`, `workloads-podman-on-windows`, `workloads-acceptance-test-windows`, `workloads-podman-harness`, `workloads-gvisor-bridge-netlink`, `workloads-gvisor-port-publishing`, `workloads-bar-host-network`, `ops-phase0-go-no-go`, `ops-windows-ci-standard-user`, `ops-syscall-test-strategy`, `ops-syscall-tests-on-windows`, `ops-upstream-merges`, `ops-portable-packaging`
+Not shown (no `start`): `runsc-container-on-windows`, `runsc-sandbox-lifecycle`, `platform-stub-controller`, `platform-page-verification`, `platform-syscall-fast-path`, `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-winstub`, `platform-busybox-on-windows`, `platform-hardware-acceleration`, `platform-fs-base-repair`, `platform-no-fsgsbase-fallback`, `platform-static-guest-from-memory`, `sentry-windows-build`, `sentry-memory-file-sections`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `sentry-fault-recovery`, `sentry-host-stdio-and-tty`, `sentry-threads-and-signals`, `sentry-unix-shim`, `fs-windows-directfs`, `fs-change-notifications`, `fs-linux-metadata-on-ntfs`, `fs-handles-do-not-block-users`, `fs-root-filesystem-source`, `fs-persistent-storage-impl`, `net-netstack-windows-link`, `net-port-forwarding`, `workloads-podman-on-windows`, `workloads-acceptance-test-windows`, `workloads-podman-harness`, `workloads-gvisor-bridge-netlink`, `workloads-gvisor-port-publishing`, `ops-windows-ci-standard-user`, `ops-syscall-tests-on-windows`, `ops-upstream-merges`, `ops-portable-packaging`
 <!-- END GENERATED: timeline -->

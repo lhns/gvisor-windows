@@ -1,6 +1,6 @@
 # 0004. Phase 0 results: go/no-go
 
-- Status: Proposed (the owner decides go or no-go)
+- Status: Accepted (go: the owner asked for the full project on 2026-11-26)
 - Date: 2026-11-26
 
 ## Context
@@ -23,15 +23,15 @@ Phase 0 tested whether porting gVisor to Windows hosts is feasible (ADR 0001) an
 | runsc command side | 35 packages / about 42k lines beyond the sandbox, about 31k Linux-specific: Windows needs its own sandbox launcher |
 
 ## Decision
-Recommendation: **go**, with these conditions:
+**Go**, with these conditions:
 - Native execution requires a CPU with FSGSBASE, which Windows lets user mode use; machines or VMs without it (such as the QEMU-guest dev machine) are unsupported unless a later fallback rewrites `%fs` accesses. Only GitHub's hosted Windows image was tested; the S3 binary (artifact of the `windows-spikes` workflow) should also run on a real target machine before relying on this.
 - The stub keeps a fault-and-repair handler for the FS base, and syscall hand-off uses spinning plus patched hot sites, since a trap per syscall costs 1.7-8 µs.
 - The first number of Phase 1 is the cost of creating a stub process and mapping its memory.
 - Bridge networking and port publishing are gVisor gaps to fix or work around.
 
-Inputs for owner decisions, not decided here:
-- Persistent storage (tech-tree node "Choose the persistent storage"): the host-directory result points to real files in a Windows directory (R3 option (a)), but it ran on a Linux filesystem and does not show that NTFS can carry xattrs, hard links and device nodes.
-- Whether the host-network variant of steps 7-8 counts as meeting the bar of ADR 0002, or `-p` and compose service names are required.
+Follow-up decisions, taken under the owner's delegation:
+- Persistent storage: ADR 0007 (real files in a Windows folder; the Linux-filesystem result does not yet show NTFS can carry the metadata).
+- The bar is the strict one of ADR 0002: `-p` and compose service names are required; host networking is an interim state.
 
 ## Consequences
 - Phase 1 starts with the stub/controller prototype, the FS-base repair handler and the Sentry building for Windows.

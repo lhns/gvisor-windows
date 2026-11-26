@@ -11,22 +11,26 @@ Scope: workloads that measure compatibility; the Podman acceptance test is the b
 flowchart TB
     workloads_acceptance_test["✔ Write the Podman<br/>acceptance test"]
     workloads_podman_on_gvisor_linux[/"✔ Podman on gVisor on<br/>Linux"/]
+    workloads_strict_bar_linux[/"▶ Strict bar on stock<br/>gVisor"/]
     workloads_acceptance_test_windows["⛔ Acceptance test for<br/>Windows"]
     workloads_gvisor_bridge_netlink>"⚠ Bridge networking<br/>fails in gVisor"]
     workloads_gvisor_port_publishing>"⚠ Port publishing<br/>untested in gVisor"]
     workloads_podman_on_windows[/"⛔ Podman passes on<br/>Windows"/]
     workloads_podman_harness["⛔ Serve Podman to<br/>Windows clients"]
     workloads_acceptance_test ~~~ workloads_podman_on_gvisor_linux
-    workloads_acceptance_test ~~~ workloads_acceptance_test_windows
-    workloads_acceptance_test ~~~ workloads_gvisor_bridge_netlink
-    workloads_podman_on_gvisor_linux ~~~ workloads_gvisor_port_publishing
+    workloads_podman_on_gvisor_linux ~~~ workloads_strict_bar_linux
+    workloads_podman_on_gvisor_linux ~~~ workloads_acceptance_test_windows
+    workloads_podman_on_gvisor_linux ~~~ workloads_gvisor_bridge_netlink
+    workloads_strict_bar_linux ~~~ workloads_gvisor_port_publishing
     workloads_acceptance_test_windows ~~~ workloads_podman_on_windows
     workloads_gvisor_bridge_netlink ~~~ workloads_podman_harness
     workloads_acceptance_test --> workloads_podman_on_gvisor_linux
+    workloads_podman_on_gvisor_linux -.-> workloads_gvisor_bridge_netlink
     workloads_podman_on_gvisor_linux -.-> workloads_gvisor_port_publishing
+    workloads_podman_on_gvisor_linux --> workloads_strict_bar_linux
     workloads_acceptance_test --> workloads_acceptance_test_windows
     workloads_acceptance_test_windows --> workloads_podman_on_windows
-    linkStyle 7 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    linkStyle 8,9 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -43,6 +47,7 @@ flowchart TB
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class workloads_acceptance_test unrated
     class workloads_podman_on_gvisor_linux mixed
+    class workloads_strict_bar_linux inprog
     class workloads_acceptance_test_windows,workloads_podman_on_windows,workloads_podman_harness blocked
     class workloads_gvisor_bridge_netlink,workloads_gvisor_port_publishing finding
 ```
@@ -60,7 +65,8 @@ flowchart TB
 | `workloads-podman-harness` | Serve Podman to Windows clients | tooling | windows-ci | blocked | unrated |  |  | runsc-container-on-windows, net-port-forwarding |  |  |  |  |
 | `workloads-gvisor-bridge-netlink` | Bridge networking fails in gVisor | defect | linux-ci | next | unrated |  |  |  |  |  |  | docs/results/0a-linux.md |
 | `workloads-gvisor-port-publishing` | Port publishing untested in gVisor | defect | linux-ci | next | unrated |  |  |  |  |  |  | docs/results/0a-linux.md |
-| `workloads-bar-host-network` | Does host networking meet the bar | owner-decision | owner | next | n/a |  |  |  |  |  |  | docs/adr/0004-phase-0-results.md |
+| `workloads-bar-host-network` | Does host networking meet the bar | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0004-phase-0-results.md |
+| `workloads-strict-bar-linux` | Strict bar on stock gVisor | experiment | linux-ci | in-progress | unrated | 2026-11-26 |  | workloads-podman-on-gvisor-linux |  |  |  |  |
 
 ### Details per node
 
@@ -73,7 +79,8 @@ flowchart TB
 | `workloads-podman-harness` | Serve Podman to Windows clients |  |  | The test harness runs the Podman engine on runsc and exposes its API to the stock Windows clients. | Done when: podman version from a Windows client reaches the engine running on runsc. |  |  |  |  |
 | `workloads-gvisor-bridge-netlink` | Bridge networking fails in gVisor |  |  | In stock gVisor, Podman's default bridge network fails because netavark cannot open its netlink socket; only host networking works. | Open gap in gVisor itself. Fixed when: the acceptance test passes with the default bridge network on stock runsc. |  |  |  |  |
 | `workloads-gvisor-port-publishing` | Port publishing untested in gVisor |  |  | Publishing container ports with -p and service-name lookup in compose never worked or were never exercised inside gVisor. | Fixed when: -p and compose service names pass inside stock runsc. |  |  |  |  |
-| `workloads-bar-host-network` | Does host networking meet the bar |  |  | On Linux, steps 7 and 8 only passed with host networking; decide whether that counts or -p and compose service names are required. |  |  |  |  |  |
+| `workloads-bar-host-network` | Does host networking meet the bar |  |  | Decided: host networking is only an interim state; -p and compose service names are required. |  |  |  |  |  |
+| `workloads-strict-bar-linux` | Strict bar on stock gVisor |  |  | Find out what stock gVisor on Linux needs for -p port publishing and compose service names, across Podman versions and network modes. | Done when: docs/results/0c-linux-strict-bar.md records the matrix and the precise gVisor gaps. |  |  |  |  |
 
 ### Folded items per node
 

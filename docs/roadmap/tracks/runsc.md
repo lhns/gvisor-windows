@@ -41,7 +41,7 @@ flowchart TB
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `runsc-container-on-windows` | Run a container with runsc | feature | windows-ci | blocked | unrated |  |  | runsc-sandbox-lifecycle, fs-windows-directfs, net-netstack-windows-link |  |  |  |  |
 | `runsc-measure-cli` | Measure runsc's command side | experiment | none | done | successful | 2026-11-26 | 2026-11-26 | research-gvisor-base |  |  | about 42k lines | docs/results/runsc-command-side.md |
-| `runsc-windows-commands` | Choose runsc commands for Windows | owner-decision | owner | blocked | n/a |  |  | runsc-measure-cli |  |  |  |  |
+| `runsc-windows-commands` | Choose runsc commands for Windows | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 | runsc-measure-cli |  |  |  | docs/adr/0008-runsc-on-windows.md |
 | `runsc-sandbox-lifecycle` | Start and stop sandboxes on Windows | feature | windows-ci | blocked | unrated |  |  | runsc-windows-commands, platform-busybox-on-windows |  |  |  |  |
 
 ### Details per node

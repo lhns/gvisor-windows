@@ -57,7 +57,7 @@ flowchart TB
 | `fs-change-notifications` | Windows changes reach the guest | feature | windows-ci | blocked | unrated |  |  | fs-windows-directfs |  |  |  |  |
 | `fs-linux-metadata-on-ntfs` | Linux file metadata on NTFS | feature | windows-ci | blocked | unrated |  |  | fs-windows-directfs |  |  |  |  |
 | `fs-handles-do-not-block-users` | Files stay editable on Windows | feature | windows-ci | blocked | unrated |  |  | fs-windows-directfs |  |  |  |  |
-| `fs-persistent-storage-choice` | Choose the persistent storage | owner-decision | owner | blocked | n/a |  |  | fs-persistent-image-storage, fs-windows-directfs |  |  |  |  |
+| `fs-persistent-storage-choice` | Choose the persistent storage | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 | fs-persistent-image-storage, fs-windows-directfs |  |  |  | docs/adr/0007-persistent-storage-in-a-windows-folder.md |
 | `fs-root-filesystem-source` | Root filesystem from an OCI bundle | feature | windows-ci | blocked | unrated |  |  | fs-windows-directfs |  |  |  |  |
 | `fs-persistent-storage-impl` | Storage that survives restarts | feature | windows-ci | blocked | unrated |  |  | fs-persistent-storage-choice |  |  |  |  |
 
@@ -71,7 +71,7 @@ flowchart TB
 | `fs-change-notifications` | Windows changes reach the guest |  |  | Edits made on Windows invalidate the Sentry's caches and arrive in the guest as inotify events. | Done when: a file changed in Explorer is visible in the guest within one second and fires an inotify event. |  |  |  |  |
 | `fs-linux-metadata-on-ntfs` | Linux file metadata on NTFS |  |  | Owner, mode bits, symlinks and special files survive on NTFS, using a fixed owner and alternate data streams. | Done when: chmod, chown, symlink and mknod round-trip through a Windows folder. |  |  |  |  |
 | `fs-handles-do-not-block-users` | Files stay editable on Windows |  |  | The Sentry holds Windows file handles only briefly, so editors and git can still rename and delete files. | Done when: git checkout and an editor save on Windows succeed while a guest has the folder open. |  |  |  |  |
-| `fs-persistent-storage-choice` | Choose the persistent storage |  |  | Pick how a writable filesystem survives restarts: NTFS with metadata, one big image file, or an in-memory store with a cache. | Done when: an ADR records the choice with the measurements from Phase 0. |  |  |  |  |
+| `fs-persistent-storage-choice` | Choose the persistent storage |  |  | Decided: persistent data lives as real files in a Windows folder, with Linux metadata in an NTFS stream. | Done when: an ADR records the choice with the measurements from Phase 0. |  |  |  |  |
 | `fs-root-filesystem-source` | Root filesystem from an OCI bundle |  |  | The guest's root filesystem comes from an unpacked OCI bundle directory on Windows. | Done when: busybox boots from a rootfs directory unpacked on NTFS. |  |  |  |  |
 | `fs-persistent-storage-impl` | Storage that survives restarts |  |  | Implement the chosen writable filesystem so data inside the sandbox outlives a restart. | Done when: files and image layers written in the guest are there after the sandbox restarts. |  |  |  |  |
 <!-- END GENERATED: table-fs -->

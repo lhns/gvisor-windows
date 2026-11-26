@@ -399,7 +399,7 @@
   title: Go or no-go after Phase 0
   track: ops
   kind: owner-decision
-  state: next
+  state: done
   outcome: n/a
   evidence:
   - docs/adr/0004-phase-0-results.md
@@ -418,11 +418,11 @@
   - runsc-measure-cli
   replaced_by: []
   lane: owner
-  start: ''
-  end: ''
+  start: '2026-11-26'
+  end: '2026-11-26'
   folded: []
   overview: true
-  plain: The owner decides, from the Phase 0 results, whether the port goes ahead.
+  plain: 'Go: the owner asked for the full project; ADR 0004 lists the conditions.'
   notes: 'Input: docs/adr/0004-phase-0-results.md (recommendation: go, with conditions).'
 - id: workloads-podman-on-windows
   title: Podman passes on Windows
@@ -502,6 +502,7 @@
   - platform-4k-section-views
   - platform-tls-register
   - platform-restricted-stub
+  - platform-exception-stack
   replaced_by: []
   lane: windows-ci
   start: ''
@@ -628,6 +629,7 @@
   - sentry-host-stdio-and-tty
   - fs-root-filesystem-source
   - platform-fs-base-repair
+  - platform-static-guest-from-memory
   replaced_by: []
   lane: windows-ci
   start: ''
@@ -646,7 +648,7 @@
   verdict_quote: ''
   headline: ''
   depends_on:
-  - ops-phase0-go-no-go
+  - sentry-unix-shim
   - sentry-go-fault-recovery
   replaced_by: []
   lane: windows-ci
@@ -798,9 +800,10 @@
   title: Choose the persistent storage
   track: fs
   kind: owner-decision
-  state: blocked
+  state: done
   outcome: n/a
-  evidence: []
+  evidence:
+  - docs/adr/0007-persistent-storage-in-a-windows-folder.md
   verdict_quote: ''
   headline: ''
   depends_on:
@@ -808,11 +811,11 @@
   - fs-windows-directfs
   replaced_by: []
   lane: owner
-  start: ''
-  end: ''
+  start: '2026-11-26'
+  end: '2026-11-26'
   folded: []
   overview: false
-  plain: 'Pick how a writable filesystem survives restarts: NTFS with metadata, one big image file, or an in-memory store with a cache.'
+  plain: 'Decided: persistent data lives as real files in a Windows folder, with Linux metadata in an NTFS stream.'
   notes: 'Done when: an ADR records the choice with the measurements from Phase 0.'
 - id: net-netstack-windows-link
   title: Netstack to Windows sockets
@@ -876,17 +879,18 @@
   title: Choose runsc commands for Windows
   track: runsc
   kind: owner-decision
-  state: blocked
+  state: done
   outcome: n/a
-  evidence: []
+  evidence:
+  - docs/adr/0008-runsc-on-windows.md
   verdict_quote: ''
   headline: ''
   depends_on:
   - runsc-measure-cli
   replaced_by: []
   lane: owner
-  start: ''
-  end: ''
+  start: '2026-11-26'
+  end: '2026-11-26'
   folded: []
   overview: false
   plain: Decide which runsc commands the Windows build supports first and how it is driven.
@@ -934,7 +938,7 @@
   title: Windows CI as a standard user
   track: ops
   kind: tooling
-  state: blocked
+  state: next
   outcome: unrated
   evidence: []
   verdict_quote: ''
@@ -953,16 +957,17 @@
   title: Choose how to run gVisor's tests
   track: ops
   kind: owner-decision
-  state: next
+  state: done
   outcome: n/a
-  evidence: []
+  evidence:
+  - docs/adr/0009-running-gvisors-tests.md
   verdict_quote: ''
   headline: ''
   depends_on: []
   replaced_by: []
   lane: owner
-  start: ''
-  end: ''
+  start: '2026-11-26'
+  end: '2026-11-26'
   folded: []
   overview: false
   plain: The Go branch ships no tests; decide whether gVisor's unit and syscall tests run from a master checkout with Bazel or get ported.
@@ -1275,7 +1280,7 @@
   title: Does host networking meet the bar
   track: workloads
   kind: owner-decision
-  state: next
+  state: done
   outcome: n/a
   evidence:
   - docs/adr/0004-phase-0-results.md
@@ -1284,8 +1289,87 @@
   depends_on: []
   replaced_by: []
   lane: owner
+  start: '2026-11-26'
+  end: '2026-11-26'
+  folded: []
+  overview: false
+  plain: 'Decided: host networking is only an interim state; -p and compose service names are required.'
+- outcome: unrated
+  evidence:
+  - docs/adr/0006-a-linux-abi-shim-for-x-sys-unix.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - ops-phase0-go-no-go
+  replaced_by: []
   start: ''
   end: ''
   folded: []
   overview: false
-  plain: On Linux, steps 7 and 8 only passed with host networking; decide whether that counts or -p and compose service names are required.
+  id: sentry-unix-shim
+  title: Make Linux names resolve on Windows
+  track: sentry
+  kind: feature
+  state: next
+  lane: none
+  plain: A Windows copy of x/sys/unix defines the Linux constants and types and stubs the calls, so the Sentry compiles with few edits.
+  notes: 'Done when: ./runsc/boot type-checks for GOOS=windows with Linux-only subsystems excluded by build tags.'
+- outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - platform-trap-cost
+  replaced_by: []
+  start: '2026-11-26'
+  end: ''
+  folded: []
+  overview: false
+  id: platform-exception-stack
+  title: Check what exceptions do to stacks
+  track: platform
+  kind: experiment
+  state: in-progress
+  lane: windows-ci
+  plain: Windows writes exception data onto the faulting thread stack; check whether that destroys data Linux code keeps there, and what happens on unmapped stacks.
+  notes: 'Done when: S7 results are in docs/results/0b-windows.md.'
+- outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - workloads-podman-on-gvisor-linux
+  replaced_by: []
+  start: '2026-11-26'
+  end: ''
+  folded: []
+  overview: false
+  id: workloads-strict-bar-linux
+  title: Strict bar on stock gVisor
+  track: workloads
+  kind: experiment
+  state: in-progress
+  lane: linux-ci
+  plain: Find out what stock gVisor on Linux needs for -p port publishing and compose service names, across Podman versions and network modes.
+  notes: 'Done when: docs/results/0c-linux-strict-bar.md records the matrix and the precise gVisor gaps.'
+- outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - platform-winstub
+  - sentry-fault-recovery
+  - platform-fs-base-repair
+  replaced_by: []
+  start: ''
+  end: ''
+  folded: []
+  overview: true
+  id: platform-static-guest-from-memory
+  title: Run a static guest from memory
+  track: platform
+  kind: feature
+  state: blocked
+  lane: windows-ci
+  plain: 'Thinnest end-to-end slice: the Sentry on Windows runs one embedded static program from its own memory filesystem, without host files, network or threads.'
+  notes: 'Done when: a static hello-world and a static program that forks and execs run under the Sentry in Windows CI.'

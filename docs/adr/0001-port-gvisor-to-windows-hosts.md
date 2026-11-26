@@ -1,6 +1,6 @@
 # 0001. Port gVisor to Windows hosts
 
-- Status: Proposed (decided after Phase 0, ADR 0004)
+- Status: Accepted (go, ADR 0004)
 - Date: 2026-11-26
 
 ## Context
