@@ -72,7 +72,8 @@ int main(int argc, char **argv) {
 			pid_t c = wait(&st);
 			if (c > 0 && WIFEXITED(st)) sum += WEXITSTATUS(st);
 		}
-		printf("forkexec: sum=%d wait=%d errno_echild=%d\n", sum, (int)wait(&st), errno == ECHILD);
+		int w2 = wait(&st), e2 = errno == ECHILD;
+		printf("forkexec: sum=%d wait=%d errno_echild=%d\n", sum, w2, e2);
 		return 0;
 	}
 	printf("usage\n");
