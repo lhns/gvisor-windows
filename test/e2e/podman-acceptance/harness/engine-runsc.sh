@@ -33,7 +33,7 @@ start() {
   [ "$INSTALL_SLIRP" = 1 ] && pre="$pre; dnf install -y -q slirp4netns"
   if [ "$SHIM" = 1 ]; then
     st+=(-v "$SHIM_SO:/opt/shim.so:ro")
-    pre="$pre; NV=\$(ls /usr/libexec/podman/netavark /usr/lib/podman/netavark 2>/dev/null | head -1); mv \$NV \$NV.real; printf '#!/bin/sh\nRUST_LOG=trace LD_PRELOAD=/opt/shim.so exec %s.real \"\$@\"\n' \$NV >\$NV; chmod +x \$NV"
+    pre="$pre; NV=\$(ls /usr/libexec/podman/netavark /usr/lib/podman/netavark 2>/dev/null | head -1); mv \$NV \$NV.real; printf '#!/bin/sh\nRUST_LOG=trace LD_PRELOAD=/opt/shim.so exec %s.real \"\$@\" 2>>/var/log/netavark.log\n' \$NV >\$NV; chmod +x \$NV"
   fi
   CONF=/tmp/containers-$NAME.conf; sed "s/^cgroups = .*/cgroups = \"$CGROUPS\"/" "$HERE/containers.conf" >"$CONF"
   docker rm -f "$NAME" >/dev/null 2>&1
