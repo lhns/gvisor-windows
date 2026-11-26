@@ -74,14 +74,14 @@ jobs:
         run: |
           & tools/windows/ci/run-as-standard-user.ps1 `
             -Program C:\ciinunsctest.exe `
-            -Arguments '-runsc','C:\ciinunsc.exe','-rootfs','C:\ci\workootfs','-work','C:\ci\work\std-erofs','-image','C:\ci\workootfs.erofs','-only','erofs' `
+            -Arguments '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-erofs','-image','C:\ci\work\rootfs.erofs','-only','erofs' `
             -GrantPath C:\ciin -WritablePath C:\ci\work -TimeoutSeconds 300
       - name: All tests as a standard user
         shell: pwsh
         run: |
           & tools/windows/ci/run-as-standard-user.ps1 `
             -Program C:\ci\bin\runsctest.exe `
-            -Arguments '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std','-image','C:\ci\work\rootfs.erofs' `
+            -Arguments '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std' `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 1500
       - uses: actions/upload-artifact@v4
         if: always()
