@@ -1577,18 +1577,19 @@
   title: Make nftables safe for concurrent use
   track: net
   kind: defect
-  state: next
+  state: done
   outcome: unrated
   evidence:
   - docs/results/1n-bridge-networking.md
+  - docs/results/1n-nftables-safety.md
   verdict_quote: ''
   headline: ''
   depends_on: []
   replaced_by: []
   lane: linux-ci
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
-  plain: Podman 6's netavark only speaks nftables, and gVisor's nftables package says it is not thread-safe, so --nftables stays off by default.
+  plain: Podman 6's netavark only speaks nftables, and gVisor's nftables package said it is not thread-safe, so --nftables stayed off by default; it is now safe under a race test and on by default.
   notes: 'Fixed when: the nftables package is safe under concurrent rule updates and packet evaluation (race-detector test), and --nftables can default on.'

@@ -198,7 +198,6 @@ flowchart TB
 | Netstack to Windows sockets | ⛔ blocked | gVisor's own TCP/IP stack sends guest traffic out through ordinary Windows sockets, like a user-space NAT. |
 | Publish guest ports on localhost | ⛔ blocked | A port opened in the guest becomes reachable on the Windows machine's localhost. |
 | Bridge networking inside gVisor | ✔ done · successful | Podman's default network creates a bridge and veth pairs over netlink; gVisor lacks part of that, so it fails today. Fix it in gVisor itself, first on Linux, then it carries over to Windows. |
-| Make nftables safe for concurrent use | ⚠ open | Podman 6's netavark only speaks nftables, and gVisor's nftables package says it is not thread-safe, so --nftables stays off by default. |
 | Podman on gVisor on Linux | ✔ done · mixed ⚠ | Run the acceptance test on stock gVisor on Linux; whatever fails there is a gap in gVisor itself, not in the port. |
 | Podman passes on Windows | ⛔ blocked | The bar for enough features: an unmodified Podman engine passes the acceptance test on gVisor on Windows. |
 | Acceptance test for Windows | ⛔ blocked | The ten acceptance steps written for Windows, driving the stock Podman and docker clients. |
@@ -218,7 +217,6 @@ flowchart TB
 **linux-ci**
 
 - `ops-upstream-merges`: Merge upstream gVisor regularly
-- `net-nftables-thread-safety`: Make nftables safe for concurrent use
 
 **windows-ci**
 
@@ -256,12 +254,13 @@ Generated on 2026-11-26.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 40 done, 7 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 41 done, 7 abandoned</summary>
 
 - `fs-compat-layer-not-boundary`: Compatibility layer, not security boundary (✔ done · n/a). The sandbox may open the user's files directly with the user's rights; it isolates containers from each other, not from the user.
 - `fs-persistent-image-storage`: Test persistent image storage (✔ done · mixed). Find a writable filesystem inside the sandbox that survives a restart, and how fast each option is.
 - `fs-persistent-storage-choice`: Choose the persistent storage (✔ done · n/a). Decided: persistent data lives as real files in a Windows folder, with Linux metadata in an NTFS stream.
 - `net-bridge-networking`: Bridge networking inside gVisor (✔ done · successful). Podman's default network creates a bridge and veth pairs over netlink; gVisor lacks part of that, so it fails today. Fix it in gVisor itself, first on Linux, then it carries over to Windows.
+- `net-nftables-thread-safety`: Make nftables safe for concurrent use (✔ fixed). Podman 6's netavark only speaks nftables, and gVisor's nftables package said it is not thread-safe, so --nftables stayed off by default; it is now safe under a race test and on by default.
 - `ops-borrow-code`: Borrow code, check licenses later (✔ done · n/a). Code from other projects may be reused; its origin is recorded so the owner can review licences later.
 - `ops-linux-tests-on-actions`: Run Linux tests on GitHub Actions (✔ done · n/a). Everything that needs a Linux host runs on GitHub's hosted runners.
 - `ops-name-and-fork`: Name it gvisor-windows (✔ done · n/a). The project is an unofficial fork of gVisor's Go branch called gvisor-windows.
@@ -331,7 +330,7 @@ Each track has its own page with its tree, node table and per-node details.
 - [platform - platform](roadmap/tracks/platform.md): 24 nodes (15 done, 4 blocked, 4 parked, 1 abandoned)
 - [sentry - sentry](roadmap/tracks/sentry.md): 9 nodes (4 done, 1 in progress, 4 blocked)
 - [fs - files](roadmap/tracks/fs.md): 9 nodes (3 done, 6 blocked)
-- [net - network](roadmap/tracks/net.md): 4 nodes (1 done, 1 next, 2 blocked)
+- [net - network](roadmap/tracks/net.md): 4 nodes (2 done, 2 blocked)
 - [workloads - workloads](roadmap/tracks/workloads.md): 10 nodes (7 done, 3 blocked)
 - [research - research](roadmap/tracks/research.md): 8 nodes (2 done, 6 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 10 nodes (6 done, 2 next, 2 blocked)
