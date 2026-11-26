@@ -17,6 +17,7 @@
 package winstub
 
 import (
+	"sort"
 	"runtime"
 	"syscall"
 	"unsafe"
@@ -704,7 +705,7 @@ func TestStubStart(t *testing.T) {
 
 // bareStart creates the stub suspended under a debugger, optionally reserves the
 // guest range, resumes it and returns the time until the loader breakpoint.
-func bareStart(p *Platform, reserve, nodebug bool) (time.Duration, error) {
+func bareStart(p *Platform, reserve, nodebug bool, holes ...rng) (time.Duration, error) {
 	type res struct {
 		d   time.Duration
 		err error
@@ -729,7 +730,10 @@ func bareStart(p *Platform, reserve, nodebug bool) (time.Duration, error) {
 		if reserve {
 			as := newAddressSpace(p)
 			as.h = uintptr(pi.Process)
-			if err := as.reserve(queryUsed(as.h, stubasm.ReserveMin, stubasm.ReserveMax)); err != nil {
+			used := queryUsed(as.h, stubasm.ReserveMin, stubasm.ReserveMax)
+			used = append(used, holes...)
+			sort.Slice(used, func(i, j int) bool { return used[i].lo < used[j].lo })
+			if err := as.reserve(used); err != nil {
 				ch <- res{0, err}
 				return
 			}
@@ -760,11 +764,21 @@ func bareStart(p *Platform, reserve, nodebug bool) (time.Duration, error) {
 
 func TestStubStartExperiment(t *testing.T) {
 	h := newHarness(t)
-	for _, c := range []struct {
-		name            string
-		reserve, nodebug bool
-	}{{"debug, no reservation", false, false}, {"debug, reserved", true, false}, {"debug, no reservation", false, false}, {"debug, reserved", true, false}} {
-		d, err := bareStart(h.p, c.reserve, c.nodebug)
-		t.Logf("EXPERIMENT %s: loader breakpoint after %v (%v)", c.name, d, err)
+	top := stubasm.CtlBase + stubasm.CtlSize
+	for i := 0; i < 2; i++ {
+		for _, c := range []struct {
+			name  string
+			holes []rng
+		}{
+			{"reserved, no hole", nil},
+			{"hole 1 GiB at 0x7F000000000 (prototype)", []rng{{0x7F0_0000_0000, 0x7F0_4000_0000}}},
+			{"hole above the guest range (2 GiB)", []rng{{top, stubasm.ReserveMax}}},
+			{"hole above the guest range (128 MiB)", []rng{{stubasm.ReserveMax - 128<<20, stubasm.ReserveMax}}},
+			{"hole 16 MiB at 0x10000000", []rng{{0x1000_0000, 0x1100_0000}}},
+			{"hole 16 MiB at 0x200000000", []rng{{0x2_0000_0000, 0x2_0100_0000}}},
+		} {
+			d, err := bareStart(h.p, true, false, c.holes...)
+			t.Logf("EXPERIMENT %s: loader breakpoint after %v (%v)", c.name, d, err)
+		}
 	}
 }
