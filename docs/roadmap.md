@@ -114,6 +114,7 @@ flowchart TB
         platform_static_guest_from_memory["platform · ⛔ Run a<br/>static guest from<br/>memory"]
         platform_busybox_on_windows["platform · ⛔ Run<br/>busybox under the<br/>Sentry"]
         runsc_container_on_windows["runsc · ⛔ Run a<br/>container with runsc"]
+        net_bridge_networking["net · ⛔ Bridge<br/>networking inside<br/>gVisor"]
         workloads_podman_on_windows[/"workloads · ⛔ Podman<br/>passes on Windows"/]
     end
     research_gvisor_base ~~~ workloads_podman_on_gvisor_linux
@@ -129,8 +130,10 @@ flowchart TB
     net_netstack_windows_link ~~~ platform_static_guest_from_memory
     platform_static_guest_from_memory ~~~ platform_busybox_on_windows
     platform_static_guest_from_memory ~~~ runsc_container_on_windows
+    platform_static_guest_from_memory ~~~ net_bridge_networking
     platform_busybox_on_windows ~~~ workloads_podman_on_windows
     runsc_container_on_windows ~~~ workloads_podman_on_windows
+    net_bridge_networking ~~~ workloads_podman_on_windows
     research_gvisor_base --> platform_tls_register
     platform_tls_register --> ops_phase0_go_no_go
     fs_compat_layer_not_boundary --> fs_windows_directfs
@@ -138,6 +141,7 @@ flowchart TB
     platform_static_guest_from_memory --> platform_busybox_on_windows
     net_netstack_windows_link --> runsc_container_on_windows
     runsc_container_on_windows --> workloads_podman_on_windows
+    net_bridge_networking --> workloads_podman_on_windows
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -155,7 +159,7 @@ flowchart TB
     class research_gvisor_base unrated
     class ops_name_and_fork,fs_compat_layer_not_boundary,ops_phase0_go_no_go decided
     class workloads_podman_on_gvisor_linux,platform_tls_register mixed
-    class workloads_podman_on_windows,runsc_container_on_windows,platform_winstub,platform_busybox_on_windows,fs_windows_directfs,net_netstack_windows_link,platform_static_guest_from_memory blocked
+    class workloads_podman_on_windows,runsc_container_on_windows,platform_winstub,platform_busybox_on_windows,fs_windows_directfs,net_netstack_windows_link,platform_static_guest_from_memory,net_bridge_networking blocked
 ```
 <!-- END GENERATED: overview -->
 
@@ -196,6 +200,7 @@ flowchart TB
 | Storage that survives restarts | ⛔ blocked | Implement the chosen writable filesystem so data inside the sandbox outlives a restart. |
 | Netstack to Windows sockets | ⛔ blocked | gVisor's own TCP/IP stack sends guest traffic out through ordinary Windows sockets, like a user-space NAT. |
 | Publish guest ports on localhost | ⛔ blocked | A port opened in the guest becomes reachable on the Windows machine's localhost. |
+| Bridge networking inside gVisor | ⛔ blocked | Podman's default network creates a bridge and veth pairs over netlink; gVisor lacks part of that, so it fails today. Fix it in gVisor itself, first on Linux, then it carries over to Windows. |
 | Podman on gVisor on Linux | ✔ done · mixed ⚠ | Run the acceptance test on stock gVisor on Linux; whatever fails there is a gap in gVisor itself, not in the port. |
 | Podman passes on Windows | ⛔ blocked | The bar for enough features: an unmodified Podman engine passes the acceptance test on gVisor on Windows. |
 | Acceptance test for Windows | ⛔ blocked | The ten acceptance steps written for Windows, driving the stock Podman and docker clients. |
@@ -315,7 +320,7 @@ Each track has its own page with its tree, node table and per-node details.
 - [platform - platform](roadmap/tracks/platform.md): 18 nodes (5 done, 1 in progress, 8 blocked, 3 parked, 1 abandoned)
 - [sentry - sentry](roadmap/tracks/sentry.md): 9 nodes (1 done, 1 next, 7 blocked)
 - [fs - files](roadmap/tracks/fs.md): 9 nodes (3 done, 6 blocked)
-- [net - network](roadmap/tracks/net.md): 2 nodes (2 blocked)
+- [net - network](roadmap/tracks/net.md): 3 nodes (3 blocked)
 - [workloads - workloads](roadmap/tracks/workloads.md): 9 nodes (3 done, 1 in progress, 2 next, 3 blocked)
 - [research - research](roadmap/tracks/research.md): 8 nodes (2 done, 6 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 10 nodes (6 done, 2 next, 2 blocked)

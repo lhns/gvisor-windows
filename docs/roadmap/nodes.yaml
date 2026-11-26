@@ -440,6 +440,7 @@
   - fs-persistent-storage-choice
   - fs-change-notifications
   - fs-linux-metadata-on-ntfs
+  - net-bridge-networking
   replaced_by: []
   lane: windows-ci
   start: ''
@@ -1373,3 +1374,22 @@
   lane: windows-ci
   plain: 'Thinnest end-to-end slice: the Sentry on Windows runs one embedded static program from its own memory filesystem, without host files, network or threads.'
   notes: 'Done when: a static hello-world and a static program that forks and execs run under the Sentry in Windows CI.'
+- id: net-bridge-networking
+  title: Bridge networking inside gVisor
+  track: net
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - workloads-strict-bar-linux
+  replaced_by: []
+  lane: linux-ci
+  start: ''
+  end: ''
+  folded: []
+  overview: true
+  plain: Podman's default network creates a bridge and veth pairs over netlink; gVisor lacks part of that, so it fails today. Fix it in gVisor itself, first on Linux, then it carries over to Windows.
+  notes: 'Done when: the acceptance test passes with the default bridge network on runsc (Linux CI), including -p and compose service names. Fixes defect workloads-gvisor-bridge-netlink.'

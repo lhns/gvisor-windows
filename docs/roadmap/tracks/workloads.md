@@ -15,15 +15,15 @@ flowchart TB
     workloads_acceptance_test_windows["⛔ Acceptance test for<br/>Windows"]
     workloads_gvisor_bridge_netlink>"⚠ Bridge networking<br/>fails in gVisor"]
     workloads_gvisor_port_publishing>"⚠ Port publishing<br/>untested in gVisor"]
-    workloads_podman_on_windows[/"⛔ Podman passes on<br/>Windows"/]
     workloads_podman_harness["⛔ Serve Podman to<br/>Windows clients"]
+    workloads_podman_on_windows[/"⛔ Podman passes on<br/>Windows"/]
     workloads_acceptance_test ~~~ workloads_podman_on_gvisor_linux
     workloads_podman_on_gvisor_linux ~~~ workloads_strict_bar_linux
     workloads_podman_on_gvisor_linux ~~~ workloads_acceptance_test_windows
     workloads_podman_on_gvisor_linux ~~~ workloads_gvisor_bridge_netlink
     workloads_strict_bar_linux ~~~ workloads_gvisor_port_publishing
-    workloads_acceptance_test_windows ~~~ workloads_podman_on_windows
-    workloads_gvisor_bridge_netlink ~~~ workloads_podman_harness
+    workloads_acceptance_test_windows ~~~ workloads_podman_harness
+    workloads_gvisor_bridge_netlink ~~~ workloads_podman_on_windows
     workloads_acceptance_test --> workloads_podman_on_gvisor_linux
     workloads_podman_on_gvisor_linux -.-> workloads_gvisor_bridge_netlink
     workloads_podman_on_gvisor_linux -.-> workloads_gvisor_port_publishing
@@ -48,7 +48,7 @@ flowchart TB
     class workloads_acceptance_test unrated
     class workloads_podman_on_gvisor_linux mixed
     class workloads_strict_bar_linux inprog
-    class workloads_acceptance_test_windows,workloads_podman_on_windows,workloads_podman_harness blocked
+    class workloads_acceptance_test_windows,workloads_podman_harness,workloads_podman_on_windows blocked
     class workloads_gvisor_bridge_netlink,workloads_gvisor_port_publishing finding
 ```
 <!-- END GENERATED: track-workloads -->
@@ -60,7 +60,7 @@ flowchart TB
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `workloads-acceptance-test` | Write the Podman acceptance test | tooling | linux-ci | done | unrated | 2026-11-26 | 2026-11-26 | research-gvisor-base |  |  |  | test/e2e/podman-acceptance/run.sh; docs/results/0a-linux.md |
 | `workloads-podman-on-gvisor-linux` | Podman on gVisor on Linux | experiment | linux-ci | done | mixed | 2026-11-26 | 2026-11-26 | workloads-acceptance-test |  | workloads-gvisor-bridge-netlink, workloads-gvisor-port-publishing |  | docs/results/0a-linux.md |
-| `workloads-podman-on-windows` | Podman passes on Windows | experiment | windows-ci | blocked | unrated |  |  | runsc-container-on-windows, workloads-acceptance-test-windows, net-port-forwarding, fs-persistent-storage-choice, fs-change-notifications, fs-linux-metadata-on-ntfs |  |  |  |  |
+| `workloads-podman-on-windows` | Podman passes on Windows | experiment | windows-ci | blocked | unrated |  |  | runsc-container-on-windows, workloads-acceptance-test-windows, net-port-forwarding, fs-persistent-storage-choice, fs-change-notifications, fs-linux-metadata-on-ntfs, net-bridge-networking |  |  |  |  |
 | `workloads-acceptance-test-windows` | Acceptance test for Windows | tooling | windows-ci | blocked | unrated |  |  | workloads-acceptance-test |  |  |  |  |
 | `workloads-podman-harness` | Serve Podman to Windows clients | tooling | windows-ci | blocked | unrated |  |  | runsc-container-on-windows, net-port-forwarding |  |  |  |  |
 | `workloads-gvisor-bridge-netlink` | Bridge networking fails in gVisor | defect | linux-ci | next | unrated |  |  |  |  |  |  | docs/results/0a-linux.md |
