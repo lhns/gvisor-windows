@@ -11,9 +11,10 @@ Failure output tails go to R.out (case TAB escaped tail)."""
 import argparse, os, subprocess, sys, tempfile, time
 
 
-def parse(line):
-    p = line.rstrip('\n').split('\t')
-    return p
+def esc(b):
+    """The tail of some output as one line without tabs."""
+    s = b.decode('utf-8', 'replace')
+    return s.replace(chr(13), '').replace(chr(10), chr(92) + 'n').replace(chr(9), ' ')
 
 
 def main():
@@ -87,10 +88,9 @@ def main():
             idle_crashes += 1
         else:
             idle_crashes = 0
-        if idle_crashes >= 3:
+        if idle_crashes >= 6:
             # The harness itself fails before any case runs: give up on the shard.
-            tail = open(log, 'rb').read()[-1500:].decode('utf-8', 'replace').replace('', '').replace('
-', '\n').replace('	', ' ')
+            tail = esc(open(log, "rb").read()[-1500:])
             for c in cases:
                 if c not in done:
                     done[c] = ('HARNESS', '-1', '0')
