@@ -81,6 +81,8 @@ function Start-Engine {
     @{ destination = '/sys/fs/cgroup'; type = 'cgroup2'; source = 'cgroup2'; options = @('nosuid', 'noexec', 'nodev') },
     @{ destination = '/run'; type = 'tmpfs'; source = 'tmpfs'; options = @('mode=755') },
     @{ destination = '/tmp'; type = 'tmpfs'; source = 'tmpfs'; options = @('mode=1777') },
+    # buildah mounts an overlay with its upperdir in /var/tmp; the Sentry accepts only tmpfs or host-folder uppers for user mounts, not the root overlay.
+    @{ destination = '/var/tmp'; type = 'tmpfs'; source = 'tmpfs'; options = @('mode=1777') },
     @{ destination = '/var/lib/containers'; type = 'bind'; source = $storage; options = @('rbind', 'rw', 'case-sensitive') }
   )
   if ($Share) {
