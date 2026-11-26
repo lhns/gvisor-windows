@@ -113,10 +113,11 @@ YML
   report 8 compose $rc "$(lastline "$L")"; rm -rf "$d"; }
 step9() { local L=$RESULTS_DIR/step-9.log rc=0 d="" before after
   [ -n "$ENGINE_CTL" ] || { report 9 restart-persist 1 "no ENGINE_CTL"; return; }
-  tp volume create accvol >"$L" 2>&1
+  { echo "[diag] $(date +%T) sockets:"; ls -la /tmp/*.sock; docker ps -a 2>&1 | head; pgrep -a socat; } >"$L" 2>&1
+  tp volume create accvol >>"$L" 2>&1
   tp run --rm $NETARGS -v accvol:/v "$ALPINE" sh -c 'echo keep >/v/f' >>"$L" 2>&1
   before=$(tp images -q | sort -u | wc -l)
-  $ENGINE_CTL restart >>"$L" 2>&1 || { rc=1; d="restart failed; "; }
+  echo "[diag] $(date +%T) restarting" >>"$L"; bash -x $ENGINE_CTL restart >>"$L" 2>&1 || { rc=1; d="restart failed; "; }
   after=$(tp images -q 2>>"$L" | sort -u | wc -l)
   { [ "$after" -ge "$before" ] && [ "$before" -gt 0 ]; } || { rc=1; d="${d}images before=$before after=$after; "; }
   tp image exists "$ALPINE" || { rc=1; d="${d}alpine gone; "; }
