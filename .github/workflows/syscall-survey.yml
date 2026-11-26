@@ -1,0 +1,45 @@
+name: syscall-survey
+on:
+  push:
+    branches: [syscall-site-survey]
+  workflow_dispatch:
+
+jobs:
+  # A: syscall sites per image (static) and per workload (dynamic, ptrace on the runner).
+  sites:
+    name: sites-${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: alpine,  image: "mirror.gcr.io/library/alpine:3.20"}
+          - {name: debian,  image: "mirror.gcr.io/library/debian:12"}
+          - {name: python,  image: "mirror.gcr.io/library/python:3-slim"}
+          - {name: nginx,   image: "mirror.gcr.io/library/nginx:latest"}
+          - {name: podman,  image: "quay.io/podman/stable:latest"}
+          - {name: gohello, image: "-"}
+    steps:
+      - uses: actions/checkout@v4
+        with: {sparse-checkout: "test/e2e/syscall-survey"}
+      - uses: actions/setup-go@v5
+        with: {go-version: stable}
+      - run: gcc -O2 -static test/e2e/syscall-survey/tracer.c -o tracer
+      - run: bash test/e2e/syscall-survey/run-image.sh "${{ matrix.name }}" "${{ matrix.image }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: "sites-${{ matrix.name }}", path: results, retention-days: 30}
+
+  # B: Sentry-handled page faults per fork+exec under runsc/systrap.
+  faults:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: stable}
+      - run: bash test/e2e/syscall-survey/faults.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: faults, path: results, retention-days: 30}
