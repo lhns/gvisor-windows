@@ -23,6 +23,7 @@ import (
 	"runtime"
 
 	pkgcontext "gvisor.dev/gvisor/pkg/context"
+	"gvisor.dev/gvisor/pkg/cpuid"
 	"gvisor.dev/gvisor/pkg/hostarch"
 	"gvisor.dev/gvisor/pkg/sentry/platform"
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/stubasm"
@@ -50,6 +51,8 @@ type Platform struct {
 	platform.NoCPUPreemptionDetection
 	platform.NoCPUNumbers
 
+	xmask         uint64
+	fpSize        int
 	stubPath      string
 	image         []byte
 	ntSet, ntWait uint64
@@ -66,6 +69,14 @@ func New(opts platform.Options) (*Platform, error) {
 	if err := pNtWaitSingle.Find(); err != nil {
 		return nil, err
 	}
+	if !cpuid.HostFeatureSet().UseXsave() {
+		return nil, errors.New("winstub: the CPU lacks XSAVE")
+	}
+	fpSize, _ := cpuid.HostFeatureSet().ExtendedStateSize()
+	fpSize -= cpuid.HostFeatureSet().AMXExtendedStateSize()
+	if fpSize > stubasm.XsaveSize {
+		return nil, fmt.Errorf("winstub: xsave area of %d bytes does not fit", fpSize)
+	}
 	f, err := os.CreateTemp("", "winstub-*.exe")
 	if err != nil {
 		return nil, fmt.Errorf("winstub: stub image: %w", err)
@@ -75,6 +86,8 @@ func New(opts platform.Options) (*Platform, error) {
 		return nil, fmt.Errorf("winstub: stub image: %w", err)
 	}
 	return &Platform{
+		xmask:    stubasm.XSaveMask(),
+		fpSize:   int(fpSize),
 		stubPath: f.Name(),
 		image:    stubasm.Image(),
 		ntSet:    uint64(pNtSetEvent.Addr()),

@@ -56,6 +56,7 @@ const (
 	OffTramp     uint64 = 0
 	OffTrampWait uint64 = 0x400
 	OffThreadEnt uint64 = 0x800
+	OffTrampPark uint64 = 0xC00
 
 	Veneers     uint64 = 0x110000 // displaced instructions of relocated syscall sites
 	VeneersSize uint64 = 0x70000
@@ -65,8 +66,10 @@ const (
 
 	// Per-thread regions: a view of a per-process control section (not guest memory).
 	CtlBase      uint64 = 0x6FFF_8000_0000
-	ThreadRegion uint64 = 0x4000
-	MaxThreads          = 256
+	ThreadRegion uint64 = 0x8000 // page, xsave area (at XsaveOff), stub stack
+	MaxThreads          = 128
+	XsaveOff            = 0x1000
+	XsaveSize           = 0x1000
 	CtlSize      uint64 = ThreadRegion * uint64(MaxThreads)
 )
 
@@ -89,12 +92,19 @@ const (
 	PgNtWait  = 0x70  // ntdll!NtWaitForSingleObject
 	PgMode    = 0x78  // uint32: 0 return from a syscall, 1 restore the full context
 	PgFlags   = 0x80  // rflags restored in mode 1
+	PgXMask   = 0x88  // uint64: the xsave feature mask (XCR0 without AMX)
 	PgRegs    = 0x100 // 16 qwords in hardware order: rax rcx rdx rbx rsp rbp rsi rdi r8..r15
 	PgRepair  = 0x200 // per-thread %fs repair code
 )
 
 func trampPtr() unsafe.Pointer
 func trampWaitPtr() unsafe.Pointer
+func trampParkPtr() unsafe.Pointer
+func xcr0() uint64
+
+// XSaveMask is the feature mask the stub saves and restores: everything the OS
+// enabled except AMX tile state (which the Sentry does not support either).
+func XSaveMask() uint64 { return xcr0() &^ 0x60000 }
 func threadEntryPtr() unsafe.Pointer
 func cpuid7() uint32
 
@@ -118,9 +128,9 @@ func Image() []byte {
 	for _, r := range []struct {
 		off uint64
 		p   unsafe.Pointer
-	}{{OffTramp, trampPtr()}, {OffTrampWait, trampWaitPtr()}, {OffThreadEnt, threadEntryPtr()}} {
+	}{{OffTramp, trampPtr()}, {OffTrampWait, trampWaitPtr()}, {OffThreadEnt, threadEntryPtr()}, {OffTrampPark, trampParkPtr()}} {
 		code := copyCode(r.p)
-		if r.off+uint64(len(code)) > r.off+0x400 && r.off != OffThreadEnt {
+		if len(code) > 0x400 {
 			panic("stubasm: routine larger than its slot")
 		}
 		copy(img[r.off:], code)
