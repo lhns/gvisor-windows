@@ -17,6 +17,11 @@
 package winstub
 
 import (
+	"runtime"
+	"syscall"
+	"unsafe"
+	"golang.org/x/sys/windows"
+	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/stubasm"
 	"encoding/binary"
 	"errors"
 	"os"
@@ -695,4 +700,71 @@ func TestStubStart(t *testing.T) {
 		rels = append(rels, time.Since(t1))
 	}
 	t.Logf("STUBSTART new address space: %v; release: %v", starts, rels)
+}
+
+// bareStart creates the stub suspended under a debugger, optionally reserves the
+// guest range, resumes it and returns the time until the loader breakpoint.
+func bareStart(p *Platform, reserve, nodebug bool) (time.Duration, error) {
+	type res struct {
+		d   time.Duration
+		err error
+	}
+	ch := make(chan res, 1)
+	go func() {
+		runtime.LockOSThread()
+		cl, _ := syscall.UTF16PtrFromString(`"` + p.stubPath + `"`)
+		var si syscall.StartupInfo
+		si.Cb = uint32(unsafe.Sizeof(si))
+		var pi syscall.ProcessInformation
+		flags := uint32(0x4 | 0x08000000)
+		if !nodebug {
+			flags |= 0x2
+		}
+		t0 := time.Now()
+		if err := syscall.CreateProcess(nil, cl, nil, nil, false, flags, nil, nil, &si, &pi); err != nil {
+			ch <- res{0, err}
+			return
+		}
+		defer pTerminateProcess.Call(uintptr(pi.Process), 0)
+		if reserve {
+			as := newAddressSpace(p)
+			as.h = uintptr(pi.Process)
+			if err := as.reserve(queryUsed(as.h, stubasm.ReserveMin, stubasm.ReserveMax)); err != nil {
+				ch <- res{0, err}
+				return
+			}
+		}
+		pResumeThread.Call(uintptr(pi.Thread))
+		if nodebug {
+			windows.WaitForSingleObject(windows.Handle(pi.Process), 400)
+			ch <- res{time.Since(t0), nil}
+			return
+		}
+		var ev debugEvent
+		for {
+			if r, _, _ := pWaitDebugEvent.Call(ev.base(), 5000); r == 0 {
+				ch <- res{0, errors.New("no event")}
+				return
+			}
+			st := uint32(dbgContinue)
+			if ev.code() == 1 && ev.u32(16) == excBreakpoint {
+				ch <- res{time.Since(t0), nil}
+				return
+			}
+			pContinueDebug.Call(uintptr(ev.pid()), uintptr(ev.tid()), uintptr(st))
+		}
+	}()
+	r := <-ch
+	return r.d, r.err
+}
+
+func TestStubStartExperiment(t *testing.T) {
+	h := newHarness(t)
+	for _, c := range []struct {
+		name            string
+		reserve, nodebug bool
+	}{{"debug, no reservation", false, false}, {"debug, reserved", true, false}, {"debug, no reservation", false, false}, {"debug, reserved", true, false}} {
+		d, err := bareStart(h.p, c.reserve, c.nodebug)
+		t.Logf("EXPERIMENT %s: loader breakpoint after %v (%v)", c.name, d, err)
+	}
 }
