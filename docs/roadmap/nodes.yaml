@@ -497,9 +497,10 @@
   title: Stub and controller prototype
   track: platform
   kind: feature
-  state: blocked
+  state: in-progress
   outcome: unrated
-  evidence: []
+  evidence:
+  - docs/adr/0011-stub-process-design.md
   verdict_quote: ''
   headline: ''
   depends_on:
@@ -514,7 +515,7 @@
   - platform-faults-per-exec
   replaced_by: []
   lane: windows-ci
-  start: ''
+  start: '2026-11-26'
   end: ''
   folded: []
   overview: false

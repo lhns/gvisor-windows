@@ -175,7 +175,7 @@ flowchart TB
 | Run a container with runsc | ⛔ blocked | The main goal: gVisor's runtime runs an OCI container on Windows for a standard user, with no admin, VM, WSL or Hyper-V. |
 | Start and stop sandboxes on Windows | ⛔ blocked | runsc creates, starts, signals and deletes a sandbox process on Windows. |
 | Set the TLS register | ✔ done · mixed ⚠ | Check whether a normal Windows program can set the register Linux programs use for thread-local data; without it native execution fails. |
-| Stub and controller prototype | ⛔ blocked | The Sentry debugs a tiny Windows stub process that runs a static Linux program; patched syscalls arrive over shared memory and faults as debug events. |
+| Stub and controller prototype | ▶ in progress | The Sentry debugs a tiny Windows stub process that runs a static Linux program; patched syscalls arrive over shared memory and faults as debug events. |
 | Scan code pages for syscalls | ⛔ blocked | Before guest code may run, each page is scanned for syscall instructions; patchable sites become jumps into the stub trampoline, the rest are made to fault into the debugger. |
 | Patch syscall sites into jumps | ⛔ blocked | Syscall sites are patched like gVisor's usertrap into a jump through a table at 0x60000, so syscalls never raise an exception. |
 | Own vDSO for clock calls | ⛔ blocked | Time and CPU queries are answered inside the stub, so they need no trap at all. |
@@ -244,6 +244,7 @@ flowchart TB
 
 **windows-ci**
 
+- `platform-stub-controller`: Stub and controller prototype
 - `sentry-windows-build`: Sentry builds for Windows
 <!-- END GENERATED: running -->
 
@@ -324,7 +325,7 @@ Generated on 2026-11-26.
 Each track has its own page with its tree, node table and per-node details.
 
 - [runsc - runsc](roadmap/tracks/runsc.md): 4 nodes (2 done, 2 blocked)
-- [platform - platform](roadmap/tracks/platform.md): 23 nodes (10 done, 8 blocked, 4 parked, 1 abandoned)
+- [platform - platform](roadmap/tracks/platform.md): 23 nodes (10 done, 1 in progress, 7 blocked, 4 parked, 1 abandoned)
 - [sentry - sentry](roadmap/tracks/sentry.md): 9 nodes (2 done, 1 in progress, 6 blocked)
 - [fs - files](roadmap/tracks/fs.md): 9 nodes (3 done, 6 blocked)
 - [net - network](roadmap/tracks/net.md): 3 nodes (3 blocked)

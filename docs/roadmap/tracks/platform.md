@@ -20,7 +20,7 @@ flowchart TB
     platform_debug_event_cost[/"✔ Measure debugger<br/>fault handling"/]
     platform_syscall_site_survey[/"✔ Survey patchable<br/>syscall sites"/]
     platform_faults_per_exec[/"✔ Count page faults<br/>per exec"/]
-    platform_stub_controller["⛔ Stub and controller<br/>prototype"]
+    platform_stub_controller["▶ Stub and controller<br/>prototype"]
     platform_page_verification["⛔ Scan code pages for<br/>syscalls"]
     platform_syscall_fast_path[/"⛔ Patch syscall sites<br/>into jumps"/]
     platform_own_vdso["⛔ Own vDSO for clock<br/>calls"]
@@ -101,7 +101,8 @@ flowchart TB
     class platform_elf_alignment_survey,platform_trap_cost,platform_4k_section_views,platform_exception_stack,platform_veh_on_guest_stack_unsafe,platform_debug_event_cost,platform_faults_per_exec succ
     class platform_tls_register,platform_restricted_stub,platform_syscall_site_survey mixed
     class platform_zpoline_hooks dead
-    class platform_stub_controller,platform_page_verification,platform_syscall_fast_path,platform_own_vdso,platform_winstub,platform_fs_base_repair,platform_static_guest_from_memory,platform_busybox_on_windows blocked
+    class platform_stub_controller inprog
+    class platform_page_verification,platform_syscall_fast_path,platform_own_vdso,platform_winstub,platform_fs_base_repair,platform_static_guest_from_memory,platform_busybox_on_windows blocked
     class platform_64k_mapping_conflicts,platform_hardware_acceleration,platform_binary_translation_fallback,platform_no_fsgsbase_fallback parked
 ```
 <!-- END GENERATED: track-platform -->
@@ -116,7 +117,7 @@ flowchart TB
 | `platform-4k-section-views` | Test 4 KB section views | experiment | windows-local | done | successful | 2026-11-26 | 2026-11-26 | research-gvisor-base |  |  |  | docs/results/0b-windows.md |
 | `platform-tls-register` | Set the TLS register | experiment | windows-local | done | mixed | 2026-11-26 | 2026-11-26 | research-gvisor-base |  | platform-veh-on-guest-stack-unsafe | about 1.1-2.2 us per repair | docs/results/0b-windows.md |
 | `platform-restricted-stub` | Restrict the stub process | experiment | windows-local | done | mixed | 2026-11-26 | 2026-11-26 | research-gvisor-base |  |  |  | docs/results/0b-windows.md |
-| `platform-stub-controller` | Stub and controller prototype | feature | windows-ci | blocked | unrated |  |  | ops-phase0-go-no-go, platform-trap-cost, platform-4k-section-views, platform-tls-register, platform-restricted-stub, platform-exception-stack, platform-debug-event-cost, platform-syscall-site-survey, platform-faults-per-exec |  |  |  |  |
+| `platform-stub-controller` | Stub and controller prototype | feature | windows-ci | in-progress | unrated | 2026-11-26 |  | ops-phase0-go-no-go, platform-trap-cost, platform-4k-section-views, platform-tls-register, platform-restricted-stub, platform-exception-stack, platform-debug-event-cost, platform-syscall-site-survey, platform-faults-per-exec |  |  |  | docs/adr/0011-stub-process-design.md |
 | `platform-page-verification` | Scan code pages for syscalls | feature | windows-ci | blocked | unrated |  |  | platform-stub-controller |  |  |  |  |
 | `platform-syscall-fast-path` | Patch syscall sites into jumps | experiment | windows-ci | blocked | unrated |  |  | platform-page-verification |  |  |  |  |
 | `platform-own-vdso` | Own vDSO for clock calls | feature | windows-ci | blocked | unrated |  |  | platform-stub-controller |  |  |  |  |
