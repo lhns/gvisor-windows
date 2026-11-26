@@ -507,7 +507,7 @@ func (as *addressSpace) reserveHoles(ctx context.Context, mm platform.MemoryMana
 			Unmap:   true,
 			Fixed:   true,
 			Addr:    h.Start,
-			Length:  h.Length(),
+			Length:  uint64(h.Length()),
 			Private: true,
 			Name:    holeName,
 			Sealed:  true,
