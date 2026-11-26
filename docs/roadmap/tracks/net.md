@@ -9,13 +9,13 @@ Scope: netstack to Windows sockets, port forwarding.
 <!-- BEGIN GENERATED: track-net -->
 ```mermaid
 flowchart TB
+    net_netstack_windows_link["✔ Netstack to Windows<br/>sockets"]
+    net_port_forwarding["✔ Publish guest ports<br/>on localhost"]
     net_bridge_networking["✔ Bridge networking<br/>inside gVisor"]
     net_nftables_thread_safety>"⚠ Make nftables safe<br/>for concurrent use"]
-    net_netstack_windows_link["⛔ Netstack to Windows<br/>sockets"]
-    net_port_forwarding["⛔ Publish guest ports<br/>on localhost"]
-    net_bridge_networking ~~~ net_port_forwarding
-    net_nftables_thread_safety ~~~ net_port_forwarding
     net_netstack_windows_link ~~~ net_port_forwarding
+    net_netstack_windows_link ~~~ net_bridge_networking
+    net_netstack_windows_link ~~~ net_nftables_thread_safety
     net_netstack_windows_link --> net_port_forwarding
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
@@ -31,9 +31,8 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class net_bridge_networking succ
+    class net_netstack_windows_link,net_port_forwarding,net_bridge_networking succ
     class net_nftables_thread_safety finding
-    class net_netstack_windows_link,net_port_forwarding blocked
 ```
 <!-- END GENERATED: track-net -->
 
@@ -42,8 +41,8 @@ flowchart TB
 <!-- BEGIN GENERATED: table-net -->
 | id | title | kind | lane | state | outcome | start | end | depends_on | replaced_by | qualified_by | headline | evidence |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `net-netstack-windows-link` | Netstack to Windows sockets | feature | windows-ci | blocked | unrated |  |  | sentry-windows-build |  |  |  |  |
-| `net-port-forwarding` | Publish guest ports on localhost | feature | windows-ci | blocked | unrated |  |  | net-netstack-windows-link |  |  |  |  |
+| `net-netstack-windows-link` | Netstack to Windows sockets | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | sentry-windows-build |  |  | DNS and HTTPS through the NAT on windows-latest | docs/results/2-windows-network.md |
+| `net-port-forwarding` | Publish guest ports on localhost | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | net-netstack-windows-link |  |  | guest port reached on 127.0.0.1 | docs/results/2-windows-network.md |
 | `net-bridge-networking` | Bridge networking inside gVisor | feature | linux-ci | done | successful | 2026-11-26 | 2026-11-26 | workloads-strict-bar-linux |  |  | all 10 steps on Podman 6.2.0 and 5.7.1 | docs/results/1n-bridge-networking.md |
 | `net-nftables-thread-safety` | Make nftables safe for concurrent use | defect | linux-ci | next | unrated | 2026-11-26 |  |  |  |  |  | docs/results/1n-bridge-networking.md |
 
@@ -51,8 +50,8 @@ flowchart TB
 
 | id | title | verdict | headline | in plain words | notes | confirmed | waiting on | queue order | order reason |
 |---|---|---|---|---|---|---|---|---|---|
-| `net-netstack-windows-link` | Netstack to Windows sockets |  |  | gVisor's own TCP/IP stack sends guest traffic out through ordinary Windows sockets, like a user-space NAT. | Done when: a guest resolves DNS and downloads over HTTPS on Windows without admin. |  |  |  |  |
-| `net-port-forwarding` | Publish guest ports on localhost |  |  | A port opened in the guest becomes reachable on the Windows machine's localhost. | Done when: a guest web server answers on localhost on Windows. |  |  |  |  |
+| `net-netstack-windows-link` | Netstack to Windows sockets | DNS, an HTTPS GET of github.com, UDP and TCP flows pass through the user-space NAT as a standard user on windows-latest | DNS and HTTPS through the NAT on windows-latest | gVisor's own TCP/IP stack sends guest traffic out through ordinary Windows sockets, like a user-space NAT. | Done when: a guest resolves DNS and downloads over HTTPS on Windows without admin. |  |  |  |  |
+| `net-port-forwarding` | Publish guest ports on localhost | a guest listener is reached through a 127.0.0.1 port published by --publish / Publish on windows-latest | guest port reached on 127.0.0.1 | A port opened in the guest becomes reachable on the Windows machine's localhost. | Done when: a guest web server answers on localhost on Windows. |  |  |  |  |
 | `net-bridge-networking` | Bridge networking inside gVisor | the strict acceptance test (default bridge network, `-p` from the host, compose service-name resolution, cgroupfs manager) passes all 10 steps on Podman 6.2.0 and 5.7.1 after eleven small gVisor fixes | all 10 steps on Podman 6.2.0 and 5.7.1 | Podman's default network creates a bridge and veth pairs over netlink; gVisor lacks part of that, so it fails today. Fix it in gVisor itself, first on Linux, then it carries over to Windows. | Done when: the strict acceptance test (-p and compose service names on the default bridge network) passes on runsc built from this repo in Linux CI. Known gaps in order: accept NETLINK_DUMP_STRICT_CHK and related netlink options, ignore NLM_F_CREATE on RTM_SETLINK, enable NETLINK_NETFILTER (nftables) by default and cover what netavark needs for DNAT and masquerade, then whatever follows. |  |  |  |  |
 | `net-nftables-thread-safety` | Make nftables safe for concurrent use |  |  | Podman 6's netavark only speaks nftables, and gVisor's nftables package says it is not thread-safe, so --nftables stays off by default. | Fixed when: the nftables package is safe under concurrent rule updates and packet evaluation (race-detector test), and --nftables can default on. |  |  |  |  |
 <!-- END GENERATED: table-net -->

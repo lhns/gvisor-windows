@@ -851,17 +851,18 @@
   title: Netstack to Windows sockets
   track: net
   kind: feature
-  state: blocked
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/2-windows-network.md
+  verdict_quote: DNS, an HTTPS GET of github.com, UDP and TCP flows pass through the user-space NAT as a standard user on windows-latest
+  headline: DNS and HTTPS through the NAT on windows-latest
   depends_on:
   - sentry-windows-build
   replaced_by: []
   lane: windows-ci
-  start: ''
-  end: ''
+  start: '2026-11-26'
+  end: '2026-11-26'
   folded: []
   overview: true
   plain: gVisor's own TCP/IP stack sends guest traffic out through ordinary Windows sockets, like a user-space NAT.
@@ -870,17 +871,18 @@
   title: Publish guest ports on localhost
   track: net
   kind: feature
-  state: blocked
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/2-windows-network.md
+  verdict_quote: a guest listener is reached through a 127.0.0.1 port published by --publish / Publish on windows-latest
+  headline: guest port reached on 127.0.0.1
   depends_on:
   - net-netstack-windows-link
   replaced_by: []
   lane: windows-ci
-  start: ''
-  end: ''
+  start: '2026-11-26'
+  end: '2026-11-26'
   folded: []
   overview: false
   plain: A port opened in the guest becomes reachable on the Windows machine's localhost.
@@ -968,17 +970,18 @@
   title: Windows CI as a standard user
   track: ops
   kind: tooling
-  state: next
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/2-windows-network.md
+  verdict_quote: run-as-standard-user.ps1 runs the network tests as a fresh non-admin user, and the admin-only probe fails there as expected
+  headline: tests run as a fresh standard user
   depends_on:
   - ops-phase0-go-no-go
   replaced_by: []
   lane: windows-ci
-  start: ''
-  end: ''
+  start: '2026-11-26'
+  end: '2026-11-26'
   folded: []
   overview: false
   plain: CI on windows-latest creates a standard user and runs every Windows test as that user.
