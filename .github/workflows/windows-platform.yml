@@ -3,8 +3,7 @@
 name: windows-platform
 on:
   push:
-    branches: [winstub-platform, static-guest]
-    paths: ["pkg/sentry/platform/**", ".github/workflows/windows-platform.yml"]
+    paths: ["pkg/**", "runsc/**", "third_party/**", "tools/windows/**", "test/guests/**", "go.mod", ".github/workflows/windows-platform.yml"]
   workflow_dispatch:
 jobs:
   platform:

@@ -2,7 +2,6 @@ name: windows-net
 
 on:
   push:
-    branches: [windows, netstack-windows]
   workflow_dispatch:
 
 env:

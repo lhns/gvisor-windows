@@ -3,8 +3,7 @@
 name: windows-sentry-guests
 on:
   push:
-    branches: [static-guest, sentry-exec]
-    paths: ["pkg/**", "tools/windows/sentryguest/**", "test/guests/**", ".github/workflows/windows-sentry-guests.yml"]
+    paths: ["pkg/**", "runsc/**", "third_party/**", "tools/windows/**", "test/guests/**", "go.mod", ".github/workflows/windows-sentry-guests.yml"]
   workflow_dispatch:
 jobs:
   guests:
