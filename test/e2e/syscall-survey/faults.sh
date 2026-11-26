@@ -18,7 +18,7 @@ sudo cp "$(find x -type f -name runsc | head -1)" /usr/local/bin/runsc && sudo c
 # The release is built without the sentry_profiling tag, so "/task/faults" is not registered there: rebuild
 # runsc and the sentry sidecar from this tree with the tag (REPO = checkout root).
 REPO=$(cd "$HERE/../../.." && pwd)
-(cd "$REPO" && go build -tags sentry_profiling -o "$W/runsc-prof" ./runsc && go build -tags sentry_profiling -o "$W/gvisor_sentry-prof" ./runsc/cmd/sentry) || { echo "BUILD FAILED"; exit 1; }
+(cd "$REPO" && export CGO_ENABLED=0 && go build -tags sentry_profiling -o "$W/runsc-prof" ./runsc && go build -tags sentry_profiling -o "$W/gvisor_sentry-prof" ./runsc/cmd/sentry) || { echo "BUILD FAILED"; exit 1; }
 sudo cp "$W/runsc-prof" /usr/local/bin/runsc; sudo cp "$W/gvisor_sentry-prof" /usr/local/bin/gvisor-bin/gvisor_sentry; sudo chmod a+rx /usr/local/bin/runsc /usr/local/bin/gvisor-bin/gvisor_sentry
 runsc --version | tee "$RES/runsc-version.txt"
 
