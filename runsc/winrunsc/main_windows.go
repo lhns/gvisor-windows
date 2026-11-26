@@ -37,13 +37,16 @@ func Main() {
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, `usage: runsc [flags] run [-bundle dir] [-t] container-id
+	fmt.Fprintf(os.Stderr, `usage: runsc [flags] COMMAND ...
 
-Windows build of runsc. Commands: run, version. The others of the OCI runtime
-interface (create, start, state, kill, delete, exec, ps, list, spec, do) need
-the sandbox process and its control pipe and are not implemented yet (ADR 0008).
-Global flags are runsc's, e.g. --network=windows-nat --publish=8080:80
---debug --debug-log=file --overlay2=none.
+Windows build of runsc (ADR 0017, 0019). Commands:
+  run [-bundle dir] [-t] id    run a container in this process, wait for it
+  create [-bundle dir] id      start a sandbox process holding the container
+  start id | kill id [signal] | delete [-f] id | state id | list | ps id
+  exec [-cwd d] [-env K=V] [-user uid[:gid]] id cmd args...   | wait id
+Not implemented: spec, do, events, pause, resume, checkpoint, restore.
+Global flags are runsc's, e.g. --root, --network=windows-nat --publish=8080:80
+--debug --debug-log=file --overlay2=none, --pipe-forward, --unix-forward.
 `)
 }
 
@@ -68,6 +71,26 @@ func run(args []string) int {
 	switch cmd := flag.CommandLine.Arg(0); cmd {
 	case "run":
 		return runCmd(flag.CommandLine.Args()[1:])
+	case "create":
+		return createCmd(globalArgs(args), flag.CommandLine.Args()[1:])
+	case "start":
+		return startCmd(flag.CommandLine.Args()[1:])
+	case "state":
+		return stateCmd(flag.CommandLine.Args()[1:])
+	case "kill":
+		return killCmd(flag.CommandLine.Args()[1:])
+	case "delete":
+		return deleteCmd(flag.CommandLine.Args()[1:])
+	case "list":
+		return listCmd(flag.CommandLine.Args()[1:])
+	case "ps":
+		return psCmd(flag.CommandLine.Args()[1:])
+	case "exec":
+		return execCmd(flag.CommandLine.Args()[1:])
+	case "wait":
+		return waitCmd(flag.CommandLine.Args()[1:])
+	case "sandbox": // internal: the process `create` starts
+		return sandboxCmd(flag.CommandLine.Args()[1:])
 	case "version":
 		fmt.Printf("runsc version %s\nspec: %s\n", version.Version(), specutils.Version)
 		return 0
@@ -106,95 +129,12 @@ func runCmd(args []string) int {
 	}
 	id := fs.Arg(0)
 
-	// Logs must not reach stderr, which belongs to the container.
-	log.SetTarget(discard{})
-	conf, err := config.NewFromFlags(flag.CommandLine)
-	if err != nil {
-		return fatalf("%v", err)
+	in, code := newInstance(id, *bundle, *terminal)
+	if in == nil {
+		return code
 	}
-	if conf.Debug {
-		log.SetLevel(log.Debug)
-	}
-	if conf.DebugLog != "" {
-		f, err := openDebugLog(conf.DebugLog, id)
-		if err != nil {
-			return fatalf("opening the debug log: %v", err)
-		}
-		defer f.Close()
-		log.SetTarget(log.GoogleEmitter{Writer: &log.Writer{Next: f}})
-	}
-	log.Infof("runsc %s %s, %d CPUs, args %v", version.Version(), runtime.Version(), runtime.NumCPU(), os.Args)
-
-	spec, err := specutils.ReadSpec(*bundle, specutils.SpecOpts{Conf: conf})
-	if err != nil {
-		return fatalf("reading the bundle: %v", err)
-	}
-	if err := specutils.FixConfig(conf, spec); err != nil {
-		return fatalf("applying the spec annotations: %v", err)
-	}
-	if *terminal {
-		spec.Process.Terminal = true
-	}
-	applyWindowsConfig(conf)
-
-	mountConfs, err := goferMountConfs(spec, conf)
-	var goferFDs []int
-	if err == nil && mountConfs[0].Lower == specutils.Erofs {
-		var h int
-		if h, err = rootfs.OpenImage(spec.Root.Path); err == nil {
-			goferFDs = []int{h}
-		}
-	}
-	if err != nil {
-		return fatalf("%v", err)
-	}
-
-	// Netavark (Podman's network driver) programs nftables; the netlink side only
-	// exists once nftables is enabled, which sandbox networks do in runsc boot.
-	if conf.Nftables || conf.Network == config.NetworkWindowsNAT {
-		nftables.EnableNFTables()
-	}
-	cpuid.Initialize()
-	l, err := boot.New(boot.Args{
-		ID:               id,
-		Spec:             spec,
-		Conf:             conf,
-		ControllerFD:     -1,
-		PinRingFD:        -1,
-		CPUDMALatencyFD:  -1,
-		DevGoferFD:       -1,
-		ExecFD:           -1,
-		ProcSelfFD:       -1,
-		UserLogFD:        -1,
-		PodInitConfigFD:  -1,
-		RootfsUpperTarFD: -1,
-		GoferMountConfs:  mountConfs,
-		GoferFDs:         goferFDs,
-		NumCPU:           runtime.NumCPU(),
-	})
-	if err != nil {
-		return fatalf("creating the sandbox: %v", err)
-	}
-
-	var pf *pipeForward
-	if pipeForwardFlag != "" {
-		if conf.Network != config.NetworkWindowsNAT {
-			return fatalf("--pipe-forward needs --network=windows-nat")
-		}
-		if pf, err = parsePipeForward(pipeForwardFlag); err != nil {
-			return fatalf("%v", err)
-		}
-	}
-
-	var uf *unixForward
-	if unixForwardFlag != "" {
-		if conf.Network != config.NetworkWindowsNAT {
-			return fatalf("--unix-forward needs --network=windows-nat")
-		}
-		if uf, err = parseUnixForward(unixForwardFlag); err != nil {
-			return fatalf("%v", err)
-		}
-	}
+	defer in.closeLog()
+	l, spec, pf, uf := in.l, in.spec, in.pf, in.uf
 
 	stdio := &boot.Stdio{Out: os.Stdout, Err: os.Stderr}
 	if boot.IsUsableHandle(os.Stdin) {
@@ -229,6 +169,121 @@ func runCmd(args []string) int {
 		return 128 + int(ws.TerminationSignal())
 	}
 	return int(ws.ExitStatus())
+}
+
+
+// instance is a configured sandbox that has not started its container.
+type instance struct {
+	l       *boot.Loader
+	spec    *specs.Spec
+	conf    *config.Config
+	pf      *pipeForward
+	uf      *unixForward
+	logFile *os.File
+}
+
+func (in *instance) closeLog() {
+	if in.logFile != nil {
+		in.logFile.Close()
+	}
+}
+
+// newInstance reads the bundle and creates the Loader (the sandbox, with the
+// container not yet started). On failure it prints the error and returns the
+// exit code.
+func newInstance(id, bundle string, terminal bool) (*instance, int) {
+	// Logs must not reach stderr, which belongs to the container.
+	log.SetTarget(discard{})
+	in := &instance{}
+	conf, err := config.NewFromFlags(flag.CommandLine)
+	if err != nil {
+		return nil, fatalf("%v", err)
+	}
+	if conf.Debug {
+		log.SetLevel(log.Debug)
+	}
+	if conf.DebugLog != "" {
+		f, err := openDebugLog(conf.DebugLog, id)
+		if err != nil {
+			return nil, fatalf("opening the debug log: %v", err)
+		}
+		defer f.Close()
+		log.SetTarget(log.GoogleEmitter{Writer: &log.Writer{Next: f}})
+	}
+	log.Infof("runsc %s %s, %d CPUs, args %v", version.Version(), runtime.Version(), runtime.NumCPU(), os.Args)
+
+	spec, err := specutils.ReadSpec(bundle, specutils.SpecOpts{Conf: conf})
+	if err != nil {
+		return nil, fatalf("reading the bundle: %v", err)
+	}
+	if err := specutils.FixConfig(conf, spec); err != nil {
+		return nil, fatalf("applying the spec annotations: %v", err)
+	}
+	if terminal {
+		spec.Process.Terminal = true
+	}
+	applyWindowsConfig(conf)
+
+	mountConfs, err := goferMountConfs(spec, conf)
+	var goferFDs []int
+	if err == nil && mountConfs[0].Lower == specutils.Erofs {
+		var h int
+		if h, err = rootfs.OpenImage(spec.Root.Path); err == nil {
+			goferFDs = []int{h}
+		}
+	}
+	if err != nil {
+		return nil, fatalf("%v", err)
+	}
+
+	// Netavark (Podman's network driver) programs nftables; the netlink side only
+	// exists once nftables is enabled, which sandbox networks do in runsc boot.
+	if conf.Nftables || conf.Network == config.NetworkWindowsNAT {
+		nftables.EnableNFTables()
+	}
+	cpuid.Initialize()
+	l, err := boot.New(boot.Args{
+		ID:               id,
+		Spec:             spec,
+		Conf:             conf,
+		ControllerFD:     -1,
+		PinRingFD:        -1,
+		CPUDMALatencyFD:  -1,
+		DevGoferFD:       -1,
+		ExecFD:           -1,
+		ProcSelfFD:       -1,
+		UserLogFD:        -1,
+		PodInitConfigFD:  -1,
+		RootfsUpperTarFD: -1,
+		GoferMountConfs:  mountConfs,
+		GoferFDs:         goferFDs,
+		NumCPU:           runtime.NumCPU(),
+	})
+	if err != nil {
+		return nil, fatalf("creating the sandbox: %v", err)
+	}
+
+	var pf *pipeForward
+	if pipeForwardFlag != "" {
+		if conf.Network != config.NetworkWindowsNAT {
+			return nil, fatalf("--pipe-forward needs --network=windows-nat")
+		}
+		if pf, err = parsePipeForward(pipeForwardFlag); err != nil {
+			return nil, fatalf("%v", err)
+		}
+	}
+
+	var uf *unixForward
+	if unixForwardFlag != "" {
+		if conf.Network != config.NetworkWindowsNAT {
+			return nil, fatalf("--unix-forward needs --network=windows-nat")
+		}
+		if uf, err = parseUnixForward(unixForwardFlag); err != nil {
+			return nil, fatalf("%v", err)
+		}
+	}
+	in.l, in.spec, in.conf, in.pf, in.uf = l, spec, conf, pf, uf
+	return in, 0
 }
 
 // applyWindowsConfig sets what the Windows sandbox needs, whatever the flags

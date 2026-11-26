@@ -65,6 +65,7 @@ func main() {
 		{"tty", testTTY},
 		{"hostfs", testHostfs},
 		{"case", testCase},
+		{"lifecycle", testLifecycle},
 		{"forward", testForward},
 		// Not in the default run: fails today (docs/results/3-runsc-boot.md).
 		{"erofs", testErofs},
@@ -77,7 +78,7 @@ func main() {
 	}
 	failed := 0
 	for _, t := range tests {
-		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case")) {
+		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "lifecycle")) {
 			continue
 		}
 		start := time.Now()
@@ -401,4 +402,92 @@ func testForward() error {
 		return fmt.Errorf("the listener stayed open after unexpose (guest output %q)", out.String())
 	}
 	return nil
+}
+
+// rs runs runsc.exe with the given arguments after the global flags (a state
+// root of its own, a debug log) and returns its output and exit code.
+func rs(name string, args ...string) (result, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Second)
+	defer cancel()
+	g := []string{"--root=" + filepath.Join(*workDir, "lifecycle-root"), "--debug", "--debug-log=" + filepath.Join(*workDir, "logs", name+".log")}
+	cmd := exec.CommandContext(ctx, *runscExe, append(g, args...)...)
+	var out, errb bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &errb
+	err := cmd.Run()
+	r := result{stdout: out.String(), stderr: errb.String()}
+	if ee, ok := err.(*exec.ExitError); ok {
+		r.code, err = ee.ExitCode(), nil
+	}
+	return r, err
+}
+
+// testLifecycle drives create, state, start, exec, ps, kill, wait, list and
+// delete on a container that sleeps.
+func testLifecycle() error {
+	_ = os.RemoveAll(filepath.Join(*workDir, "lifecycle-root"))
+	dir := bundle("lifecycle", []string{"/bin/sh", "-c", "echo up; sleep 300"}, false)
+	id := "lc1"
+	step := func(what string, r result, err error, wantCode int, wantOut string) error {
+		if err != nil {
+			return fmt.Errorf("%s: %v", what, err)
+		}
+		if r.code != wantCode || !strings.Contains(r.stdout, wantOut) {
+			return fmt.Errorf("%s: exit %d (want %d), stdout %q (want %q), stderr %q", what, r.code, wantCode, r.stdout, wantOut, r.stderr)
+		}
+		return nil
+	}
+	r, err := rs("lifecycle", "create", "-bundle", dir, id)
+	if e := step("create", r, err, 0, ""); e != nil {
+		return e
+	}
+	r, err = rs("lifecycle", "state", id)
+	if e := step("state after create", r, err, 0, `"status": "created"`); e != nil {
+		return e
+	}
+	r, err = rs("lifecycle", "exec", id, "/bin/true")
+	if e := step("exec before start must fail", r, err, 128, ""); e != nil {
+		return e
+	}
+	r, err = rs("lifecycle", "start", id)
+	if e := step("start", r, err, 0, ""); e != nil {
+		return e
+	}
+	r, err = rs("lifecycle", "state", id)
+	if e := step("state after start", r, err, 0, `"status": "running"`); e != nil {
+		return e
+	}
+	r, err = rs("lifecycle", "exec", id, "/bin/sh", "-c", "echo hi from exec; exit 5")
+	if e := step("exec", r, err, 5, "hi from exec"); e != nil {
+		return e
+	}
+	r, err = rs("lifecycle", "ps", id)
+	if e := step("ps", r, err, 0, "sleep"); e != nil {
+		return e
+	}
+	r, err = rs("lifecycle", "list")
+	if e := step("list", r, err, 0, id); e != nil {
+		return e
+	}
+	r, err = rs("lifecycle", "delete", id)
+	if e := step("delete of a running container must fail", r, err, 128, ""); e != nil {
+		return e
+	}
+	r, err = rs("lifecycle", "kill", id, "KILL")
+	if e := step("kill", r, err, 0, ""); e != nil {
+		return e
+	}
+	r, err = rs("lifecycle", "wait", id)
+	if e := step("wait", r, err, 137, ""); e != nil {
+		return e
+	}
+	r, err = rs("lifecycle", "state", id)
+	if e := step("state after kill", r, err, 0, `"status": "stopped"`); e != nil {
+		return e
+	}
+	r, err = rs("lifecycle", "delete", id)
+	if e := step("delete", r, err, 0, ""); e != nil {
+		return e
+	}
+	r, err = rs("lifecycle", "state", id)
+	return step("state after delete must fail", r, err, 128, "")
 }
