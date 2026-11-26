@@ -193,7 +193,7 @@ func main() {
 		_ = c0
 		_ = c1
 		name := map[uint64]string{0: "fs:[0]", 1: "fs:[-8]"}[off]
-		report(nrepairs()-r0 == N, "S3.repair_"+name, fmt.Sprintf("%d/%d faults repaired, %.0f ns per (wrfsbase 0 + faulting read + repair + retry); last fault addr=%#x base-at-loss=%#x", nrepairs()-r0, N, float64(d.Nanoseconds())/N, lastFaultAddr, lastBaseAtLoss))
+		report(nrepairs()-r0 >= N, "S3.repair_"+name, fmt.Sprintf("%d/%d faults repaired (extra = background losses), %.0f ns per (wrfsbase 0 + faulting read + repair + retry); last fault addr=%#x base-at-loss=%#x", nrepairs()-r0, N, float64(d.Nanoseconds())/N, lastFaultAddr, lastBaseAtLoss))
 	}
 	info("main thread FS base at end (unrepaired, may legitimately be 0 after a deschedule): %#x", rdfsbase())
 
