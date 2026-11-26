@@ -14,6 +14,9 @@ on:
       shards:
         description: "Number of shards (matrix has 12 slots; shards beyond this number stay empty)"
         default: "12"
+      from_run:
+        description: "Only make the report from the results of this earlier run (id)"
+        default: ""
   schedule:
     - cron: "0 3 * * 0"
   push:
@@ -26,6 +29,7 @@ env:
 
 jobs:
   build:
+    if: inputs.from_run == ''
     runs-on: ubuntu-latest
     timeout-minutes: 355
     outputs:
@@ -175,9 +179,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
-        with: {pattern: "results-linux-*", path: linux, merge-multiple: true}
+        with: {pattern: "results-linux-*", path: linux, merge-multiple: true, run-id: "${{ inputs.from_run || github.run_id }}", github-token: "${{ github.token }}"}
       - uses: actions/download-artifact@v4
-        with: {pattern: "results-windows-*", path: windows, merge-multiple: true}
+        with: {pattern: "results-windows-*", path: windows, merge-multiple: true, run-id: "${{ inputs.from_run || github.run_id }}", github-token: "${{ github.token }}"}
       - run: python3 tools/windows/syscalltests/summarize.py linux windows report | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
