@@ -24,6 +24,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -66,6 +67,7 @@ func main() {
 		{"hostfs", testHostfs},
 		{"case", testCase},
 		{"lifecycle", testLifecycle},
+		{"bench", testBench},
 		{"forward", testForward},
 		// Not in the default run: fails today (docs/results/3-runsc-boot.md).
 		{"erofs", testErofs},
@@ -78,7 +80,7 @@ func main() {
 	}
 	failed := 0
 	for _, t := range tests {
-		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "lifecycle")) {
+		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "lifecycle" || t.name == "bench")) {
 			continue
 		}
 		start := time.Now()
@@ -490,4 +492,38 @@ func testLifecycle() error {
 	}
 	r, err = rs("lifecycle", "state", id)
 	return step("state after delete must fail", r, err, 128, "")
+}
+
+// testBench runs the Phase 0 workloads in the guest (tools/windows/bench/bench.sh,
+// rootfs /bench.sh and /small.tar) and times runsc run from start to exit of a
+// hello. It only prints; "RESULT name seconds" lines go to the CI log.
+func testBench() error {
+	dir := filepath.Join(*workDir, "bench-bind")
+	_ = os.RemoveAll(dir)
+	must(os.MkdirAll(dir, 0o755))
+	extraMounts = []map[string]any{{"destination": "/bm", "type": "bind", "source": dir, "options": []string{"rbind", "rw"}}}
+	defer func() { extraMounts = nil }()
+	var hello []float64
+	for i := 0; i < 5; i++ {
+		t := time.Now()
+		r, err := runsc("bench-hello", []string{"/bin/hello"}, nil)
+		if err != nil || r.code != 7 {
+			return fmt.Errorf("hello: %v, exit %d", err, r.code)
+		}
+		hello = append(hello, time.Since(t).Seconds())
+	}
+	sort.Float64s(hello)
+	fmt.Printf("RESULT hello_start_to_exit_median %.2f\n", hello[len(hello)/2])
+	fmt.Printf("RESULT hello_start_to_exit_min %.2f\n", hello[0])
+	t := time.Now()
+	r, err := runsc("bench", []string{"/bin/sh", "/bench.sh", "/small.tar", "/bm"}, nil)
+	if err != nil {
+		return err
+	}
+	fmt.Print(r.stdout)
+	fmt.Printf("RESULT bench_wall_total %.2f\n", time.Since(t).Seconds())
+	if r.code != 0 || !strings.Contains(r.stdout, "cpu_gzip_512MiB") {
+		return fmt.Errorf("bench exit %d, stderr %q", r.code, r.stderr)
+	}
+	return nil
 }
