@@ -240,6 +240,10 @@ jobs:
         run: |
           CGO_ENABLED=0 go build -o /tmp/nlcheck ./test/e2e/podman-acceptance/harness/nlcheck
           docker run --rm --runtime runsc-fix --cap-add NET_ADMIN -v /tmp/nlcheck:/nlcheck:ro --entrypoint /nlcheck mirror.gcr.io/library/alpine:3.20 | tee "$RESULTS_DIR/out/nlcheck.txt" || true
+      - name: nft statement probe
+        if: matrix.v == 'nft-priv'
+        run: |
+          docker run --rm -i --runtime runsc-nft --cap-add NET_ADMIN --user root --entrypoint '' quay.io/podman/stable:${{ matrix.podman }} sh -s <test/e2e/podman-acceptance/harness/nftprobe.sh 2>&1 | tee "$RESULTS_DIR/out/nftprobe.txt" || true
       - name: Start engine
         run: |
           export SHARE_DIR=/tmp/acc-share STORAGE=hostdir PODMAN_IMAGE=quay.io/podman/stable:${{ matrix.podman }} CGROUPS=enabled RUNTIME=runsc-fix-strace NETAVARK_TRACE=1 PRIVILEGED=1
