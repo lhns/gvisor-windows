@@ -172,13 +172,13 @@ func (c *Ctl) onException(p *Proc, t *Thread) uint32 {
 		if (addr < 0x10000 || addr >= 0xFFFF800000000000) && *t.u64(stubasm.PgFS) != 0 && c.getCtx(t.h, ctxControl) {
 			rip := *c.ctxU64(ctxRip)
 			now := time.Now()
-			if rip == t.lastRip && now.Sub(t.lastRepair) < time.Millisecond {
+			if rip == t.lastRip && now.Sub(t.lastRepair) < 5*time.Millisecond {
 				t.repairN++
 			} else {
 				t.repairN = 0
 			}
 			t.lastRip, t.lastRepair = rip, now
-			if t.repairN < 3 {
+			if t.repairN < 20 {
 				*t.u64(stubasm.PgRetRIP) = rip
 				*c.ctxU64(ctxRip) = t.addr + stubasm.PgRepair
 				if c.setCtx(t.h) {
