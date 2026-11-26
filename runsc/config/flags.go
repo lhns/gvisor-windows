@@ -170,7 +170,7 @@ func RegisterFlags(flagSet *flag.FlagSet) {
 	flagSet.Bool("iouring", false, "TEST ONLY; Enables io_uring syscalls in the sentry. Support is experimental and very limited.")
 	flagSet.Var(LandlockDisabled.Ptr(), "landlock", "TEST ONLY; controls the Landlock syscalls: disabled (default) or enabled. With enabled, a task restricted by Landlock fails the filesystem operations that are not checked against its Landlock domain yet.")
 	flagSet.Bool("directfs", true, "directly access the container filesystems from the sentry. Sentry runs with higher privileges.")
-	flagSet.Bool("TESTONLY-nftables", false, "TEST ONLY; Enables nftables support in the sentry.")
+	flagSet.Bool("nftables", false, "Enables NETLINK_NETFILTER and nftables in the sentry (netavark, nft). Not thread-safe yet, so off by default.")
 
 	// Flags that control sandbox runtime behavior: network related.
 	flagSet.Var(networkTypePtr(NetworkSandbox), "network", "specifies which network to use: sandbox (default), host, none. Using network inside the sandbox is more secure because it's isolated from the host network.")

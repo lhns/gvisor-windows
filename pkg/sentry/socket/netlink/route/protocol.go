@@ -188,10 +188,8 @@ func (p *Protocol) setLink(ctx context.Context, s *netlink.Socket, msg *nlmsg.Me
 		return syserr.ErrProtocolNotSupported
 	}
 
-	if msg.Header().Flags&linux.NLM_F_CREATE == linux.NLM_F_CREATE {
-		return syserr.ErrInvalidArgument
-	}
-
+	// Linux's rtnl_setlink ignores NLM_F_CREATE and NLM_F_EXCL (they only
+	// matter to RTM_NEWLINK); netavark sends both when bringing up lo.
 	return stack.SetInterface(ctx, msg)
 }
 

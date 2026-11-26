@@ -914,6 +914,17 @@ func (c *containerMounter) mountSubmounts(ctx context.Context, spec *specs.Spec,
 				if err != nil {
 					return fmt.Errorf("mount cgroup2 %q: %w", submount.mount.Destination, err)
 				}
+				// Docker and runc mount cgroup2 read-only unless the container is
+				// privileged, because the host cgroup tree is shared. Here the
+				// mount shows only the container's own subtree of the sandbox's
+				// private hierarchy, and nested container engines (Podman's
+				// cgroupfs manager) must write cgroup.subtree_control in it, so
+				// keep it writable whatever the spec asks for.
+				if mnt != nil && mnt.ReadOnly() {
+					if err := c.l.k.VFS().SetMountReadOnly(mnt, false); err != nil {
+						return fmt.Errorf("make cgroup2 mount %q writable: %w", submount.mount.Destination, err)
+					}
+				}
 			} else {
 				// Mount all the cgroups controllers.
 				if err := c.mountCgroupSubmounts(ctx, spec, conf, mns, creds, submount); err != nil {

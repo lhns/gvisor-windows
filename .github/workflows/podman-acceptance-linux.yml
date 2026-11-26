@@ -219,6 +219,49 @@ jobs:
           path: results/out
           retention-days: 30
 
+  # runsc built from this tree: strict bar (default bridge, -p, compose names, default cgroup manager).
+  bridge:
+    name: bridge-${{ matrix.podman }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        podman: ["v6.2.0"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version-file: go.mod}
+      - run: mkdir -p "$RESULTS_DIR/out" && BUILD_RUNSC=1 PODMAN_IMAGE=quay.io/podman/stable:${{ matrix.podman }} test/e2e/podman-acceptance/harness/install.sh
+      - name: Start engine
+        run: |
+          export SHARE_DIR=/tmp/acc-share STORAGE=hostdir PODMAN_IMAGE=quay.io/podman/stable:${{ matrix.podman }} CGROUPS=enabled RUNTIME=runsc-fix-strace NETAVARK_TRACE=1
+          test/e2e/podman-acceptance/harness/engine-runsc.sh start
+          docker exec podman-in-runsc podman version | tee "$RESULTS_DIR/out/engine-version.txt"
+      - name: Acceptance test (strict)
+        run: |
+          export SHARE_DIR=/tmp/acc-share RESULTS_DIR="$RESULTS_DIR/out" STORAGE=hostdir RUNTIME=runsc-fix-strace CGROUPS=enabled NETAVARK_TRACE=1
+          export PODMAN_IMAGE=quay.io/podman/stable:${{ matrix.podman }}
+          export CONTAINER_HOST=unix:///tmp/podman-runsc.sock
+          export ENGINE_CTL="$PWD/test/e2e/podman-acceptance/harness/engine-runsc.sh"
+          test/e2e/podman-acceptance/run.sh || true
+      - name: Diagnostics
+        if: always()
+        run: |
+          cd "$RESULTS_DIR/out"
+          docker logs podman-in-runsc >engine-container.log 2>&1 || true
+          docker exec podman-in-runsc sh -c "tail -c 300000 /var/log/netavark.log" >netavark.tail 2>&1 || true
+          docker exec podman-in-runsc sh -c "grep cgroup /proc/mounts; nft list ruleset 2>&1 | head -80" >sandbox-state.txt 2>&1 || true
+          sudo chmod -R a+r /tmp/runsc-logs
+          ( cd /tmp/runsc-logs; grep -rhE 'W1[0-9]+ .*(netlink|unexpected|nftables|netfilter|bridge|veth)|errno=(22|92|93|95|97) ' . | grep -E 'netlink|NETLINK|unexpected|nft|bridge|veth|sendmsg|setsockopt' | cut -c1-400 | head -300 ) >gvisor-netlink.txt || true
+          { echo "### bridge-${{ matrix.podman }}"; echo '```'; grep -E '^Version' engine-version.txt; cat steps.txt; echo '```'; } >>"$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bridge-${{ matrix.podman }}
+          path: results/out
+          retention-days: 30
+
   # Stage C: native vs runc vs runsc
   bench:
     runs-on: ubuntu-latest

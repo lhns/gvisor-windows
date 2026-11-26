@@ -235,15 +235,18 @@ func (s *Stack) SetInterface(ctx context.Context, msg *nlmsg.Message) *syserr.Er
 			return syserr.ErrNotSupported
 		}
 	}
+	// Only RTM_NEWLINK honors NLM_F_CREATE/EXCL/REPLACE; RTM_SETLINK
+	// ignores them (see rtnetlink.c rtnl_newlink vs rtnl_setlink).
+	isNew := msg.Header().Type == linux.RTM_NEWLINK
 	flags := msg.Header().Flags
 	if ifinfomsg.Index == 0 {
-		if flags&linux.NLM_F_CREATE != 0 {
+		if isNew && flags&linux.NLM_F_CREATE != 0 {
 			return s.newInterface(ctx, msg, attrs)
 		}
 		return syserr.ErrNoDevice
 	}
 
-	if flags&(linux.NLM_F_EXCL|linux.NLM_F_REPLACE) != 0 {
+	if isNew && flags&(linux.NLM_F_EXCL|linux.NLM_F_REPLACE) != 0 {
 		return syserr.ErrExists
 	}
 

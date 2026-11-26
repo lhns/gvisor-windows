@@ -112,6 +112,12 @@ type Socket struct {
 	// Writing to it requires the per-netns table lock to be held, reading it does not.
 	groups atomicbitops.Uint64
 
+	// boolOpts holds the boolean SOL_NETLINK options set on the socket, one
+	// bit per option number. Linux keeps them as flags on the socket and
+	// only a few change behavior; we store them so setsockopt/getsockopt
+	// round-trip.
+	boolOpts atomicbitops.Uint32
+
 	// mu protects the fields below. In lock order it follows the per-netns multicast
 	// table lock.
 	mu sync.Mutex `state:"nosave"`
@@ -596,10 +602,15 @@ func (s *Socket) GetSockOpt(t *kernel.Task, level int, name int, outPtr hostarch
 			linux.NETLINK_CAP_ACK,
 			linux.NETLINK_DUMP_STRICT_CHK,
 			linux.NETLINK_EXT_ACK,
+			linux.NETLINK_LISTEN_ALL_NSID,
 			linux.NETLINK_NO_ENOBUFS,
 			linux.NETLINK_PKTINFO:
-
-			// Not supported.
+			// Linux returns the flag as an int.
+			var v primitive.Int32
+			if s.boolOpts.Load()&(1<<uint(name)) != 0 {
+				v = 1
+			}
+			return &v, nil
 		}
 	}
 	// TODO(b/68878065): other sockopts are not supported.
@@ -748,8 +759,26 @@ func (s *Socket) SetSockOpt(t *kernel.Task, level int, name int, opt []byte) *sy
 			linux.NETLINK_LISTEN_ALL_NSID,
 			linux.NETLINK_NO_ENOBUFS,
 			linux.NETLINK_PKTINFO:
-
-			// Not supported.
+			// As in Linux netlink_setsockopt: an int, nonzero sets the
+			// flag. The flags are recorded only; none of them changes
+			// what the route protocol sends back (strict dump checking
+			// and extended acks are optional refinements of replies we
+			// already produce, and gVisor sends neither extack TLVs nor
+			// broadcast errors).
+			if len(opt) < sizeOfInt32 {
+				return syserr.ErrInvalidArgument
+			}
+			bit := uint32(1) << uint(name)
+			for {
+				old := s.boolOpts.Load()
+				nv := old &^ bit
+				if hostarch.ByteOrder.Uint32(opt) != 0 {
+					nv = old | bit
+				}
+				if s.boolOpts.CompareAndSwap(old, nv) {
+					return nil
+				}
+			}
 		}
 	}
 
