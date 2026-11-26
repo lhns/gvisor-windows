@@ -238,12 +238,16 @@ static int m_child(void) {
 	kill(p, SIGTERM);
 	waitpid(p, &st, 0);
 	if (!WIFSIGNALED(st) || WTERMSIG(st) != SIGTERM) return fail("child not killed by SIGTERM");
+	int rdy[2];
+	char c;
+	if (pipe(rdy)) return fail("pipe");
 	p = fork();
 	if (p == 0) {
 		signal(SIGUSR1, usr1exit);
+		if (write(rdy[1], "r", 1) != 1) _exit(6);
 		for (;;) pause();
 	}
-	usleep(100000);
+	if (read(rdy[0], &c, 1) != 1) return fail("ready");
 	kill(p, SIGUSR1);
 	waitpid(p, &st, 0);
 	if (!WIFEXITED(st) || WEXITSTATUS(st) != 5) return fail("child handler exit");
