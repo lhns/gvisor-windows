@@ -148,6 +148,11 @@ func runCmd(args []string) int {
 		return fatalf("%v", err)
 	}
 
+	// Netavark (Podman's network driver) programs nftables; the netlink side only
+	// exists once nftables is enabled, which sandbox networks do in runsc boot.
+	if conf.Nftables || conf.Network == config.NetworkWindowsNAT {
+		nftables.EnableNFTables()
+	}
 	cpuid.Initialize()
 	l, err := boot.New(boot.Args{
 		ID:               id,
