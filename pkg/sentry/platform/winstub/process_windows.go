@@ -152,14 +152,20 @@ func (as *addressSpace) allocThread() (*thread, error) {
 // freeThread terminates a thread and returns its slot.
 func (as *addressSpace) freeThread(t *thread) {
 	as.tmu.Lock()
-	defer as.tmu.Unlock()
-	if t.started && !as.dead.Load() {
-		pTerminateThread.Call(t.hThread, 0)
+	h := t.hThread
+	terminate := t.started && !as.dead.Load() && h != 0
+	as.tmu.Unlock()
+	if terminate {
+		pTerminateThread.Call(h, 0)
 		// TerminateThread is asynchronous. Until the thread is gone it may still
 		// be waiting on the slot's reply event, and would take the wake-up meant
-		// for the next thread of the slot.
-		pWaitSingle.Call(t.hThread, 5000)
+		// for the next thread of the slot. (Not under tmu: the thread's exit
+		// waits for the debugger loop to continue its EXIT_THREAD event, and the
+		// loop takes tmu.)
+		pWaitSingle.Call(h, 5000)
 	}
+	as.tmu.Lock()
+	defer as.tmu.Unlock()
 	if t.hThread != 0 {
 		pCloseHandle.Call(t.hThread)
 		t.hThread = 0
