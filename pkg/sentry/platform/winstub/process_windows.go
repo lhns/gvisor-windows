@@ -196,6 +196,20 @@ func (as *addressSpace) freeThread(t *thread) {
 
 // startThread creates the Windows thread of t; it begins at the page's registers.
 func (as *addressSpace) startThread(t *thread) error {
+	// One thread is created at a time, and the next only after this one runs the
+	// stub's entry code: several threads starting at once in a process under a
+	// debugger sometimes never get past their start.
+	as.createMu.Lock()
+	defer as.createMu.Unlock()
+	created := false
+	defer func() {
+		for i := 0; created && i < 5000 && atomic.LoadUint32(t.u32(stubasm.PgRunning)) == 0; i++ {
+			if as.dead.Load() {
+				return
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}()
 	var tid uint32
 	const createSuspended = 4
 	h, err := call(pCreateRemoteThr, as.h, 0, 0, uintptr(stubasm.StubCode+stubasm.OffThreadEnt), uintptr(t.addr), createSuspended, uintptr(unsafe.Pointer(&tid)))
@@ -211,6 +225,7 @@ func (as *addressSpace) startThread(t *thread) error {
 		return fmt.Errorf("ResumeThread: %v", e)
 	}
 	Trace("thread %d started (tid %d)", t.idx, tid)
+	created = true
 	return nil
 }
 

@@ -120,6 +120,7 @@ type addressSpace struct {
 	privs     []*privSection
 	edges     map[uint64]edge
 
+	createMu  sync.Mutex // serializes thread creation
 	tmu       sync.Mutex
 	byTid     map[uint32]*thread
 	slots     [stubasm.MaxThreads]*thread
