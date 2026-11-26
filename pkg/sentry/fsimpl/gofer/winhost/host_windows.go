@@ -40,6 +40,10 @@ type FS struct {
 
 	pinMu sync.Mutex
 	pins  map[ID]*pin
+
+	watcher *watcher
+
+	shadow shadowState // metadata kept across replacements and own-change marks
 }
 
 type pin struct {
@@ -97,6 +101,7 @@ func Open(path string, opts Options) (*FS, error) {
 
 // Close releases the root handle and pins.
 func (fs *FS) Close() {
+	fs.stopWatch()
 	fs.pinMu.Lock()
 	for _, p := range fs.pins {
 		windows.CloseHandle(p.h)
@@ -175,19 +180,19 @@ const (
 )
 
 // attrOf builds the Attr of an open file.
-func (fs *FS) attrOf(h windows.Handle) (Attr, error) {
+func (fs *FS) attrOfMeta(h windows.Handle) (Attr, *Metadata, error) {
 	var a Attr
 	var bi fileBasicInfo
 	if err := getInfo(h, classBasic, unsafe.Pointer(&bi), uint32(unsafe.Sizeof(bi))); err != nil {
-		return a, err
+		return a, nil, err
 	}
 	var si fileStandardInfo
 	if err := getInfo(h, classStandard, unsafe.Pointer(&si), uint32(unsafe.Sizeof(si))); err != nil {
-		return a, err
+		return a, nil, err
 	}
 	var idi fileIDInfo
 	if err := getInfo(h, classIDInfo, unsafe.Pointer(&idi), uint32(unsafe.Sizeof(idi))); err != nil {
-		return a, err
+		return a, nil, err
 	}
 	a.ID = ID{Vol: idi.VolumeSerialNumber, File: idi.FileID}
 	a.Native = bi.FileAttributes
@@ -209,7 +214,7 @@ func (fs *FS) attrOf(h windows.Handle) (Attr, error) {
 			a.Mode = SIFLNK | 0o777
 			a.UID, a.GID = fs.opts.UID, fs.opts.GID
 			a.Size = 0
-			return a, nil
+			return a, nil, nil
 		}
 	}
 	m := fs.readMeta(h)
@@ -233,7 +238,12 @@ func (fs *FS) attrOf(h windows.Handle) (Attr, error) {
 	if isDir && a.Nlink < 2 {
 		a.Nlink = 2
 	}
-	return a, nil
+	return a, m, nil
+}
+
+func (fs *FS) attrOf(h windows.Handle) (Attr, error) {
+	a, _, err := fs.attrOfMeta(h)
+	return a, err
 }
 
 // Stat returns the attributes of a file by ID.
@@ -278,7 +288,11 @@ func (fs *FS) Lookup(dir ID, name string) (Attr, error) {
 		return Attr{}, err
 	}
 	defer windows.CloseHandle(h)
-	return fs.attrOf(h)
+	a, m, err := fs.attrOfMeta(h)
+	if err != nil {
+		return a, err
+	}
+	return fs.noteMeta(dir, name, a, m), nil
 }
 
 // Spec describes a file to create.
@@ -306,6 +320,7 @@ func (fs *FS) Create(dir ID, name string, spec Spec) (Attr, error) {
 // create is Create but also returns the new file's handle (opened for
 // reading and writing for regular files); the caller closes it.
 func (fs *FS) create(dir ID, name string, spec Spec) (windows.Handle, Attr, error) {
+	fs.markName(name)
 	if err := validName(name); err != nil {
 		return 0, Attr{}, err
 	}
@@ -355,6 +370,7 @@ func (fs *FS) create(dir ID, name string, spec Spec) (windows.Handle, Attr, erro
 	if err != nil {
 		return 0, Attr{}, err
 	}
+	var written *Metadata
 	fail := func(err error) (windows.Handle, Attr, error) {
 		// Best effort: remove the half-made file.
 		_ = setDisposition(h)
@@ -374,11 +390,15 @@ func (fs *FS) create(dir ID, name string, spec Spec) (windows.Handle, Attr, erro
 			if err := fs.writeMeta(h, &def); err != nil {
 				return fail(err)
 			}
+			written = &def
 		}
 	}
 	a, err := fs.attrOf(h)
 	if err != nil {
 		return fail(err)
+	}
+	if written != nil {
+		fs.remember(dir, name, a.ID, written)
 	}
 	return h, a, nil
 }
@@ -510,6 +530,7 @@ func readNativeLink(h windows.Handle) (string, bool) {
 
 // Link creates name in dir as a hard link to target.
 func (fs *FS) Link(dir ID, name string, target ID) (Attr, error) {
+	fs.markName(name)
 	if err := validName(name); err != nil {
 		return Attr{}, err
 	}
@@ -567,6 +588,8 @@ func setDisposition(h windows.Handle) error {
 
 // Unlink removes name from dir. rmdir selects rmdir(2) over unlink(2).
 func (fs *FS) Unlink(dir ID, name string, rmdir bool) error {
+	fs.forget(dir, name)
+	fs.markName(name)
 	dh, err := fs.openID(dir, dirAccess|fileDeleteChild)
 	if err != nil {
 		return err
@@ -600,6 +623,10 @@ func (fs *FS) Rename(oldDir ID, oldName string, newDir ID, newName string, flags
 	if err := validName(newName); err != nil {
 		return err
 	}
+	fs.forget(oldDir, oldName)
+	fs.forget(newDir, newName)
+	fs.markName(oldName)
+	fs.markName(newName)
 	oh, err := fs.openID(oldDir, dirAccess)
 	if err != nil {
 		return err
@@ -779,6 +806,7 @@ type SetAttr struct {
 
 // SetAttr applies changes to a file.
 func (fs *FS) SetAttr(id ID, s SetAttr) error {
+	fs.markID(id)
 	access := uint32(fileReadAttributes | fileWriteAttributes | fileReadEA | fileWriteEA)
 	if s.HasSize {
 		access |= fileWriteData
@@ -850,6 +878,7 @@ func (fs *FS) Truncate(id ID, size uint64) error {
 
 // Allocate extends a file to at least off+length (fallocate mode 0).
 func (fs *FS) Allocate(id ID, mode uint32, off, length uint64) error {
+	fs.markID(id)
 	if mode != 0 {
 		return unix.EOPNOTSUPP
 	}
@@ -902,6 +931,7 @@ func (fs *FS) ReadAt(id ID, p []byte, off int64) (int, error) {
 
 // WriteAt writes to a regular file through a short-lived handle.
 func (fs *FS) WriteAt(id ID, p []byte, off int64) (int, error) {
+	fs.markID(id)
 	h, err := fs.openID(id, fileWriteData)
 	if err != nil {
 		return 0, err

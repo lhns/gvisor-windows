@@ -2,7 +2,6 @@ name: windows-fs
 
 on:
   push:
-    branches: [windows-directfs]
   workflow_dispatch:
 
 env:

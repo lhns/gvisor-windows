@@ -10,12 +10,12 @@ Scope: CI, packaging, owner decisions on process.
 ```mermaid
 flowchart TB
     ops_windows_ci_standard_user["✔ Windows CI as a<br/>standard user"]
-    ops_upstream_merges["○ Merge upstream<br/>gVisor regularly"]
     ops_syscall_tests_on_windows["⛔ gVisor syscall tests<br/>on Windows"]
+    ops_upstream_merges["○ Merge upstream<br/>gVisor regularly"]
     ops_portable_packaging["⛔ Portable zip, no<br/>installer"]
     ops_windows_ci_standard_user ~~~ ops_portable_packaging
-    ops_upstream_merges ~~~ ops_portable_packaging
     ops_syscall_tests_on_windows ~~~ ops_portable_packaging
+    ops_upstream_merges ~~~ ops_portable_packaging
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -31,8 +31,8 @@ flowchart TB
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class ops_windows_ci_standard_user succ
-    class ops_upstream_merges next
     class ops_syscall_tests_on_windows,ops_portable_packaging blocked
+    class ops_upstream_merges next
 ```
 <!-- END GENERATED: track-ops -->
 

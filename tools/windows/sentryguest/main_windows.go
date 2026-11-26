@@ -20,19 +20,28 @@
 // minimal boot path of "Run a static guest from memory"; runsc/boot is not used.
 //
 //	sentryguest [-out text] [-code n] [-timeout d] guest [args...]
+//	sentryguest [-tar root.tar] [-env K=V,...] [flags] /path/in/tar [args...]
+//
+// With -tar the tmpfs is filled from the tar archive (directories, files,
+// symlinks, hard links) and the first argument is the guest's path inside it,
+// so a dynamic program finds its interpreter and libraries, and a shell its
+// applets, as in a root filesystem.
 //
 // It copies the guest's stdout and stderr to its own stdout, compares them with
 // -out and the exit status with -code, and prints timings.
 package main
 
 import (
+	"archive/tar"
 	"bytes"
-	"runtime/pprof"
-	"strings"
 	"flag"
 	"fmt"
+	"io"
 	"os"
+	"path"
 	"runtime"
+	"runtime/pprof"
+	"strings"
 	"time"
 
 	"gvisor.dev/gvisor/pkg/abi/linux"
@@ -78,6 +87,8 @@ func main() {
 	timeout := flag.Duration("timeout", 60*time.Second, "give up after")
 	verbose := flag.Bool("v", false, "Sentry logging")
 	sample := flag.Bool("sample", false, "print where the task creating the process spends its time")
+	tarPath := flag.String("tar", "", "fill the tmpfs from this tar; the first argument is then a path inside it")
+	envList := flag.String("env", "PATH=/bin:/usr/bin:/", "comma-separated environment of the guest")
 	flag.Parse()
 	if flag.NArg() < 1 {
 		fail("usage: sentryguest [flags] guest [args...]")
@@ -86,8 +97,15 @@ func main() {
 		log.SetLevel(log.Debug)
 		log.SetTarget(log.GoogleEmitter{Writer: &log.Writer{Next: os.Stderr}})
 	}
-	image, err := os.ReadFile(flag.Arg(0))
-	must(err, "reading the guest")
+	var image []byte
+	guestPath := "/guest"
+	if *tarPath == "" {
+		var err error
+		image, err = os.ReadFile(flag.Arg(0))
+		must(err, "reading the guest")
+	} else {
+		guestPath = flag.Arg(0)
+	}
 
 	t0 := time.Now()
 	cpuid.Initialize()
@@ -148,8 +166,12 @@ func main() {
 		}
 		return fd
 	}
-	guest := create("/guest", linux.O_WRONLY, image)
-	guest.DecRef(ctx)
+	if *tarPath == "" {
+		guest := create("/guest", linux.O_WRONLY, image)
+		guest.DecRef(ctx)
+	} else {
+		extract(ctx, vfsObj, creds, root, *tarPath)
+	}
 	stdin := create("/stdin", linux.O_RDONLY, nil)
 	stdout := create("/stdout", linux.O_RDWR, nil)
 	fdt := k.NewFDTable()
@@ -163,7 +185,7 @@ func main() {
 	ls := limits.NewLimitSet()
 	ls.SetUnchecked(limits.Stack, limits.Limit{Cur: 8 << 20, Max: limits.Infinity})
 	ls.SetUnchecked(limits.NumberOfFiles, limits.Limit{Cur: 1024, Max: 4096})
-	args := append([]string{"/guest"}, flag.Args()[1:]...)
+	args := append([]string{guestPath}, flag.Args()[1:]...)
 	tInit := time.Since(t0)
 	winstub.Trace("boot: kernel ready")
 
@@ -174,9 +196,9 @@ func main() {
 	winstub.Trace("boot: kernel started")
 	t1 := time.Now()
 	tg, _, err := k.CreateProcess(kernel.CreateProcessArgs{
-		Filename:             "/guest",
+		Filename:             guestPath,
 		Argv:                 args,
-		Envv:                 []string{"PATH=/", "HOME=/"},
+		Envv:                 append(strings.Split(*envList, ","), "HOME=/"),
 		WorkingDirectory:     "/",
 		Credentials:          creds,
 		FDTable:              fdt,
@@ -263,6 +285,64 @@ func readAll(ctx context.Context, vfsObj *vfs.VirtualFilesystem, creds *auth.Cre
 		out = append(out, buf[:n]...)
 		if n == 0 || err != nil {
 			return out
+		}
+	}
+}
+
+// extract fills the tmpfs from a tar archive.
+func extract(ctx context.Context, vfsObj *vfs.VirtualFilesystem, creds *auth.Credentials, root vfs.VirtualDentry, tarPath string) {
+	f, err := os.Open(tarPath)
+	must(err, "opening the tar")
+	defer f.Close()
+	pop := func(p string) *vfs.PathOperation {
+		return &vfs.PathOperation{Root: root, Start: root, Path: fspath.Parse(p)}
+	}
+	made := map[string]bool{"/": true}
+	var mkdirs func(dir string)
+	mkdirs = func(dir string) {
+		if made[dir] {
+			return
+		}
+		mkdirs(path.Dir(dir))
+		err := vfsObj.MkdirAt(ctx, creds, pop(dir), &vfs.MkdirOptions{Mode: 0o755})
+		if err != nil && !strings.Contains(err.Error(), "exists") {
+			must(err, "mkdir "+dir)
+		}
+		made[dir] = true
+	}
+	contents := map[string][]byte{}
+	writeFile := func(name string, mode uint32, data []byte) {
+		mkdirs(path.Dir(name))
+		fd, err := vfsObj.OpenAt(ctx, creds, pop(name), &vfs.OpenOptions{Flags: linux.O_WRONLY | linux.O_CREAT | linux.O_TRUNC, Mode: linux.FileMode(mode)})
+		must(err, "creating "+name)
+		defer fd.DecRef(ctx)
+		for d := data; len(d) > 0; {
+			n, err := fd.Write(ctx, usermem.BytesIOSequence(d), vfs.WriteOptions{})
+			must(err, "writing "+name)
+			d = d[n:]
+		}
+	}
+	tr := tar.NewReader(f)
+	for {
+		h, err := tr.Next()
+		if err == io.EOF {
+			return
+		}
+		must(err, "reading the tar")
+		name := path.Clean("/" + h.Name)
+		switch h.Typeflag {
+		case tar.TypeDir:
+			mkdirs(name)
+		case tar.TypeReg:
+			data, err := io.ReadAll(tr)
+			must(err, "reading "+name)
+			contents[name] = data
+			writeFile(name, uint32(h.Mode&0o777), data)
+		case tar.TypeLink:
+			writeFile(name, uint32(h.Mode&0o777), contents[path.Clean("/"+h.Linkname)])
+		case tar.TypeSymlink:
+			mkdirs(path.Dir(name))
+			must(vfsObj.SymlinkAt(ctx, creds, pop(name), h.Linkname), "symlink "+name)
 		}
 	}
 }

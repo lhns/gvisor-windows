@@ -782,17 +782,18 @@
   title: Windows changes reach the guest
   track: fs
   kind: feature
-  state: next
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/2b-fs-rootfs-and-changes.md
+  verdict_quote: host folders now pick up Windows changes within milliseconds
   headline: ''
   depends_on:
   - fs-windows-directfs
   replaced_by: []
   lane: windows-ci
-  start: ''
-  end: ''
+  start: '2026-11-26'
+  end: '2026-11-26'
   folded: []
   overview: false
   plain: Edits made on Windows invalidate the Sentry's caches and arrive in the guest as inotify events.
@@ -1105,7 +1106,7 @@
   title: Guest terminal and stdio
   track: sentry
   kind: feature
-  state: blocked
+  state: in-progress
   outcome: unrated
   evidence: []
   verdict_quote: ''
@@ -1114,7 +1115,7 @@
   - sentry-windows-build
   replaced_by: []
   lane: windows-ci
-  start: ''
+  start: '2026-11-26'
   end: ''
   folded: []
   overview: false
@@ -1124,39 +1125,42 @@
   title: Root filesystem from an erofs image
   track: fs
   kind: feature
-  state: blocked
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/2b-fs-rootfs-and-changes.md
+  - docs/adr/0015-sandbox-rootfs-as-erofs-image.md
+  verdict_quote: a read-only erofs image built from OCI images (alpine, podman) mounts on Windows under a memory overlay in under 40 ms with every type, mode, owner, device node, hard link and symlink correct
   headline: ''
   depends_on:
   - fs-windows-directfs
-  - runsc-windows-boot
   - fs-rootfs-import
   replaced_by: []
   lane: windows-ci
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   plain: The guest's root filesystem comes from an unpacked OCI bundle directory on Windows.
-  notes: 'Done when: runsc boot on Windows mounts an erofs root image (Windows file mapping in pkg/erofs) with an overlay and runs a guest from it.'
+  notes: Done as a library (pkg/sentry/fsimpl/rootfs); wiring into runsc boot belongs to Boot runsc on Windows.
 - id: sentry-threads-and-signals
   title: Guest threads and signals
   track: sentry
   kind: feature
-  state: blocked
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/1f-exec-signals.md
+  verdict_quote: Under the real Sentry on `windows-latest`, dynamic glibc and musl programs with `dlopen`, execve chains, fork+exec+wait, busybox shell pipelines
   headline: ''
   depends_on:
   - platform-winstub
   replaced_by: []
   lane: windows-ci
-  start: ''
-  end: ''
-  folded: []
+  start: '2026-11-26'
+  end: '2026-11-26'
+  folded:
+  - A new process inside a guest costs 0.9-1.2 s; busybox pipelines take 3.3-3.8 s (2026-11-26, session record)
   overview: false
   plain: Multi-threaded guests (such as Go programs) get one stub thread per guest thread, with signals delivered correctly.
   notes: 'Done when: a multi-threaded Go program and a signal-handling test run correctly under the Sentry on Windows.'
@@ -1686,7 +1690,7 @@
   depends_on:
   - platform-static-guest-from-memory
   replaced_by: []
-  start: ''
+  start: '2026-11-26'
   end: ''
   folded: []
   overview: true
@@ -1694,7 +1698,7 @@
   title: Start guest processes fast
   track: platform
   kind: feature
-  state: next
+  state: in-progress
   lane: windows-ci
   plain: A guest process takes 280-560 ms to start through the Sentry, against 18 ms for a bare stub; profile the gap and keep a pool of ready stubs.
   notes: 'Done when: static glibc hello starts and exits through the Sentry in under 50 ms median on windows-latest, and fork+waitpid adds under 50 ms; the profile is written up.'
@@ -1706,7 +1710,7 @@
   - platform-static-guest-from-memory
   - runsc-windows-commands
   replaced_by: []
-  start: ''
+  start: '2026-11-26'
   end: ''
   folded: []
   overview: false
@@ -1714,26 +1718,27 @@
   title: Boot runsc on Windows
   track: runsc
   kind: feature
-  state: next
+  state: in-progress
   lane: windows-ci
   plain: runsc's real boot path on Windows (spec, mounts, stdio, network) replaces the test harness that builds the kernel by hand.
   notes: 'Done when: runsc boot on Windows starts a sandbox from an OCI spec with the windows-nat network and a tmpfs or directfs root, and the static guests pass through it.'
-- outcome: unrated
-  evidence: []
-  verdict_quote: ''
+- outcome: successful
+  evidence:
+  - docs/results/1f-exec-signals.md
+  verdict_quote: Under the real Sentry on `windows-latest`, dynamic glibc and musl programs with `dlopen`, execve chains, fork+exec+wait, busybox shell pipelines
   headline: ''
   depends_on:
   - platform-static-guest-from-memory
   replaced_by: []
-  start: ''
-  end: ''
+  start: '2026-11-26'
+  end: '2026-11-26'
   folded: []
   overview: false
   id: sentry-dynamic-elf-and-exec
   title: Dynamic programs, exec and pipes
   track: sentry
   kind: feature
-  state: next
+  state: done
   lane: windows-ci
   plain: Run dynamically linked programs with their interpreter and shared libraries, exec a second program, and connect processes with pipes.
   notes: 'Done when: a dynamic glibc and a dynamic musl program, an exec chain and a shell pipeline (static busybox sh -c "echo a | cat") pass under the Sentry on Windows.'
@@ -1741,21 +1746,21 @@
   title: Editor safe-saves keep Linux metadata
   track: fs
   kind: defect
-  state: next
+  state: done
   outcome: unrated
   evidence:
-  - docs/results/2-windows-directfs.md
+  - docs/results/2b-fs-rootfs-and-changes.md
   verdict_quote: ''
   headline: ''
   depends_on: []
   replaced_by: []
   lane: windows-ci
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   plain: An editor's safe-save replaces the file, which drops its metadata stream, so the guest falls back to the mount defaults for mode and owner.
-  notes: 'Fixed when: a safe-save (write temp, rename over) from Windows keeps the Linux mode and owner the guest set.'
+  notes: Fixed for the running sandbox (metadata remembered per name in memory); replacements while no sandbox runs still lose it.
 - outcome: unrated
   evidence:
   - docs/results/1c-windows-platform.md
@@ -1771,7 +1776,7 @@
   title: Syscalls split across mappings
   track: platform
   kind: defect
-  state: next
+  state: in-progress
   lane: windows-ci
   plain: A syscall instruction whose two bytes fall into two separately mapped ranges is not found by the scan, so it would reach the Windows kernel.
   notes: 'Fixed when: a test guest with a syscall straddling two MapFile ranges is patched and served correctly.'
@@ -1832,3 +1837,23 @@
   lane: windows-ci
   plain: Right after busybox works, run podman --version and podman info inside the sandbox; their failures are the real gap list.
   notes: 'Done when: the gap list is written up in docs/results.'
+- id: fs-attribute-cache
+  title: Faster stat walks on host folders
+  track: fs
+  kind: feature
+  state: next
+  outcome: unrated
+  evidence:
+  - docs/results/2b-fs-rootfs-and-changes.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - fs-change-notifications
+  replaced_by: []
+  lane: windows-ci
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: A git-status-like walk of 20000 files takes 1.2-2.4 s through the host folder; an attribute cache fed by the change watcher would bring stat near native.
+  notes: 'Done when: a 20000-file stat walk through the backend is within 2x of native on windows-latest.'

@@ -2,7 +2,6 @@ name: nftables
 
 on:
   push:
-    branches: [windows, nftables-safety]
     paths: ["pkg/tcpip/nftables/**", "pkg/sentry/socket/netlink/netfilter/**", ".github/workflows/nftables.yml"]
   workflow_dispatch:
 
