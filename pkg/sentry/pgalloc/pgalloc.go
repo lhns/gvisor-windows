@@ -210,6 +210,10 @@ type MemoryFile struct {
 	// file is the backing file. The file pointer is immutable.
 	file *os.File
 
+	// gvisor-windows: host holds the Windows backing state; it is empty on
+	// Linux.
+	host hostState `state:"nosave"`
+
 	// chunks holds metadata for each usable chunk in the backing file.
 	//
 	// chunks is at the end of MemoryFile in hopes of placing it on a relatively
@@ -241,6 +245,12 @@ type chunkInfo struct {
 	//
 	// huge is immutable.
 	huge bool
+
+	// gvisor-windows: section is the handle of the Windows section object that
+	// backs this chunk; it is unused on Linux.
+	//
+	// section is immutable.
+	section uintptr `state:"nosave"`
 }
 
 func (f *MemoryFile) chunksLoad() []chunkInfo {
@@ -440,15 +450,16 @@ func NewMemoryFile(file *os.File, opts MemoryFileOpts) (*MemoryFile, error) {
 		return nil, fmt.Errorf("invalid MemoryFileOpts.DelayedEviction: %v", opts.DelayedEviction)
 	}
 
-	// Truncate the file to 0 bytes first to ensure that it's empty.
-	if err := file.Truncate(0); err != nil {
-		return nil, err
-	}
 	f := &MemoryFile{
 		opts: opts,
 		file: file,
 	}
 	f.initFields()
+	// gvisor-windows: on Linux hostInit truncates the file to 0 bytes first to
+	// ensure that it's empty, and applies the IMA workaround.
+	if err := f.hostInit(); err != nil {
+		return nil, err
+	}
 
 	if f.opts.DelayedEviction == DelayedEvictionEnabled && f.opts.UseHostMemcgPressure {
 		stop, err := hostmm.NotifyCurrentMemcgPressureCallback(func() {
@@ -467,9 +478,6 @@ func NewMemoryFile(file *os.File, opts MemoryFileOpts) (*MemoryFile, error) {
 
 	go f.releaserMain() // S/R-SAFE: f.mu
 
-	if !opts.DisableIMAWorkAround {
-		hostmm.IMAWorkAroundForMemFile(file.Fd())
-	}
 	return f, nil
 }
 
@@ -513,19 +521,8 @@ func (f *MemoryFile) releaserDestroyLocked() {
 		}
 	}
 
-	f.file.Close()
-	// Ensure that any attempts to use f.file.Fd() fail instead of getting a fd
-	// that has possibly been reassigned.
-	f.file = nil
-	chunks := f.chunksLoad()
-	for i := range chunks {
-		chunk := &chunks[i]
-		_, _, errno := unix.Syscall(unix.SYS_MUNMAP, chunk.mapping, chunkSize, 0)
-		if errno != 0 {
-			log.Warningf("Failed to unmap mapping %#x for MemoryFile chunk %d: %v", chunk.mapping, i, errno)
-		}
-		chunk.mapping = 0
-	}
+	// gvisor-windows: closing the file and unmapping the chunks is per OS.
+	f.hostDestroy()
 }
 
 // AllocOpts are options used in MemoryFile.Allocate.
@@ -634,6 +631,13 @@ func (f *MemoryFile) Allocate(length uint64, opts AllocOpts) (memmap.FileRange, 
 	fr, err := f.findAllocatableAndMarkUsed(&alloc)
 	if err != nil {
 		return fr, err
+	}
+
+	// gvisor-windows: pages of a Windows section must be committed before they
+	// are touched; this is a no-op on Linux.
+	if err := f.hostPrepare(fr); err != nil {
+		f.DecRef(fr)
+		return memmap.FileRange{}, err
 	}
 
 	var dsts safemem.BlockSeq
@@ -931,49 +935,23 @@ func (f *MemoryFile) extendChunksLocked(alloc *allocState) error {
 		}
 	}
 	incNrChunks := (alloc.length + chunkMask - tail) / chunkSize
-	incFileSize := incNrChunks * chunkSize
 	newNrChunks := oldNrChunks + incNrChunks
 	if newNrChunks > maxChunks || newNrChunks < oldNrChunks /* overflow */ {
 		return linuxerr.ENOMEM
-	}
-	newFileSize := newNrChunks * chunkSize
-
-	// Extend the backing file and obtain mappings for the new chunks. If the
-	// backing file is memory-backed, and THP is enabled, Linux will align our
-	// mapping to a hugepage boundary; see
-	// mm/shmem.c:shmem_get_unmapped_area().
-	//
-	// In tests, f.file may be nil.
-	var mapStart uintptr
-	if f.file != nil {
-		if err := f.file.Truncate(int64(newFileSize)); err != nil {
-			return err
-		}
-		m, _, errno := unix.Syscall6(
-			unix.SYS_MMAP,
-			0,
-			uintptr(incFileSize),
-			unix.PROT_READ|unix.PROT_WRITE,
-			unix.MAP_SHARED,
-			f.file.Fd(),
-			uintptr(oldFileSize))
-		if errno != 0 {
-			return errno
-		}
-		mapStart = m
-		f.madviseChunkMapping(mapStart, uintptr(incFileSize), alloc.huge)
 	}
 
 	// Update chunk state.
 	newChunks := make([]chunkInfo, newNrChunks)
 	copy(newChunks, oldChunks)
-	m := mapStart
 	for i := oldNrChunks; i < newNrChunks; i++ {
 		newChunks[i].huge = alloc.huge
-		if f.file != nil {
-			newChunks[i].mapping = m
-			m += chunkSize
-		}
+	}
+
+	// gvisor-windows: extending the backing file and obtaining mappings for the
+	// new chunks is per OS (on Linux: ftruncate and mmap, unless f.file is nil,
+	// as in tests).
+	if err := f.hostGrow(oldNrChunks, newNrChunks, alloc.huge, newChunks); err != nil {
+		return err
 	}
 	f.chunks.Store(&newChunks)
 
@@ -1010,6 +988,9 @@ var mlockDisabled atomicbitops.Uint32
 var madvPopulateWriteDisabled atomicbitops.Uint32
 
 func canPopulate() bool {
+	if !hostCanPopulate() { // gvisor-windows:
+		return false
+	}
 	return mlockDisabled.Load() == 0 || madvPopulateWriteDisabled.Load() == 0
 }
 
@@ -1128,26 +1109,7 @@ func (f *MemoryFile) Decommit(fr memmap.FileRange) {
 	})
 }
 
-func (f *MemoryFile) commitFile(fr memmap.FileRange) error {
-	// "The default operation (i.e., mode is zero) of fallocate() allocates the
-	// disk space within the range specified by offset and len." - fallocate(2)
-	return unix.Fallocate(
-		int(f.file.Fd()),
-		0, // mode
-		int64(fr.Start),
-		int64(fr.Length()))
-}
-
-func (f *MemoryFile) decommitFile(fr memmap.FileRange) error {
-	// "After a successful call, subsequent reads from this range will
-	// return zeroes. The FALLOC_FL_PUNCH_HOLE flag must be ORed with
-	// FALLOC_FL_KEEP_SIZE in mode ..." - fallocate(2)
-	return unix.Fallocate(
-		int(f.file.Fd()),
-		unix.FALLOC_FL_PUNCH_HOLE|unix.FALLOC_FL_KEEP_SIZE,
-		int64(fr.Start),
-		int64(fr.Length()))
-}
+// gvisor-windows: commitFile and decommitFile are per OS.
 
 // manuallyZero zeroes the pages in fr through f's mappings. It returns false if
 // it skipped pages of a disk-backed file; see zeroDiskBacked.
@@ -1886,11 +1848,7 @@ func (f *MemoryFile) TotalUsage() (uint64, error) {
 	// Stat the underlying file to discover the underlying usage. stat(2)
 	// always reports the allocated block count in units of 512 bytes. This
 	// includes pages in the page cache and swapped pages.
-	var stat unix.Stat_t
-	if err := unix.Fstat(int(f.file.Fd()), &stat); err != nil {
-		return 0, err
-	}
-	return uint64(stat.Blocks * 512), nil
+	return f.hostTotalUsage() // gvisor-windows: per OS
 }
 
 // UnaccountedUsage returns the number of bytes used by the backing file that
