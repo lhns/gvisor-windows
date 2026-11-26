@@ -51,7 +51,7 @@ def main():
             f.write(''.join('%s\t%s\n' % c for c in todo))
         log = os.path.join(workdir, 'run%d.log' % run)
         if a.sentryguest:
-            cmd = [a.sentryguest, '-tar', a.tar, '-sysmounts', '-stream', '-timeout', '6h',
+            cmd = [a.sentryguest, '-tar', a.tar, '-sysmounts', '-net', '-stream', '-timeout', '6h',
                    '-files', '%s:/list.txt' % lst,
                    '/bin/driver', '-t', str(a.case_timeout), '/list.txt']
         else:

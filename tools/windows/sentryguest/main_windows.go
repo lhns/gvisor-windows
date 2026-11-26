@@ -89,6 +89,7 @@ func main() {
 	sample := flag.Bool("sample", false, "print where the task creating the process spends its time")
 	tarPath := flag.String("tar", "", "fill the tmpfs from this tar; the first argument is then a path inside it")
 	extraFiles := flag.String("files", "", "comma-separated hostfile:/guest/path pairs copied into the tmpfs after the tar")
+	withNet := flag.Bool("net", false, "give the guest lo and eth0 (user-space NAT, as --network=windows-nat)")
 	stream := flag.Bool("stream", false, "print the guest's output while it runs (so a crash of the Sentry loses little)")
 	sysMounts := flag.Bool("sysmounts", false, "mount /proc, /sys, /dev and /dev/pts")
 	envList := flag.String("env", "PATH=/bin:/usr/bin:/", "comma-separated environment of the guest")
@@ -132,6 +133,9 @@ func main() {
 	tk.SetClocks(ktime.NewCalibratedClocks(false), params)
 	userns := auth.NewRootUserNamespace()
 	netns := inet.NewRootNamespace(nil, nil, userns)
+	if *withNet {
+		netns = newNetNamespace(tk, userns)
+	}
 	must(k.Init(kernel.InitKernelArgs{
 		FeatureSet:           cpuid.HostFeatureSet().Fixed(),
 		Timekeeper:           tk,
