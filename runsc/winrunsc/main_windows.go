@@ -21,12 +21,15 @@ import (
 	"gvisor.dev/gvisor/pkg/cpuid"
 	"gvisor.dev/gvisor/pkg/log"
 	"gvisor.dev/gvisor/pkg/sentry/fsimpl/rootfs"
+	"gvisor.dev/gvisor/pkg/tcpip/nftables"
 	"gvisor.dev/gvisor/runsc/boot"
 	"gvisor.dev/gvisor/runsc/config"
 	"gvisor.dev/gvisor/runsc/flag"
 	"gvisor.dev/gvisor/runsc/specutils"
 	"gvisor.dev/gvisor/runsc/version"
 )
+
+var pipeForwardFlag, unixForwardFlag string
 
 // Main runs runsc.exe and does not return.
 func Main() {
@@ -46,6 +49,9 @@ Global flags are runsc's, e.g. --network=windows-nat --publish=8080:80
 
 func run(args []string) int {
 	config.RegisterFlags(flag.CommandLine)
+	flag.StringVar(&pipeForwardFlag, "pipe-forward", "", `GUESTPORT:PIPENAME: serve \.\pipe\PIPENAME (current user only) and relay it to a TCP port of the sandbox (needs --network=windows-nat)`)
+	flag.StringVar(&unixForwardFlag, "unix-forward", "", "GUESTPORT:PATH: listen on the AF_UNIX socket PATH of the host and relay it to a TCP port of the sandbox (the podman client cannot dial pipes)")
+	flag.BoolVar(&boot.WindowsNATHostLoopback, "host-loopback", false, "windows-nat: the guest reaches the host's 127.0.0.1 services at 10.0.2.2")
 	showVersion := flag.Bool("version", false, "show version and exit")
 	flag.CommandLine.Usage = usage
 	if err := flag.CommandLine.Parse(args); err != nil {
@@ -143,6 +149,11 @@ func runCmd(args []string) int {
 		return fatalf("%v", err)
 	}
 
+	// Netavark (Podman's network driver) programs nftables; the netlink side only
+	// exists once nftables is enabled, which sandbox networks do in runsc boot.
+	if conf.Nftables || conf.Network == config.NetworkWindowsNAT {
+		nftables.EnableNFTables()
+	}
 	cpuid.Initialize()
 	l, err := boot.New(boot.Args{
 		ID:               id,
@@ -165,6 +176,26 @@ func runCmd(args []string) int {
 		return fatalf("creating the sandbox: %v", err)
 	}
 
+	var pf *pipeForward
+	if pipeForwardFlag != "" {
+		if conf.Network != config.NetworkWindowsNAT {
+			return fatalf("--pipe-forward needs --network=windows-nat")
+		}
+		if pf, err = parsePipeForward(pipeForwardFlag); err != nil {
+			return fatalf("%v", err)
+		}
+	}
+
+	var uf *unixForward
+	if unixForwardFlag != "" {
+		if conf.Network != config.NetworkWindowsNAT {
+			return fatalf("--unix-forward needs --network=windows-nat")
+		}
+		if uf, err = parseUnixForward(unixForwardFlag); err != nil {
+			return fatalf("%v", err)
+		}
+	}
+
 	stdio := &boot.Stdio{Out: os.Stdout, Err: os.Stderr}
 	if boot.IsUsableHandle(os.Stdin) {
 		stdio.In = os.Stdin
@@ -181,6 +212,16 @@ func runCmd(args []string) int {
 
 	if err := l.RunInProcess(); err != nil {
 		return fatalf("starting the container: %v", err)
+	}
+	if pf != nil {
+		if err := pf.start(); err != nil {
+			return fatalf("%v", err)
+		}
+	}
+	if uf != nil {
+		if err := uf.start(); err != nil {
+			return fatalf("%v", err)
+		}
 	}
 	ws := l.WaitExit()
 	stdio.WaitDrained(5 * time.Second)

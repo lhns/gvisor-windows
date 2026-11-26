@@ -4,7 +4,7 @@
 
 [Back to the page](../roadmap.md)
 
-Generated on 2026-11-26. Open bars end on that date.
+Generated on 2026-11-27. Open bars end on that date.
 
 <!-- BEGIN GENERATED: timeline -->
 ```mermaid
@@ -42,6 +42,7 @@ gantt
     Start guest processes fast :platform_fast_process_start, 2026-11-26, 2026-11-26
     Syscalls split across mappings :platform_split_syscall_unpatched, 2026-11-26, 2026-11-26
     Map files not in the memory file :platform_map_files_without_sections, 2026-11-26, 2026-11-26
+    Veneer addresses differ after clone :platform_veneer_address_in_child, 2026-11-27, 2026-11-27
     section sentry - sentry
     Recover faults in Go :sentry_go_fault_recovery, 2026-11-26, 2026-11-26
     Sentry builds for Windows :sentry_windows_build, 2026-11-26, 2026-11-26
@@ -63,7 +64,9 @@ gantt
     Editor safe-saves keep Linux metadata :fs_safe_save_keeps_metadata, 2026-11-26, 2026-11-26
     Bring container images onto NTFS :fs_rootfs_import, 2026-11-26, 2026-11-26
     Faster stat walks on host folders :fs_attribute_cache, 2026-11-26, 2026-11-26
-    Flaky negative-cache test on host folde… :fs_flaky_negative_cache_test, 2026-11-26, 2026-11-26
+    Flaky negative-cache test on host folde… :fs_flaky_negative_cache_test, 2026-11-26, 2026-11-27
+    Deletes fail for standard users :fs_standard_user_delete_rights, 2026-11-26, 2026-11-26
+    Case-sensitive names without admin :fs_case_sensitivity_without_admin, 2026-11-26, 2026-11-27
     section net - network
     Netstack to Windows sockets :net_netstack_windows_link, 2026-11-26, 2026-11-26
     Publish guest ports on localhost :net_port_forwarding, 2026-11-26, 2026-11-26
@@ -72,13 +75,17 @@ gantt
     section workloads - workloads
     Write the Podman acceptance test :workloads_acceptance_test, 2026-11-26, 2026-11-26
     Podman on gVisor on Linux :workloads_podman_on_gvisor_linux, 2026-11-26, 2026-11-26
-    Acceptance test for Windows :active, workloads_acceptance_test_windows, 2026-11-26, 2026-11-26
+    Acceptance test for Windows :workloads_acceptance_test_windows, 2026-11-26, 2026-11-26
+    Serve Podman to Windows clients :active, workloads_podman_harness, 2026-11-26, 2026-11-27
     Bridge networking fails in gVisor :workloads_gvisor_bridge_netlink, 2026-11-26, 2026-11-26
     Port publishing untested in gVisor :workloads_gvisor_port_publishing, 2026-11-26, 2026-11-26
     Does host networking meet the bar :workloads_bar_host_network, 2026-11-26, 2026-11-26
     Strict bar on stock gVisor :workloads_strict_bar_linux, 2026-11-26, 2026-11-26
     Cgroup filesystem mounted read-only :workloads_gvisor_cgroupfs_readonly, 2026-11-26, 2026-11-26
-    Podman API on a named pipe :active, workloads_podman_api_named_pipe, 2026-11-26, 2026-11-26
+    Podman API on a named pipe :workloads_podman_api_named_pipe, 2026-11-26, 2026-11-26
+    Probe Podman inside the sandbox :workloads_podman_probe, 2026-11-26, 2026-11-26
+    conmon sees no data on its sync pipe :workloads_conmon_sync_pipe, 2026-11-26, 2026-11-27
+    Overlay mounts with userxattr rejected :workloads_overlay_userxattr, 2026-11-26, 2026-11-27
     section research - research
     Pick gVisor as the base :research_gvisor_base, 2026-11-17, 2026-11-26
     Revive LKL or nommu UML :crit, research_lkl_nommu, 2026-11-26, 2026-11-26
@@ -96,8 +103,8 @@ gantt
     Podman only as the bar :ops_podman_only_the_bar, 2026-11-26, 2026-11-26
     Windows CI as a standard user :ops_windows_ci_standard_user, 2026-11-26, 2026-11-26
     Choose how to run gVisor's tests :ops_syscall_test_strategy, 2026-11-26, 2026-11-26
-    gVisor syscall tests on Windows :active, ops_syscall_tests_on_windows, 2026-11-26, 2026-11-26
+    gVisor syscall tests on Windows :active, ops_syscall_tests_on_windows, 2026-11-26, 2026-11-27
 ```
 
-Not shown (no `start`): `runsc-sandbox-lifecycle`, `runsc-windows-lifecycle-commands`, `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-hardware-acceleration`, `platform-no-fsgsbase-fallback`, `platform-binary-translation-fallback`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `fs-persistent-storage-impl`, `workloads-podman-on-windows`, `workloads-podman-harness`, `workloads-podman-probe`, `ops-upstream-merges`, `ops-portable-packaging`
+Not shown (no `start`): `runsc-sandbox-lifecycle`, `runsc-windows-lifecycle-commands`, `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-hardware-acceleration`, `platform-no-fsgsbase-fallback`, `platform-binary-translation-fallback`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `fs-persistent-storage-impl`, `workloads-podman-on-windows`, `workloads-end-to-end-speed`, `ops-upstream-merges`, `ops-portable-packaging`, `ops-run-on-a-work-machine`
 <!-- END GENERATED: timeline -->

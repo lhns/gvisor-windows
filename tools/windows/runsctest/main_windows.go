@@ -63,6 +63,9 @@ func main() {
 		{"net", testNet},
 		{"publish", testPublish},
 		{"tty", testTTY},
+		{"hostfs", testHostfs},
+		{"case", testCase},
+		{"forward", testForward},
 		// Not in the default run: fails today (docs/results/3-runsc-boot.md).
 		{"erofs", testErofs},
 	}
@@ -74,7 +77,7 @@ func main() {
 	}
 	failed := 0
 	for _, t := range tests {
-		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && t.name == "erofs") {
+		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case")) {
 			continue
 		}
 		start := time.Now()
@@ -115,12 +118,14 @@ func bundle(name string, args []string, terminal bool) string {
 	}
 	dir := filepath.Join(*workDir, "bundle-"+name)
 	must(os.MkdirAll(dir, 0o755))
-	mounts := []map[string]any{
+	mounts := []map[string]any{}
+	mounts = append(mounts, extraMounts...)
+	mounts = append(mounts, []map[string]any{
 		{"destination": "/proc", "type": "proc", "source": "proc"},
 		{"destination": "/dev", "type": "tmpfs", "source": "tmpfs", "options": []string{"nosuid", "strictatime", "mode=755", "size=65536k"}},
 		{"destination": "/dev/pts", "type": "devpts", "source": "devpts", "options": []string{"nosuid", "noexec", "newinstance", "ptmxmode=0666", "mode=0620"}},
 		{"destination": "/tmp", "type": "tmpfs", "source": "tmpfs"},
-	}
+	}...)
 	spec := map[string]any{
 		"ociVersion": "1.0.2",
 		"process": map[string]any{
@@ -137,6 +142,10 @@ func bundle(name string, args []string, terminal bool) string {
 		"annotations": map[string]string{"dev.gvisor.windows.rootfs-options": "file-mode=0755"},
 		"linux": map[string]any{"namespaces": []map[string]string{
 			{"type": "pid"}, {"type": "network"}, {"type": "ipc"}, {"type": "uts"}, {"type": "mount"},
+		}, "devices": []map[string]any{
+			{"path": "/dev/null", "type": "c", "major": 1, "minor": 3, "fileMode": 438},
+			{"path": "/dev/zero", "type": "c", "major": 1, "minor": 5, "fileMode": 438},
+			{"path": "/dev/urandom", "type": "c", "major": 1, "minor": 9, "fileMode": 438},
 		}},
 	}
 	b, err := json.MarshalIndent(spec, "", "  ")
@@ -289,4 +298,107 @@ func testPublish() error {
 		time.Sleep(500 * time.Millisecond)
 	}
 	return fmt.Errorf("published port never answered: %v (runsc stderr %q)", last, errb.String())
+}
+
+var extraMounts []map[string]any
+
+// testHostfs is the reproducer for the rename and rmdir failures Podman's
+// storage hits on a host-folder bind mount ("rename .tmp-images.json
+// images.json: permission denied", "remove /.pivot_root: permission denied").
+func testHostfs() error {
+	dir := filepath.Join(*workDir, "hostfs")
+	_ = os.RemoveAll(dir)
+	must(os.MkdirAll(dir, 0o755))
+	extraMounts = []map[string]any{{"destination": "/w", "type": "bind", "source": dir, "options": []string{"rbind", "rw"}}}
+	defer func() { extraMounts = nil }()
+	script := `cd /w; set -x; echo a >x; echo b >y; mv x y && echo replace-ok; cat y; mkdir d; mkdir d/e; rmdir d/e && echo rmdir-ok; mv d d2 && echo dirmove-ok; rmdir d2 && echo rmdir2-ok; echo c >z; rm z && echo rm-ok; mkfifo p; echo fifo-data >p & cat p; wait; echo fifo-ok; exit 0`
+	r, err := runsc("hostfs", []string{"/bin/sh", "-c", script}, nil)
+	if err != nil {
+		return err
+	}
+	for _, want := range []string{"replace-ok", "rmdir-ok", "dirmove-ok", "rmdir2-ok", "rm-ok", "fifo-data", "fifo-ok"} {
+		if !strings.Contains(r.stdout, want) {
+			return fmt.Errorf("%q missing; stdout %q stderr %q", want, r.stdout, r.stderr)
+		}
+	}
+	return nil
+}
+
+// testCase checks that two names differing only in case coexist on a bind
+// mount with the case-sensitive option (Podman's storage needs it).
+func testCase() error {
+	dir := filepath.Join(*workDir, "case")
+	_ = os.RemoveAll(dir)
+	must(os.MkdirAll(dir, 0o755))
+	// What Windows itself says about per-directory case sensitivity for this user.
+	probe := filepath.Join(*workDir, "case-probe")
+	_ = os.RemoveAll(probe)
+	must(os.MkdirAll(probe, 0o755))
+	o, perr := exec.Command("fsutil", "file", "setCaseSensitiveInfo", probe, "enable").CombinedOutput()
+	fmt.Println("fsutil setCaseSensitiveInfo as this user:", strings.TrimSpace(string(o)), perr)
+	o, _ = exec.Command("fsutil", "file", "queryCaseSensitiveInfo", probe).CombinedOutput()
+	fmt.Println("fsutil queryCaseSensitiveInfo:", strings.TrimSpace(string(o)))
+	extraMounts = []map[string]any{{"destination": "/w", "type": "bind", "source": dir, "options": []string{"rbind", "rw", "case-sensitive"}}}
+	defer func() { extraMounts = nil }()
+	r, err := runsc("case", []string{"/bin/sh", "-c", "cd /w; echo lower >f; echo upper >F; mkdir d; echo dl >d/a; echo du >d/A; ls; cat f F d/a d/A"}, nil)
+	if err != nil {
+		return err
+	}
+	for _, want := range []string{"lower\n", "upper\n", "dl\n", "du\n"} {
+		if !strings.Contains(r.stdout, want) {
+			return fmt.Errorf("%q missing; stdout %q stderr %q", want, r.stdout, r.stderr)
+		}
+	}
+	return nil
+}
+
+// testForward POSTs expose and unexpose to the gateway from inside the guest,
+// as Podman does on a machine, and checks that the 127.0.0.1 listener opens,
+// forwards to the guest and closes again.
+func testForward() error {
+	l, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		return err
+	}
+	port := l.Addr().(*net.TCPAddr).Port
+	l.Close()
+	post := func(what string) string {
+		return fmt.Sprintf(`wget -q -O- --header 'Content-Type: application/json' --post-data '{"local":"127.0.0.1:%d","remote":":9090","protocol":"tcp"}' http://10.0.2.2/services/forwarder/%s; echo %s=$?`, port, what, what)
+	}
+	script := "httpd -p 9090 -h /www & sleep 1; " + post("expose") + "; sleep 15; " + post("unexpose") + "; sleep 15"
+	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
+	defer cancel()
+	dir := bundle("forward", []string{"/bin/sh", "-c", script}, false)
+	var out, errb bytes.Buffer
+	cmd := exec.CommandContext(ctx, *runscExe, runscArgs("forward", dir, "--network=windows-nat")...)
+	cmd.Stdout, cmd.Stderr = &out, &errb
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	defer func() { _ = cmd.Process.Kill() }()
+	url := fmt.Sprintf("http://127.0.0.1:%d/index.html", port)
+	opened := false
+	for end := time.Now().Add(20 * time.Second); time.Now().Before(end) && !opened; time.Sleep(300 * time.Millisecond) {
+		if resp, err := http.Get(url); err == nil {
+			b, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			opened = strings.TrimSpace(string(b)) == "hello-from-guest"
+		}
+	}
+	if !opened {
+		return fmt.Errorf("the exposed port never forwarded (guest output %q, stderr %q)", out.String(), errb.String())
+	}
+	closed := false
+	for end := time.Now().Add(25 * time.Second); time.Now().Before(end) && !closed; time.Sleep(300 * time.Millisecond) {
+		c, err := net.DialTimeout("tcp4", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
+		if err != nil {
+			closed = true
+		} else {
+			c.Close()
+		}
+	}
+	if !closed {
+		return fmt.Errorf("the listener stayed open after unexpose (guest output %q)", out.String())
+	}
+	return nil
 }

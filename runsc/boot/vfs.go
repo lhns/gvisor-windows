@@ -1281,6 +1281,9 @@ func ParseMountOptions(opts []string) *vfs.MountOptions {
 		case "bind", "rbind":
 			// These are the same as a mount with type="bind".
 		default:
+			if isHostFolderOption(o) { // gvisor-windows: read by hostFolderOptions
+				break
+			}
 			log.Warningf("ignoring unknown mount option %q", o)
 		}
 	}

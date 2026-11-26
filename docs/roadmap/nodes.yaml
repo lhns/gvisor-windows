@@ -450,6 +450,10 @@
   - net-nftables-thread-safety
   - platform-split-syscall-unpatched
   - workloads-podman-api-named-pipe
+  - fs-standard-user-delete-rights
+  - workloads-conmon-sync-pipe
+  - workloads-overlay-userxattr
+  - fs-case-sensitivity-without-admin
   replaced_by: []
   lane: windows-ci
   start: ''
@@ -971,9 +975,10 @@
   title: Acceptance test for Windows
   track: workloads
   kind: tooling
-  state: in-progress
+  state: done
   outcome: unrated
-  evidence: []
+  evidence:
+  - docs/results/5-podman-windows.md
   verdict_quote: ''
   headline: ''
   depends_on:
@@ -981,7 +986,7 @@
   replaced_by: []
   lane: windows-ci
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   plain: The ten acceptance steps written for Windows, driving the stock Podman and docker clients.
@@ -1193,9 +1198,10 @@
   title: Serve Podman to Windows clients
   track: workloads
   kind: tooling
-  state: blocked
+  state: in-progress
   outcome: unrated
-  evidence: []
+  evidence:
+  - docs/results/5-podman-windows.md
   verdict_quote: ''
   headline: ''
   depends_on:
@@ -1204,12 +1210,14 @@
   - workloads-podman-probe
   replaced_by: []
   lane: windows-ci
-  start: ''
+  start: '2026-11-26'
   end: ''
-  folded: []
+  folded:
+  - Podman 6.2.0 pulls and stores images on a Windows folder; steps 1-2 pass (2026-11-26, commit 61c8b8f92)
+  - Runtime -p via the forwarder expose API works as a standard user (2026-11-26, commit 61c8b8f92)
   overview: false
   plain: The test harness runs the Podman engine on runsc and exposes its API to the stock Windows clients.
-  notes: 'Done when: podman version from a Windows client reaches the engine running on runsc.'
+  notes: Engine runs on runsc.exe with the erofs podman image; step 1 passes. Gap list in docs/results/5-podman-windows.md.
 - id: platform-hardware-acceleration
   title: Use hardware acceleration when available
   track: platform
@@ -1814,41 +1822,43 @@
   plain: 'Decided: the sandbox root is a read-only erofs image with an overlay on top; persistent data such as Podman storage lives in Windows folders.'
   notes: 'Done when: an ADR records the choice, after reading how gVisor opens erofs images and which mode a file without a metadata stream reports.'
 - outcome: unrated
-  evidence: []
+  evidence:
+  - docs/results/5-podman-windows.md
   verdict_quote: ''
   headline: ''
   depends_on:
   - runsc-windows-boot
   replaced_by: []
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   id: workloads-podman-api-named-pipe
   title: Podman API on a named pipe
   track: workloads
   kind: feature
-  state: in-progress
+  state: done
   lane: windows-ci
   plain: Expose the Podman engine API on a Windows named pipe owned by the user, instead of a loopback TCP port.
-  notes: 'Done when: podman --url npipe:////./pipe/<name> and DOCKER_HOST with the same pipe reach the engine in the sandbox.'
+  notes: Done for the docker CLI; stock podman 5.3.1 cannot dial npipe, so the podman client uses a forwarded AF_UNIX socket.
 - outcome: unrated
-  evidence: []
+  evidence:
+  - docs/results/5-podman-windows.md
   verdict_quote: ''
   headline: ''
   depends_on:
   - platform-busybox-on-windows
   - platform-map-files-without-sections
   replaced_by: []
-  start: ''
-  end: ''
+  start: '2026-11-26'
+  end: '2026-11-26'
   folded: []
   overview: false
   id: workloads-podman-probe
   title: Probe Podman inside the sandbox
   track: workloads
   kind: experiment
-  state: next
+  state: done
   lane: windows-ci
   plain: Right after busybox works, run podman --version and podman info inside the sandbox; their failures are the real gap list.
   notes: 'Done when: the gap list is written up in docs/results.'
@@ -1871,6 +1881,7 @@
   folded:
   - Cold stat walk on a fresh mount is still about 4x native, 99-105 us per file (2026-11-26, commit 5f7bcfee2)
   - erofs xattrs and a persistent safe-save index added (2026-11-26, commit 5f7bcfee2)
+  - Watched cache made opt-in (cache=watched); overflow drops the whole cache (2026-11-26, commit 025ba5029)
   overview: false
   plain: A git-status-like walk of 20000 files takes 1.2-2.4 s through the host folder; an attribute cache fed by the change watcher would bring stat near native.
   notes: 'Done when: a 20000-file stat walk through the backend is within 2x of native on windows-latest.'
@@ -1930,3 +1941,140 @@
   overview: false
   plain: TestVFSNegativeCacheAndQuickChange failed once on windows-fs after passing on the previous head; a timing race in the change watcher or the test.
   notes: 'Fixed when: the test passes 20 runs in a row on windows-latest.'
+- outcome: unrated
+  evidence: &id002 []
+  verdict_quote: ''
+  headline: ''
+  replaced_by: &id003 []
+  start: ''
+  end: ''
+  folded: &id004 []
+  overview: false
+  id: workloads-end-to-end-speed
+  title: Measure end-to-end speed on Windows
+  track: workloads
+  kind: experiment
+  state: next
+  lane: windows-ci
+  depends_on:
+  - runsc-windows-boot
+  plain: Run the Phase 0 workloads (fork+exec loop, untar of small files, a CPU job) through runsc.exe on Windows and compare with runsc and native on Linux.
+  notes: 'Done when: a table of Windows vs Linux runsc vs native is in docs/results.'
+- outcome: n/a
+  evidence: *id002
+  verdict_quote: ''
+  headline: ''
+  replaced_by: *id003
+  start: ''
+  end: ''
+  folded: *id004
+  overview: false
+  id: ops-run-on-a-work-machine
+  title: Try it on a real work machine
+  track: ops
+  kind: owner-decision
+  state: blocked
+  lane: owner
+  depends_on:
+  - workloads-podman-on-windows
+  plain: All evidence comes from GitHub hosted Windows images; the owner runs runsc.exe once on a work machine to check FSGSBASE and whether security software tolerates the generated stub being debugged.
+  notes: 'Done when: the owner reports the result of one run of the published artifact.'
+- outcome: unrated
+  evidence:
+  - docs/results/5-podman-windows.md
+  - docs/results/2c-fs-speed.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-26'
+  end: '2026-11-26'
+  folded: []
+  overview: false
+  id: fs-standard-user-delete-rights
+  title: Deletes fail for standard users
+  track: fs
+  kind: defect
+  state: done
+  lane: windows-ci
+  plain: On a host folder as a standard Windows user, rename over an existing file, rmdir and unlink fail with permission denied; Podman cannot extract layers or write images.json.
+  notes: 'Fixed: Unlink asked for FILE_DELETE_CHILD on the parent, which a standard user with Modify lacks; DELETE on the child is enough. hostfs test now required.'
+- outcome: unrated
+  evidence:
+  - docs/results/5-podman-windows.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - platform-veneer-address-in-child
+  replaced_by: []
+  start: '2026-11-26'
+  end: ''
+  folded:
+  - 'Cause 1 fixed: FIFO opens on host folders were rejected by policy, now in-Sentry named pipes (2026-11-27, commit 9ab48dea3)'
+  overview: false
+  id: workloads-conmon-sync-pipe
+  title: conmon sees no data on its sync pipe
+  track: workloads
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: 'Every podman run fails with "conmon bytes \"\": found \x00": conmon reads nothing from its sync pipe while creating the first container inside the sandbox on Windows.'
+  notes: 'Remaining cause: crun clone through glibc syscall() lands in a relocated veneer whose address differs in the child address space (platform). Fixed when: podman run --rm alpine echo ok passes.'
+- outcome: unrated
+  evidence:
+  - docs/results/5-podman-windows.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-26'
+  end: '2026-11-27'
+  folded:
+  - Overlay upperdir must be tmpfs; /var/tmp is now a tmpfs in the engine spec (2026-11-27, commit 9ab48dea3)
+  overview: false
+  id: workloads-overlay-userxattr
+  title: Overlay mounts with userxattr rejected
+  track: workloads
+  kind: defect
+  state: done
+  lane: windows-ci
+  plain: 'podman build fails: the Sentry overlay rejects the userxattr option (or the layer setup) when Podman storage sits on a Windows folder.'
+  notes: 'Fixed when: podman build of a small Containerfile passes inside the Windows sandbox.'
+- outcome: unrated
+  evidence:
+  - docs/results/5-podman-windows.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-26'
+  end: ''
+  folded: []
+  overview: false
+  id: fs-case-sensitivity-without-admin
+  title: Case-sensitive names without admin
+  track: fs
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: A standard user on the hosted runner cannot set per-directory case sensitivity (access denied), so Linux images with names differing only in case need another way, without an admin setup step.
+  notes: 'Fixed when: two names differing only in case coexist in a host folder as a standard user on windows-latest with no admin step, and Podman storage uses it.'
+- outcome: unrated
+  evidence:
+  - docs/results/5-podman-windows.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-27'
+  end: ''
+  folded: []
+  overview: false
+  id: platform-veneer-address-in-child
+  title: Veneer addresses differ after clone
+  track: platform
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: A syscall through a relocated veneer returns into the veneer; after clone into a new address space the veneers sit elsewhere, so the child resumes on a zero page and crashes.
+  notes: 'Fixed when: test/guests/clonesys.c (clonesys, clonesys_ns) passes and podman run starts a container.'

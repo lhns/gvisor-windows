@@ -19,6 +19,7 @@ import (
 	"gvisor.dev/gvisor/pkg/errors/linuxerr"
 	"gvisor.dev/gvisor/pkg/fspath"
 	"gvisor.dev/gvisor/pkg/sentry/kernel/auth"
+	"gvisor.dev/gvisor/pkg/sentry/fsimpl/gofer/winhost"
 	"gvisor.dev/gvisor/pkg/sentry/ktime"
 	"gvisor.dev/gvisor/pkg/sentry/limits"
 	"gvisor.dev/gvisor/pkg/sentry/pgalloc"
@@ -472,8 +473,8 @@ func TestVFSPerf(t *testing.T) {
 		name string
 		hf   HostFolderOptions
 	}{
-		{"watched (write-through cache)", HostFolderOptions{}},
-		{"revalidating (no cache trust)", HostFolderOptions{Revalidate: true}},
+		{"watched (write-through cache)", HostFolderOptions{Watched: true}},
+		{"revalidating (default)", HostFolderOptions{}},
 		{"exclusive", HostFolderOptions{Exclusive: true}},
 	} {
 		e := newEnv(t, mode.hf)
@@ -492,7 +493,7 @@ func TestVFSPerf(t *testing.T) {
 		untar := time.Since(start)
 		warm := walk(e)
 		warm2 := walk(e)
-		cold := walk(newEnv(t, HostFolderOptions{Path: e.dir, Exclusive: mode.hf.Exclusive, Revalidate: mode.hf.Revalidate}))
+		cold := walk(newEnv(t, HostFolderOptions{Path: e.dir, Exclusive: mode.hf.Exclusive, Watched: mode.hf.Watched}))
 		t.Logf("%s: untar %v/file; stat walk warm %v/stat (second %v), cold %v/stat", mode.name, per(untar), per(warm), per(warm2), per(cold))
 	}
 	base := t.TempDir()
@@ -520,7 +521,7 @@ func TestVFSPerf(t *testing.T) {
 // A name looked up before it existed (cached as missing) is found once
 // Windows creates it, and a Windows write right after a guest write is seen.
 func TestVFSNegativeCacheAndQuickChange(t *testing.T) {
-	e := newEnv(t, HostFolderOptions{})
+	e := newEnv(t, HostFolderOptions{Watched: true})
 	if _, err := e.stat("/later"); !linuxerr.Equals(linuxerr.ENOENT, err) {
 		t.Fatalf("stat of a missing file: %v", err)
 	}
@@ -551,5 +552,76 @@ func TestVFSNegativeCacheAndQuickChange(t *testing.T) {
 	}
 	if !seen {
 		t.Errorf("a Windows write right after a guest write was not seen within 1s")
+	}
+}
+
+func hostFS(e *env) *filesystem { return e.root.Mount().Filesystem().Impl().(*filesystem) }
+
+// In watched mode a change whose event is lost leaves the cache stale; the
+// overflow of the watch (or its failure) drops everything.
+func TestVFSWatchedOverflowDropsTheCache(t *testing.T) {
+	testNoWatcher = true // no watch: every change below is a "lost event"
+	defer func() { testNoWatcher = false }()
+	e := newEnv(t, HostFolderOptions{Watched: true})
+	e.write("/f", "abc", 0o644)
+	if st, err := e.stat("/f"); err != nil || st.Size != 3 {
+		t.Fatalf("stat %+v %v", st, err)
+	}
+	if _, err := e.stat("/missing"); !linuxerr.Equals(linuxerr.ENOENT, err) {
+		t.Fatalf("stat of a missing file: %v", err)
+	}
+	if got, _ := e.read("/f"); got != "abc" { // fills the data cache
+		t.Fatalf("read %q", got)
+	}
+	e.must("mkdir", e.v.MkdirAt(e.ctx, e.creds, e.pop("/d"), &vfs.MkdirOptions{Mode: 0o755}))
+	_ = e.list("/") // caches the listing
+
+	os.WriteFile(filepath.Join(e.dir, "f"), []byte("0123456789"), 0o666)
+	os.WriteFile(filepath.Join(e.dir, "missing"), []byte("x"), 0o666)
+	os.Rename(filepath.Join(e.dir, "d"), filepath.Join(e.dir, "d2"))
+	time.Sleep(100 * time.Millisecond)
+
+	// Nothing noticed the changes: the cache answers with the old state.
+	if st, _ := e.stat("/f"); st.Size != 3 {
+		t.Logf("the cache already saw the change (size %d); the test only proves the drop below", st.Size)
+	}
+	if _, err := e.stat("/missing"); err == nil {
+		t.Logf("the cached 'does not exist' was not used")
+	}
+
+	hostFS(e).hostChange(e.ctx, winhost.Change{Overflow: true})
+
+	if st, err := e.stat("/f"); err != nil || st.Size != 10 {
+		t.Errorf("after the overflow: stat /f = %+v %v, want size 10", st, err)
+	}
+	if got, _ := e.read("/f"); got != "0123456789" {
+		t.Errorf("after the overflow: read /f = %q", got)
+	}
+	if _, err := e.stat("/missing"); err != nil {
+		t.Errorf("after the overflow: /missing is still reported missing: %v", err)
+	}
+	if got := e.list("/"); fmt.Sprint(got) != "[d2 f missing]" {
+		t.Errorf("after the overflow: listing = %v", got)
+	}
+	if _, err := e.stat("/d"); !linuxerr.Equals(linuxerr.ENOENT, err) {
+		t.Errorf("after the overflow: /d still exists: %v", err)
+	}
+}
+
+// The default is to revalidate: a change is seen at once without the watch.
+func TestVFSDefaultRevalidates(t *testing.T) {
+	testNoWatcher = true
+	defer func() { testNoWatcher = false }()
+	e := newEnv(t, HostFolderOptions{})
+	e.write("/f", "abc", 0o644)
+	if st, _ := e.stat("/f"); st.Size != 3 {
+		t.Fatalf("size %d", st.Size)
+	}
+	os.WriteFile(filepath.Join(e.dir, "f"), []byte("0123456789"), 0o666)
+	if st, err := e.stat("/f"); err != nil || st.Size != 10 {
+		t.Errorf("the default mount did not see a change made without events: %+v %v", st, err)
+	}
+	if hostFS(e).opts.interop != InteropModeShared {
+		t.Errorf("default interop is %v, want revalidating", hostFS(e).opts.interop)
 	}
 }

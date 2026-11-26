@@ -25,6 +25,8 @@ jobs:
           gcc -static-pie -O1 -fstack-protector-all -o out/hello_glibc_pie $G/hello.c
           gcc -static -no-pie -O1 -o out/fork_glibc $G/fork.c
           gcc -static -no-pie -O1 -o out/jit_glibc $G/jit.c
+          gcc -static -no-pie -O1 -o out/clonesys $G/clonesys.c
+          gcc -static -no-pie -O1 -o out/clonesys_ns $G/clonesys.c
           (cd $G/gohello && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $GITHUB_WORKSPACE/out/hello_go .)
           (cd $G/gospin && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $GITHUB_WORKSPACE/out/gospin_go .)
           # Dynamic, exec, shell, signal and thread guests run from a root filesystem tar.
@@ -42,7 +44,7 @@ jobs:
           docker run --rm -v "$PWD:/w" -w /w alpine:3.20 sh -c             'apk add --no-cache gcc musl-dev >/dev/null && gcc -O1 -fstack-protector-all -o out/hello_musl test/guests/hello.c && cp -L /lib/ld-musl-x86_64.so.1 out/ld-musl'
           R=root
           mkdir -p $R/bin $R/lib $R/lib64 $R/t
-          cp out/hello_dyn out/hello_dyn_nopie out/dlopen_glibc out/exec out/signals out/threads out/threads_dyn out/gostress out/gopodman out/hello_musl $R/bin/
+          cp out/clonesys out/clonesys_ns out/hello_dyn out/hello_dyn_nopie out/dlopen_glibc out/exec out/signals out/threads out/threads_dyn out/gostress out/gopodman out/hello_musl $R/bin/
           cp out/libplug.so $R/lib/
           cp out/ld-musl $R/lib/ld-musl-x86_64.so.1
           ln -s ld-musl-x86_64.so.1 $R/lib/libc.musl-x86_64.so.1
@@ -89,6 +91,9 @@ jobs:
             @{n='gospin_go'; out="gospin ok${nl}"; code=0},
             @{n='jit_glibc'; out="jit1 ok${nl}jit2 ok${nl}jit3 ok${nl}"; code=0}
           )
+          # Known platform defect (docs/results/5-podman-windows.md): reported, not counted.
+          $known = @(@{n='clonesys'; a=@('/bin/clonesys'); out="child${nl}parent: child exited 3${nl}"; code=0}, @{n='clonesys_ns'; a=@('/bin/clonesys','ns'); out="child${nl}parent: child exited 3${nl}"; code=0})
+          foreach ($k in $known) { $k.tar = $true; $k.known = $true }
           $hello = "hello from glibc: argc=1 tv=5 work=10 heap=ok${nl}"
           $tcases = @(
             @{n='dyn_glibc'; a=@('/bin/hello_dyn'); out=$hello; code=7},
@@ -114,13 +119,14 @@ jobs:
           )
           foreach ($t in $tcases) { $t.tar = $true }
           $cases += $tcases
+          $cases += $known
           foreach ($c in $cases) {
             "===== $($c.n)" | Tee-Object -Append -FilePath guests.txt
             $a = @("-check", "-out=$($c.out)", "-code=$($c.code)", "-timeout=120s")
             if ($c.tar) { $a += "-tar=out/rootfs.tar"; $a += $c.a } else { $a += "out/$($c.n)" }
             & ./sentryguest.exe @a 2>&1 | Tee-Object -Append -FilePath guests.txt
             "exit: $LASTEXITCODE" | Tee-Object -Append -FilePath guests.txt
-            if ($LASTEXITCODE -ne 0) { $fail = 1 }
+            if ($LASTEXITCODE -ne 0 -and -not $c.known) { $fail = 1 }
           }
           exit $fail
       - name: Podman-shaped stress
