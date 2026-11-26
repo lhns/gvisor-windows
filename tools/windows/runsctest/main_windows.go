@@ -518,7 +518,7 @@ func testBench() error {
 	t := time.Now()
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, *runscExe, runscArgs("bench", bundle("bench", []string{"/bin/sh", "/bench.sh", "/small.tar", "/bm"}, false))...)
+	cmd := exec.CommandContext(ctx, *runscExe, runscArgs("bench", bundle("bench", []string{"/bin/sh", "/bench.sh", "/small.tar", "/bm", "/root/untar", "/tmp/untar", "100"}, false))...)
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = io.MultiWriter(os.Stdout, &out), &errb // results show as they come
 	err := cmd.Run()

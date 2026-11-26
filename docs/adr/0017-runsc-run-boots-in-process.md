@@ -1,6 +1,6 @@
 # 0017. `runsc run` boots the Sentry in the runsc process
 
-- Status: Accepted (decided under the owner's delegation)
+- Status: Accepted (decided under the owner's delegation); `create`/`start`/`exec` refine it in ADR 0019
 - Date: 2026-11-26
 - Refines: ADR 0008
 
