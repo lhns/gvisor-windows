@@ -503,13 +503,14 @@
   - platform-tls-register
   - platform-restricted-stub
   replaced_by: []
-  lane: windows-local
+  lane: windows-ci
   start: ''
   end: ''
   folded: []
   overview: false
   plain: A tiny Windows process runs a static Linux program while a second process catches and answers its system calls.
-  notes: 'Done when: a static x86-64 binary writes, forks and exits correctly under the controller, without the Sentry; per-syscall cost recorded.'
+  notes: 'Done when: a static x86-64 binary writes, forks and exits correctly under the controller, without the Sentry; per-syscall cost recorded. First number: cost of creating a stub process and mapping
+    its memory.'
 - id: platform-page-verification
   title: Scan code pages for syscalls
   track: platform
@@ -522,7 +523,7 @@
   depends_on:
   - platform-stub-controller
   replaced_by: []
-  lane: windows-local
+  lane: windows-ci
   start: ''
   end: ''
   folded: []
@@ -541,7 +542,7 @@
   depends_on:
   - platform-page-verification
   replaced_by: []
-  lane: windows-local
+  lane: windows-ci
   start: ''
   end: ''
   folded: []
@@ -560,7 +561,7 @@
   depends_on:
   - platform-stub-controller
   replaced_by: []
-  lane: windows-local
+  lane: windows-ci
   start: ''
   end: ''
   folded: []
@@ -580,7 +581,7 @@
   - sentry-memory-file-sections
   - platform-elf-alignment-survey
   replaced_by: []
-  lane: windows-local
+  lane: windows-ci
   start: ''
   end: ''
   folded: []
@@ -603,7 +604,7 @@
   - sentry-memory-file-sections
   - ops-syscall-test-strategy
   replaced_by: []
-  lane: windows-local
+  lane: windows-ci
   start: ''
   end: ''
   folded: []
@@ -628,7 +629,7 @@
   - fs-root-filesystem-source
   - platform-fs-base-repair
   replaced_by: []
-  lane: windows-local
+  lane: windows-ci
   start: ''
   end: ''
   folded: []
@@ -648,7 +649,7 @@
   - ops-phase0-go-no-go
   - sentry-go-fault-recovery
   replaced_by: []
-  lane: windows-local
+  lane: windows-ci
   start: ''
   end: ''
   folded: []
@@ -669,7 +670,7 @@
   - platform-4k-section-views
   - ops-syscall-test-strategy
   replaced_by: []
-  lane: windows-local
+  lane: windows-ci
   start: ''
   end: ''
   folded: []
@@ -689,7 +690,7 @@
   - sentry-windows-build
   - ops-syscall-test-strategy
   replaced_by: []
-  lane: windows-local
+  lane: windows-ci
   start: ''
   end: ''
   folded: []
@@ -709,7 +710,7 @@
   - sentry-windows-build
   - ops-syscall-test-strategy
   replaced_by: []
-  lane: windows-local
+  lane: windows-ci
   start: ''
   end: ''
   folded: []
@@ -729,7 +730,7 @@
   - sentry-windows-build
   - fs-compat-layer-not-boundary
   replaced_by: []
-  lane: windows-local
+  lane: windows-ci
   start: ''
   end: ''
   folded: []
@@ -748,7 +749,7 @@
   depends_on:
   - fs-windows-directfs
   replaced_by: []
-  lane: windows-local
+  lane: windows-ci
   start: ''
   end: ''
   folded: []
@@ -767,7 +768,7 @@
   depends_on:
   - fs-windows-directfs
   replaced_by: []
-  lane: windows-local
+  lane: windows-ci
   start: ''
   end: ''
   folded: []
@@ -786,7 +787,7 @@
   depends_on:
   - fs-windows-directfs
   replaced_by: []
-  lane: windows-local
+  lane: windows-ci
   start: ''
   end: ''
   folded: []
@@ -825,7 +826,7 @@
   depends_on:
   - sentry-windows-build
   replaced_by: []
-  lane: windows-local
+  lane: windows-ci
   start: ''
   end: ''
   folded: []
@@ -844,7 +845,7 @@
   depends_on:
   - net-netstack-windows-link
   replaced_by: []
-  lane: windows-local
+  lane: windows-ci
   start: ''
   end: ''
   folded: []
@@ -903,7 +904,7 @@
   - runsc-windows-commands
   - platform-busybox-on-windows
   replaced_by: []
-  lane: windows-local
+  lane: windows-ci
   start: ''
   end: ''
   folded: []
@@ -922,7 +923,7 @@
   depends_on:
   - workloads-acceptance-test
   replaced_by: []
-  lane: windows-local
+  lane: windows-ci
   start: ''
   end: ''
   folded: []
@@ -1016,7 +1017,7 @@
   depends_on:
   - runsc-container-on-windows
   replaced_by: []
-  lane: windows-local
+  lane: windows-ci
   start: ''
   end: ''
   folded: []
@@ -1036,7 +1037,7 @@
   - sentry-windows-build
   - sentry-go-fault-recovery
   replaced_by: []
-  lane: windows-local
+  lane: windows-ci
   start: ''
   end: ''
   folded: []
@@ -1055,7 +1056,7 @@
   depends_on:
   - sentry-windows-build
   replaced_by: []
-  lane: windows-local
+  lane: windows-ci
   start: ''
   end: ''
   folded: []
@@ -1074,7 +1075,7 @@
   depends_on:
   - fs-windows-directfs
   replaced_by: []
-  lane: windows-local
+  lane: windows-ci
   start: ''
   end: ''
   folded: []
@@ -1093,7 +1094,7 @@
   depends_on:
   - platform-winstub
   replaced_by: []
-  lane: windows-local
+  lane: windows-ci
   start: ''
   end: ''
   folded: []
@@ -1112,7 +1113,7 @@
   depends_on:
   - fs-persistent-storage-choice
   replaced_by: []
-  lane: windows-local
+  lane: windows-ci
   start: ''
   end: ''
   folded: []
@@ -1132,7 +1133,7 @@
   - runsc-container-on-windows
   - net-port-forwarding
   replaced_by: []
-  lane: windows-local
+  lane: windows-ci
   start: ''
   end: ''
   folded: []
@@ -1151,7 +1152,7 @@
   depends_on:
   - platform-winstub
   replaced_by: []
-  lane: windows-local
+  lane: windows-ci
   start: ''
   end: ''
   folded: []
@@ -1244,7 +1245,7 @@
   depends_on:
   - platform-stub-controller
   replaced_by: []
-  lane: windows-local
+  lane: windows-ci
   start: ''
   end: ''
   folded: []
@@ -1263,10 +1264,28 @@
   depends_on:
   - platform-page-verification
   replaced_by: []
-  lane: windows-local
+  lane: windows-ci
   start: ''
   end: ''
   folded: []
   overview: false
   plain: On CPUs or VMs without the instruction to set the register, rewrite the guest's %fs accesses instead.
   notes: 'Done when: a glibc program runs on a machine without FSGSBASE.'
+- id: workloads-bar-host-network
+  title: Does host networking meet the bar
+  track: workloads
+  kind: owner-decision
+  state: next
+  outcome: n/a
+  evidence:
+  - docs/adr/0004-phase-0-results.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: owner
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: On Linux, steps 7 and 8 only passed with host networking; decide whether that counts or -p and compose service names are required.

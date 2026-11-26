@@ -22,7 +22,10 @@ jobs:
         with: {go-version: "1.26.x", cache: false}
       - name: CPU
         shell: pwsh
-        run: Get-CimInstance Win32_Processor | Select-Object Name, NumberOfLogicalProcessors | Format-List
+        run: |
+          Get-CimInstance Win32_Processor | Select-Object Name, NumberOfLogicalProcessors | Format-List
+          $v = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
+          "Windows build: $($v.ProductName) $($v.DisplayVersion) $($v.CurrentBuild).$($v.UBR)" | Tee-Object -FilePath test/spikes/windows/${{ matrix.spike }}-os.txt
       - name: Run ${{ matrix.spike }}
         shell: pwsh
         env: {GODEBUG: asyncpreemptoff=1}
@@ -35,4 +38,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.spike }}-output
-          path: test/spikes/windows/${{ matrix.spike }}-output.txt
+          path: |
+            test/spikes/windows/${{ matrix.spike }}-output.txt
+            test/spikes/windows/${{ matrix.spike }}-os.txt
+            test/spikes/windows/${{ matrix.spike }}/spike.exe

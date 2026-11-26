@@ -193,6 +193,7 @@ flowchart TB
 | Serve Podman to Windows clients | ⛔ blocked | The test harness runs the Podman engine on runsc and exposes its API to the stock Windows clients. |
 | Bridge networking fails in gVisor | ⚠ open | In stock gVisor, Podman's default bridge network fails because netavark cannot open its netlink socket; only host networking works. |
 | Port publishing untested in gVisor | ⚠ open | Publishing container ports with -p and service-name lookup in compose never worked or were never exercised inside gVisor. |
+| Does host networking meet the bar | ○ next | On Linux, steps 7 and 8 only passed with host networking; decide whether that counts or -p and compose service names are required. |
 | Pick gVisor as the base | ✔ done · unrated | Of all ways to run Linux code on Windows without admin, gVisor's user-space Linux kernel is the only one that already runs containers. |
 | Name it gvisor-windows | ✔ done · n/a | The project is an unofficial fork of gVisor's Go branch called gvisor-windows. |
 | Go or no-go after Phase 0 | ○ next | The owner decides, from the Phase 0 results, whether the port goes ahead. |
@@ -232,6 +233,7 @@ _None._
 - `fs-persistent-storage-choice`: Choose the persistent storage
 - `runsc-windows-commands`: Choose runsc commands for Windows
 - `ops-syscall-test-strategy`: Choose how to run gVisor's tests
+- `workloads-bar-host-network`: Does host networking meet the bar
 <!-- END GENERATED: waiting-on-owner -->
 
 ## Timeline
@@ -291,7 +293,7 @@ Each track has its own page with its tree, node table and per-node details.
 - [sentry - sentry](roadmap/tracks/sentry.md): 8 nodes (1 done, 7 blocked)
 - [fs - files](roadmap/tracks/fs.md): 9 nodes (2 done, 7 blocked)
 - [net - network](roadmap/tracks/net.md): 2 nodes (2 blocked)
-- [workloads - workloads](roadmap/tracks/workloads.md): 7 nodes (2 done, 2 next, 3 blocked)
+- [workloads - workloads](roadmap/tracks/workloads.md): 8 nodes (2 done, 3 next, 3 blocked)
 - [research - research](roadmap/tracks/research.md): 8 nodes (2 done, 6 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 10 nodes (4 done, 3 next, 3 blocked)
 <!-- END GENERATED: tracks -->

@@ -49,7 +49,7 @@ flowchart TB
 | `ops-syscall-test-strategy` | Choose how to run gVisor's tests | owner-decision | owner | next | n/a |  |  |  |  |  |  |  |
 | `ops-syscall-tests-on-windows` | gVisor syscall tests on Windows | feature | windows-ci | blocked | unrated |  |  | ops-syscall-test-strategy, platform-busybox-on-windows |  |  |  |  |
 | `ops-upstream-merges` | Merge upstream gVisor regularly | tooling | linux-ci | next | unrated |  |  |  |  |  |  |  |
-| `ops-portable-packaging` | Portable zip, no installer | feature | windows-local | blocked | unrated |  |  | runsc-container-on-windows |  |  |  |  |
+| `ops-portable-packaging` | Portable zip, no installer | feature | windows-ci | blocked | unrated |  |  | runsc-container-on-windows |  |  |  |  |
 
 ### Details per node
 

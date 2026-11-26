@@ -55,13 +55,13 @@ flowchart TB
 | id | title | kind | lane | state | outcome | start | end | depends_on | replaced_by | qualified_by | headline | evidence |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `sentry-go-fault-recovery` | Recover faults in Go | experiment | windows-local | done | successful | 2026-11-26 | 2026-11-26 | research-gvisor-base |  |  | about 6 us per fault | docs/results/0b-windows.md |
-| `sentry-windows-build` | Sentry builds for Windows | feature | windows-local | blocked | unrated |  |  | ops-phase0-go-no-go, sentry-go-fault-recovery |  |  |  |  |
-| `sentry-memory-file-sections` | Guest memory on Windows sections | feature | windows-local | blocked | unrated |  |  | sentry-windows-build, platform-4k-section-views, ops-syscall-test-strategy |  |  |  |  |
-| `sentry-event-loop-iocp` | Event waiting on IOCP | feature | windows-local | blocked | unrated |  |  | sentry-windows-build, ops-syscall-test-strategy |  |  |  |  |
-| `sentry-timers-and-clocks` | Timers and clocks on Windows | feature | windows-local | blocked | unrated |  |  | sentry-windows-build, ops-syscall-test-strategy |  |  |  |  |
-| `sentry-fault-recovery` | Port fault recovery to Windows | feature | windows-local | blocked | unrated |  |  | sentry-windows-build, sentry-go-fault-recovery |  |  |  |  |
-| `sentry-host-stdio-and-tty` | Guest terminal and stdio | feature | windows-local | blocked | unrated |  |  | sentry-windows-build |  |  |  |  |
-| `sentry-threads-and-signals` | Guest threads and signals | feature | windows-local | blocked | unrated |  |  | platform-winstub |  |  |  |  |
+| `sentry-windows-build` | Sentry builds for Windows | feature | windows-ci | blocked | unrated |  |  | ops-phase0-go-no-go, sentry-go-fault-recovery |  |  |  |  |
+| `sentry-memory-file-sections` | Guest memory on Windows sections | feature | windows-ci | blocked | unrated |  |  | sentry-windows-build, platform-4k-section-views, ops-syscall-test-strategy |  |  |  |  |
+| `sentry-event-loop-iocp` | Event waiting on IOCP | feature | windows-ci | blocked | unrated |  |  | sentry-windows-build, ops-syscall-test-strategy |  |  |  |  |
+| `sentry-timers-and-clocks` | Timers and clocks on Windows | feature | windows-ci | blocked | unrated |  |  | sentry-windows-build, ops-syscall-test-strategy |  |  |  |  |
+| `sentry-fault-recovery` | Port fault recovery to Windows | feature | windows-ci | blocked | unrated |  |  | sentry-windows-build, sentry-go-fault-recovery |  |  |  |  |
+| `sentry-host-stdio-and-tty` | Guest terminal and stdio | feature | windows-ci | blocked | unrated |  |  | sentry-windows-build |  |  |  |  |
+| `sentry-threads-and-signals` | Guest threads and signals | feature | windows-ci | blocked | unrated |  |  | platform-winstub |  |  |  |  |
 
 ### Details per node
 

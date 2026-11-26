@@ -56,10 +56,11 @@ flowchart TB
 | `workloads-acceptance-test` | Write the Podman acceptance test | tooling | linux-ci | done | unrated | 2026-11-26 | 2026-11-26 | research-gvisor-base |  |  |  | test/e2e/podman-acceptance/run.sh; docs/results/0a-linux.md |
 | `workloads-podman-on-gvisor-linux` | Podman on gVisor on Linux | experiment | linux-ci | done | mixed | 2026-11-26 | 2026-11-26 | workloads-acceptance-test |  | workloads-gvisor-bridge-netlink, workloads-gvisor-port-publishing |  | docs/results/0a-linux.md |
 | `workloads-podman-on-windows` | Podman passes on Windows | experiment | windows-ci | blocked | unrated |  |  | runsc-container-on-windows, workloads-acceptance-test-windows, net-port-forwarding, fs-persistent-storage-choice, fs-change-notifications, fs-linux-metadata-on-ntfs |  |  |  |  |
-| `workloads-acceptance-test-windows` | Acceptance test for Windows | tooling | windows-local | blocked | unrated |  |  | workloads-acceptance-test |  |  |  |  |
-| `workloads-podman-harness` | Serve Podman to Windows clients | tooling | windows-local | blocked | unrated |  |  | runsc-container-on-windows, net-port-forwarding |  |  |  |  |
+| `workloads-acceptance-test-windows` | Acceptance test for Windows | tooling | windows-ci | blocked | unrated |  |  | workloads-acceptance-test |  |  |  |  |
+| `workloads-podman-harness` | Serve Podman to Windows clients | tooling | windows-ci | blocked | unrated |  |  | runsc-container-on-windows, net-port-forwarding |  |  |  |  |
 | `workloads-gvisor-bridge-netlink` | Bridge networking fails in gVisor | defect | linux-ci | next | unrated |  |  |  |  |  |  | docs/results/0a-linux.md |
 | `workloads-gvisor-port-publishing` | Port publishing untested in gVisor | defect | linux-ci | next | unrated |  |  |  |  |  |  | docs/results/0a-linux.md |
+| `workloads-bar-host-network` | Does host networking meet the bar | owner-decision | owner | next | n/a |  |  |  |  |  |  | docs/adr/0004-phase-0-results.md |
 
 ### Details per node
 
@@ -72,6 +73,7 @@ flowchart TB
 | `workloads-podman-harness` | Serve Podman to Windows clients |  |  | The test harness runs the Podman engine on runsc and exposes its API to the stock Windows clients. | Done when: podman version from a Windows client reaches the engine running on runsc. |  |  |  |  |
 | `workloads-gvisor-bridge-netlink` | Bridge networking fails in gVisor |  |  | In stock gVisor, Podman's default bridge network fails because netavark cannot open its netlink socket; only host networking works. | Open gap in gVisor itself. Fixed when: the acceptance test passes with the default bridge network on stock runsc. |  |  |  |  |
 | `workloads-gvisor-port-publishing` | Port publishing untested in gVisor |  |  | Publishing container ports with -p and service-name lookup in compose never worked or were never exercised inside gVisor. | Fixed when: -p and compose service names pass inside stock runsc. |  |  |  |  |
+| `workloads-bar-host-network` | Does host networking meet the bar |  |  | On Linux, steps 7 and 8 only passed with host networking; decide whether that counts or -p and compose service names are required. |  |  |  |  |  |
 
 ### Folded items per node
 

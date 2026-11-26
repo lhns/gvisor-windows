@@ -36,8 +36,8 @@ flowchart TB
 <!-- BEGIN GENERATED: table-net -->
 | id | title | kind | lane | state | outcome | start | end | depends_on | replaced_by | qualified_by | headline | evidence |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `net-netstack-windows-link` | Netstack to Windows sockets | feature | windows-local | blocked | unrated |  |  | sentry-windows-build |  |  |  |  |
-| `net-port-forwarding` | Publish guest ports on localhost | feature | windows-local | blocked | unrated |  |  | net-netstack-windows-link |  |  |  |  |
+| `net-netstack-windows-link` | Netstack to Windows sockets | feature | windows-ci | blocked | unrated |  |  | sentry-windows-build |  |  |  |  |
+| `net-port-forwarding` | Publish guest ports on localhost | feature | windows-ci | blocked | unrated |  |  | net-netstack-windows-link |  |  |  |  |
 
 ### Details per node
 

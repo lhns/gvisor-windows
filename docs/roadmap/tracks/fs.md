@@ -53,13 +53,13 @@ flowchart TB
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `fs-compat-layer-not-boundary` | Compatibility layer, not security boundary | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0005-host-files-accessed-directly.md |
 | `fs-persistent-image-storage` | Test persistent image storage | experiment | linux-ci | done | mixed | 2026-11-26 | 2026-11-26 | workloads-podman-on-gvisor-linux |  |  | 3.7 s with overlay | docs/results/0a-linux.md |
-| `fs-windows-directfs` | Open Windows files directly | feature | windows-local | blocked | unrated |  |  | sentry-windows-build, fs-compat-layer-not-boundary |  |  |  |  |
-| `fs-change-notifications` | Windows changes reach the guest | feature | windows-local | blocked | unrated |  |  | fs-windows-directfs |  |  |  |  |
-| `fs-linux-metadata-on-ntfs` | Linux file metadata on NTFS | feature | windows-local | blocked | unrated |  |  | fs-windows-directfs |  |  |  |  |
-| `fs-handles-do-not-block-users` | Files stay editable on Windows | feature | windows-local | blocked | unrated |  |  | fs-windows-directfs |  |  |  |  |
+| `fs-windows-directfs` | Open Windows files directly | feature | windows-ci | blocked | unrated |  |  | sentry-windows-build, fs-compat-layer-not-boundary |  |  |  |  |
+| `fs-change-notifications` | Windows changes reach the guest | feature | windows-ci | blocked | unrated |  |  | fs-windows-directfs |  |  |  |  |
+| `fs-linux-metadata-on-ntfs` | Linux file metadata on NTFS | feature | windows-ci | blocked | unrated |  |  | fs-windows-directfs |  |  |  |  |
+| `fs-handles-do-not-block-users` | Files stay editable on Windows | feature | windows-ci | blocked | unrated |  |  | fs-windows-directfs |  |  |  |  |
 | `fs-persistent-storage-choice` | Choose the persistent storage | owner-decision | owner | blocked | n/a |  |  | fs-persistent-image-storage, fs-windows-directfs |  |  |  |  |
-| `fs-root-filesystem-source` | Root filesystem from an OCI bundle | feature | windows-local | blocked | unrated |  |  | fs-windows-directfs |  |  |  |  |
-| `fs-persistent-storage-impl` | Storage that survives restarts | feature | windows-local | blocked | unrated |  |  | fs-persistent-storage-choice |  |  |  |  |
+| `fs-root-filesystem-source` | Root filesystem from an OCI bundle | feature | windows-ci | blocked | unrated |  |  | fs-windows-directfs |  |  |  |  |
+| `fs-persistent-storage-impl` | Storage that survives restarts | feature | windows-ci | blocked | unrated |  |  | fs-persistent-storage-choice |  |  |  |  |
 
 ### Details per node
 
