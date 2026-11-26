@@ -140,9 +140,9 @@ jobs:
         continue-on-error: true
         shell: pwsh
         run: |
-          foreach ($pol in 'tokens', 'limit') {
+          foreach ($pol in 'limit') {
             $env:WINSTUB_POLICY = $pol
-            for ($i = 0; $i -lt 30; $i++) {
+            for ($i = 0; $i -lt 60; $i++) {
               $o = & ./sentryguest.exe "-tar=out/rootfs.tar" "-timeout=20s" /bin/gopodman 2>&1 | Out-String
               if ($o -notmatch 'gopodman ok') { "===== $pol run $i hung or failed" | Tee-Object -Append -FilePath hang.txt; $o | Tee-Object -Append -FilePath hang.txt }
               else { "$pol run $i ok" | Tee-Object -Append -FilePath hang.txt }

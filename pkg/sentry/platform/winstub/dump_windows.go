@@ -59,16 +59,18 @@ func DumpState(w io.Writer) {
 			// Where is the thread? Suspend it for a moment (diagnostics only).
 			var rip uint64
 			var code uint32
+			prevSuspend := int64(-1)
 			pGetExitCode.Call(t.hThread, uintptr(unsafe.Pointer(&code)))
 			if r, _, _ := pSuspendThread.Call(t.hThread); int32(r) != -1 {
+				prevSuspend = int64(r)
 				var ctx ctxBuf
 				if ctx.get(t.hThread, ctxControl) {
 					rip = *ctx.u64(ctxRipOff)
 				}
 				pResumeThread.Call(t.hThread)
 			}
-			fmt.Fprintf(w, "  thread %d tid %d: state %d ctlSleep %d stubSleep %d mode %d parked %v lastKind %d req %+v spins %d rip %#x exit %d replies %d setevents %d stubwaits %d\n",
-				i, t.tid, t.state(), *t.u32(stubasm.PgCtlSlp), *t.u32(stubasm.PgStubSlp), *t.u32(stubasm.PgMode), t.parked, t.lastKind, t.req, *t.u64(stubasm.PgSpins), rip, code, t.nReply.Load(), t.nSet.Load(), *t.u32(stubasm.PgWaits))
+			fmt.Fprintf(w, "  thread %d tid %d: state %d ctlSleep %d stubSleep %d mode %d parked %v lastKind %d req %+v spins %d rip %#x exit %d suspendcount %d replies %d setevents %d stubwaits %d\n",
+				i, t.tid, t.state(), *t.u32(stubasm.PgCtlSlp), *t.u32(stubasm.PgStubSlp), *t.u32(stubasm.PgMode), t.parked, t.lastKind, t.req, *t.u64(stubasm.PgSpins), rip, code, prevSuspend, t.nReply.Load(), t.nSet.Load(), *t.u32(stubasm.PgWaits))
 			t.mu.Unlock()
 		}
 		as.tmu.Unlock()
