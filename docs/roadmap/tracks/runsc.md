@@ -9,7 +9,12 @@ Scope: gVisor's runtime on Windows hosts: commands, sandbox lifecycle, OCI bundl
 <!-- BEGIN GENERATED: track-runsc -->
 ```mermaid
 flowchart TB
+    runsc_measure_cli[/"✔ Measure runsc's<br/>command side"/]
+    runsc_sandbox_lifecycle["⛔ Start and stop<br/>sandboxes on Windows"]
     runsc_container_on_windows["⛔ Run a container with<br/>runsc"]
+    runsc_measure_cli ~~~ runsc_sandbox_lifecycle
+    runsc_sandbox_lifecycle ~~~ runsc_container_on_windows
+    runsc_sandbox_lifecycle --> runsc_container_on_windows
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -24,7 +29,8 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class runsc_container_on_windows blocked
+    class runsc_measure_cli succ
+    class runsc_sandbox_lifecycle,runsc_container_on_windows blocked
 ```
 <!-- END GENERATED: track-runsc -->
 
@@ -33,11 +39,17 @@ flowchart TB
 <!-- BEGIN GENERATED: table-runsc -->
 | id | title | kind | lane | state | outcome | start | end | depends_on | replaced_by | qualified_by | headline | evidence |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `runsc-container-on-windows` | Run a container with runsc | feature | windows-local | blocked | unrated | 2026-11-26 |  | ops-phase0-go-no-go |  |  |  |  |
+| `runsc-container-on-windows` | Run a container with runsc | feature | windows-ci | blocked | unrated |  |  | runsc-sandbox-lifecycle, fs-windows-directfs, net-netstack-windows-link |  |  |  |  |
+| `runsc-measure-cli` | Measure runsc's command side | experiment | none | done | successful | 2026-11-26 | 2026-11-26 | research-gvisor-base |  |  | about 42k lines | docs/results/runsc-command-side.md |
+| `runsc-windows-commands` | Choose runsc commands for Windows | owner-decision | owner | blocked | n/a |  |  | runsc-measure-cli |  |  |  |  |
+| `runsc-sandbox-lifecycle` | Start and stop sandboxes on Windows | feature | windows-local | blocked | unrated |  |  | runsc-windows-commands, platform-busybox-on-windows |  |  |  |  |
 
 ### Details per node
 
 | id | title | verdict | headline | in plain words | notes | confirmed | waiting on | queue order | order reason |
 |---|---|---|---|---|---|---|---|---|---|
 | `runsc-container-on-windows` | Run a container with runsc |  |  | The main goal: gVisor's runtime runs an OCI container on Windows for a standard user, with no admin, VM, WSL or Hyper-V. | Done when: runsc run starts an OCI bundle on windows-latest as a standard user and its output and exit code arrive. |  |  |  |  |
+| `runsc-measure-cli` | Measure runsc's command side | runsc's container-management side adds 35 packages and about 42k lines beyond the sandbox, of which about 31k lines in 17 packages use Linux host calls | about 42k lines | Measure how much of runsc's container management (commands, sandbox, gofer, cli) is Linux-only. | Done when: the Linux-only parts of runsc/cmd, container, sandbox, gofer and cli are listed with sizes. |  |  |  |  |
+| `runsc-windows-commands` | Choose runsc commands for Windows |  |  | Decide which runsc commands the Windows build supports first and how it is driven. | Done when: an ADR lists the supported commands and the OCI bundle layout on Windows. |  |  |  |  |
+| `runsc-sandbox-lifecycle` | Start and stop sandboxes on Windows |  |  | runsc creates, starts, signals and deletes a sandbox process on Windows. | Done when: runsc create/start/kill/delete work on Windows and leave no processes behind. |  |  |  |  |
 <!-- END GENERATED: table-runsc -->

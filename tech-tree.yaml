@@ -19,7 +19,7 @@ kinds:
   defect: {shape: flag, rated: false, blocks: false}
   owner-decision: {shape: hexagon, owner_gate: true}
 
-lanes: [linux-ci, windows-local, owner, none]
+lanes: [linux-ci, windows-ci, windows-local, owner, none]
 
 overview: {min: 3, max: 14}
 

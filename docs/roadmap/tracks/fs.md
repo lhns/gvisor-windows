@@ -10,6 +10,23 @@ Scope: host files, bind mounts, image storage.
 ```mermaid
 flowchart TB
     fs_persistent_image_storage[/"▶ Test persistent<br/>image storage"/]
+    fs_windows_directfs["⛔ Open Windows files<br/>directly"]
+    fs_change_notifications["⛔ Windows changes<br/>reach the guest"]
+    fs_linux_metadata_on_ntfs["⛔ Linux file metadata<br/>on NTFS"]
+    fs_handles_do_not_block_users["⛔ Files stay editable<br/>on Windows"]
+    fs_root_filesystem_source["⛔ Root filesystem from<br/>an OCI bundle"]
+    fs_persistent_storage_impl["⛔ Storage that<br/>survives restarts"]
+    fs_persistent_image_storage ~~~ fs_change_notifications
+    fs_windows_directfs ~~~ fs_linux_metadata_on_ntfs
+    fs_windows_directfs ~~~ fs_handles_do_not_block_users
+    fs_change_notifications ~~~ fs_root_filesystem_source
+    fs_linux_metadata_on_ntfs ~~~ fs_persistent_storage_impl
+    fs_handles_do_not_block_users ~~~ fs_persistent_storage_impl
+    fs_windows_directfs --> fs_change_notifications
+    fs_windows_directfs --> fs_linux_metadata_on_ntfs
+    fs_windows_directfs --> fs_handles_do_not_block_users
+    fs_windows_directfs --> fs_root_filesystem_source
+    fs_windows_directfs --> fs_persistent_storage_impl
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -25,6 +42,7 @@ flowchart TB
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class fs_persistent_image_storage inprog
+    class fs_windows_directfs,fs_change_notifications,fs_linux_metadata_on_ntfs,fs_handles_do_not_block_users,fs_root_filesystem_source,fs_persistent_storage_impl blocked
 ```
 <!-- END GENERATED: track-fs -->
 
@@ -35,6 +53,13 @@ flowchart TB
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `fs-compat-layer-not-boundary` | Compatibility layer, not security boundary | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0005-host-files-accessed-directly.md |
 | `fs-persistent-image-storage` | Test persistent image storage | experiment | linux-ci | in-progress | unrated | 2026-11-26 |  | workloads-podman-on-gvisor-linux |  |  |  |  |
+| `fs-windows-directfs` | Open Windows files directly | feature | windows-local | blocked | unrated |  |  | sentry-windows-build, fs-compat-layer-not-boundary |  |  |  |  |
+| `fs-change-notifications` | Windows changes reach the guest | feature | windows-local | blocked | unrated |  |  | fs-windows-directfs |  |  |  |  |
+| `fs-linux-metadata-on-ntfs` | Linux file metadata on NTFS | feature | windows-local | blocked | unrated |  |  | fs-windows-directfs |  |  |  |  |
+| `fs-handles-do-not-block-users` | Files stay editable on Windows | feature | windows-local | blocked | unrated |  |  | fs-windows-directfs |  |  |  |  |
+| `fs-persistent-storage-choice` | Choose the persistent storage | owner-decision | owner | blocked | n/a |  |  | fs-persistent-image-storage, fs-windows-directfs |  |  |  |  |
+| `fs-root-filesystem-source` | Root filesystem from an OCI bundle | feature | windows-local | blocked | unrated |  |  | fs-windows-directfs |  |  |  |  |
+| `fs-persistent-storage-impl` | Storage that survives restarts | feature | windows-local | blocked | unrated |  |  | fs-persistent-storage-choice |  |  |  |  |
 
 ### Details per node
 
@@ -42,4 +67,11 @@ flowchart TB
 |---|---|---|---|---|---|---|---|---|---|
 | `fs-compat-layer-not-boundary` | Compatibility layer, not security boundary |  |  | The sandbox may open the user's files directly with the user's rights; it isolates containers from each other, not from the user. |  |  |  |  |  |
 | `fs-persistent-image-storage` | Test persistent image storage |  |  | Find a writable filesystem inside the sandbox that survives a restart, and how fast each option is. | Done when: pull/build timings on tmpfs and on a host directory, and the overlay restart test, are in docs/results/0a-linux.md. |  |  |  |  |
+| `fs-windows-directfs` | Open Windows files directly |  |  | The Sentry opens NTFS files itself for bind mounts, with its own caches, instead of going through a file protocol. | Done when: the gofer's Windows backend implements open, create, readdir, stat, rename, unlink, link, symlink and xattr calls; a Linux guest edits a Windows folder correctly. |  |  |  |  |
+| `fs-change-notifications` | Windows changes reach the guest |  |  | Edits made on Windows invalidate the Sentry's caches and arrive in the guest as inotify events. | Done when: a file changed in Explorer is visible in the guest within one second and fires an inotify event. |  |  |  |  |
+| `fs-linux-metadata-on-ntfs` | Linux file metadata on NTFS |  |  | Owner, mode bits, symlinks and special files survive on NTFS, using a fixed owner and alternate data streams. | Done when: chmod, chown, symlink and mknod round-trip through a Windows folder. |  |  |  |  |
+| `fs-handles-do-not-block-users` | Files stay editable on Windows |  |  | The Sentry holds Windows file handles only briefly, so editors and git can still rename and delete files. | Done when: git checkout and an editor save on Windows succeed while a guest has the folder open. |  |  |  |  |
+| `fs-persistent-storage-choice` | Choose the persistent storage |  |  | Pick how a writable filesystem survives restarts: NTFS with metadata, one big image file, or an in-memory store with a cache. | Done when: an ADR records the choice with the measurements from Phase 0. |  |  |  |  |
+| `fs-root-filesystem-source` | Root filesystem from an OCI bundle |  |  | The guest's root filesystem comes from an unpacked OCI bundle directory on Windows. | Done when: busybox boots from a rootfs directory unpacked on NTFS. |  |  |  |  |
+| `fs-persistent-storage-impl` | Storage that survives restarts |  |  | Implement the chosen writable filesystem so data inside the sandbox outlives a restart. | Done when: files and image layers written in the guest are there after the sandbox restarts. |  |  |  |  |
 <!-- END GENERATED: table-fs -->

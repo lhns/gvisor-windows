@@ -11,10 +11,16 @@ Scope: workloads that measure compatibility; the Podman acceptance test is the b
 flowchart TB
     workloads_acceptance_test["▶ Write the Podman<br/>acceptance test"]
     workloads_podman_on_gvisor_linux[/"▶ Podman on gVisor on<br/>Linux"/]
+    workloads_acceptance_test_windows["⛔ Acceptance test for<br/>Windows"]
     workloads_podman_on_windows[/"⛔ Podman passes on<br/>Windows"/]
+    workloads_podman_harness["⛔ Serve Podman to<br/>Windows clients"]
     workloads_acceptance_test ~~~ workloads_podman_on_gvisor_linux
-    workloads_acceptance_test ~~~ workloads_podman_on_windows
+    workloads_acceptance_test ~~~ workloads_acceptance_test_windows
+    workloads_podman_on_gvisor_linux ~~~ workloads_podman_on_windows
+    workloads_acceptance_test_windows ~~~ workloads_podman_harness
     workloads_acceptance_test --> workloads_podman_on_gvisor_linux
+    workloads_acceptance_test --> workloads_acceptance_test_windows
+    workloads_acceptance_test_windows --> workloads_podman_on_windows
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -30,7 +36,7 @@ flowchart TB
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class workloads_acceptance_test,workloads_podman_on_gvisor_linux inprog
-    class workloads_podman_on_windows blocked
+    class workloads_acceptance_test_windows,workloads_podman_on_windows,workloads_podman_harness blocked
 ```
 <!-- END GENERATED: track-workloads -->
 
@@ -41,7 +47,9 @@ flowchart TB
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `workloads-acceptance-test` | Write the Podman acceptance test | tooling | linux-ci | in-progress | unrated | 2026-11-26 |  | research-gvisor-base |  |  |  |  |
 | `workloads-podman-on-gvisor-linux` | Podman on gVisor on Linux | experiment | linux-ci | in-progress | unrated | 2026-11-26 |  | workloads-acceptance-test |  |  |  |  |
-| `workloads-podman-on-windows` | Podman passes on Windows | experiment | windows-local | blocked | unrated | 2026-11-26 |  | runsc-container-on-windows |  |  |  |  |
+| `workloads-podman-on-windows` | Podman passes on Windows | experiment | windows-ci | blocked | unrated |  |  | runsc-container-on-windows, workloads-acceptance-test-windows, net-port-forwarding, fs-persistent-storage-choice, fs-change-notifications, fs-linux-metadata-on-ntfs |  |  |  |  |
+| `workloads-acceptance-test-windows` | Acceptance test for Windows | tooling | windows-local | blocked | unrated |  |  | workloads-acceptance-test |  |  |  |  |
+| `workloads-podman-harness` | Serve Podman to Windows clients | tooling | windows-local | blocked | unrated |  |  | runsc-container-on-windows, net-port-forwarding |  |  |  |  |
 
 ### Details per node
 
@@ -50,4 +58,6 @@ flowchart TB
 | `workloads-acceptance-test` | Write the Podman acceptance test |  |  | One test of ten steps defines when Podman counts as working: pull, run, build, mounts, ports, compose, restart, isolation. | Done when: the test exists under test/e2e/podman-acceptance and passes against native Podman on Linux. |  |  |  |  |
 | `workloads-podman-on-gvisor-linux` | Podman on gVisor on Linux |  |  | Run the acceptance test on stock gVisor on Linux; whatever fails there is a gap in gVisor itself, not in the port. | Done when: the acceptance test ran against Podman inside runsc and docs/results/0a-linux.md records each step. |  |  |  |  |
 | `workloads-podman-on-windows` | Podman passes on Windows |  |  | The bar for enough features: an unmodified Podman engine passes the acceptance test on gVisor on Windows. | Done when: all 10 acceptance steps pass in CI on windows-latest as a standard user. |  |  |  |  |
+| `workloads-acceptance-test-windows` | Acceptance test for Windows |  |  | The ten acceptance steps written for Windows, driving the stock Podman and docker clients. | Done when: a PowerShell twin of the test runs the same ten steps and reports each one. |  |  |  |  |
+| `workloads-podman-harness` | Serve Podman to Windows clients |  |  | The test harness runs the Podman engine on runsc and exposes its API to the stock Windows clients. | Done when: podman version from a Windows client reaches the engine running on runsc. |  |  |  |  |
 <!-- END GENERATED: table-workloads -->

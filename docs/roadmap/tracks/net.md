@@ -7,11 +7,42 @@ Scope: netstack to Windows sockets, port forwarding.
 [Back to the page](../../roadmap.md) · [legend](../../roadmap.md#legend)
 
 <!-- BEGIN GENERATED: track-net -->
-_No nodes in this track yet._
+```mermaid
+flowchart TB
+    net_netstack_windows_link["⛔ Netstack to Windows<br/>sockets"]
+    net_port_forwarding["⛔ Publish guest ports<br/>on localhost"]
+    net_netstack_windows_link ~~~ net_port_forwarding
+    net_netstack_windows_link --> net_port_forwarding
+    classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
+    classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
+    classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
+    classDef bad fill:#f28b82,stroke:#b3261e,color:#111
+    classDef dead fill:#e6e6e6,stroke:#777,stroke-dasharray:5 5,color:#555
+    classDef inprog fill:#a8cdf5,stroke:#1f6fc5,color:#111
+    classDef next fill:#fff,stroke:#333,color:#111
+    classDef blocked fill:#fff,stroke:#b3261e,stroke-dasharray:2 2,color:#111
+    classDef parked fill:#f3f3f3,stroke:#999,color:#555
+    classDef unrated fill:#fff,stroke:#333,stroke-dasharray:1 3,color:#111
+    classDef gate fill:#d9c2f0,stroke:#7b3fb5,color:#111
+    classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
+    classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
+    classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
+    class net_netstack_windows_link,net_port_forwarding blocked
+```
 <!-- END GENERATED: track-net -->
 
 ## Node table
 
 <!-- BEGIN GENERATED: table-net -->
-_No nodes yet._
+| id | title | kind | lane | state | outcome | start | end | depends_on | replaced_by | qualified_by | headline | evidence |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `net-netstack-windows-link` | Netstack to Windows sockets | feature | windows-local | blocked | unrated |  |  | sentry-windows-build |  |  |  |  |
+| `net-port-forwarding` | Publish guest ports on localhost | feature | windows-local | blocked | unrated |  |  | net-netstack-windows-link |  |  |  |  |
+
+### Details per node
+
+| id | title | verdict | headline | in plain words | notes | confirmed | waiting on | queue order | order reason |
+|---|---|---|---|---|---|---|---|---|---|
+| `net-netstack-windows-link` | Netstack to Windows sockets |  |  | gVisor's own TCP/IP stack sends guest traffic out through ordinary Windows sockets, like a user-space NAT. | Done when: a guest resolves DNS and downloads over HTTPS on Windows without admin. |  |  |  |  |
+| `net-port-forwarding` | Publish guest ports on localhost |  |  | A port opened in the guest becomes reachable on the Windows machine's localhost. | Done when: a guest web server answers on localhost on Windows. |  |  |  |  |
 <!-- END GENERATED: table-net -->

@@ -13,7 +13,10 @@
   lane: none
   start: '2026-11-17'
   end: '2026-11-26'
-  folded: []
+  folded:
+  - Low addresses unmappable for a standard user, so zpoline cannot work (2026-11-26, session record)
+  - 'Sandbox side measured: 265 packages, 88 using Linux host calls (2026-11-26, session record)'
+  - gVisor's gofer uses lisafs, not 9P; directfs exists (2026-11-26, session record)
   overview: true
   plain: Of all ways to run Linux code on Windows without admin, gVisor's user-space Linux kernel is the only one that already runs containers.
 - id: research-lkl-nommu
@@ -87,7 +90,7 @@
   end: '2026-11-26'
   folded: []
   overview: false
-  plain: Emulating a whole computer in software works today but is several times slower; it stays only as a stopgap.
+  plain: Emulating a whole computer in software works but is several times slower, so it is no base for the port.
 - id: ops-name-and-fork
   title: Name it gvisor-windows
   track: ops
@@ -260,17 +263,18 @@
   title: Measure syscall trap cost
   track: platform
   kind: experiment
-  state: in-progress
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/0b-windows.md
+  verdict_quote: A `ud2` caught by a raw-assembly vectored exception handler costs about 8 us per trap on this QEMU-guest machine
+  headline: about 8 us per trap
   depends_on:
   - research-gvisor-base
   replaced_by: []
   lane: windows-local
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   plain: Measure what it costs to catch one Linux system call on Windows and hand it to another process.
@@ -279,17 +283,19 @@
   title: Test 4 KB section views
   track: platform
   kind: experiment
-  state: in-progress
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/0b-windows.md
+  verdict_quote: With placeholders, a non-elevated process can map section views into a child at 4 KB-aligned addresses (not 64 KB-aligned), at 4 KB-multiple file offsets, with 4 KB view sizes, and change
+    protection per 4 KB page
   headline: ''
   depends_on:
   - research-gvisor-base
   replaced_by: []
   lane: windows-local
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   plain: Check whether Windows can map shared memory at the 4 KB steps Linux programs expect, instead of 64 KB.
@@ -300,7 +306,8 @@
   kind: experiment
   state: in-progress
   outcome: unrated
-  evidence: []
+  evidence:
+  - docs/results/0b-windows.md
   verdict_quote: ''
   headline: ''
   depends_on:
@@ -309,25 +316,29 @@
   lane: windows-local
   start: '2026-11-26'
   end: ''
-  folded: []
+  folded:
+  - Fails on the QEMU-guest dev machine without FSGSBASE (2026-11-26, commit 22d422737)
+  - Works on a hosted runner, but the base is lost after Sleep (2026-11-26, session record)
   overview: true
   plain: Check whether a normal Windows program can set the register Linux programs use for thread-local data; without it native execution fails.
   notes: 'Go/no-go. Done when: S3 results are in docs/results/0b-windows.md.'
+  waiting_on: measuring FS base loss and fault-based repair on hosted runners
 - id: platform-restricted-stub
   title: Restrict the stub process
   track: platform
   kind: experiment
-  state: in-progress
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  state: done
+  outcome: mixed
+  evidence:
+  - docs/results/0b-windows.md
+  verdict_quote: so the restriction reduces what it could do but does not make a missed trap harmless.
   headline: ''
   depends_on:
   - research-gvisor-base
   replaced_by: []
   lane: windows-local
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   plain: Check that the process running Linux code can be locked down, so a missed system call does little harm.
@@ -336,17 +347,18 @@
   title: Recover faults in Go
   track: sentry
   kind: experiment
-  state: in-progress
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/0b-windows.md
+  verdict_quote: is recoverable via `debug.SetPanicOnFault(true)` + `recover` at about 6 us per fault
+  headline: about 6 us per fault
   depends_on:
   - research-gvisor-base
   replaced_by: []
   lane: windows-local
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   plain: Check that the Go kernel process can survive reading bad guest memory on Windows, as it does on Linux.
@@ -355,17 +367,18 @@
   title: Test WHPX on this machine
   track: research
   kind: experiment
-  state: in-progress
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  state: abandoned
+  outcome: dead-end
+  evidence:
+  - docs/results/0b-windows.md
+  verdict_quote: 'WHPX cannot be used on this machine as a standard user (QEMU reports "WHPX: No accelerator found"), so only QEMU software emulation (TCG) works here'
   headline: ''
   depends_on:
   - research-gvisor-base
   replaced_by: []
   lane: windows-local
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   plain: Check whether QEMU can use the Windows hypervisor here without admin, as a fast stopgap.
@@ -390,9 +403,10 @@
   - platform-restricted-stub
   - sentry-go-fault-recovery
   - research-whpx-this-machine
+  - runsc-measure-cli
   replaced_by: []
   lane: owner
-  start: '2026-11-26'
+  start: ''
   end: ''
   folded: []
   overview: true
@@ -409,9 +423,14 @@
   headline: ''
   depends_on:
   - runsc-container-on-windows
+  - workloads-acceptance-test-windows
+  - net-port-forwarding
+  - fs-persistent-storage-choice
+  - fs-change-notifications
+  - fs-linux-metadata-on-ntfs
   replaced_by: []
-  lane: windows-local
-  start: '2026-11-26'
+  lane: windows-ci
+  start: ''
   end: ''
   folded: []
   overview: true
@@ -427,10 +446,12 @@
   verdict_quote: ''
   headline: ''
   depends_on:
-  - ops-phase0-go-no-go
+  - runsc-sandbox-lifecycle
+  - fs-windows-directfs
+  - net-netstack-windows-link
   replaced_by: []
-  lane: windows-local
-  start: '2026-11-26'
+  lane: windows-ci
+  start: ''
   end: ''
   folded: []
   overview: true
@@ -454,3 +475,708 @@
   folded: []
   overview: false
   plain: The project is gVisor for Windows hosts; Podman is only the workload that shows enough features work.
+- id: platform-stub-controller
+  title: Stub and controller prototype
+  track: platform
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - ops-phase0-go-no-go
+  - platform-trap-cost
+  - platform-4k-section-views
+  - platform-tls-register
+  - platform-restricted-stub
+  replaced_by: []
+  lane: windows-local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: A tiny Windows process runs a static Linux program while a second process catches and answers its system calls.
+  notes: 'Done when: a static x86-64 binary writes, forks and exits correctly under the controller, without the Sentry; per-syscall cost recorded.'
+- id: platform-page-verification
+  title: Scan code pages for syscalls
+  track: platform
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - platform-stub-controller
+  replaced_by: []
+  lane: windows-local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: Before guest code may run, each page is scanned for every instruction that enters the Windows kernel and those are rewritten to traps.
+  notes: 'Done when: no page is ever writable and executable at once; a test binary with syscall, sysenter, int and JIT-generated code never reaches the NT kernel.'
+- id: platform-syscall-fast-path
+  title: Patch hot syscall sites
+  track: platform
+  kind: experiment
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - platform-page-verification
+  replaced_by: []
+  lane: windows-local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: Call sites that trapped once are patched to jump straight into the controller hand-off, avoiding the exception cost.
+  notes: 'Done when: a getpid loop runs measurably faster than the trap-only path, with the numbers written up.'
+- id: platform-own-vdso
+  title: Own vDSO for clock calls
+  track: platform
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - platform-stub-controller
+  replaced_by: []
+  lane: windows-local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: Time and CPU queries are answered inside the stub, so they need no trap at all.
+  notes: 'Done when: clock_gettime, gettimeofday and getcpu run without a trap and return correct values.'
+- id: platform-64k-mapping-conflicts
+  title: Handle 64 KB mapping conflicts
+  track: platform
+  kind: feature
+  state: parked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - sentry-memory-file-sections
+  - platform-elf-alignment-survey
+  replaced_by: []
+  lane: windows-local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: When Linux puts two file pieces inside one 64 KB Windows window, the Sentry copies them into one fresh range instead.
+  notes: 'Parked: S2 showed 4 KB section views work with placeholders on Windows 10.0.26300. Done when: needed only on builds without that.'
+- id: platform-winstub
+  title: Windows platform for the Sentry
+  track: platform
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - platform-stub-controller
+  - platform-page-verification
+  - sentry-memory-file-sections
+  - ops-syscall-test-strategy
+  replaced_by: []
+  lane: windows-local
+  start: ''
+  end: ''
+  folded: []
+  overview: true
+  plain: 'gVisor''s platform interface implemented for Windows: address spaces, context switches and syscall delivery through stub processes.'
+  notes: 'Done when: pkg/sentry/platform/winstub passes the platform''s own tests on Windows.'
+- id: platform-busybox-on-windows
+  title: Run busybox under the Sentry
+  track: platform
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - platform-winstub
+  - sentry-event-loop-iocp
+  - sentry-timers-and-clocks
+  - sentry-fault-recovery
+  - sentry-host-stdio-and-tty
+  - fs-root-filesystem-source
+  replaced_by: []
+  lane: windows-local
+  start: ''
+  end: ''
+  folded: []
+  overview: true
+  plain: 'First end-to-end milestone: gVisor''s kernel runs an unmodified busybox shell on Windows.'
+  notes: 'Done when: busybox sh runs a script with fork, exec, pipes and mmap under the Sentry on Windows as a standard user.'
+- id: sentry-windows-build
+  title: Sentry builds for Windows
+  track: sentry
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - ops-phase0-go-no-go
+  - sentry-go-fault-recovery
+  replaced_by: []
+  lane: windows-local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: gVisor's kernel compiles as a Windows program, with host-specific parts stubbed out.
+  notes: 'Done when: GOOS=windows go build ./runsc/boot/... succeeds and the Sentry reaches its init without a guest.'
+- id: sentry-memory-file-sections
+  title: Guest memory on Windows sections
+  track: sentry
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - sentry-windows-build
+  - platform-4k-section-views
+  - ops-syscall-test-strategy
+  replaced_by: []
+  lane: windows-local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: The Sentry's memory file becomes a Windows section object, allocated in 64 KB units.
+  notes: 'Done when: pgalloc allocates, maps into a stub and copy-on-write-breaks memory on Windows; mm tests pass.'
+- id: sentry-event-loop-iocp
+  title: Event waiting on IOCP
+  track: sentry
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - sentry-windows-build
+  - ops-syscall-test-strategy
+  replaced_by: []
+  lane: windows-local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: Waiting for many host events at once (epoll on Linux) moves to Windows completion ports.
+  notes: 'Done when: fdnotifier''s Windows backend delivers readiness for sockets and pipes; its tests pass.'
+- id: sentry-timers-and-clocks
+  title: Timers and clocks on Windows
+  track: sentry
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - sentry-windows-build
+  - ops-syscall-test-strategy
+  replaced_by: []
+  lane: windows-local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: The Sentry's clocks and timers run on Windows' high-resolution timers.
+  notes: 'Done when: sleep, timerfd and clock tests pass inside a guest on Windows.'
+- id: fs-windows-directfs
+  title: Open Windows files directly
+  track: fs
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - sentry-windows-build
+  - fs-compat-layer-not-boundary
+  replaced_by: []
+  lane: windows-local
+  start: ''
+  end: ''
+  folded: []
+  overview: true
+  plain: The Sentry opens NTFS files itself for bind mounts, with its own caches, instead of going through a file protocol.
+  notes: 'Done when: the gofer''s Windows backend implements open, create, readdir, stat, rename, unlink, link, symlink and xattr calls; a Linux guest edits a Windows folder correctly.'
+- id: fs-change-notifications
+  title: Windows changes reach the guest
+  track: fs
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - fs-windows-directfs
+  replaced_by: []
+  lane: windows-local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: Edits made on Windows invalidate the Sentry's caches and arrive in the guest as inotify events.
+  notes: 'Done when: a file changed in Explorer is visible in the guest within one second and fires an inotify event.'
+- id: fs-linux-metadata-on-ntfs
+  title: Linux file metadata on NTFS
+  track: fs
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - fs-windows-directfs
+  replaced_by: []
+  lane: windows-local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: Owner, mode bits, symlinks and special files survive on NTFS, using a fixed owner and alternate data streams.
+  notes: 'Done when: chmod, chown, symlink and mknod round-trip through a Windows folder.'
+- id: fs-handles-do-not-block-users
+  title: Files stay editable on Windows
+  track: fs
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - fs-windows-directfs
+  replaced_by: []
+  lane: windows-local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: The Sentry holds Windows file handles only briefly, so editors and git can still rename and delete files.
+  notes: 'Done when: git checkout and an editor save on Windows succeed while a guest has the folder open.'
+- id: fs-persistent-storage-choice
+  title: Choose the persistent storage
+  track: fs
+  kind: owner-decision
+  state: blocked
+  outcome: n/a
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - fs-persistent-image-storage
+  - fs-windows-directfs
+  replaced_by: []
+  lane: owner
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: 'Pick how a writable filesystem survives restarts: NTFS with metadata, one big image file, or an in-memory store with a cache.'
+  notes: 'Done when: an ADR records the choice with the measurements from Phase 0.'
+- id: net-netstack-windows-link
+  title: Netstack to Windows sockets
+  track: net
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - sentry-windows-build
+  replaced_by: []
+  lane: windows-local
+  start: ''
+  end: ''
+  folded: []
+  overview: true
+  plain: gVisor's own TCP/IP stack sends guest traffic out through ordinary Windows sockets, like a user-space NAT.
+  notes: 'Done when: a guest resolves DNS and downloads over HTTPS on Windows without admin.'
+- id: net-port-forwarding
+  title: Publish guest ports on localhost
+  track: net
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - net-netstack-windows-link
+  replaced_by: []
+  lane: windows-local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: A port opened in the guest becomes reachable on the Windows machine's localhost.
+  notes: 'Done when: a guest web server answers on localhost on Windows.'
+- id: runsc-measure-cli
+  title: Measure runsc's command side
+  track: runsc
+  kind: experiment
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/runsc-command-side.md
+  verdict_quote: runsc's container-management side adds 35 packages and about 42k lines beyond the sandbox, of which about 31k lines in 17 packages use Linux host calls
+  headline: about 42k lines
+  depends_on:
+  - research-gvisor-base
+  replaced_by: []
+  lane: none
+  start: '2026-11-26'
+  end: '2026-11-26'
+  folded: []
+  overview: false
+  plain: Measure how much of runsc's container management (commands, sandbox, gofer, cli) is Linux-only.
+  notes: 'Done when: the Linux-only parts of runsc/cmd, container, sandbox, gofer and cli are listed with sizes.'
+- id: runsc-windows-commands
+  title: Choose runsc commands for Windows
+  track: runsc
+  kind: owner-decision
+  state: blocked
+  outcome: n/a
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - runsc-measure-cli
+  replaced_by: []
+  lane: owner
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: Decide which runsc commands the Windows build supports first and how it is driven.
+  notes: 'Done when: an ADR lists the supported commands and the OCI bundle layout on Windows.'
+- id: runsc-sandbox-lifecycle
+  title: Start and stop sandboxes on Windows
+  track: runsc
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - runsc-windows-commands
+  - platform-busybox-on-windows
+  replaced_by: []
+  lane: windows-local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: runsc creates, starts, signals and deletes a sandbox process on Windows.
+  notes: 'Done when: runsc create/start/kill/delete work on Windows and leave no processes behind.'
+- id: workloads-acceptance-test-windows
+  title: Acceptance test for Windows
+  track: workloads
+  kind: tooling
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - workloads-acceptance-test
+  replaced_by: []
+  lane: windows-local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: The ten acceptance steps written for Windows, driving the stock Podman and docker clients.
+  notes: 'Done when: a PowerShell twin of the test runs the same ten steps and reports each one.'
+- id: ops-windows-ci-standard-user
+  title: Windows CI as a standard user
+  track: ops
+  kind: tooling
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - ops-phase0-go-no-go
+  replaced_by: []
+  lane: windows-ci
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: CI on windows-latest creates a standard user and runs every Windows test as that user.
+  notes: 'Done when: a workflow runs a test as a freshly created non-admin user and fails if anything needs elevation.'
+- id: ops-syscall-test-strategy
+  title: Choose how to run gVisor's tests
+  track: ops
+  kind: owner-decision
+  state: next
+  outcome: n/a
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: owner
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: The Go branch ships no tests; decide whether gVisor's unit and syscall tests run from a master checkout with Bazel or get ported.
+  notes: 'Done when: an ADR records the choice.'
+- id: ops-syscall-tests-on-windows
+  title: gVisor syscall tests on Windows
+  track: ops
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - ops-syscall-test-strategy
+  - platform-busybox-on-windows
+  replaced_by: []
+  lane: windows-ci
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: gVisor's own syscall test suite runs against the Windows port to show which Linux calls work.
+  notes: 'Done when: the suite runs in CI on Windows and its pass rate is published.'
+- id: ops-upstream-merges
+  title: Merge upstream gVisor regularly
+  track: ops
+  kind: tooling
+  state: next
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: linux-ci
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: Regularly take in upstream gVisor's Go branch so the port does not drift.
+  notes: 'Done when: a scheduled workflow merges upstream/go into windows or opens an issue on conflict.'
+- id: ops-portable-packaging
+  title: Portable zip, no installer
+  track: ops
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - runsc-container-on-windows
+  replaced_by: []
+  lane: windows-local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: Ship runsc for Windows as a zip or per-user installer that needs no admin.
+  notes: 'Done when: a release zip runs from a user folder on a clean Windows machine.'
+- id: sentry-fault-recovery
+  title: Port fault recovery to Windows
+  track: sentry
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - sentry-windows-build
+  - sentry-go-fault-recovery
+  replaced_by: []
+  lane: windows-local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: The Sentry's safe copies of guest memory recover from access violations on Windows instead of crashing.
+  notes: 'Done when: pkg/safecopy''s Windows variant returns an error for a faulting guest address under concurrent copies.'
+- id: sentry-host-stdio-and-tty
+  title: Guest terminal and stdio
+  track: sentry
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - sentry-windows-build
+  replaced_by: []
+  lane: windows-local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: A guest program's input, output and terminal connect to the Windows console (ConPTY), including Ctrl-C.
+  notes: 'Done when: an interactive guest shell works in Windows Terminal with resize and Ctrl-C.'
+- id: fs-root-filesystem-source
+  title: Root filesystem from an OCI bundle
+  track: fs
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - fs-windows-directfs
+  replaced_by: []
+  lane: windows-local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: The guest's root filesystem comes from an unpacked OCI bundle directory on Windows.
+  notes: 'Done when: busybox boots from a rootfs directory unpacked on NTFS.'
+- id: sentry-threads-and-signals
+  title: Guest threads and signals
+  track: sentry
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - platform-winstub
+  replaced_by: []
+  lane: windows-local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: Multi-threaded guests (such as Go programs) get one stub thread per guest thread, with signals delivered correctly.
+  notes: 'Done when: a multi-threaded Go program and a signal-handling test run correctly under the Sentry on Windows.'
+- id: fs-persistent-storage-impl
+  title: Storage that survives restarts
+  track: fs
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - fs-persistent-storage-choice
+  replaced_by: []
+  lane: windows-local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: Implement the chosen writable filesystem so data inside the sandbox outlives a restart.
+  notes: 'Done when: files and image layers written in the guest are there after the sandbox restarts.'
+- id: workloads-podman-harness
+  title: Serve Podman to Windows clients
+  track: workloads
+  kind: tooling
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - runsc-container-on-windows
+  - net-port-forwarding
+  replaced_by: []
+  lane: windows-local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: The test harness runs the Podman engine on runsc and exposes its API to the stock Windows clients.
+  notes: 'Done when: podman version from a Windows client reaches the engine running on runsc.'
+- id: platform-hardware-acceleration
+  title: Use hardware acceleration when available
+  track: platform
+  kind: feature
+  state: parked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - platform-winstub
+  replaced_by: []
+  lane: windows-local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: Where the Windows Hypervisor Platform is enabled, a second platform could run guests in a hardware VM, chosen automatically like runsc's autoplatform.
+  notes: 'Done when: a WHPX platform is picked automatically when available and falls back to stub processes.'
+- id: research-file-protocol
+  title: Reach host files over a protocol
+  track: research
+  kind: experiment
+  state: abandoned
+  outcome: dead-end
+  evidence:
+  - docs/adr/0005-host-files-accessed-directly.md
+  verdict_quote: Here the Sentry is the kernel and runs on the same machine as the files; gVisor has no NFS client.
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: none
+  start: '2026-11-26'
+  end: '2026-11-26'
+  folded: []
+  overview: false
+  plain: 'Serving Windows files to the sandbox over NFS, 9P or gVisor''s lisafs was rejected: the sandbox runs on the same machine and can open them itself.'
+- id: platform-zpoline-hooks
+  title: Hook syscalls like zpoline
+  track: platform
+  kind: experiment
+  state: abandoned
+  outcome: dead-end
+  evidence:
+  - docs/results/0b-windows.md
+  verdict_quote: A standard user cannot map memory below 0x10000, so zpoline's trampoline at address 0 cannot be ported to Windows and syscall sites must be rewritten to traps or jumps instead.
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: windows-local
+  start: '2026-11-26'
+  end: '2026-11-26'
+  folded: []
+  overview: false
+  plain: Rewriting each syscall into a call to a trampoline at address 0 cannot work on Windows.

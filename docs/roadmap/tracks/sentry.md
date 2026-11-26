@@ -9,7 +9,27 @@ Scope: Windows host layers for gVisor's Sentry.
 <!-- BEGIN GENERATED: track-sentry -->
 ```mermaid
 flowchart TB
-    sentry_go_fault_recovery[/"▶ Recover faults in Go"/]
+    sentry_go_fault_recovery[/"✔ Recover faults in Go"/]
+    sentry_windows_build["⛔ Sentry builds for<br/>Windows"]
+    sentry_memory_file_sections["⛔ Guest memory on<br/>Windows sections"]
+    sentry_event_loop_iocp["⛔ Event waiting on<br/>IOCP"]
+    sentry_timers_and_clocks["⛔ Timers and clocks on<br/>Windows"]
+    sentry_fault_recovery["⛔ Port fault recovery<br/>to Windows"]
+    sentry_host_stdio_and_tty["⛔ Guest terminal and<br/>stdio"]
+    sentry_threads_and_signals["⛔ Guest threads and<br/>signals"]
+    sentry_go_fault_recovery ~~~ sentry_windows_build
+    sentry_windows_build ~~~ sentry_memory_file_sections
+    sentry_windows_build ~~~ sentry_event_loop_iocp
+    sentry_windows_build ~~~ sentry_timers_and_clocks
+    sentry_memory_file_sections ~~~ sentry_fault_recovery
+    sentry_event_loop_iocp ~~~ sentry_host_stdio_and_tty
+    sentry_timers_and_clocks ~~~ sentry_threads_and_signals
+    sentry_go_fault_recovery --> sentry_windows_build
+    sentry_windows_build --> sentry_memory_file_sections
+    sentry_windows_build --> sentry_event_loop_iocp
+    sentry_windows_build --> sentry_timers_and_clocks
+    sentry_windows_build --> sentry_fault_recovery
+    sentry_windows_build --> sentry_host_stdio_and_tty
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -24,7 +44,8 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class sentry_go_fault_recovery inprog
+    class sentry_go_fault_recovery succ
+    class sentry_windows_build,sentry_memory_file_sections,sentry_event_loop_iocp,sentry_timers_and_clocks,sentry_fault_recovery,sentry_host_stdio_and_tty,sentry_threads_and_signals blocked
 ```
 <!-- END GENERATED: track-sentry -->
 
@@ -33,11 +54,25 @@ flowchart TB
 <!-- BEGIN GENERATED: table-sentry -->
 | id | title | kind | lane | state | outcome | start | end | depends_on | replaced_by | qualified_by | headline | evidence |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `sentry-go-fault-recovery` | Recover faults in Go | experiment | windows-local | in-progress | unrated | 2026-11-26 |  | research-gvisor-base |  |  |  |  |
+| `sentry-go-fault-recovery` | Recover faults in Go | experiment | windows-local | done | successful | 2026-11-26 | 2026-11-26 | research-gvisor-base |  |  | about 6 us per fault | docs/results/0b-windows.md |
+| `sentry-windows-build` | Sentry builds for Windows | feature | windows-local | blocked | unrated |  |  | ops-phase0-go-no-go, sentry-go-fault-recovery |  |  |  |  |
+| `sentry-memory-file-sections` | Guest memory on Windows sections | feature | windows-local | blocked | unrated |  |  | sentry-windows-build, platform-4k-section-views, ops-syscall-test-strategy |  |  |  |  |
+| `sentry-event-loop-iocp` | Event waiting on IOCP | feature | windows-local | blocked | unrated |  |  | sentry-windows-build, ops-syscall-test-strategy |  |  |  |  |
+| `sentry-timers-and-clocks` | Timers and clocks on Windows | feature | windows-local | blocked | unrated |  |  | sentry-windows-build, ops-syscall-test-strategy |  |  |  |  |
+| `sentry-fault-recovery` | Port fault recovery to Windows | feature | windows-local | blocked | unrated |  |  | sentry-windows-build, sentry-go-fault-recovery |  |  |  |  |
+| `sentry-host-stdio-and-tty` | Guest terminal and stdio | feature | windows-local | blocked | unrated |  |  | sentry-windows-build |  |  |  |  |
+| `sentry-threads-and-signals` | Guest threads and signals | feature | windows-local | blocked | unrated |  |  | platform-winstub |  |  |  |  |
 
 ### Details per node
 
 | id | title | verdict | headline | in plain words | notes | confirmed | waiting on | queue order | order reason |
 |---|---|---|---|---|---|---|---|---|---|
-| `sentry-go-fault-recovery` | Recover faults in Go |  |  | Check that the Go kernel process can survive reading bad guest memory on Windows, as it does on Linux. | Done when: S5 results are in docs/results/0b-windows.md. |  |  |  |  |
+| `sentry-go-fault-recovery` | Recover faults in Go | is recoverable via `debug.SetPanicOnFault(true)` + `recover` at about 6 us per fault | about 6 us per fault | Check that the Go kernel process can survive reading bad guest memory on Windows, as it does on Linux. | Done when: S5 results are in docs/results/0b-windows.md. |  |  |  |  |
+| `sentry-windows-build` | Sentry builds for Windows |  |  | gVisor's kernel compiles as a Windows program, with host-specific parts stubbed out. | Done when: GOOS=windows go build ./runsc/boot/... succeeds and the Sentry reaches its init without a guest. |  |  |  |  |
+| `sentry-memory-file-sections` | Guest memory on Windows sections |  |  | The Sentry's memory file becomes a Windows section object, allocated in 64 KB units. | Done when: pgalloc allocates, maps into a stub and copy-on-write-breaks memory on Windows; mm tests pass. |  |  |  |  |
+| `sentry-event-loop-iocp` | Event waiting on IOCP |  |  | Waiting for many host events at once (epoll on Linux) moves to Windows completion ports. | Done when: fdnotifier's Windows backend delivers readiness for sockets and pipes; its tests pass. |  |  |  |  |
+| `sentry-timers-and-clocks` | Timers and clocks on Windows |  |  | The Sentry's clocks and timers run on Windows' high-resolution timers. | Done when: sleep, timerfd and clock tests pass inside a guest on Windows. |  |  |  |  |
+| `sentry-fault-recovery` | Port fault recovery to Windows |  |  | The Sentry's safe copies of guest memory recover from access violations on Windows instead of crashing. | Done when: pkg/safecopy's Windows variant returns an error for a faulting guest address under concurrent copies. |  |  |  |  |
+| `sentry-host-stdio-and-tty` | Guest terminal and stdio |  |  | A guest program's input, output and terminal connect to the Windows console (ConPTY), including Ctrl-C. | Done when: an interactive guest shell works in Windows Terminal with resize and Ctrl-C. |  |  |  |  |
+| `sentry-threads-and-signals` | Guest threads and signals |  |  | Multi-threaded guests (such as Go programs) get one stub thread per guest thread, with signals delivered correctly. | Done when: a multi-threaded Go program and a signal-handling test run correctly under the Sentry on Windows. |  |  |  |  |
 <!-- END GENERATED: table-sentry -->

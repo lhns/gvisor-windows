@@ -15,13 +15,14 @@ flowchart TB
     research_flinux_translation[/"✖ Translate syscalls<br/>like flinux"/]
     research_qemu_emulation[/"✖ QEMU software<br/>emulation"/]
     research_gvisor_benchmark[/"▶ Benchmark gVisor<br/>against native Linux"/]
-    research_whpx_this_machine[/"▶ Test WHPX on this<br/>machine"/]
+    research_whpx_this_machine[/"✖ Test WHPX on this<br/>machine"/]
+    research_file_protocol[/"✖ Reach host files<br/>over a protocol"/]
     research_gvisor_base ~~~ research_flinux_translation
     research_lkl_nommu ~~~ research_qemu_emulation
     research_unkernel ~~~ research_gvisor_benchmark
     research_flinux_translation ~~~ research_whpx_this_machine
-    research_qemu_emulation ~~~ research_whpx_this_machine
-    research_gvisor_benchmark ~~~ research_whpx_this_machine
+    research_qemu_emulation ~~~ research_file_protocol
+    research_gvisor_benchmark ~~~ research_file_protocol
     research_gvisor_base --> research_gvisor_benchmark
     research_gvisor_base --> research_whpx_this_machine
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
@@ -39,8 +40,8 @@ flowchart TB
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class research_gvisor_base unrated
-    class research_lkl_nommu,research_unkernel,research_flinux_translation,research_qemu_emulation dead
-    class research_gvisor_benchmark,research_whpx_this_machine inprog
+    class research_lkl_nommu,research_unkernel,research_flinux_translation,research_qemu_emulation,research_whpx_this_machine,research_file_protocol dead
+    class research_gvisor_benchmark inprog
 ```
 <!-- END GENERATED: track-research -->
 
@@ -55,7 +56,8 @@ flowchart TB
 | `research-flinux-translation` | Translate syscalls like flinux | experiment | none | abandoned | dead-end | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0001-port-gvisor-to-windows-hosts.md |
 | `research-qemu-emulation` | QEMU software emulation | experiment | none | abandoned | dead-end | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0001-port-gvisor-to-windows-hosts.md |
 | `research-gvisor-benchmark` | Benchmark gVisor against native Linux | experiment | linux-ci | in-progress | unrated | 2026-11-26 |  | research-gvisor-base |  |  |  |  |
-| `research-whpx-this-machine` | Test WHPX on this machine | experiment | windows-local | in-progress | unrated | 2026-11-26 |  | research-gvisor-base |  |  |  |  |
+| `research-whpx-this-machine` | Test WHPX on this machine | experiment | windows-local | abandoned | dead-end | 2026-11-26 | 2026-11-26 | research-gvisor-base |  |  |  | docs/results/0b-windows.md |
+| `research-file-protocol` | Reach host files over a protocol | experiment | none | abandoned | dead-end | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0005-host-files-accessed-directly.md |
 
 ### Details per node
 
@@ -65,7 +67,15 @@ flowchart TB
 | `research-lkl-nommu` | Revive LKL or nommu UML | Real Linux kernel, but nommu mode has no `fork()` and no memory protection between processes; LKL dropped Windows hosts in 2020; nommu UML is unmerged (v14, Feb 2026). |  | Running the real Linux kernel as a library was rejected: without memory management it cannot fork, and its Windows support is gone. |  |  |  |  |  |
 | `research-unkernel` | Build on unkernel | Runs Linux compiled to wasm off Linux today, but guest code is always emulated (aarch64 only), so it cannot run x86 user code natively. |  | Linux compiled to WebAssembly runs anywhere, but it always emulates the programs, so it cannot reach native speed. |  |  |  |  |  |
 | `research-flinux-translation` | Translate syscalls like flinux | Translates Linux syscalls onto Windows calls; has no namespaces, cgroups or overlay, so it cannot host a container engine without writing a kernel. |  | Mapping each Linux call onto a Windows call cannot provide what containers need, such as namespaces and cgroups. |  |  |  |  |  |
-| `research-qemu-emulation` | QEMU software emulation | Works today, but software emulation of the whole machine is several times slower; WHPX needs a one-time admin step. |  | Emulating a whole computer in software works today but is several times slower; it stays only as a stopgap. |  |  |  |  |  |
+| `research-qemu-emulation` | QEMU software emulation | Works today, but software emulation of the whole machine is several times slower; WHPX needs a one-time admin step. |  | Emulating a whole computer in software works but is several times slower, so it is no base for the port. |  |  |  |  |  |
 | `research-gvisor-benchmark` | Benchmark gVisor against native Linux |  |  | Measure how much slower process start, small files and CPU work are inside gVisor than natively. | Done when: the benchmark table is in docs/results/0a-linux.md. |  |  |  |  |
-| `research-whpx-this-machine` | Test WHPX on this machine |  |  | Check whether QEMU can use the Windows hypervisor here without admin, as a fast stopgap. | Done when: S6 results are in docs/results/0b-windows.md. |  |  |  |  |
+| `research-whpx-this-machine` | Test WHPX on this machine | WHPX cannot be used on this machine as a standard user (QEMU reports "WHPX: No accelerator found"), so only QEMU software emulation (TCG) works here |  | Check whether QEMU can use the Windows hypervisor here without admin, as a fast stopgap. | Done when: S6 results are in docs/results/0b-windows.md. |  |  |  |  |
+| `research-file-protocol` | Reach host files over a protocol | Here the Sentry is the kernel and runs on the same machine as the files; gVisor has no NFS client. |  | Serving Windows files to the sandbox over NFS, 9P or gVisor's lisafs was rejected: the sandbox runs on the same machine and can open them itself. |  |  |  |  |  |
+
+### Folded items per node
+
+- `research-gvisor-base`: Pick gVisor as the base
+  - Low addresses unmappable for a standard user, so zpoline cannot work (2026-11-26, session record)
+  - Sandbox side measured: 265 packages, 88 using Linux host calls (2026-11-26, session record)
+  - gVisor's gofer uses lisafs, not 9P; directfs exists (2026-11-26, session record)
 <!-- END GENERATED: table-research -->

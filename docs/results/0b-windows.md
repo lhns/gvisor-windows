@@ -4,6 +4,17 @@ Machine: Windows 11 Pro 10.0.26300, standard user, 16 vCPUs. `CPU = "QEMU Virtua
 Go toolchain: go1.26.2 windows/amd64 (installed), no C compiler. All spikes are pure Go plus Go assembly (`BYTE` encodings for special instructions). Nothing elevated, nothing installed system-wide.
 Build/run: `cd sN; go build -o sN.exe . && ./sN.exe` (S3 and S5: see notes). Sources are in each folder.
 
+## S0 low addresses (zpoline precondition)
+
+Method: `VirtualAlloc` with `MEM_RESERVE|MEM_COMMIT` at fixed addresses 0x0 (treated as "any address"), 0x1000 and 0x10000, as a standard user (PowerShell P/Invoke, 2026-11-26).
+
+| address | result |
+|---|---|
+| 0x1000 | fails, error 87 |
+| 0x10000 | succeeds |
+
+Verdict: FAIL. A standard user cannot map memory below 0x10000, so zpoline's trampoline at address 0 cannot be ported to Windows and syscall sites must be rewritten to traps or jumps instead.
+
 ## S1 trap cost (s1/)
 
 Method: (a) in-process loop of `ud2` (0F 0B), caught by a vectored exception handler (`AddVectoredExceptionHandler(1, ...)`) written in Go assembly (Windows x64 ABI, no Go callback; it adds 2 to CONTEXT.Rip and returns EXCEPTION_CONTINUE_EXECUTION). Go's own handler was never involved. 7 runs x 200000 traps, timed with rdtsc (calibrated). (b) two processes (the exe re-spawned as server) sharing a 4 KB `CreateFileMapping`/`MapViewOfFile` page; client writes a request, server echoes a derived value, client waits for the answer. Spin variant: both sides busy-poll a cache-line-separated sequence counter. Event variant: auto-reset named events (`SetEvent` / `WaitForSingleObject`). 200000 (spin) and 50000 (event) round trips per run after 1000 warm-up, 3 runs.
@@ -84,3 +95,18 @@ Verdict: FAIL. WHPX cannot be used on this machine as a standard user (QEMU repo
 - `s6/dl/qemu-w64-setup-20260811.exe` (207 MB, from qemu.weilnetz.de/w64/; not executed, extracted with 7z into `s6/qemu`)
 - `s6/dl/alpine-virt-3.24.4-x86_64.iso` (70 MB, from dl-cdn.alpinelinux.org; sha256 matches)
 - No C toolchain and no Go modules were downloaded.
+
+## Re-run on a hosted runner (CI run 45847656810)
+
+`windows-latest`, AMD EPYC 7763, 4 vCPUs, CPUID.7.0:EBX=0x219c07a9 (FSGSBASE=1).
+
+| spike | result |
+|---|---|
+| S1 `ud2` + VEH | median 1747 ns per trap |
+| S1 spin round trip | median 130 ns, p99 160 ns |
+| S1 event round trip | median 24385 ns, p99 58744 ns |
+| S2 | same placeholder results as above |
+| S3 | `rdfsbase`/`wrfsbase` execute; FS base set and `fs:[0]` reads correctly; after `Sleep(1)` the next `fs:[0]` faults at address 0 |
+| S4, S5 | same results as above; S5 1.6 us per fault and recover |
+
+Verdict: On a CPU with FSGSBASE, a standard-user Windows process can set its %fs base with `wrfsbase`, but Windows did not keep the value across `Sleep(1)`, so the design needs a way to restore the base after context switches; how often it is lost and whether a fault handler can restore it is measured next.

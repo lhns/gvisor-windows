@@ -7,7 +7,32 @@ Scope: CI, packaging, owner decisions on process.
 [Back to the page](../../roadmap.md) · [legend](../../roadmap.md#legend)
 
 <!-- BEGIN GENERATED: track-ops -->
-_No nodes in this track yet._
+```mermaid
+flowchart TB
+    ops_windows_ci_standard_user["⛔ Windows CI as a<br/>standard user"]
+    ops_upstream_merges["○ Merge upstream<br/>gVisor regularly"]
+    ops_syscall_tests_on_windows["⛔ gVisor syscall tests<br/>on Windows"]
+    ops_portable_packaging["⛔ Portable zip, no<br/>installer"]
+    ops_windows_ci_standard_user ~~~ ops_portable_packaging
+    ops_upstream_merges ~~~ ops_portable_packaging
+    ops_syscall_tests_on_windows ~~~ ops_portable_packaging
+    classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
+    classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
+    classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
+    classDef bad fill:#f28b82,stroke:#b3261e,color:#111
+    classDef dead fill:#e6e6e6,stroke:#777,stroke-dasharray:5 5,color:#555
+    classDef inprog fill:#a8cdf5,stroke:#1f6fc5,color:#111
+    classDef next fill:#fff,stroke:#333,color:#111
+    classDef blocked fill:#fff,stroke:#b3261e,stroke-dasharray:2 2,color:#111
+    classDef parked fill:#f3f3f3,stroke:#999,color:#555
+    classDef unrated fill:#fff,stroke:#333,stroke-dasharray:1 3,color:#111
+    classDef gate fill:#d9c2f0,stroke:#7b3fb5,color:#111
+    classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
+    classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
+    classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
+    class ops_windows_ci_standard_user,ops_syscall_tests_on_windows,ops_portable_packaging blocked
+    class ops_upstream_merges next
+```
 <!-- END GENERATED: track-ops -->
 
 ## Node table
@@ -18,8 +43,13 @@ _No nodes in this track yet._
 | `ops-name-and-fork` | Name it gvisor-windows | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0003-fork-of-the-go-branch.md |
 | `ops-linux-tests-on-actions` | Run Linux tests on GitHub Actions | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0003-fork-of-the-go-branch.md |
 | `ops-borrow-code` | Borrow code, check licenses later | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0003-fork-of-the-go-branch.md; NOTICE |
-| `ops-phase0-go-no-go` | Go or no-go after Phase 0 | owner-decision | owner | blocked | n/a | 2026-11-26 |  | workloads-podman-on-gvisor-linux, research-gvisor-benchmark, platform-elf-alignment-survey, fs-persistent-image-storage, platform-trap-cost, platform-4k-section-views, platform-tls-register, platform-restricted-stub, sentry-go-fault-recovery, research-whpx-this-machine |  |  |  |  |
+| `ops-phase0-go-no-go` | Go or no-go after Phase 0 | owner-decision | owner | blocked | n/a |  |  | workloads-podman-on-gvisor-linux, research-gvisor-benchmark, platform-elf-alignment-survey, fs-persistent-image-storage, platform-trap-cost, platform-4k-section-views, platform-tls-register, platform-restricted-stub, sentry-go-fault-recovery, research-whpx-this-machine, runsc-measure-cli |  |  |  |  |
 | `ops-podman-only-the-bar` | Podman only as the bar | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0002-what-done-means.md |
+| `ops-windows-ci-standard-user` | Windows CI as a standard user | tooling | windows-ci | blocked | unrated |  |  | ops-phase0-go-no-go |  |  |  |  |
+| `ops-syscall-test-strategy` | Choose how to run gVisor's tests | owner-decision | owner | next | n/a |  |  |  |  |  |  |  |
+| `ops-syscall-tests-on-windows` | gVisor syscall tests on Windows | feature | windows-ci | blocked | unrated |  |  | ops-syscall-test-strategy, platform-busybox-on-windows |  |  |  |  |
+| `ops-upstream-merges` | Merge upstream gVisor regularly | tooling | linux-ci | next | unrated |  |  |  |  |  |  |  |
+| `ops-portable-packaging` | Portable zip, no installer | feature | windows-local | blocked | unrated |  |  | runsc-container-on-windows |  |  |  |  |
 
 ### Details per node
 
@@ -30,4 +60,9 @@ _No nodes in this track yet._
 | `ops-borrow-code` | Borrow code, check licenses later |  |  | Code from other projects may be reused; its origin is recorded so the owner can review licences later. |  |  |  |  |  |
 | `ops-phase0-go-no-go` | Go or no-go after Phase 0 |  |  | The owner decides, from the Phase 0 results, whether the port goes ahead. | Input: docs/adr/0004-phase-0-results.md. |  |  |  |  |
 | `ops-podman-only-the-bar` | Podman only as the bar |  |  | The project is gVisor for Windows hosts; Podman is only the workload that shows enough features work. |  |  |  |  |  |
+| `ops-windows-ci-standard-user` | Windows CI as a standard user |  |  | CI on windows-latest creates a standard user and runs every Windows test as that user. | Done when: a workflow runs a test as a freshly created non-admin user and fails if anything needs elevation. |  |  |  |  |
+| `ops-syscall-test-strategy` | Choose how to run gVisor's tests |  |  | The Go branch ships no tests; decide whether gVisor's unit and syscall tests run from a master checkout with Bazel or get ported. | Done when: an ADR records the choice. |  |  |  |  |
+| `ops-syscall-tests-on-windows` | gVisor syscall tests on Windows |  |  | gVisor's own syscall test suite runs against the Windows port to show which Linux calls work. | Done when: the suite runs in CI on Windows and its pass rate is published. |  |  |  |  |
+| `ops-upstream-merges` | Merge upstream gVisor regularly |  |  | Regularly take in upstream gVisor's Go branch so the port does not drift. | Done when: a scheduled workflow merges upstream/go into windows or opens an issue on conflict. |  |  |  |  |
+| `ops-portable-packaging` | Portable zip, no installer |  |  | Ship runsc for Windows as a zip or per-user installer that needs no admin. | Done when: a release zip runs from a user folder on a clean Windows machine. |  |  |  |  |
 <!-- END GENERATED: table-ops -->
