@@ -12,7 +12,7 @@ if [ "$NAME" = gohello ]; then
   # static Go binary, run on top of debian
   (cd "$HERE" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o "$OUT/hello" hello.go)
   IMG=mirror.gcr.io/library/debian:12; docker pull -q "$IMG" >/dev/null
-  mkdir -p "$ROOT/gohello" && cp "$OUT/hello" "$ROOT/gohello/hello"
+  cp "$OUT/hello" "$ROOT/hello"
   go version >"$OUT/go-version.txt"
   EXTRA=(-v "$OUT/hello:/hello:ro")
 else

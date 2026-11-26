@@ -30,10 +30,10 @@ run() { # label rootfs-name loop-body N
   local label=$1 rf=$2 body=$3 n=$4 id="f-$1-$4"
   local b="$W/b-$id"; mkdir -p "$b"
   (cd "$b" && runsc spec && jq --arg r "$W/rootfs-$rf" --arg c "i=0; while [ \$i -lt $n ]; do $body; i=\$((i+1)); done" \
-     '.root.path=$r | .root.readonly=false | .process.terminal=false | .process.args=["/bin/sh","-c",$c]' config.json >c.json && mv c.json config.json)
+     '.linux.namespaces |= map(select(.type!="network")) | .root.path=$r | .root.readonly=false | .process.terminal=false | .process.args=["/bin/sh","-c",$c]' config.json >c.json && mv c.json config.json)
   local log="$RES/$id.csv"
   sudo rm -f "$log"
-  sudo runsc --root="$W/rr" --platform=systrap --network=none --ignore-cgroups \
+  sudo runsc --root="$W/rr" --platform=systrap --network=host --ignore-cgroups \
     --profiling-metrics=/task/faults,/task/syscalls --profiling-metrics-log="$log" --profiling-metrics-rate-us=500 \
     run --bundle="$b" "$id" >"$RES/$id.out" 2>&1
   echo "$id exit $?"; sudo chmod a+r "$log" 2>/dev/null
