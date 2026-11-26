@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 
 	"strings"
+	"sync"
 
 	"golang.org/x/sys/unix"
 	"gvisor.dev/gvisor/pkg/abi/linux"
@@ -20,6 +21,7 @@ import (
 	"gvisor.dev/gvisor/pkg/hostarch"
 	"gvisor.dev/gvisor/pkg/sentry/fsimpl/gofer/winhost"
 	"gvisor.dev/gvisor/pkg/sentry/kernel/auth"
+	"gvisor.dev/gvisor/pkg/sentry/kernel/pipe"
 	"gvisor.dev/gvisor/pkg/sentry/ktime"
 	"gvisor.dev/gvisor/pkg/sentry/pgalloc"
 	"gvisor.dev/gvisor/pkg/sentry/uniqueid"
@@ -39,6 +41,9 @@ type winInode struct {
 	// readOK and writeOK say that a handle was requested (there is nothing
 	// to hold: handles are short-lived).
 	readOK, writeOK atomic.Bool
+
+	// fifo is the shared pipe of an emulated FIFO (guarded by fifoMu).
+	fifo *sharedFifo
 
 	// pinned is set while the host layer keeps the file reachable after the
 	// guest unlinked it.
@@ -392,7 +397,43 @@ func (i *winInode) hostSetStatLocked(stat *linux.Statx) (failureMask uint32, fai
 	return 0, nil
 }
 
+// The in-Sentry pipe of an emulated FIFO is kept per host file for the whole
+// process, not per mount, and lives while some inode of the file does (as a
+// kernel FIFO keeps its buffer while it is open).
+var (
+	fifoMu sync.Mutex
+	fifos  = map[winhost.ID]*sharedFifo{}
+)
+
+type sharedFifo struct {
+	p    *pipe.VFSPipe
+	refs int
+}
+
+func (i *winInode) hostFifoPipe() *pipe.VFSPipe {
+	fifoMu.Lock()
+	defer fifoMu.Unlock()
+	if i.fifo == nil {
+		e := fifos[i.id]
+		if e == nil {
+			e = &sharedFifo{p: pipe.NewVFSPipe(true /* isNamed */, pipe.DefaultPipeSize)}
+			fifos[i.id] = e
+		}
+		e.refs++
+		i.fifo = e
+	}
+	return i.fifo.p
+}
+
 func (i *winInode) hostDestroy() {
+	fifoMu.Lock()
+	if e := i.fifo; e != nil {
+		i.fifo = nil
+		if e.refs--; e.refs <= 0 {
+			delete(fifos, i.id)
+		}
+	}
+	fifoMu.Unlock()
 	if i.pinned.Swap(false) {
 		i.host.Unpin(i.id)
 	}

@@ -1216,12 +1216,19 @@ func (d *dentry) open(ctx context.Context, rp *vfs.ResolvingPath, opts *vfs.Open
 			return d.inode.pipe.Open(ctx, mnt, &d.vfsd, opts.Flags, &d.inode.locks)
 		}
 		if d.inode.fs.opts.emulateFifoOpen {
-			d.inode.emulatedPipeMu.Lock()
-			if d.inode.pipe == nil {
-				d.inode.pipe = pipe.NewVFSPipe(true /* isNamed */, pipe.DefaultPipeSize)
+			var p *pipe.VFSPipe
+			if hf, ok := d.inode.impl.(hostFifo); ok {
+				// One pipe per file for the whole process, so two mounts of
+				// the same folder share it.
+				p = hf.hostFifoPipe()
+			} else {
+				d.inode.emulatedPipeMu.Lock()
+				if d.inode.pipe == nil {
+					d.inode.pipe = pipe.NewVFSPipe(true /* isNamed */, pipe.DefaultPipeSize)
+				}
+				p = d.inode.pipe
+				d.inode.emulatedPipeMu.Unlock()
 			}
-			p := d.inode.pipe
-			d.inode.emulatedPipeMu.Unlock()
 			return p.Open(ctx, mnt, &d.vfsd, opts.Flags, &d.inode.locks)
 		}
 		if d.inode.fs.opts.disableFifoOpen {
