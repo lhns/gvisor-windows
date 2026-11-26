@@ -41,3 +41,6 @@ func installFaultHandlers() {
 // memory. The function is assembly with a large frame and no body, so it
 // costs only the prologue's stack check.
 func ensureFaultStack()
+
+// dbgCtx is DEBUG: RIP, R8, RCX, RDI and the fault address of the last fault.
+var dbgCtx [5]uint64

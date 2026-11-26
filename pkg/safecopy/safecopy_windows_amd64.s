@@ -28,6 +28,16 @@ TEXT ·vehHandler(SB),NOSPLIT|NOFRAME,$0
 
 check:
 	MOVQ CTX_RIP(R10), AX
+	// DEBUG: record the first registers seen at the last fault.
+	MOVQ AX, ·dbgCtx+0(SB)
+	MOVQ 0xB8(R10), R9
+	MOVQ R9, ·dbgCtx+8(SB)
+	MOVQ 0x80(R10), R9
+	MOVQ R9, ·dbgCtx+16(SB)
+	MOVQ 0xB0(R10), R9
+	MOVQ R9, ·dbgCtx+24(SB)
+	MOVQ ER_INFO1(R8), R9
+	MOVQ R9, ·dbgCtx+32(SB)
 
 	CMPQ AX, ·memcpyBegin(SB)
 	JB   not_memcpy

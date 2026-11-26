@@ -31,6 +31,7 @@ func TestWindowsMemclrDiag(t *testing.T) {
 	zn, err := ZeroOut(unsafe.Pointer(bad), 1)
 	fmt.Printf("DIAG B: n=%d err=%v\n", zn, err)
 
+	fmt.Printf("DIAG B regs: rip=%#x r8=%#x rcx=%#x rdi=%#x addr=%#x bad=%#x memclr=[%#x,%#x) memcpy=[%#x,%#x)\n", dbgCtx[0], dbgCtx[1], dbgCtx[2], dbgCtx[3], dbgCtx[4], bad, memclrBegin, memclrEnd, memcpyBegin, memcpyEnd)
 	fmt.Println("DIAG C: memclr size 1 directly, after ensureFaultStack")
 	ensureFaultStack()
 	fault, sig := memclr(bad, 1, true)
