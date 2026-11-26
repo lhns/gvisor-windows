@@ -17,6 +17,7 @@
 package winstub
 
 import (
+	"os"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -47,7 +48,71 @@ type winContext struct {
 	needRestore bool
 	needPull    bool
 	nreq        int
-	spin        bool
+
+	// Spinning policy state (see decideSpin). spin: the Sentry side spins while
+	// it waits for the next request; ctlScore and stubScore: how often spinning
+	// on each side paid off recently (adaptive policy).
+	spin      bool
+	ctlScore  int
+	stubScore int
+	nwaits    int
+}
+
+// Spin policies, WINSTUB_POLICY.
+const (
+	policyAdaptive = iota // per context, from whether spinning paid off recently
+	policyLimit           // while no more contexts run than there are CPUs
+	policyAlways
+)
+
+var spinPolicy = func() int {
+	switch os.Getenv("WINSTUB_POLICY") {
+	case "limit":
+		return policyLimit
+	case "always":
+		return policyAlways
+	}
+	return policyAdaptive
+}()
+
+const maxScore = 6
+
+// decideSpin chooses, before the context runs, whether the Sentry side and the
+// stub spin while they wait for each other, and sets the stub's spin budget.
+//
+// Spinning pays when the other side answers within a few microseconds, and costs
+// a CPU when it does not: with more runnable threads than CPUs the spinners keep
+// the thread that has the work from running. The adaptive policy keeps a score
+// per side and context: a wait that ended during the spin raises it, one that had
+// to sleep lowers it faster; at zero the side does not spin, except for one wait
+// in eight that probes whether spinning would work again.
+func (c *winContext) decideSpin(t *thread) {
+	p := t.as.p
+	n := p.active.Add(1)
+	spinSentry, spinStub := true, true
+	switch spinPolicy {
+	case policyLimit:
+		spinSentry = int(n) <= p.spinLimit
+		spinStub = spinSentry
+	case policyAdaptive:
+		c.nwaits++
+		probe := c.nwaits&7 == 0
+		spinSentry = c.ctlScore > 0 || probe
+		spinStub = c.stubScore > 0 || probe
+	}
+	c.spin = spinSentry
+	if spinStub {
+		*t.u64(stubasm.PgSpins) = uint64(stubSpin)
+	} else {
+		*t.u64(stubasm.PgSpins) = 1 // the stub counts down from this: 0 would spin 2^64 times
+	}
+}
+
+func scoreUpdate(score int, paidOff bool) int {
+	if paidOff {
+		return min(score+1, maxScore)
+	}
+	return max(score-3, 0)
 }
 
 const eflagsUser = 0x246 // what a Linux syscall leaves in r11
@@ -77,15 +142,8 @@ func (c *winContext) Switch(ctx pkgcontext.Context, mm platform.MemoryManager, a
 		c.needRestore = false
 	}
 	c.needPull = true
-	// Spin only while no more contexts are running than there are CPUs to spin
-	// on: with more, the spinners keep the thread that has work from running.
-	c.spin = int(t.as.p.active.Add(1)) <= t.as.p.spinLimit
+	c.decideSpin(t)
 	defer t.as.p.active.Add(-1)
-	if c.spin {
-		*t.u64(stubasm.PgSpins) = uint64(stubSpin)
-	} else {
-		*t.u64(stubasm.PgSpins) = 1 // the stub counts down from this: 0 would spin 2^64 times
-	}
 	if err := c.resume(t, ac); err != nil {
 		return nil, hostarch.NoAccess, &platform.ContextError{Err: err, Errno: unix.EAGAIN}
 	}
@@ -164,7 +222,11 @@ func (c *winContext) resume(t *thread, ac *arch.Context64) error {
 	t.mu.Unlock()
 	atomic.StoreUint32(t.u32(0), 2)
 	if atomic.LoadUint32(t.u32(stubasm.PgStubSlp)) != 0 {
+		// The stub's spin ended before we answered: it sleeps on the event.
+		c.stubScore = scoreUpdate(c.stubScore, false)
 		pSetEvent.Call(t.evReply)
+	} else {
+		c.stubScore = scoreUpdate(c.stubScore, true)
 	}
 	return nil
 }
@@ -194,6 +256,8 @@ func loadRegs(t *thread, r *arch.Registers, syscall bool) {
 func (c *winContext) wait(t *thread) (request, error) {
 	as := t.as
 	sleep := t.u32(stubasm.PgCtlSlp)
+	slept := false
+	defer func() { c.ctlScore = scoreUpdate(c.ctlScore, !slept) }()
 	for {
 		spins := ctlSpin
 		if !c.spin {
@@ -221,6 +285,7 @@ func (c *winContext) wait(t *thread) (request, error) {
 			atomic.StoreUint32(sleep, 0)
 			continue
 		}
+		slept = true
 		pWaitSingle.Call(t.evReq, infinite)
 		atomic.StoreUint32(sleep, 0)
 	}

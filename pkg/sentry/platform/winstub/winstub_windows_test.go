@@ -1342,3 +1342,73 @@ func TestShareReadOnlySection(t *testing.T) {
 	}
 	shareReadOnly = true
 }
+
+// TestPolicyMatrix compares the spin policies at several thread counts: `threads`
+// busy contexts in a syscall loop plus one probe context whose round trips are
+// timed one by one.
+func TestPolicyMatrix(t *testing.T) {
+	if os.Getenv("WINSTUB_MATRIX") == "" {
+		t.Skip("set WINSTUB_MATRIX=1")
+	}
+	h := newHarness(t)
+	g := buildGuest()
+	mm := h.newMM()
+	h.setup(mm, g)
+	defer func(p int) { spinPolicy = p }(spinPolicy)
+	names := map[int]string{policyAdaptive: "adaptive", policyLimit: "limit", policyAlways: "always"}
+	for _, pol := range []int{policyAlways, policyLimit, policyAdaptive} {
+		spinPolicy = pol
+		for _, threads := range []int{1, 2, 4, 8, 16, 32} {
+			const dur = 1500 * time.Millisecond
+			counts := make([]int, threads)
+			stop := make(chan struct{})
+			var wg sync.WaitGroup
+			for w := 0; w < threads; w++ {
+				wg.Add(1)
+				go func(w int) {
+					defer wg.Done()
+					c := h.p.NewContext(pkgcontext.Background())
+					defer c.Release()
+					ac := newAC(g.loop, 0)
+					for {
+						select {
+						case <-stop:
+							return
+						default:
+						}
+						if _, _, err := c.Switch(pkgcontext.Background(), mm, ac, -1); err != nil {
+							return
+						}
+						counts[w]++
+					}
+				}(w)
+			}
+			var lat []time.Duration
+			probe := h.p.NewContext(pkgcontext.Background())
+			pac := newAC(g.loop, 0)
+			end := time.Now().Add(dur)
+			for time.Now().Before(end) {
+				t0 := qpc()
+				if _, _, err := probe.Switch(pkgcontext.Background(), mm, pac, -1); err != nil {
+					t.Fatalf("probe: %v", err)
+				}
+				lat = append(lat, time.Duration(qpc()-t0))
+			}
+			close(stop)
+			wg.Wait()
+			probe.Release()
+			sort.Slice(lat, func(i, j int) bool { return lat[i] < lat[j] })
+			total, lo, hi := len(lat), len(lat), len(lat)
+			if threads > 0 {
+				total, lo, hi = 0, counts[0], counts[0]
+			}
+			for _, c := range counts {
+				total += c
+				lo, hi = min(lo, c), max(hi, c)
+			}
+			n := len(lat)
+			t.Logf("MATRIX %-8s threads=%2d: %7.0f k syscalls/s; per thread min/mean/max %d/%d/%d; probe p50 %v p99 %v p99.9 %v max %v",
+				names[pol], threads, float64(total+n)/dur.Seconds()/1000, lo, total/threads, hi, lat[n/2], lat[n*99/100], lat[n*999/1000], lat[n-1])
+		}
+	}
+}

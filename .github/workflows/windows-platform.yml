@@ -31,6 +31,14 @@ jobs:
             if ($LASTEXITCODE -ne 0) { $fail = 1 }
           }
           exit $fail
+      - name: Spin policy matrix
+        continue-on-error: true
+        shell: pwsh
+        working-directory: pkg/sentry/platform/winstub
+        env: {WINSTUB_MATRIX: "1"}
+        run: |
+          $a = @("-test.run=^TestPolicyMatrix$", "-test.v=true", "-test.timeout=10m")
+          & ../../../../winstub.test.exe @a 2>&1 | Select-String "MATRIX" | Tee-Object -Append -FilePath ../../../../tuning.txt
       - name: Oversubscription, with and without the spin limit
         continue-on-error: true
         shell: pwsh
