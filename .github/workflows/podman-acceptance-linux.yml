@@ -274,6 +274,7 @@ jobs:
           docker logs podman-in-runsc >engine-container.log 2>&1 || true
           docker exec podman-in-runsc sh -c "tail -c 300000 /var/log/netavark.log" >netavark.tail 2>&1 || true
           docker exec podman-in-runsc sh -c "tail -c 200000 /var/log/nft-in.log" >nft-in.log 2>&1 || true
+          { docker exec podman-in-runsc podman info --format 'logdriver={{.Host.LogDriver}} events={{.Host.EventLogger}}'; docker exec podman-in-runsc sh -c 'cat /etc/containers/containers.conf; ls /etc/containers/containers.conf.d /usr/share/containers/ 2>&1'; export DOCKER_HOST=unix:///tmp/podman-runsc.sock; docker create --name logprobe mirror.gcr.io/library/alpine:3.20 true && docker inspect logprobe --format 'compat-logconfig={{json .HostConfig.LogConfig}}'; docker rm -f logprobe; } >logdriver-probe.txt 2>&1 || true
           ( cd /tmp/runsc-logs; grep -rhiE 'nftables|netfilter' . | grep -v 'strace.go' | cut -c1-400 | sort | uniq -c | sort -rn | head -80 ) >gvisor-nftables.txt || true
           docker exec podman-in-runsc sh -c "grep cgroup /proc/mounts; iptables -t nat -S; iptables -S; nft list ruleset; cat /proc/net/dev" >sandbox-state.txt 2>&1 || true
           docker inspect podman-in-runsc --format 'privileged={{.HostConfig.Privileged}} cgroupns={{.HostConfig.CgroupnsMode}}' >>sandbox-state.txt 2>&1 || true
