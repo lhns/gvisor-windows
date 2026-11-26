@@ -15,14 +15,14 @@ const (
 	GuestMin uint64 = 0x10000
 	GuestMax uint64 = 0x7000_0000_0000
 
-	TrapPtrs     uint64 = 0x60000 // 8-byte pointers, one per patched site (jmp *abs32 targets)
+	TrapPtrs     uint64 = 0xB0000 // 8-byte pointers, one per patched site (jmp *abs32 targets)
 	TrapPtrsSize uint64 = 0x8000
-	TrapCode     uint64 = 0x70000 // 32-byte entries: mov $nr,%eax; movabs $ret,%rcx; jmp tramp
+	TrapCode     uint64 = 0xC0000 // 32-byte entries: mov $nr,%eax; movabs $ret,%rcx; jmp tramp
 	TrapCodeSize uint64 = 0x20000
 	EntrySize    uint64 = 32
 	MaxSites            = int(TrapPtrsSize / 8)
 
-	StubCode     uint64 = 0x90000 // tramp at +0, trampWait at +0x400, threadEntry at +0x800
+	StubCode     uint64 = 0xE0000 // tramp at +0, trampWait at +0x400, threadEntry at +0x800
 	StubCodeSize uint64 = 0x1000
 	OffTramp     uint64 = 0
 	OffTrampWait uint64 = 0x400

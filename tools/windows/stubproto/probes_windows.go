@@ -55,7 +55,7 @@ func probeLayout(c *Ctl, n int) {
 				lows = append(lows, r.lo)
 			}
 			hit := func(lo, hi uint64) bool { return r.lo < hi && r.hi > lo }
-			if hit(0x60000, 0x92000) {
+			if hit(0xB0000, 0xE1000) {
 				t60++
 			}
 			if hit(0x400000, 0x10000000) {
@@ -74,7 +74,7 @@ func probeLayout(c *Ctl, n int) {
 		p.kill()
 		p.cleanup()
 	}
-	fmt.Printf("INFO layout over %d stub starts: Windows regions hitting the stub area 0x60000-0x92000: %d, 0x400000-0x10000000: %d, control area: %d, the unreserved Windows window: %d\n", n, t60, t400, tCtl, win)
+	fmt.Printf("INFO layout over %d stub starts: Windows regions hitting the stub area 0xB0000-0xE1000: %d, 0x400000-0x10000000: %d, control area: %d, the unreserved Windows window: %d\n", n, t60, t400, tCtl, win)
 	var fixed, varying []key
 	for k, v := range count {
 		if v == n {
