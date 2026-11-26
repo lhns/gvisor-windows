@@ -57,6 +57,7 @@ type Terminal struct {
 // NewConsoleTerminal checks that stdin and stdout are consoles and switches
 // them to raw VT mode. Restore undoes it.
 func NewConsoleTerminal() (*Terminal, error) {
+	t := &Terminal{}
 	// CONIN$ and CONOUT$ are the console the process is attached to, whatever
 	// its standard handles are.
 	var err error
