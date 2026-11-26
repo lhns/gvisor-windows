@@ -13,6 +13,8 @@ func hostFolderForRoot(spec *specs.Spec) (gofer.HostFolderOptions, bool) {
 	return gofer.HostFolderOptions{}, false
 }
 
+func isHostFolderOption(string) bool { return false }
+
 func hostFolderForMount(m *specs.Mount) (gofer.HostFolderOptions, bool) {
 	return gofer.HostFolderOptions{}, false
 }

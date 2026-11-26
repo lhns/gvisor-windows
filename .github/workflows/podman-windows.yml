@@ -7,7 +7,7 @@ on:
     paths: ["pkg/**", "runsc/**", "tools/windows/**", "test/e2e/podman-acceptance/**", ".github/workflows/podman-windows.yml"]
   workflow_dispatch:
 env:
-  PODMAN_VERSION: "5.3.1"
+  PODMAN_VERSION: "6.2.0"
   DOCKER_VERSION: "27.3.1"
   COMPOSE_VERSION: "2.29.7"
 jobs:
