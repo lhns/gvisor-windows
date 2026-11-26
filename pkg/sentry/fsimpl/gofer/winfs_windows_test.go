@@ -31,7 +31,8 @@ func (testClock) NewTimer(ktime.Listener) ktime.Timer { panic("no timers in test
 
 type testContext struct {
 	context.Context
-	mf *pgalloc.MemoryFile
+	mf  *pgalloc.MemoryFile
+	mns *vfs.MountNamespace
 }
 
 func (c *testContext) Value(key any) any {
@@ -40,6 +41,12 @@ func (c *testContext) Value(key any) any {
 		return c.mf
 	case ktime.CtxRealtimeClock:
 		return testClock{}
+	case vfs.CtxMountNamespace:
+		if c.mns == nil {
+			return nil
+		}
+		c.mns.IncRef()
+		return c.mns
 	case limits.CtxLimits:
 		return limits.NewLimitSet()
 	}
@@ -75,6 +82,7 @@ func newEnv(t *testing.T, hf HostFolderOptions) *env {
 	if err != nil {
 		t.Fatalf("NewMountNamespace: %v", err)
 	}
+	ctx.mns = mns
 	return &env{t: t, ctx: ctx, v: v, creds: creds, root: mns.Root(ctx), dir: hf.Path}
 }
 
