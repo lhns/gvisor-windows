@@ -12,24 +12,21 @@ flowchart TB
     workloads_acceptance_test["✔ Write the Podman<br/>acceptance test"]
     workloads_podman_on_gvisor_linux[/"✔ Podman on gVisor on<br/>Linux"/]
     workloads_acceptance_test_windows["⛔ Acceptance test for<br/>Windows"]
-    workloads_podman_on_windows[/"⛔ Podman passes on<br/>Windows"/]
-    workloads_podman_harness["⛔ Serve Podman to<br/>Windows clients"]
     workloads_gvisor_bridge_netlink>"⚠ Bridge networking<br/>fails in gVisor"]
     workloads_gvisor_port_publishing>"⚠ Port publishing<br/>untested in gVisor"]
+    workloads_podman_on_windows[/"⛔ Podman passes on<br/>Windows"/]
+    workloads_podman_harness["⛔ Serve Podman to<br/>Windows clients"]
     workloads_acceptance_test ~~~ workloads_podman_on_gvisor_linux
     workloads_acceptance_test ~~~ workloads_acceptance_test_windows
-    workloads_podman_on_gvisor_linux ~~~ workloads_podman_on_windows
-    workloads_acceptance_test_windows ~~~ workloads_podman_harness
-    workloads_acceptance_test_windows ~~~ workloads_gvisor_bridge_netlink
-    workloads_podman_on_windows ~~~ workloads_gvisor_port_publishing
-    workloads_podman_harness ~~~ workloads_gvisor_port_publishing
-    workloads_gvisor_bridge_netlink ~~~ workloads_gvisor_port_publishing
+    workloads_acceptance_test ~~~ workloads_gvisor_bridge_netlink
+    workloads_podman_on_gvisor_linux ~~~ workloads_gvisor_port_publishing
+    workloads_acceptance_test_windows ~~~ workloads_podman_on_windows
+    workloads_gvisor_bridge_netlink ~~~ workloads_podman_harness
     workloads_acceptance_test --> workloads_podman_on_gvisor_linux
-    workloads_podman_on_gvisor_linux -.-> workloads_gvisor_bridge_netlink
     workloads_podman_on_gvisor_linux -.-> workloads_gvisor_port_publishing
     workloads_acceptance_test --> workloads_acceptance_test_windows
     workloads_acceptance_test_windows --> workloads_podman_on_windows
-    linkStyle 9,10 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    linkStyle 7 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111

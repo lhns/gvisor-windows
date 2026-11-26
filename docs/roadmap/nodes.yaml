@@ -316,25 +316,25 @@
   title: Set the TLS register
   track: platform
   kind: experiment
-  state: in-progress
-  outcome: unrated
+  state: done
+  outcome: mixed
   evidence:
   - docs/results/0b-windows.md
-  verdict_quote: ''
-  headline: ''
+  verdict_quote: 'a raw vectored exception handler that re-executes `wrfsbase` restores it transparently: guest-like `fs:[0]`/`fs:[0x28]`/`fs:[-8]` loops ran 10 s under contention with 0 wrong reads and
+    about 1.1-2.2 us per repair'
+  headline: about 1.1-2.2 us per repair
   depends_on:
   - research-gvisor-base
   replaced_by: []
   lane: windows-local
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded:
   - Fails on the QEMU-guest dev machine without FSGSBASE (2026-11-26, commit 22d422737)
-  - Works on a hosted runner, but the base is lost after Sleep (2026-11-26, session record)
+  - Base lost on every deschedule, repaired by a fault handler (2026-11-26, commit 0b867b6a3)
   overview: true
   plain: Check whether a normal Windows program can set the register Linux programs use for thread-local data; without it native execution fails.
   notes: 'Go/no-go. Done when: S3 results are in docs/results/0b-windows.md.'
-  waiting_on: measuring FS base loss and fault-based repair on hosted runners
 - id: platform-restricted-stub
   title: Restrict the stub process
   track: platform
@@ -399,9 +399,10 @@
   title: Go or no-go after Phase 0
   track: ops
   kind: owner-decision
-  state: blocked
+  state: next
   outcome: n/a
-  evidence: []
+  evidence:
+  - docs/adr/0004-phase-0-results.md
   verdict_quote: ''
   headline: ''
   depends_on:
@@ -414,7 +415,6 @@
   - platform-tls-register
   - platform-restricted-stub
   - sentry-go-fault-recovery
-  - research-whpx-this-machine
   - runsc-measure-cli
   replaced_by: []
   lane: owner
@@ -423,7 +423,7 @@
   folded: []
   overview: true
   plain: The owner decides, from the Phase 0 results, whether the port goes ahead.
-  notes: 'Input: docs/adr/0004-phase-0-results.md.'
+  notes: 'Input: docs/adr/0004-phase-0-results.md (recommendation: go, with conditions).'
 - id: workloads-podman-on-windows
   title: Podman passes on Windows
   track: workloads
@@ -626,6 +626,7 @@
   - sentry-fault-recovery
   - sentry-host-stdio-and-tty
   - fs-root-filesystem-source
+  - platform-fs-base-repair
   replaced_by: []
   lane: windows-local
   start: ''
@@ -1231,3 +1232,41 @@
   overview: false
   plain: Publishing container ports with -p and service-name lookup in compose never worked or were never exercised inside gVisor.
   notes: 'Fixed when: -p and compose service names pass inside stock runsc.'
+- id: platform-fs-base-repair
+  title: Restore the TLS register after switches
+  track: platform
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - platform-stub-controller
+  replaced_by: []
+  lane: windows-local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: Windows resets the guest's thread-local register on every context switch; the stub's fault handler puts it back before the guest notices.
+  notes: 'Done when: a multi-threaded guest under CPU contention never reads a wrong %fs value, with repairs counted per second.'
+- id: platform-no-fsgsbase-fallback
+  title: Support CPUs without FSGSBASE
+  track: platform
+  kind: feature
+  state: parked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - platform-page-verification
+  replaced_by: []
+  lane: windows-local
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: On CPUs or VMs without the instruction to set the register, rewrite the guest's %fs accesses instead.
+  notes: 'Done when: a glibc program runs on a machine without FSGSBASE.'
