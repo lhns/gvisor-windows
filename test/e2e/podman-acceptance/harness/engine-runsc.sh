@@ -51,7 +51,7 @@ start() {
   docker run -d --name "$NAME" --runtime "$RUNTIME" \
     --cap-add all --security-opt seccomp=unconfined --security-opt label=disable \
     --user root --entrypoint '' \
-    -v "$SHARE_DIR:$SHARE_DIR" -v "$CONF:/etc/containers/containers.conf:ro" -v "$HERE/storage.conf:/etc/containers/storage.conf:ro" \
+    -v "$SHARE_DIR:$SHARE_DIR" -v "$CONF:/etc/containers/containers.conf:ro" -v "$CONF:/etc/containers/containers.conf.d/99-acceptance.conf:ro" -v "$HERE/storage.conf:/etc/containers/storage.conf:ro" \
     -p 127.0.0.1:8888:8888 -p 8080:8080 "${st[@]}" "${extra[@]}" \
     "$PODMAN_IMAGE" sh -c "$pre; exec podman system service --time=0 tcp://0.0.0.0:8888" || return 1
   rm -f "$SOCK"
