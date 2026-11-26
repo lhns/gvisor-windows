@@ -107,13 +107,22 @@ func TestWatchReportsWindowsChanges(t *testing.T) {
 	} else {
 		t.Logf("Modified after %v", d)
 	}
-	os.Mkdir(filepath.Join(dir, "sub"), 0o777)
-	os.Rename(p, filepath.Join(dir, "sub", "moved.txt"))
+	os.Rename(p, filepath.Join(dir, "w2.txt"))
 	if _, ok := c.waitFor("w.txt", RenamedFrom); !ok {
 		t.Errorf("no RenamedFrom event")
 	}
-	if _, ok := c.waitFor("sub/moved.txt", RenamedTo); !ok {
+	if _, ok := c.waitFor("w2.txt", RenamedTo); !ok {
 		t.Errorf("no RenamedTo event")
+	}
+	os.Mkdir(filepath.Join(dir, "sub"), 0o777)
+	os.Rename(filepath.Join(dir, "w2.txt"), filepath.Join(dir, "sub", "moved.txt"))
+	_, gone := c.waitFor("w2.txt", Removed)
+	_, from := c.waitFor("w2.txt", RenamedFrom)
+	_, added := c.waitFor("sub/moved.txt", Added)
+	_, to := c.waitFor("sub/moved.txt", RenamedTo)
+	t.Logf("move to another directory: removed %v renamed-from %v added %v renamed-to %v", gone, from, added, to)
+	if !(gone || from) || !(added || to) {
+		t.Errorf("a move to another directory was not reported")
 	}
 	os.Remove(filepath.Join(dir, "sub", "moved.txt"))
 	if _, ok := c.waitFor("sub/moved.txt", Removed); !ok {

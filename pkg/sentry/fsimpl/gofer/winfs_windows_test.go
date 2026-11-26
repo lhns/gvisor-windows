@@ -367,6 +367,8 @@ func TestVFSWindowsChangesReachGuest(t *testing.T) {
 	ino.AddWatch(rootVD.Dentry(), linux.IN_CREATE|linux.IN_DELETE|linux.IN_MODIFY)
 	ino.AddWatch(fileVD.Dentry(), linux.IN_MODIFY)
 
+	// The backend leaves out events of its own changes for a short while.
+	time.Sleep(900 * time.Millisecond)
 	start := time.Now()
 	if err := os.WriteFile(filepath.Join(e.dir, "watched"), []byte("0123456789"), 0o666); err != nil {
 		t.Fatal(err)
