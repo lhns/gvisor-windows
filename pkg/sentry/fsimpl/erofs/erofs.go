@@ -26,7 +26,6 @@
 package erofs
 
 import (
-	"runtime"
 	"fmt"
 	"os"
 	"strconv"
@@ -238,11 +237,6 @@ func getFDFromMountOptionsMap(ctx context.Context, mopts map[string]string) (int
 
 func shouldUseReadForIO(ctx context.Context, imageFD int) (bool, error) {
 	var st unix.Statfs_t
-	if runtime.GOOS == "windows" {
-		// gvisor-windows: guest mappings must come from the MemoryFile (the
-		// winstub platform maps only its sections), not from the image mapping.
-		return true, nil
-	}
 	if err := unix.Fstatfs(imageFD, &st); err != nil {
 		// Detection is best-effort; fall back to reading via the mapping.
 		ctx.Warningf("erofs.shouldUseReadForIO: fstatfs failed, defaulting to using mmap for reads: %v", err)

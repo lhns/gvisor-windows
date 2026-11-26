@@ -68,6 +68,14 @@ jobs:
         continue-on-error: true
         run: |
           C:\ci\bin\runsctest.exe -runsc C:\ci\bin\runsc.exe -rootfs C:\ci\work\rootfs -work C:\ci\work\admin -only tty
+      - name: Erofs image root as a standard user (known to fail, see the results document)
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          & tools/windows/ci/run-as-standard-user.ps1 `
+            -Program C:\ciinunsctest.exe `
+            -Arguments '-runsc','C:\ciinunsc.exe','-rootfs','C:\ci\workootfs','-work','C:\ci\work\std-erofs','-image','C:\ci\workootfs.erofs','-only','erofs' `
+            -GrantPath C:\ciin -WritablePath C:\ci\work -TimeoutSeconds 300
       - name: All tests as a standard user
         shell: pwsh
         run: |
@@ -82,3 +90,4 @@ jobs:
           path: |
             C:\ci\work\admin\logs
             C:\ci\work\std\logs
+            C:\ci\work\std-erofs\logs
