@@ -29,6 +29,7 @@ sleep: \
 	MOVQ 0x70(R11), AX \
 	CALL AX \
 	BYTE $0x65; BYTE $0x4C; BYTE $0x8B; BYTE $0x1C; BYTE $0x25; LONG $0x28 \
+	INCL 0x98(R11) \
 	JMP  sleep \
 woke: \
 	MOVL $0, 0x54(R11) \

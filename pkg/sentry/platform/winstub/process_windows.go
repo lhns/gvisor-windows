@@ -74,6 +74,8 @@ type thread struct {
 	evReply uintptr        // the Sentry signals it after a reply
 	hThread uintptr
 	tid     uint32
+	// diagnostics: replies sent, SetEvent calls made for them
+	nReply, nSet atomic.Uint32
 
 	// stopMu serializes stopping the thread (debug event handler, interrupt).
 	stopMu sync.Mutex

@@ -258,7 +258,9 @@ func (c *winContext) resume(t *thread, ac *arch.Context64) error {
 	t.parked = false
 	t.mu.Unlock()
 	atomic.StoreUint32(t.u32(0), 2)
+	t.nReply.Add(1)
 	if atomic.LoadUint32(t.u32(stubasm.PgStubSlp)) != 0 {
+		t.nSet.Add(1)
 		// The stub's spin ended before we answered: it sleeps on the event.
 		c.stubScore = scoreUpdate(c.stubScore, false)
 		c.releaseToken(t.as.p)

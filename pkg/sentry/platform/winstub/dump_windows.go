@@ -67,8 +67,8 @@ func DumpState(w io.Writer) {
 				}
 				pResumeThread.Call(t.hThread)
 			}
-			fmt.Fprintf(w, "  thread %d tid %d: state %d ctlSleep %d stubSleep %d mode %d parked %v lastKind %d req %+v spins %d rip %#x exit %d\n",
-				i, t.tid, t.state(), *t.u32(stubasm.PgCtlSlp), *t.u32(stubasm.PgStubSlp), *t.u32(stubasm.PgMode), t.parked, t.lastKind, t.req, *t.u64(stubasm.PgSpins), rip, code)
+			fmt.Fprintf(w, "  thread %d tid %d: state %d ctlSleep %d stubSleep %d mode %d parked %v lastKind %d req %+v spins %d rip %#x exit %d replies %d setevents %d stubwaits %d\n",
+				i, t.tid, t.state(), *t.u32(stubasm.PgCtlSlp), *t.u32(stubasm.PgStubSlp), *t.u32(stubasm.PgMode), t.parked, t.lastKind, t.req, *t.u64(stubasm.PgSpins), rip, code, t.nReply.Load(), t.nSet.Load(), *t.u32(stubasm.PgWaits))
 			t.mu.Unlock()
 		}
 		as.tmu.Unlock()
