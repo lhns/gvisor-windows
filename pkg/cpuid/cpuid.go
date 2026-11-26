@@ -337,6 +337,10 @@ func readHWCap(auxvFilepath string) (hwCap, error) {
 }
 
 func initHWCap() {
+	// gvisor-windows: HWCap comes from the ELF auxv of a Linux process.
+	if runtime.GOOS == "windows" {
+		return
+	}
 	c, err := readHWCap("/proc/self/auxv")
 	if err != nil {
 		log.Warningf("cpuid HWCap not initialized: %v", err)
