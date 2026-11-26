@@ -1241,3 +1241,104 @@ func TestOversubscribed(t *testing.T) {
 		t.Errorf("probe p99 %v", lat[n*99/100])
 	}
 }
+
+// sectionFile is a file whose pages are a read-only file mapping, like an erofs
+// image.
+type sectionFile struct {
+	bytesFile
+	h windows.Handle
+}
+
+func (s *sectionFile) ReadOnlySection() windows.Handle { return s.h }
+
+func availPhysMB() uint64 {
+	var m struct {
+		length               uint32
+		memoryLoad           uint32
+		totalPhys, availPhys uint64
+		totalPF, availPF     uint64
+		totalVirt, availVirt uint64
+		availExt             uint64
+	}
+	m.length = uint32(unsafe.Sizeof(m))
+	windows.NewLazySystemDLL("kernel32.dll").NewProc("GlobalMemoryStatusEx").Call(uintptr(unsafe.Pointer(&m)))
+	return m.availPhys >> 20
+}
+
+// TestShareReadOnlySection maps a read-only image section into 20 address spaces
+// whose guests read all of it, with and without sharing, and compares the memory.
+func TestShareReadOnlySection(t *testing.T) {
+	const imgSize, procs = 16 << 20, 20
+	f, err := os.CreateTemp("", "winstub-image-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+	defer f.Close()
+	img := make([]byte, imgSize)
+	var want uint64
+	for p := 0; p < imgSize/pageSz; p++ {
+		binary.LittleEndian.PutUint64(img[p*pageSz:], uint64(p)+1)
+		want += uint64(p) + 1
+	}
+	if _, err := f.Write(img); err != nil {
+		t.Fatal(err)
+	}
+	sec, err := windows.CreateFileMapping(windows.Handle(f.Fd()), nil, windows.PAGE_READONLY, 0, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer windows.CloseHandle(sec)
+	view, err := windows.MapViewOfFile(sec, windows.FILE_MAP_READ, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer windows.UnmapViewOfFile(view)
+	file := &sectionFile{bytesFile{data: unsafe.Slice((*byte)(unsafe.Pointer(view)), imgSize)}, sec}
+
+	a := &asm{base: textBase}
+	touch := a.emit(0x48, 0x8b, 0x07) // L: mov rax,[rdi]
+	a.emit(0x48, 0x01, 0xc3)          // add rbx,rax
+	a.emit(0x48, 0x81, 0xc7, 0x00, 0x10, 0, 0) // add rdi,4096
+	a.emit(0x48, 0xff, 0xc9)          // dec rcx
+	a.emit(0x75, 0xee)                // jnz L
+	a.emit(0x48, 0x89, 0xdf)          // mov rdi,rbx
+	a.emit(0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05)
+
+	h := newHarness(t)
+	for _, share := range []bool{true, false} {
+		shareReadOnly = share
+		runtime.GC()
+		c0, _ := memState()
+		p0 := availPhysMB()
+		var mapT, runT time.Duration
+		var mms []*testMM
+		for i := 0; i < procs; i++ {
+			mm := h.newMM()
+			mms = append(mms, mm)
+			h.mapAt(mm, textBase, h.pages(a.b, 1), rx)
+			t0 := time.Now()
+			if err := mm.as.MapFile(0x4000000, file, memmap.FileRange{Start: 0, End: imgSize}, hostarch.Read, false); err != nil {
+				t.Fatalf("MapFile: %v", err)
+			}
+			mapT += time.Since(t0)
+			c := h.p.NewContext(pkgcontext.Background())
+			ac := newAC(touch, 0)
+			ac.StateData().Regs.Rdi, ac.StateData().Regs.Rcx = 0x4000000, imgSize/pageSz
+			t1 := time.Now()
+			if nr := h.syscall(c, mm, ac); nr != 500 || ac.StateData().Regs.Rdi != want {
+				t.Fatalf("share=%v: syscall %d, sum %d, want %d", share, nr, ac.StateData().Regs.Rdi, want)
+			}
+			runT += time.Since(t1)
+			c.Release()
+		}
+		c1, _ := memState()
+		p1 := availPhysMB()
+		t.Logf("SHARE share=%v: %d address spaces each mapping and reading %d MiB: MapFile %v each, read %v each; system commit +%d MB, available physical memory -%d MB",
+			share, procs, imgSize>>20, (mapT / procs).Round(time.Microsecond), (runT / procs).Round(time.Microsecond), int64(c1)-int64(c0), int64(p0)-int64(p1))
+		for _, mm := range mms {
+			mm.as.Release()
+		}
+	}
+	shareReadOnly = true
+}

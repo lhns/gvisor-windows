@@ -19,11 +19,13 @@ package winstub
 import (
 	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"sync"
 	"sync/atomic"
 	"unsafe"
 
+	"golang.org/x/sys/windows"
 	"gvisor.dev/gvisor/pkg/context"
 	"gvisor.dev/gvisor/pkg/hostarch"
 	"gvisor.dev/gvisor/pkg/safemem"
@@ -40,6 +42,17 @@ type SectionFile interface {
 	memmap.File
 	Sections(fr memmap.FileRange) []pgalloc.SectionRange
 }
+
+// ReadOnlySectionFile is a memmap.File whose pages are those of a read-only
+// section, at the same offsets (an image mapping): its read-only, non-executable
+// mappings are mapped into stubs from that section instead of being copied.
+type ReadOnlySectionFile interface {
+	memmap.File
+	ReadOnlySection() windows.Handle
+}
+
+// shareReadOnly can be turned off (WINSTUB_NOSHARE) to compare with copying.
+var shareReadOnly = os.Getenv("WINSTUB_NOSHARE") == ""
 
 var (
 	errDead        = errors.New("winstub: the stub process is gone")
@@ -406,6 +419,22 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 	isText := prot&protX != 0 && prot&protW == 0
 	if !isSec && prot&protW != 0 {
 		return errNoSection
+	}
+	// A read-only mapping of a file that is a read-only section (an erofs image)
+	// is shared with the other processes: the stub maps the file's own pages.
+	if rf, ok := f.(ReadOnlySectionFile); ok && !isSec && !isText && prot&protW == 0 && shareReadOnly {
+		if h := rf.ReadOnlySection(); h != 0 {
+			as.mu.Lock()
+			err := as.removeRange(lo, hi)
+			if err == nil {
+				err = as.mapView(&view{lo: lo, hi: hi, sec: uintptr(h), off: fr.Start, prot: protR})
+			}
+			as.mu.Unlock()
+			if err == nil {
+				return nil
+			}
+			debugf("mapping the image section at %#x failed (%v); copying", lo, err)
+		}
 	}
 	var srs []pgalloc.SectionRange
 	if isSec && !isText {
