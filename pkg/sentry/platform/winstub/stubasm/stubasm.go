@@ -48,12 +48,6 @@ const (
 	WinWindow     uint64 = 0x2_0000_0000
 	WinWindowSize uint64 = 64 << 20
 
-	// Windows' loader allocates from the lowest free addresses; with the whole
-	// range reserved it searches for ~200 ms before falling back. A free window
-	// (a hole in the guest range, reserved in the memory manager) fixes it: 4 MiB
-	// is the least that works; thread stacks and TEBs need room later.
-	WinWindow     uint64 = 0x2_0000_0000
-	WinWindowSize uint64 = 64 << 20
 
 	GuestMin uint64 = 0x400000
 	GuestMax uint64 = CtlBase // first address the guest may not use
