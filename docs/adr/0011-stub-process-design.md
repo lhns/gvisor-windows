@@ -1,6 +1,6 @@
 # 0011. Stub process design
 
-- Status: Accepted
+- Status: Accepted, partly superseded by ADR 0012 (patching, fault servicing)
 - Date: 2026-11-26
 - Builds on: ADR 0010
 
