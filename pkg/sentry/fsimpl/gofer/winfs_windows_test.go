@@ -20,6 +20,7 @@ import (
 	"gvisor.dev/gvisor/pkg/sentry/ktime"
 	"gvisor.dev/gvisor/pkg/sentry/limits"
 	"gvisor.dev/gvisor/pkg/sentry/pgalloc"
+	"gvisor.dev/gvisor/pkg/sentry/uniqueid"
 	"gvisor.dev/gvisor/pkg/sentry/vfs"
 	"gvisor.dev/gvisor/pkg/usermem"
 )
@@ -47,6 +48,8 @@ func (c *testContext) Value(key any) any {
 		}
 		c.mns.IncRef()
 		return c.mns
+	case uniqueid.CtxInotifyCookie:
+		return uint32(1)
 	case limits.CtxLimits:
 		return limits.NewLimitSet()
 	}
