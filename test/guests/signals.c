@@ -160,12 +160,17 @@ static int m_ctx(void) {
 
 /* A signal interrupts a thread blocked in a syscall. */
 static pthread_t main_thr;
+static int wfd = -1; /* if set, the kicker writes a byte after the second signal */
 static void *kicker(void *a) {
 	int sig = (int)(intptr_t)a;
 	usleep(100000);
 	pthread_kill(main_thr, sig);
 	usleep(100000);
 	pthread_kill(main_thr, sig);
+	if (wfd >= 0) {
+		usleep(100000);
+		write(wfd, "x", 1);
+	}
 	return NULL;
 }
 static int futex_word;
@@ -185,18 +190,16 @@ static int m_eintr(void) {
 	act(SIGUSR2, count, SA_RESTART);
 	int fd[2];
 	pipe(fd);
+	wfd = fd[1];
 	pthread_create(&t, NULL, kicker, (void *)(intptr_t)SIGUSR2);
 	char buf[2];
-	int pid = fork();
-	if (pid == 0) {
-		usleep(350000);
-		write(fd[1], "x", 1);
-		_exit(0);
+	int n = read(fd[0], buf, 1), e = errno;
+	if (n != 1 || hits != 2) {
+		printf("read n=%d errno=%d hits=%d
+", n, e, (int)hits);
+		return fail("restarted read");
 	}
-	int n = read(fd[0], buf, 1);
-	if (n != 1 || hits != 2) return fail("restarted read");
 	pthread_join(t, NULL);
-	waitpid(pid, NULL, 0);
 	return 0;
 }
 
@@ -273,7 +276,7 @@ static int m_group(void) {
 		}
 		for (;;) pause();
 	}
-	usleep(150000);
+	usleep(2000000); /* a fork takes a few hundred ms */
 	if (getpgid(p) != p) return fail("getpgid");
 	if (getpgrp() == p) return fail("parent pgrp");
 	kill(-p, SIGKILL);
