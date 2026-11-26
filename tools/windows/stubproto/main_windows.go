@@ -273,6 +273,24 @@ func cmdSuite(args []string) int {
 				len(d), d[len(d)/2]/1e3, d[0]/1e3, d[len(d)-1]/1e3, f[len(f)/2]/1e3)
 		}
 	}
+	if p := filepath.Join(dir, "hello_go"); fileExists(p) {
+		var rep, lazy, tot []int
+		ok := 0
+		for i := 0; i < 10; i++ {
+			exit, out, _ := c.runGuest(p, nil, nil, 30*time.Second)
+			if exit == 0 && out == "hello from go\n" {
+				ok++
+			}
+			rep = append(rep, c.ev["EXCEPTION:av-fs-repair"])
+			lazy = append(lazy, c.ev["EXCEPTION:av-lazy-map"])
+			n := 0
+			for _, v := range c.ev {
+				n += v
+			}
+			tot = append(tot, n)
+		}
+		fmt.Printf("MEASURE go guest x10: ok=%d, %%fs repairs per run %v, lazy-map events per run %v, all debug events per run %v\n", ok, rep, lazy, tot)
+	}
 	fmt.Printf("INFO memory file peak pages=%d (%d MiB)\n", c.mf.peak, c.mf.peak*4096>>20)
 	if failed > 0 {
 		fmt.Printf("RESULT FAIL: %d required guests failed\n", failed)
