@@ -190,6 +190,10 @@ type conn struct {
 	//
 	// +checklocks:stateMu
 	replySeen bool
+
+	// mark is the connection mark (nft "ct mark", iptables CONNMARK). It is
+	// shared by both directions, like nf_conn.mark.
+	mark atomicbitops.Uint32 `state:"nosave"`
 }
 
 // timedOut returns whether the connection timed out based on its state.
@@ -613,6 +617,7 @@ type ConnTrackInfo struct {
 	PseudoID   uint32
 	Bytes      uint64
 	Packets    uint64
+	Mark       uint32
 }
 
 // ConnTrackInfoOpts holds options for GetConnTrackInfo.
@@ -704,7 +709,13 @@ func (cn *conn) FillConnTrackInfo(opts ConnTrackInfoOpts, info *ConnTrackInfo) b
 	info.TransProto = tID.transProto
 	info.Expiration = expires
 	info.PseudoID = pID
+	info.Mark = cn.mark.Load()
 	return true
+}
+
+// setMark sets the connection mark.
+func (cn *conn) setMark(mark uint32) {
+	cn.mark.Store(mark)
 }
 
 func (bkt *bucket) connForTID(tid tupleID, now tcpip.MonotonicTime) *tuple {

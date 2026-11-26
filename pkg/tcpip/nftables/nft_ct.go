@@ -19,7 +19,6 @@ import (
 	"fmt"
 
 	"gvisor.dev/gvisor/pkg/abi/linux"
-	"gvisor.dev/gvisor/pkg/log"
 	"gvisor.dev/gvisor/pkg/sentry/socket/netlink/nlmsg"
 	"gvisor.dev/gvisor/pkg/syserr"
 	"gvisor.dev/gvisor/pkg/tcpip"
@@ -177,6 +176,8 @@ func (op *ctGet) evaluate(regs *registerSet, evalCtx opEvalCtx) {
 	case linux.NFT_CT_STATE:
 		state := ctStateToNFTState(ctInfo.State)
 		binary.NativeEndian.PutUint32(regs.data[start:end], state)
+	case linux.NFT_CT_MARK:
+		binary.NativeEndian.PutUint32(regs.data[start:end], ctInfo.Mark)
 	case linux.NFT_CT_DIRECTION:
 		regs.data[start] = byte(ctInfo.Direction)
 	case linux.NFT_CT_EXPIRATION:
@@ -263,9 +264,15 @@ func (op *ctGet) Dump() ([]byte, *syserr.AnnotatedError) {
 
 // Matches Linux net/netfilter/nft_ct.c:nft_ct_set_eval()
 func (op *ctSet) evaluate(regs *registerSet, evalCtx opEvalCtx) {
-	// TODO: b/531808852 - Implement ct set operation.
-	log.Warningf("ctSet.evaluate is not implemented")
-	regs.verdict = Verdict{Code: VC(linux.NFT_BREAK)}
+	switch op.key {
+	case linux.NFT_CT_MARK:
+		// Only the mark is settable; initCTSet rejects other keys.
+		if !evalCtx.pkt.SetConnMark(binary.NativeEndian.Uint32(regs.data[op.sregIdx : op.sregIdx+4])) {
+			regs.verdict = Verdict{Code: VC(linux.NFT_BREAK)}
+		}
+	default:
+		regs.verdict = Verdict{Code: VC(linux.NFT_BREAK)}
+	}
 }
 
 // GetExprName implements operation's ExprName interface.
@@ -307,7 +314,22 @@ func (op *ctSet) destroy() {}
 
 // initCTSet initializes a ct set operation.
 func initCTSet(tab *Table, sreg uint8, attrs map[uint16]nlmsg.BytesView) (*ctSet, *syserr.AnnotatedError) {
-	return nil, syserr.NewAnnotatedError(syserr.ErrNotSupported, "ct set operation is not supported")
+	key, ok := AttrNetToHost[uint32](linux.NFTA_CT_KEY, attrs)
+	if !ok {
+		return nil, syserr.NewAnnotatedError(syserr.ErrInvalidArgument, "failed to parse NFTA_CT_KEY attribute")
+	}
+	// TODO: b/531808852 - Support the other settable keys (labels, zone, ...).
+	if key != linux.NFT_CT_MARK {
+		return nil, syserr.NewAnnotatedError(syserr.ErrNotSupported, fmt.Sprintf("ct set of key %d is not supported", key))
+	}
+	if _, hasDir := AttrNetToHost[uint8](linux.NFTA_CT_DIRECTION, attrs); hasDir {
+		return nil, syserr.NewAnnotatedError(syserr.ErrInvalidArgument, "direction is not allowed for ct mark")
+	}
+	sregIdx, err := regNumToIdx(sreg, 4)
+	if err != nil {
+		return nil, err
+	}
+	return &ctSet{key: key, sregIdx: sregIdx, dir: linux.IP_CT_DIR_MAX, len: 4}, nil
 }
 
 func ctKeyToLen(tab *Table, key uint32) (int, *syserr.AnnotatedError) {
