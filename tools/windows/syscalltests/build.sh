@@ -48,7 +48,7 @@ bazel build --config=x86_64 -c opt --keep_going --noshow_progress --color=no \
   echo
 } 2>&1 | tee "$OUT/debug-ld.txt" || true
 
-BIN=$(bazel info bazel-bin --config=x86_64 2>/dev/null)/test/syscalls/linux
+BIN=$(bazel info bazel-bin --config=x86_64 -c opt 2>/dev/null)/test/syscalls/linux
 for t in $TARGETS; do
   n=${t##*:}
   if [ -f "$BIN/$n" ]; then cp -L "$BIN/$n" "$OUT/bin/$n"; else echo "MISSING $n" >> "$OUT/missing.txt"; fi
