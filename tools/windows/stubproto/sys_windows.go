@@ -78,7 +78,7 @@ func (p *Proc) fileStat(buf uint64) int64 {
 	copy(st[16:], putLE(1, 8))        // nlink
 	copy(st[24:], putLE(0o010600, 4)) // S_IFIFO|0600
 	copy(st[56:], putLE(4096, 8))     // blksize
-	if !p.as.write(buf, st) {
+	if !p.as.writeUser(buf, st) {
 		return -efault
 	}
 	return 0
@@ -123,7 +123,7 @@ func (c *Ctl) waitChild(t *Thread, want int32, status uint64, opts uint64) (int6
 					if ch.termSig != 0 {
 						st = uint64(ch.termSig)
 					}
-					p.as.write(status, putLE(st, 4))
+					p.as.writeUser(status, putLE(st, 4))
 				}
 				return int64(ch.pid), true
 			}
@@ -213,7 +213,7 @@ func (c *Ctl) syscall(t *Thread, nr uint64, a [6]uint64) (int64, int) {
 	case 16: // ioctl
 		return -enotty, stRet
 	case 79: // getcwd
-		as.write(a[0], []byte{'/', 0})
+		as.writeUser(a[0], []byte{'/', 0})
 		return 2, stRet
 	case 12: // brk
 		if a[0] == 0 || a[0] < p.brkLo {
@@ -252,7 +252,7 @@ func (c *Ctl) syscall(t *Thread, nr uint64, a [6]uint64) (int64, int) {
 			if a[3]&0x100000 != 0 && as.overlaps(base, base+length) {
 				return -eexist, stRet
 			}
-			if v := as.findVMA(base); (v != nil && (v.kind == "ctl" || v.kind == "trap-ptrs" || v.kind == "trap-code" || v.kind == "stub-code")) || as.overlapsKind(base, base+length) {
+			if v := as.findVMA(base); (v != nil && (v.kind == "ctl" || v.kind == "trap-ptrs" || v.kind == "trap-code" || v.kind == "stub-code" || v.kind == "veneer")) || as.overlapsKind(base, base+length) {
 				return -einval, stRet
 			}
 			as.removeRange(base, base+length)
@@ -295,7 +295,7 @@ func (c *Ctl) syscall(t *Thread, nr uint64, a [6]uint64) (int64, int) {
 			return -enomem, stRet
 		}
 		if prot&4 != 0 {
-			st, err := p.scanAndPatch(lo, hi)
+			st, err := p.scanRange(lo, hi)
 			if err != nil {
 				c.logf("mprotect scan: %v", err)
 			}
@@ -307,7 +307,7 @@ func (c *Ctl) syscall(t *Thread, nr uint64, a [6]uint64) (int64, int) {
 		for i, s := range []string{"Linux", "stubproto", "5.15.0-stubproto", "#1 SMP", "x86_64", ""} {
 			copy(u[i*65:], s)
 		}
-		if !as.write(a[0], u) {
+		if !as.writeUser(a[0], u) {
 			return -efault, stRet
 		}
 		return 0, stRet
@@ -327,19 +327,19 @@ func (c *Ctl) syscall(t *Thread, nr uint64, a [6]uint64) (int64, int) {
 		return int64(t.tid), stRet
 	case 14: // rt_sigprocmask
 		if a[2] != 0 {
-			as.write(a[2], make([]byte, min(a[3], 128)))
+			as.writeUser(a[2], make([]byte, min(a[3], 128)))
 		}
 		return 0, stRet
 	case 13: // rt_sigaction
 		if a[2] != 0 {
-			as.write(a[2], make([]byte, 32))
+			as.writeUser(a[2], make([]byte, 32))
 		}
 		return 0, stRet
 	case 131: // sigaltstack
 		if a[1] != 0 {
 			o := make([]byte, 24)
 			copy(o[8:], putLE(2, 4)) // SS_DISABLE
-			as.write(a[1], o)
+			as.writeUser(a[1], o)
 		}
 		return 0, stRet
 	case 97, 302: // getrlimit prlimit64
@@ -353,14 +353,14 @@ func (c *Ctl) syscall(t *Thread, nr uint64, a [6]uint64) (int64, int) {
 			if res == 3 {
 				cur = 8 << 20
 			}
-			as.write(old, append(putLE(cur, 8), putLE(^uint64(0), 8)...))
+			as.writeUser(old, append(putLE(cur, 8), putLE(^uint64(0), 8)...))
 		}
 		return 0, stRet
 	case 204: // sched_getaffinity
 		if a[1] < 8 {
 			return -einval, stRet
 		}
-		as.write(a[2], putLE(1, 8))
+		as.writeUser(a[2], putLE(1, 8))
 		return 8, stRet
 	case 228: // clock_gettime
 		var d time.Duration
@@ -369,25 +369,25 @@ func (c *Ctl) syscall(t *Thread, nr uint64, a [6]uint64) (int64, int) {
 		} else {
 			d = c.monoNow()
 		}
-		as.write(a[1], append(putLE(uint64(d/time.Second), 8), putLE(uint64(d%time.Second), 8)...))
+		as.writeUser(a[1], append(putLE(uint64(d/time.Second), 8), putLE(uint64(d%time.Second), 8)...))
 		return 0, stRet
 	case 96: // gettimeofday
 		if a[0] != 0 {
 			n := time.Now()
-			as.write(a[0], append(putLE(uint64(n.Unix()), 8), putLE(uint64(n.Nanosecond()/1000), 8)...))
+			as.writeUser(a[0], append(putLE(uint64(n.Unix()), 8), putLE(uint64(n.Nanosecond()/1000), 8)...))
 		}
 		return 0, stRet
 	case 201: // time
 		s := time.Now().Unix()
 		if a[0] != 0 {
-			as.write(a[0], putLE(uint64(s), 8))
+			as.writeUser(a[0], putLE(uint64(s), 8))
 		}
 		return s, stRet
 	case 318: // getrandom
 		n := min(a[1], 1<<20)
 		b := make([]byte, n)
 		rand.Read(b)
-		if !as.write(a[0], b) {
+		if !as.writeUser(a[0], b) {
 			return -efault, stRet
 		}
 		return int64(n), stRet
@@ -397,7 +397,7 @@ func (c *Ctl) syscall(t *Thread, nr uint64, a [6]uint64) (int64, int) {
 			*t.u64(stubasm.PgFS) = a[1]
 			return 0, stRet
 		case 0x1003:
-			as.write(a[1], putLE(*t.u64(stubasm.PgFS), 8))
+			as.writeUser(a[1], putLE(*t.u64(stubasm.PgFS), 8))
 			return 0, stRet
 		}
 		return -einval, stRet
@@ -405,7 +405,7 @@ func (c *Ctl) syscall(t *Thread, nr uint64, a [6]uint64) (int64, int) {
 		t.dead = true
 		p.alive--
 		if t.clearTid != 0 {
-			as.write(t.clearTid, putLE(0, 4))
+			as.writeUser(t.clearTid, putLE(0, 4))
 			c.wake(p, t.clearTid, 1)
 		}
 		if p.alive <= 0 {
@@ -520,7 +520,7 @@ func (c *Ctl) syscall(t *Thread, nr uint64, a [6]uint64) (int64, int) {
 
 func (as *AS) overlapsKind(lo, hi uint64) bool {
 	for _, v := range as.vmas {
-		if v.lo < hi && v.hi > lo && (v.kind == "ctl" || v.kind == "trap-ptrs" || v.kind == "trap-code" || v.kind == "stub-code") {
+		if v.lo < hi && v.hi > lo && (v.kind == "ctl" || v.kind == "trap-ptrs" || v.kind == "trap-code" || v.kind == "stub-code" || v.kind == "veneer") {
 			return true
 		}
 	}

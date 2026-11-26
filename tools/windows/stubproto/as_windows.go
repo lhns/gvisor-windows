@@ -72,8 +72,18 @@ type vma struct {
 // pstate: 0 = inside a larger placeholder, 1 = a 4 KB placeholder of its own, 2 = mapped.
 type pg struct {
 	off   uint64
-	prot  int
+	prot  int // effective protection of the Windows view
 	state uint8
+	dirty bool // an executable page that was written: now RW, not executable
+}
+
+// effProt applies W^X: a guest mapping that asks for execute never gets write
+// permission in the stub; writes fault and drop the execute permission instead.
+func effProt(prot int) int {
+	if prot&4 != 0 {
+		return prot &^ 2
+	}
+	return prot
 }
 
 // AS is one stub's guest address space: VMAs plus 4 KB views of the memory file.
@@ -210,6 +220,7 @@ func (as *AS) mapPage(a uint64, prot int) error {
 		pVirtualFreeEx.Call(as.h, uintptr(a), pageSize, memRelease|memPreservePH)
 		p.state = 1
 	}
+	prot = effProt(prot)
 	off, err := as.mf.alloc()
 	if err != nil {
 		return err
@@ -283,12 +294,13 @@ func (as *AS) protect(lo, hi uint64, prot int) bool {
 	as.vmas = out
 	for a := lo; a < hi; a += pageSize {
 		p := as.pages[a]
-		if p == nil || p.state != 2 || p.prot == prot {
+		eff := effProt(prot)
+		if p == nil || p.state != 2 || (p.prot == eff && !p.dirty) {
 			continue
 		}
 		var old uint32
-		pVirtualProtectEx.Call(as.h, uintptr(a), pageSize, winProt(prot), uintptr(unsafe.Pointer(&old)))
-		p.prot = prot
+		pVirtualProtectEx.Call(as.h, uintptr(a), pageSize, winProt(eff), uintptr(unsafe.Pointer(&old)))
+		p.prot, p.dirty = eff, false
 	}
 	return true
 }
@@ -359,6 +371,25 @@ func (as *AS) read(a uint64, n int) ([]byte, bool) {
 	return out, true
 }
 
+// writeUser is a controller-side write on behalf of the guest (a syscall storing
+// into guest memory): an executable page being written loses its execute permission.
+func (as *AS) writeUser(a uint64, b []byte) bool {
+	for pa := pageDown(a); pa < a+uint64(len(b)); pa += pageSize {
+		if p := as.ensure(pa); p != nil && p.prot&4 != 0 {
+			as.dropExec(pa, p)
+		}
+	}
+	return as.write(a, b)
+}
+
+// dropExec makes an executable page writable and non-executable.
+func (as *AS) dropExec(pa uint64, p *pg) {
+	var old uint32
+	pVirtualProtectEx.Call(as.h, uintptr(pa), pageSize, pageReadWrite, uintptr(unsafe.Pointer(&old)))
+	p.prot, p.dirty = 3, true
+}
+
+// write copies into guest memory without any W^X handling (loader, patcher).
 func (as *AS) write(a uint64, b []byte) bool {
 	for len(b) > 0 {
 		p := as.ensure(a)
@@ -463,6 +494,7 @@ func (as *AS) cloneInto(dst *AS) error {
 		if err := dst.mapPage(a, p.prot); err != nil {
 			return err
 		}
+		dst.pages[a].dirty = p.dirty
 		copy(dst.mf.page(dst.pages[a].off), as.mf.page(p.off))
 	}
 	return nil

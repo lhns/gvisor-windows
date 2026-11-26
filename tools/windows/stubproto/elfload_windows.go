@@ -9,8 +9,8 @@ import (
 	"os"
 	"sort"
 
-	"stubproto/internal/x86asm"
 	"stubproto/stubasm"
+
 )
 
 const (
@@ -172,99 +172,3 @@ func buildStack(as *AS, ld *loadedELF, args, env []string) (uint64, error) {
 	return sp, nil
 }
 
-// siteStats counts what the scanner found.
-type siteStats struct {
-	pairs     int // 0f 05 byte pairs in the scanned ranges
-	syscalls  int // decoded SYSCALL instructions
-	patched   int
-	ud2       int
-	imm32     int
-	imm64     int
-	nonSyscal int // pairs inside other instructions or data (pairs - syscalls)
-}
-
-func (s *siteStats) add(o siteStats) {
-	s.pairs += o.pairs
-	s.syscalls += o.syscalls
-	s.patched += o.patched
-	s.ud2 += o.ud2
-	s.imm32 += o.imm32
-	s.imm64 += o.imm64
-	s.nonSyscal += o.nonSyscal
-}
-
-// scanAndPatch rewrites every syscall instruction in [lo,hi) of as, before any of it
-// can execute: `mov $imm32,%eax; syscall` and `mov $imm32,%rax; syscall` become a
-// 7-byte `jmp *slot` through the trap table, every other site becomes ud2.
-func (p *Proc) scanAndPatch(lo, hi uint64) (siteStats, error) {
-	var st siteStats
-	as := p.as
-	code, ok := as.read(lo, int(hi-lo))
-	if !ok {
-		return st, fmt.Errorf("cannot read %#x-%#x", lo, hi)
-	}
-	for i := 0; i+1 < len(code); i++ {
-		if code[i] == 0x0F && code[i+1] == 0x05 {
-			st.pairs++
-		}
-	}
-	var prev x86asm.Inst
-	prevOff := -1
-	for off := 0; off < len(code); {
-		inst, err := x86asm.Decode(code[off:], 64)
-		if err != nil || inst.Len == 0 {
-			off++
-			prevOff = -1
-			continue
-		}
-		if inst.Op == x86asm.SYSCALL {
-			st.syscalls++
-			a := lo + uint64(off)
-			var start uint64
-			var sysno uint32
-			kind := 0
-			if prevOff >= 0 && prevOff+prev.Len == off && prev.Op == x86asm.MOV {
-				pc := code[prevOff : prevOff+prev.Len]
-				if prev.Len == 5 && pc[0] == 0xB8 {
-					kind, start, sysno = 32, a-5, binary.LittleEndian.Uint32(pc[1:])
-				} else if prev.Len == 7 && pc[0] == 0x48 && pc[1] == 0xC7 && pc[2] == 0xC0 {
-					kind, start, sysno = 64, a-7, binary.LittleEndian.Uint32(pc[3:])
-				}
-			}
-			if kind != 0 && p.nsites < stubasm.MaxSites {
-				idx := uint64(p.nsites)
-				p.nsites++
-				slot := stubasm.TrapPtrs + 8*idx
-				entry := stubasm.TrapCode + stubasm.EntrySize*idx
-				e := []byte{0xB8}
-				e = binary.LittleEndian.AppendUint32(e, sysno)
-				e = append(e, 0x48, 0xB9)
-				e = binary.LittleEndian.AppendUint64(e, a+2)
-				e = append(e, 0x49, 0xBB)
-				e = binary.LittleEndian.AppendUint64(e, stubasm.StubCode+stubasm.OffTramp)
-				e = append(e, 0x41, 0xFF, 0xE3)
-				j := []byte{0xFF, 0x24, 0x25}
-				j = binary.LittleEndian.AppendUint32(j, uint32(slot))
-				if kind == 64 {
-					j = append(j, 0x90, 0x90)
-				}
-				if !as.write(entry, e) || !as.write(slot, binary.LittleEndian.AppendUint64(nil, entry)) || !as.write(start, j) {
-					return st, fmt.Errorf("patch write failed at %#x", a)
-				}
-				st.patched++
-				if kind == 32 {
-					st.imm32++
-				} else {
-					st.imm64++
-				}
-			} else {
-				as.write(a, []byte{0x0F, 0x0B})
-				st.ud2++
-			}
-		}
-		prev, prevOff = inst, off
-		off += inst.Len
-	}
-	st.nonSyscal = st.pairs - st.syscalls
-	return st, nil
-}

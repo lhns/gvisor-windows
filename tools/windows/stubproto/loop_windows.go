@@ -162,6 +162,14 @@ func (c *Ctl) onException(p *Proc, t *Thread) uint32 {
 			return dbgNotHandled
 		}
 		kind, addr := u64at(ev, 48), u64at(ev, 56)
+		if kind == 1 && p.as.wxWrite(addr) {
+			c.count("EXCEPTION:wx-drop-exec")
+			return dbgContinue
+		}
+		if kind == 8 && p.wxExec(addr) {
+			c.count("EXCEPTION:wx-rescan")
+			return dbgContinue
+		}
 		if p.as.findVMA(addr) != nil && p.as.fault(addr, kind == 1, kind == 8) {
 			c.count("EXCEPTION:av-lazy-map")
 			if c.probeAddr != 0 && c.holdProbe {
@@ -283,3 +291,40 @@ func (c *Ctl) killAll() {
 }
 
 var _ = unsafe.Pointer(nil)
+
+// wxWrite handles a guest write to an executable page: the page becomes writable
+// and loses execute permission.
+func (as *AS) wxWrite(a uint64) bool {
+	v := as.findVMA(a)
+	p := as.pages[pageDown(a)]
+	if v == nil || p == nil || p.state != 2 || v.prot&2 == 0 || v.prot&4 == 0 || p.dirty {
+		return false
+	}
+	as.dropExec(pageDown(a), p)
+	return true
+}
+
+// wxExec handles an execute fault on a page that was written: every mapped page of
+// the VMA is rescanned (and its syscalls patched) before it becomes executable again.
+func (p *Proc) wxExec(a uint64) bool {
+	as := p.as
+	v := as.findVMA(a)
+	q := as.pages[pageDown(a)]
+	if v == nil || q == nil || q.state != 2 || !q.dirty || v.prot&4 == 0 {
+		return false
+	}
+	lo, hi, eff := v.lo, v.hi, effProt(v.prot)
+	st, err := p.scanRange(lo, hi)
+	if err != nil {
+		p.c.logf("rescan: %v", err)
+	}
+	p.stats.add(st)
+	for x := lo; x < hi; x += pageSize {
+		if pp := as.pages[x]; pp != nil && pp.state == 2 && pp.dirty {
+			var old uint32
+			pVirtualProtectEx.Call(as.h, uintptr(x), pageSize, winProt(eff), uintptr(unsafe.Pointer(&old)))
+			pp.prot, pp.dirty = eff, false
+		}
+	}
+	return true
+}

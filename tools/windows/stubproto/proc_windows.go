@@ -62,6 +62,7 @@ type Proc struct {
 	ctlView   unsafe.Pointer
 	threads   []*Thread
 	nsites    int
+	vcur, vhi uint64 // per-site veneers next to the image (within +-2 GiB of the code)
 	parent    *Proc
 	children  []*Proc
 	exited    bool
@@ -157,6 +158,8 @@ func newCtl(stubPath string, memSize uint64) (*Ctl, error) {
 	}
 	return c, nil
 }
+
+const veneerSize = 256 << 10
 
 func (c *Ctl) logf(format string, a ...any) {
 	if c.verbose {
@@ -267,6 +270,12 @@ func (c *Ctl) spawnMain(path string, args []string) (*Proc, error) {
 	if err != nil {
 		return nil, err
 	}
+	vlo := pageUp(ld.brk)
+	if err := p.as.addVMA(vlo, vlo+veneerSize, 5, "veneer"); err != nil {
+		return nil, err
+	}
+	p.vcur, p.vhi = vlo, vlo+veneerSize
+	ld.brk = vlo + veneerSize
 	for _, r := range ld.exec {
 		st, err := p.scanAndPatch(r.lo, r.hi)
 		if err != nil {
@@ -328,6 +337,7 @@ func (c *Ctl) doFork(t *Thread, flags uint64, ctid uint64) int64 {
 	}
 	child.parent, child.isFork, child.forkStart = parent, true, t0
 	parent.children = append(parent.children, child)
+	child.vcur, child.vhi = parent.vcur, parent.vhi
 	child.nsites, child.brkLo, child.brkCur, child.mmapTop = parent.nsites, parent.brkLo, parent.brkCur, parent.mmapTop
 	ct, err := child.newThread()
 	if err != nil {
@@ -341,7 +351,7 @@ func (c *Ctl) doFork(t *Thread, flags uint64, ctid uint64) int64 {
 	*ct.u64(stubasm.PgFS) = *t.u64(stubasm.PgFS)
 	ct.register(child.mainWtid, child.hMain)
 	if flags&0x01000000 != 0 && ctid != 0 { // CLONE_CHILD_SETTID
-		child.as.write(ctid, putLE(uint64(ct.tid), 4))
+		child.as.writeUser(ctid, putLE(uint64(ct.tid), 4))
 	}
 	if flags&0x00200000 != 0 { // CLONE_CHILD_CLEARTID
 		ct.clearTid = ctid
@@ -371,10 +381,10 @@ func (c *Ctl) doCloneThread(t *Thread, flags, stack, ptid, ctid, tls uint64) int
 		*nt.u64(stubasm.PgFS) = tls
 	}
 	if flags&0x100000 != 0 && ptid != 0 {
-		p.as.write(ptid, putLE(uint64(nt.tid), 4))
+		p.as.writeUser(ptid, putLE(uint64(nt.tid), 4))
 	}
 	if flags&0x01000000 != 0 && ctid != 0 {
-		p.as.write(ctid, putLE(uint64(nt.tid), 4))
+		p.as.writeUser(ctid, putLE(uint64(nt.tid), 4))
 	}
 	if flags&0x00200000 != 0 {
 		nt.clearTid = ctid
