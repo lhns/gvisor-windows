@@ -156,3 +156,42 @@ Identical on CI and the dev VM, for `ud2` and for a faulting load (and a store t
 No. `ud2`, access violation, `div` by zero and `int3` all ran the handler on the faulting thread's stack at the same offset; when that stack is unusable the kernel terminates the process with the exception code instead of switching stacks (no IST-like fallback, and `PAGE_GUARD`/stack-limit logic is not applied to the dispatch frame). The only way found to avoid the guest stack is the debugger path (case 3), or never letting guest code run with an unmapped or nearly full RSP.
 
 Verdict: A VEH on the guest stack is not safe (it overwrites a varying part of the red zone, from RSP-9 on the dev VM and from RSP-257 on the CI runner, and the process simply dies if less than about 3 KB is mapped below RSP, including on stack-growth faults), whereas a debugger parent keeps the red zone intact and survives RSP in unmapped memory (and low integrity on a standard user), at about 120-220 us per trap (roughly 70-130 times the in-process VEH), so the stub needs a debugger-based fallback (or a guarantee of 3 KB or more mapped below RSP and no red zone use) for traps on an unsafe RSP.
+
+## S8 debugger costs (s8/)
+
+Source: `test/spikes/windows/s8`; CI runs 45859087937 and 45859785141 (`windows-latest`, Server 2025 build 10.0.26100, 4 vCPUs, FSGSBASE present; two runs differ by up to 35% in medians, so ranges are given), dev VM (Win11 10.0.26300, QEMU, 16 vCPUs, no FSGSBASE, standard user) for the rest. Normal token on CI; the low-integrity child cannot start on the hosted runner (0xC0000142, as in s4/S7), the dev VM covers it.
+
+Method: the parent is the debugger (`CreateProcess` with `DEBUG_ONLY_THIS_PROCESS`, events handled on the creating thread). Times are QueryPerformanceCounter deltas between consecutive fault events (a full round trip: fault, event delivery, debugger work, continue, retry). Faulting child: 2048 `PAGE_NOACCESS` pages touched in sequence, re-protected after each round, 10 rounds (20379 samples).
+
+### 1. Fault fixed from outside
+Per fault (median / p99), debugger fixes the page and continues with `DBG_CONTINUE`; the instruction retries by itself:
+
+| fix | CI | dev VM |
+|---|---|---|
+| `VirtualProtectEx` only, no thread context | 46-63 us / 109-133 us | 90 us / 324 us |
+| + `GetThreadContext(CONTROL)` | 78 us / 149 us | 151 us / 735 us |
+| + Get `INTEGER` | 78 us | 158 us |
+| + Get `CONTROL|INTEGER` | 78 us | 160 us |
+| + Get `FULL` (incl. floating point) | 79 us | 153 us |
+| + Get `CONTROL` + `SetThreadContext` | 132 us / 205 us | 238 us / 998 us |
+| `VirtualFreeEx(PRESERVE_PLACEHOLDER)` + `MapViewOfFile3` into a placeholder instead of `VirtualProtectEx` | 54 us / 125 us | 134 us / 1737 us |
+
+So the bare event round trip is about 45 us on CI (the fix call itself 2.5-3.5 us); a Get costs about 31 us regardless of the flag set; a Set about 54 us. Low integrity (dev VM): `VirtualProtectEx` 96 us / 652 us, with Get CONTROL 153 us, the same as the normal token.
+
+### 2. Pass-through
+The debugger sees every exception first (first-chance event before any in-process VEH). Returning `DBG_CONTINUE` means the child's VEH never runs (0 runs). Returning `DBG_EXCEPTION_NOT_HANDLED` runs the child's VEH afterwards, on the guest stack (handler SP at entry = guest RSP-2536 on CI, RSP-2232 on the dev VM, as in S7), and no second-chance event occurs if it handles the exception. With an unusable guest stack and `NOT_HANDLED`, the VEH cannot run: the debugger gets a second-chance event and the child dies with 0xC000001D. So there is no in-process path beside the debugger that avoids the guest stack.
+
+### 3. Event counts (CI, identical on the dev VM except where noted)
+- Go child to the loader breakpoint (create until its first instruction): 5 events: CREATE_PROCESS 1, LOAD_DLL 3, EXCEPTION 1 (breakpoint). Native `cmd.exe`: 7 events (CREATE_PROCESS, CREATE_THREAD, LOAD_DLL 4, breakpoint).
+- Go runtime start to `main`: 11 more (CREATE_THREAD 5, LOAD_DLL 5, 1 exception).
+- One extra thread: CREATE_THREAD 1 + EXIT_THREAD 1 = 2 events.
+- Exit of a Go child: EXIT_THREAD 5 + EXIT_PROCESS 1 = 6 events (whole Go run: 25 events; `cmd.exe /c exit`: 11 on CI, 20 on the dev VM). Each event is a debugger round trip, so process start/exit costs about 30 events of roughly 20-60 us each.
+
+### 4. Concurrency (CI; each stub faults 8192 times; total faults/s)
+- One debugger thread, N stubs: N=1: 17-20k/s; N=4: 93-104k/s; N=16: 128-131k/s (8k/s per stub). Events from several debuggees queue and are all served without loss (0 failed children).
+- Several debugger threads (each debugging its own children): 2 threads x 4 stubs 138-141k/s; 4 threads x 4 stubs 143-156k/s; 4 threads x 1 stub 113-123k/s. On the 4-vCPU runner this is about 1.2x the single-thread N=16 figure, so one debugger thread already reaches 130k faults/s and extra threads add little on 4 cores. Dev VM (16 vCPUs): 1 thread x 1/4/16 stubs 10.8k/32.8k/30.5k/s; 2x4 48k/s; 4x4 77k/s (scales with threads there).
+
+### 5. %fs repair via the debugger (CI only)
+`CONTEXT` has no FS base, so the debugger allocates (at the loader breakpoint, with `VirtualAllocEx`) a TLS block and a trampoline page in the child. On the access violation at `fs:[0]` it does `GetThreadContext(CONTROL)`, writes the faulting RIP into the trampoline's slot with `WriteProcessMemory`, sets RIP to the trampoline with `SetThreadContext`, continues. The trampoline (`mov [s+8],rax; mov rax,[s]; wrfsbase rax; mov rax,[s+8]; jmp [s+16]`) keeps every register and the flags. 20000 repairs (`wrfsbase 0` then `fs:[0]`): 0 wrong reads, 122-124 us per repair median (p99 191-203 us); the debugger-side work is 68-74 us (Get + WriteProcessMemory + Set). Roughly 2.7 times a plain fault fix.
+
+Verdict: A debugger-per-stub costs about 45-60 us per fault without touching the thread context (2.5-3.5 us of that is the fix call), +31 us per `GetThreadContext` and +54 us per `SetThreadContext`, so an `%fs` repair via a trampoline costs about 123 us; one debugger thread serves 4-16 stubs at 90-130k faults/s total (a few threads add at most 1.2x on 4 cores), and a process start/exit adds about 30 events, so ADR 0010's route is workable if guest faults per exec stay in the thousands (tens of ms) rather than hundreds of thousands.
