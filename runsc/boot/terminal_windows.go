@@ -46,6 +46,7 @@ func IsUsableHandle(f *os.File) bool {
 // foreground process group, and keys arrive as the VT sequences a Linux
 // terminal sends. The pty's window size follows the console's.
 type Terminal struct {
+	inF, outF         *os.File // CONIN$ and CONOUT$
 	in, out           windows.Handle
 	inMode, outMode   uint32
 	master            *vfs.FileDescription
@@ -56,12 +57,25 @@ type Terminal struct {
 // NewConsoleTerminal checks that stdin and stdout are consoles and switches
 // them to raw VT mode. Restore undoes it.
 func NewConsoleTerminal() (*Terminal, error) {
-	t := &Terminal{in: windows.Handle(os.Stdin.Fd()), out: windows.Handle(os.Stdout.Fd())}
+	// CONIN$ and CONOUT$ are the console the process is attached to, whatever
+	// its standard handles are.
+	var err error
+	if t.inF, err = openConsole("CONIN$"); err != nil {
+		for i, h := range []windows.Handle{windows.Handle(os.Stdin.Fd()), windows.Handle(os.Stdout.Fd()), windows.Handle(os.Stderr.Fd())} {
+			ft, ferr := windows.GetFileType(h)
+			log.Warningf("std handle %d = %#x, file type %d (%v)", i, h, ft, ferr)
+		}
+		return nil, fmt.Errorf("the process has no console (run runsc in a terminal, or under a pseudoconsole): %w", err)
+	}
+	if t.outF, err = openConsole("CONOUT$"); err != nil {
+		return nil, err
+	}
+	t.in, t.out = windows.Handle(t.inF.Fd()), windows.Handle(t.outF.Fd())
 	if err := windows.GetConsoleMode(t.in, &t.inMode); err != nil {
-		return nil, fmt.Errorf("stdin is not a console (run runsc in a terminal, or under a pseudoconsole): %w", err)
+		return nil, fmt.Errorf("reading the console input mode: %w", err)
 	}
 	if err := windows.GetConsoleMode(t.out, &t.outMode); err != nil {
-		return nil, fmt.Errorf("stdout is not a console: %w", err)
+		return nil, fmt.Errorf("reading the console output mode: %w", err)
 	}
 	if _, _, err := t.size(); err != nil {
 		return nil, err
@@ -78,6 +92,18 @@ func NewConsoleTerminal() (*Terminal, error) {
 		return nil, fmt.Errorf("setting the console output mode: %w", err)
 	}
 	return t, nil
+}
+
+func openConsole(name string) (*os.File, error) {
+	p, err := windows.UTF16PtrFromString(name)
+	if err != nil {
+		return nil, err
+	}
+	h, err := windows.CreateFile(p, windows.GENERIC_READ|windows.GENERIC_WRITE, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, nil, windows.OPEN_EXISTING, 0, 0)
+	if err != nil {
+		return nil, fmt.Errorf("opening %s: %w", name, err)
+	}
+	return os.NewFile(uintptr(h), name), nil
 }
 
 // Restore puts the console modes back.
@@ -142,12 +168,12 @@ func (t *Terminal) attach(ctx context.Context, k *kernel.Kernel, mns *vfs.MountN
 	}
 	// The master stays open until the pty has nothing more to say (the
 	// replica is closed when the container is gone).
-	go copyIn(sctx, os.Stdin, master) // keyboard to the pty
+	go copyIn(sctx, t.inF, master) // keyboard to the pty
 	s.pumps.Add(1)
 	go func() { // pty to the screen
 		defer s.pumps.Done()
 		defer master.DecRef(sctx)
-		copyOut(sctx, master, os.Stdout)
+		copyOut(sctx, master, t.outF)
 	}()
 	go t.watchSize()
 	return tty, nil

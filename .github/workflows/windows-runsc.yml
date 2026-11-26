@@ -56,6 +56,11 @@ jobs:
         continue-on-error: true
         run: |
           C:\ci\bin\runsctest.exe -runsc C:\ci\bin\runsc.exe -rootfs C:\ci\work\rootfs -work C:\ci\work\admin -only hello
+      - name: Terminal as the runner's administrator (diagnostic)
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          C:\ci\bin\runsctest.exe -runsc C:\ci\bin\runsc.exe -rootfs C:\ci\work\rootfs -work C:\ci\work\admin -only tty
       - name: All tests as a standard user
         shell: pwsh
         run: |
