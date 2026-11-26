@@ -32,15 +32,3 @@ func installFaultHandlers() {
 	}
 }
 
-// ensureFaultStack makes sure that the goroutine stack has room below the
-// caller for the exception dispatcher. Windows runs vectored exception
-// handlers on the faulting thread's current stack, which for a goroutine is
-// a small heap-allocated stack: the kernel pushes a CONTEXT with the extended
-// (AVX-512, AMX) state there, which can be several KB, and dispatching
-// through ntdll needs more. Overflowing the stack corrupts neighbouring heap
-// memory. The function is assembly with a large frame and no body, so it
-// costs only the prologue's stack check.
-func ensureFaultStack()
-
-// dbgCtx is DEBUG: RIP, R8, RCX, RDI and the fault address of the last fault.
-var dbgCtx [9]uint64

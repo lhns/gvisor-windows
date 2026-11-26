@@ -8,6 +8,10 @@
 // Offsets in EXCEPTION_RECORD and CONTEXT (winnt.h, x64).
 #define ER_INFO1 0x28 // ExceptionInformation[1]: the faulting address
 #define CTX_RAX  0x78
+#define CTX_RCX  0x80
+#define CTX_R8   0xB8
+#define CTX_R12  0xD8
+#define CTX_R13  0xE0
 #define CTX_RDI  0xB0
 #define CTX_RIP  0xF8
 
@@ -28,16 +32,6 @@ TEXT ·vehHandler(SB),NOSPLIT|NOFRAME,$0
 
 check:
 	MOVQ CTX_RIP(R10), AX
-	// DEBUG: record the first registers seen at the last fault.
-	MOVQ AX, ·dbgCtx+0(SB)
-	MOVQ 0xB8(R10), R9
-	MOVQ R9, ·dbgCtx+8(SB)
-	MOVQ 0x80(R10), R9
-	MOVQ R9, ·dbgCtx+16(SB)
-	MOVQ 0xB0(R10), R9
-	MOVQ R9, ·dbgCtx+24(SB)
-	MOVQ ER_INFO1(R8), R9
-	MOVQ R9, ·dbgCtx+32(SB)
 
 	CMPQ AX, ·memcpyBegin(SB)
 	JB   not_memcpy
@@ -51,9 +45,15 @@ not_memcpy:
 	JB   not_memclr
 	CMPQ AX, ·memclrEnd(SB)
 	JAE  not_memclr
-	LEAQ winMemclrProbe(SB), DX
-	MOVQ 0x98(R10), R9
-	MOVQ R9, ·dbgCtx+56(SB)
+	// Windows clobbers R8 when it resumes the thread after a vectored handler
+	// (it holds the stack pointer at the stub), but the stub needs R8 and CX
+	// to tell whether REP STOSB faulted. Pass them in R12 and R13, which are
+	// restored, and let winMemclrFault move them back.
+	MOVQ CTX_R8(R10), R9
+	MOVQ R9, CTX_R12(R10)
+	MOVQ CTX_RCX(R10), R9
+	MOVQ R9, CTX_R13(R10)
+	LEAQ winMemclrFault(SB), DX
 	JMP  fix
 
 not_memclr:
@@ -108,11 +108,11 @@ search:
 	XORL AX, AX
 	RET
 
-// DEBUG: records R8 and CX when the memclr stub starts.
-TEXT winMemclrProbe(SB),NOSPLIT|NOFRAME,$0
-	MOVQ R8, ·dbgCtx+40(SB)
-	MOVQ CX, ·dbgCtx+48(SB)
-	MOVQ SP, ·dbgCtx+64(SB)
+// winMemclrFault is the memclr fault stub on Windows: it restores R8 and CX
+// from the registers the handler passed them in.
+TEXT winMemclrFault(SB),NOSPLIT|NOFRAME,$0
+	MOVQ R12, R8
+	MOVQ R13, CX
 	JMP handleMemclrFault(SB)
 
 TEXT ·addrOfVEHHandler(SB),NOSPLIT,$0-8
@@ -120,8 +120,3 @@ TEXT ·addrOfVEHHandler(SB),NOSPLIT,$0-8
 	MOVQ AX, ret+0(FP)
 	RET
 
-// ensureFaultStack: the frame size makes the prologue grow the stack until
-// 16 KB are free below the caller (plus the runtime's own headroom for
-// system calls).
-TEXT ·ensureFaultStack(SB),0,$16384-0
-	RET

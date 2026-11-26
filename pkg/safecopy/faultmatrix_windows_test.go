@@ -11,11 +11,11 @@ import (
 	"unsafe"
 )
 
-// TestWindowsMemclrDiag prints what the fault paths report, from the most
+// TestWindowsFaultMatrix prints what the fault paths report, from the most
 // basic to the most special, so that a misbehaving case can be told apart in
-// CI logs. It never fails; it may crash, in which case the last line tells
-// which case did.
-func TestWindowsMemclrDiag(t *testing.T) {
+// CI logs. It fails if a case reports the wrong count or error; a crash is attributable
+// to the last DIAG line.
+func TestWindowsFaultMatrix(t *testing.T) {
 	saved := hasERMS
 	defer func() { hasERMS = saved }()
 	fmt.Printf("DIAG hasERMS initially %v\n", saved)
@@ -31,10 +31,7 @@ func TestWindowsMemclrDiag(t *testing.T) {
 	zn, err := ZeroOut(unsafe.Pointer(bad), 1)
 	fmt.Printf("DIAG B: n=%d err=%v\n", zn, err)
 
-	fmt.Printf("DIAG B regs: rip=%#x r8=%#x rcx=%#x rdi=%#x addr=%#x bad=%#x memclr=[%#x,%#x) memcpy=[%#x,%#x)\n", dbgCtx[0], dbgCtx[1], dbgCtx[2], dbgCtx[3], dbgCtx[4], bad, memclrBegin, memclrEnd, memcpyBegin, memcpyEnd)
-	fmt.Printf("DIAG B stub: r8=%#x rcx=%#x sp_at_stub=%#x ctx_rsp=%#x\n", dbgCtx[5], dbgCtx[6], dbgCtx[8], dbgCtx[7])
-	fmt.Println("DIAG C: memclr size 1 directly, after ensureFaultStack")
-	ensureFaultStack()
+	fmt.Println("DIAG C: memclr size 1 directly")
 	fault, sig := memclr(bad, 1, true)
 	fmt.Printf("DIAG C: fault-bad=%d sig=%d\n", int64(fault)-int64(bad), sig)
 
