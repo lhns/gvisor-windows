@@ -68,9 +68,8 @@ jobs:
         continue-on-error: true
         run: |
           C:\ci\bin\runsctest.exe -runsc C:\ci\bin\runsc.exe -rootfs C:\ci\work\rootfs -work C:\ci\work\admin -only tty
-      - name: Erofs image root as a standard user (known to fail, see the results document)
+      - name: Erofs image root as a standard user
         shell: pwsh
-        continue-on-error: true
         run: |
           & tools/windows/ci/run-as-standard-user.ps1 `
             -Program C:\ci\bin\runsctest.exe `

@@ -955,3 +955,46 @@ func TestInterruptStorm(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// bytesFile is a memmap.File that is not a memory file: its pages are a Go slice
+// (like the erofs image mapping), with no section to map.
+type bytesFile struct {
+	memmap.DefaultMemoryType
+	memmap.NoBufferedIOFallback
+	data []byte
+}
+
+func (*bytesFile) IncRef(memmap.FileRange, uint32) {}
+func (*bytesFile) DecRef(memmap.FileRange)         {}
+func (b *bytesFile) MapInternal(fr memmap.FileRange, at hostarch.AccessType) (safemem.BlockSeq, error) {
+	return safemem.BlockSeqOf(safemem.BlockFromSafeSlice(b.data[fr.Start:fr.End])), nil
+}
+func (*bytesFile) DataFD(memmap.FileRange) (int, error) { return -1, errors.New("no fd") }
+func (*bytesFile) FD() int                              { return -1 }
+
+// TestMapNonSectionFile maps text and data from a file that is not the memory
+// file and runs the guest.
+func TestMapNonSectionFile(t *testing.T) {
+	h := newHarness(t)
+	g := buildGuest()
+	mm := h.newMM()
+	text := &bytesFile{data: append(append([]byte(nil), g.code...), make([]byte, 4*pageSz-len(g.code))...)}
+	if err := mm.as.MapFile(textBase, text, memmap.FileRange{Start: 0, End: 4 * pageSz}, rx, false); err != nil {
+		t.Fatalf("MapFile of text: %v", err)
+	}
+	data := &bytesFile{data: make([]byte, pageSz)}
+	binary.LittleEndian.PutUint64(data.data, 0xfeedface12345678)
+	if err := mm.as.MapFile(0x1000000, data, memmap.FileRange{Start: 0, End: pageSz}, hostarch.Read, false); err != nil {
+		t.Fatalf("MapFile of data: %v", err)
+	}
+	if err := mm.as.MapFile(0x1100000, data, memmap.FileRange{Start: 0, End: pageSz}, rw, false); err == nil {
+		t.Errorf("a writable mapping of a file without sections must fail")
+	}
+	c := h.p.NewContext(pkgcontext.Background())
+	defer c.Release()
+	ac := newAC(g.readLoop, 0)
+	ac.StateData().Regs.Rdi = 0x1000000
+	if nr := h.syscall(c, mm, ac); nr != 500 || ac.StateData().Regs.Rdi != 0xfeedface12345678 {
+		t.Fatalf("syscall %d rdi %#x", nr, ac.StateData().Regs.Rdi)
+	}
+}

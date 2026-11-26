@@ -363,20 +363,26 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 	if as.dead.Load() {
 		return errDead
 	}
-	sf, ok := f.(SectionFile)
-	if !ok {
-		return errNoSection
-	}
+	sf, isSec := f.(SectionFile)
 	lo, hi := uint64(addr), uint64(addr)+fr.Length()
 	if lo < stubasm.GuestMin || hi > stubasm.GuestMax || hi < lo {
 		return errOutOfRange
 	}
 	prot := accessBits(at)
-	srs := sf.Sections(fr)
+	// Text is copied, scanned and patched. A file that is not the memory file
+	// (an image mapping, say) has no section to map: its read-only mappings are
+	// copied into private memory too; a writable one cannot be shared.
+	isText := prot&protX != 0 && prot&protW == 0
+	if !isSec && prot&protW != 0 {
+		return errNoSection
+	}
+	var srs []pgalloc.SectionRange
+	if isSec && !isText {
+		srs = sf.Sections(fr)
+	}
 
 	var content []byte
-	if prot&protX != 0 && prot&protW == 0 {
-		// Text: scan a copy now; the patched copy is what the stub maps.
+	if isText || !isSec {
 		content = make([]byte, fr.Length())
 		bs, err := f.MapInternal(fr, hostarch.Read)
 		if err != nil {
@@ -391,6 +397,18 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 	defer as.mu.Unlock()
 	if err := as.removeRange(lo, hi); err != nil {
 		return err
+	}
+	if content != nil && !isText {
+		ps, err := as.newPrivate(content)
+		if err != nil {
+			return err
+		}
+		v := &view{lo: lo, hi: hi, sec: ps.h, prot: protR, priv: ps}
+		if err := as.mapView(v); err != nil {
+			as.unrefPriv(ps)
+			return err
+		}
+		return nil
 	}
 	if content != nil {
 		head := content[0] == 0x05
