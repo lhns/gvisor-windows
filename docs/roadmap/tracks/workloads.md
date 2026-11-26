@@ -17,8 +17,8 @@ flowchart TB
     workloads_strict_bar_linux[/"✔ Strict bar on stock<br/>gVisor"/]
     workloads_gvisor_cgroupfs_readonly>"✔ Cgroup filesystem<br/>mounted read-only"]
     workloads_podman_api_named_pipe["✔ Podman API on a<br/>named pipe"]
+    workloads_overlay_userxattr>"✔ Overlay mounts with<br/>userxattr rejected"]
     workloads_conmon_sync_pipe>"⚠ conmon sees no data<br/>on its sync pipe"]
-    workloads_overlay_userxattr>"⚠ Overlay mounts with<br/>userxattr rejected"]
     workloads_podman_on_windows[/"⛔ Podman passes on<br/>Windows"/]
     workloads_podman_probe[/"✔ Probe Podman inside<br/>the sandbox"/]
     workloads_podman_harness["▶ Serve Podman to<br/>Windows clients"]
@@ -30,11 +30,11 @@ flowchart TB
     workloads_acceptance_test_windows ~~~ workloads_strict_bar_linux
     workloads_gvisor_bridge_netlink ~~~ workloads_gvisor_cgroupfs_readonly
     workloads_gvisor_port_publishing ~~~ workloads_podman_api_named_pipe
-    workloads_strict_bar_linux ~~~ workloads_conmon_sync_pipe
-    workloads_gvisor_cgroupfs_readonly ~~~ workloads_overlay_userxattr
+    workloads_strict_bar_linux ~~~ workloads_overlay_userxattr
+    workloads_gvisor_cgroupfs_readonly ~~~ workloads_conmon_sync_pipe
     workloads_podman_api_named_pipe ~~~ workloads_podman_on_windows
-    workloads_conmon_sync_pipe ~~~ workloads_podman_probe
     workloads_overlay_userxattr ~~~ workloads_podman_probe
+    workloads_conmon_sync_pipe ~~~ workloads_podman_probe
     workloads_podman_on_windows ~~~ workloads_podman_harness
     workloads_podman_probe ~~~ workloads_end_to_end_speed
     workloads_acceptance_test --> workloads_podman_on_gvisor_linux
@@ -64,8 +64,8 @@ flowchart TB
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class workloads_acceptance_test,workloads_acceptance_test_windows,workloads_podman_api_named_pipe,workloads_podman_probe unrated
     class workloads_podman_on_gvisor_linux,workloads_strict_bar_linux mixed
-    class workloads_gvisor_bridge_netlink,workloads_gvisor_port_publishing,workloads_gvisor_cgroupfs_readonly succ
-    class workloads_conmon_sync_pipe,workloads_overlay_userxattr finding
+    class workloads_gvisor_bridge_netlink,workloads_gvisor_port_publishing,workloads_gvisor_cgroupfs_readonly,workloads_overlay_userxattr succ
+    class workloads_conmon_sync_pipe finding
     class workloads_podman_on_windows blocked
     class workloads_podman_harness inprog
     class workloads_end_to_end_speed next
@@ -90,8 +90,8 @@ flowchart TB
 | `workloads-podman-api-named-pipe` | Podman API on a named pipe | feature | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 | runsc-windows-boot |  |  |  | docs/results/5-podman-windows.md |
 | `workloads-podman-probe` | Probe Podman inside the sandbox | experiment | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 | platform-busybox-on-windows, platform-map-files-without-sections |  |  |  | docs/results/5-podman-windows.md |
 | `workloads-end-to-end-speed` | Measure end-to-end speed on Windows | experiment | windows-ci | next | unrated |  |  | runsc-windows-boot |  |  |  |  |
-| `workloads-conmon-sync-pipe` | conmon sees no data on its sync pipe | defect | windows-ci | next | unrated | 2026-11-26 |  |  |  |  |  | docs/results/5-podman-windows.md |
-| `workloads-overlay-userxattr` | Overlay mounts with userxattr rejected | defect | windows-ci | next | unrated | 2026-11-26 |  |  |  |  |  | docs/results/5-podman-windows.md |
+| `workloads-conmon-sync-pipe` | conmon sees no data on its sync pipe | defect | windows-ci | next | unrated | 2026-11-26 |  | platform-veneer-address-in-child |  |  |  | docs/results/5-podman-windows.md |
+| `workloads-overlay-userxattr` | Overlay mounts with userxattr rejected | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
 
 ### Details per node
 
@@ -110,7 +110,7 @@ flowchart TB
 | `workloads-podman-api-named-pipe` | Podman API on a named pipe |  |  | Expose the Podman engine API on a Windows named pipe owned by the user, instead of a loopback TCP port. | Done for the docker CLI; stock podman 5.3.1 cannot dial npipe, so the podman client uses a forwarded AF_UNIX socket. |  |  |  |  |
 | `workloads-podman-probe` | Probe Podman inside the sandbox |  |  | Right after busybox works, run podman --version and podman info inside the sandbox; their failures are the real gap list. | Done when: the gap list is written up in docs/results. |  |  |  |  |
 | `workloads-end-to-end-speed` | Measure end-to-end speed on Windows |  |  | Run the Phase 0 workloads (fork+exec loop, untar of small files, a CPU job) through runsc.exe on Windows and compare with runsc and native on Linux. | Done when: a table of Windows vs Linux runsc vs native is in docs/results. |  |  |  |  |
-| `workloads-conmon-sync-pipe` | conmon sees no data on its sync pipe |  |  | Every podman run fails with "conmon bytes \"\": found \x00": conmon reads nothing from its sync pipe while creating the first container inside the sandbox on Windows. | Fixed when: podman run --rm alpine echo ok passes inside the Windows sandbox. |  |  |  |  |
+| `workloads-conmon-sync-pipe` | conmon sees no data on its sync pipe |  |  | Every podman run fails with "conmon bytes \"\": found \x00": conmon reads nothing from its sync pipe while creating the first container inside the sandbox on Windows. | Remaining cause: crun clone through glibc syscall() lands in a relocated veneer whose address differs in the child address space (platform). Fixed when: podman run --rm alpine echo ok passes. |  |  |  |  |
 | `workloads-overlay-userxattr` | Overlay mounts with userxattr rejected |  |  | podman build fails: the Sentry overlay rejects the userxattr option (or the layer setup) when Podman storage sits on a Windows folder. | Fixed when: podman build of a small Containerfile passes inside the Windows sandbox. |  |  |  |  |
 
 ### Folded items per node
@@ -120,4 +120,8 @@ flowchart TB
 - `workloads-podman-harness`: Serve Podman to Windows clients
   - Podman 6.2.0 pulls and stores images on a Windows folder; steps 1-2 pass (2026-11-26, commit 61c8b8f92)
   - Runtime -p via the forwarder expose API works as a standard user (2026-11-26, commit 61c8b8f92)
+- `workloads-conmon-sync-pipe`: conmon sees no data on its sync pipe
+  - Cause 1 fixed: FIFO opens on host folders were rejected by policy, now in-Sentry named pipes (2026-11-27, commit 9ab48dea3)
+- `workloads-overlay-userxattr`: Overlay mounts with userxattr rejected
+  - Overlay upperdir must be tmpfs; /var/tmp is now a tmpfs in the engine spec (2026-11-27, commit 9ab48dea3)
 <!-- END GENERATED: table-workloads -->

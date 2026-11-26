@@ -374,6 +374,12 @@ type filesystemOptions struct {
 	// are disallowed.
 	disableFifoOpen bool
 
+	// gvisor-windows: if emulateFifoOpen is true, opening a FIFO of the
+	// filesystem (which the host cannot open: a Windows folder holds only its
+	// metadata) opens an in-sentry named pipe bound to the inode. Takes
+	// precedence over disableFifoOpen.
+	emulateFifoOpen bool
+
 	// charDevicePolicy controls whether opens of character device files are
 	// dispatched to the sentry's device registry, passed through to the host
 	// via the gofer, or a combination of both.
@@ -1092,6 +1098,10 @@ type inode struct {
 	// If this inode represents a synthetic named pipe, pipe is the pipe
 	// endpoint bound to this file.
 	pipe *pipe.VFSPipe
+
+	// emulatedPipeMu protects pipe of a non-synthetic FIFO inode, which is
+	// created on its first open if fs.opts.emulateFifoOpen is set.
+	emulatedPipeMu sync.Mutex `state:"nosave"`
 
 	locks vfs.FileLocks
 

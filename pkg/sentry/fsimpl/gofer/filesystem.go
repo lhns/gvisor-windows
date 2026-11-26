@@ -1215,6 +1215,15 @@ func (d *dentry) open(ctx context.Context, rp *vfs.ResolvingPath, opts *vfs.Open
 		if d.inode.isSynthetic() {
 			return d.inode.pipe.Open(ctx, mnt, &d.vfsd, opts.Flags, &d.inode.locks)
 		}
+		if d.inode.fs.opts.emulateFifoOpen {
+			d.inode.emulatedPipeMu.Lock()
+			if d.inode.pipe == nil {
+				d.inode.pipe = pipe.NewVFSPipe(true /* isNamed */, pipe.DefaultPipeSize)
+			}
+			p := d.inode.pipe
+			d.inode.emulatedPipeMu.Unlock()
+			return p.Open(ctx, mnt, &d.vfsd, opts.Flags, &d.inode.locks)
+		}
 		if d.inode.fs.opts.disableFifoOpen {
 			logRejectedFifoOpenOnce.Do(func() {
 				log.Warningf("Rejecting attempt to open fifo/pipe from host filesystem: %q. If you want to allow this, set flag --host-fifo=open", d.name)

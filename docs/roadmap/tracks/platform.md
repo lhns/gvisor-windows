@@ -33,6 +33,7 @@ flowchart TB
     platform_fast_process_start["✔ Start guest<br/>processes fast"]
     platform_split_syscall_unpatched>"✔ Syscalls split<br/>across mappings"]
     platform_map_files_without_sections>"✔ Map files not in the<br/>memory file"]
+    platform_veneer_address_in_child>"⚠ Veneer addresses<br/>differ after clone"]
     platform_own_vdso["⛔ Own vDSO for clock<br/>calls"]
     platform_64k_mapping_conflicts["⏸ Handle 64 KB mapping<br/>conflicts"]
     platform_busybox_on_windows["✔ Run busybox under<br/>the Sentry"]
@@ -66,13 +67,14 @@ flowchart TB
     platform_static_guest_from_memory ~~~ platform_fast_process_start
     platform_retire_prototype ~~~ platform_split_syscall_unpatched
     platform_memory_release ~~~ platform_map_files_without_sections
-    platform_fast_process_start ~~~ platform_own_vdso
-    platform_split_syscall_unpatched ~~~ platform_64k_mapping_conflicts
-    platform_map_files_without_sections ~~~ platform_busybox_on_windows
+    platform_fast_process_start ~~~ platform_veneer_address_in_child
+    platform_split_syscall_unpatched ~~~ platform_own_vdso
+    platform_map_files_without_sections ~~~ platform_64k_mapping_conflicts
+    platform_veneer_address_in_child ~~~ platform_busybox_on_windows
     platform_own_vdso ~~~ platform_hardware_acceleration
     platform_64k_mapping_conflicts ~~~ platform_binary_translation_fallback
     platform_busybox_on_windows ~~~ platform_binary_translation_fallback
-    platform_hardware_acceleration ~~~ platform_binary_translation_fallback
+    platform_hardware_acceleration ~~~ platform_no_fsgsbase_fallback
     platform_binary_translation_fallback ~~~ platform_no_fsgsbase_fallback
     platform_trap_cost -.-> platform_veh_on_guest_stack_unsafe
     platform_tls_register -.-> platform_veh_on_guest_stack_unsafe
@@ -100,7 +102,7 @@ flowchart TB
     platform_winstub --> platform_hardware_acceleration
     platform_debug_event_cost --> platform_binary_translation_fallback
     platform_binary_translation_fallback --> platform_no_fsgsbase_fallback
-    linkStyle 35,36 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    linkStyle 36,37 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -120,6 +122,7 @@ flowchart TB
     class platform_zpoline_hooks dead
     class platform_fs_base_repair unrated
     class platform_fast_process_start vsucc
+    class platform_veneer_address_in_child finding
     class platform_own_vdso blocked
     class platform_64k_mapping_conflicts,platform_hardware_acceleration,platform_binary_translation_fallback,platform_no_fsgsbase_fallback parked
 ```
@@ -160,6 +163,7 @@ flowchart TB
 | `platform-fast-process-start` | Start guest processes fast | feature | windows-ci | done | very-successful | 2026-11-26 | 2026-11-26 | platform-static-guest-from-memory |  |  | about 380 ms to 42 ms | docs/results/1e-platform-perf.md |
 | `platform-split-syscall-unpatched` | Syscalls split across mappings | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/1c-windows-platform.md; docs/results/1e-platform-perf.md |
 | `platform-map-files-without-sections` | Map files not in the memory file | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/1g-platform-memory.md; docs/adr/0016-memory-file-on-extent-sections.md |
+| `platform-veneer-address-in-child` | Veneer addresses differ after clone | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/5-podman-windows.md |
 
 ### Details per node
 
@@ -195,6 +199,7 @@ flowchart TB
 | `platform-fast-process-start` | Start guest processes fast | A free window for the Windows loader plus cached, parallel scanning cut a glibc hello from about 380 ms to 42 ms and fork + wait to about 10 ms extra | about 380 ms to 42 ms | A guest process takes 280-560 ms to start through the Sentry, against 18 ms for a bare stub; profile the gap and keep a pool of ready stubs. | Done when: static glibc hello starts and exits through the Sentry in under 50 ms median on windows-latest, and fork+waitpid adds under 50 ms; the profile is written up. |  |  |  |  |
 | `platform-split-syscall-unpatched` | Syscalls split across mappings |  |  | A syscall instruction whose two bytes fall into two separately mapped ranges is not found by the scan, so it would reach the Windows kernel. | Fixed when: a test guest with a syscall straddling two MapFile ranges is patched and served correctly. |  |  |  |  |
 | `platform-map-files-without-sections` | Map files not in the memory file |  |  | The platform can only map pages of the Sentry memory file; erofs image pages (and any other memmap.File) make the guest fault on its first instruction. | Fixed when: runsc run boots busybox from an erofs image root (mkfs.erofs --all-root) on windows-latest. |  |  |  |  |
+| `platform-veneer-address-in-child` | Veneer addresses differ after clone |  |  | A syscall through a relocated veneer returns into the veneer; after clone into a new address space the veneers sit elsewhere, so the child resumes on a zero page and crashes. | Fixed when: test/guests/clonesys.c (clonesys, clonesys_ns) passes and podman run starts a container. |  |  |  |  |
 
 ### Folded items per node
 
