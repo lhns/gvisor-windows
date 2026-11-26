@@ -844,6 +844,15 @@ func (nf *NFTables) InitConnTrackOnce() {
 	}
 }
 
+// Discard releases what an uncommitted copy of published created for itself.
+// A copy shares published's conntrack until a rule needs one and then creates
+// its own, whose reaper timer would otherwise run forever.
+func (nf *NFTables) Discard(published *NFTables) {
+	if nf.connTrackReaper != nil && nf.connTrack != published.connTrack {
+		nf.connTrackReaper.Stop()
+	}
+}
+
 // GetConnTrack returns the conntrack.
 func (nf *NFTables) GetConnTrack() *stack.ConnTrack {
 	return nf.connTrack

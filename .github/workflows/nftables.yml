@@ -1,0 +1,21 @@
+name: nftables
+
+on:
+  push:
+    branches: [windows, nftables-safety]
+    paths: ["pkg/tcpip/nftables/**", "pkg/sentry/socket/netlink/netfilter/**", ".github/workflows/nftables.yml"]
+  workflow_dispatch:
+
+jobs:
+  race:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Race test (concurrent ruleset updates and packet evaluation)
+        run: go test -race -count=3 -p 1 -run 'TestRulesetUpdatesRaceWithPacketEvaluation|TestDiscardStopsConntrackReaper|TestNFTablesConcurrentUpdateAndEvaluate' ./pkg/tcpip/nftables/
+      - name: Package tests (upstream suite) under the race detector
+        run: go test -race -count=1 -p 1 ./pkg/tcpip/nftables/

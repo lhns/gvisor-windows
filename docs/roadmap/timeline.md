@@ -51,7 +51,7 @@ gantt
     Netstack to Windows sockets :active, net_netstack_windows_link, 2026-11-26, 2026-11-26
     Publish guest ports on localhost :active, net_port_forwarding, 2026-11-26, 2026-11-26
     Bridge networking inside gVisor :net_bridge_networking, 2026-11-26, 2026-11-26
-    Make nftables safe for concurrent use :active, net_nftables_thread_safety, 2026-11-26, 2026-11-26
+    Make nftables safe for concurrent use :net_nftables_thread_safety, 2026-11-26, 2026-11-26
     section workloads - workloads
     Write the Podman acceptance test :workloads_acceptance_test, 2026-11-26, 2026-11-26
     Podman on gVisor on Linux :workloads_podman_on_gvisor_linux, 2026-11-26, 2026-11-26
