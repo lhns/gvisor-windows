@@ -61,21 +61,30 @@ func (fs *FS) Watch(fn func(Change)) error {
 		return fmt.Errorf("watch: creating an event: %w", err)
 	}
 	w := &watcher{stop: make(chan struct{}), done: make(chan struct{})}
+	backing := make([]uint64, 8*1024)
+	buf := unsafe.Slice((*byte)(unsafe.Pointer(&backing[0])), len(backing)*8)
+	const filter = 0x1 | 0x2 | 0x4 | 0x8 | 0x10 | 0x40 // names, attributes, size, last write, creation
+	ov := windows.Overlapped{HEvent: ev}
+	// The folder only collects changes while a read is pending, so the first
+	// read is issued before Watch returns, and each later read is issued
+	// before the previous result is processed (a change made in between would
+	// be lost otherwise).
+	arm := func() error {
+		windows.ResetEvent(ev)
+		return windows.ReadDirectoryChanges(h, &buf[0], uint32(len(buf)), true, filter, nil, &ov, 0)
+	}
+	if err := arm(); err != nil {
+		windows.CloseHandle(ev)
+		windows.CloseHandle(h)
+		return fmt.Errorf("watch: first read: %w", err)
+	}
 	fs.watcher = w
 	fs.watching.Store(true)
 	go func() {
 		defer close(w.done)
 		defer windows.CloseHandle(ev)
 		defer windows.CloseHandle(h)
-		backing := make([]uint64, 8*1024)
-		buf := unsafe.Slice((*byte)(unsafe.Pointer(&backing[0])), len(backing)*8)
-		const filter = 0x1 | 0x2 | 0x4 | 0x8 | 0x10 | 0x40 // names, attributes, size, last write, creation
 		for {
-			ov := windows.Overlapped{HEvent: ev}
-			windows.ResetEvent(ev)
-			if err := windows.ReadDirectoryChanges(h, &buf[0], uint32(len(buf)), true, filter, nil, &ov, 0); err != nil {
-				return
-			}
 			for {
 				r, _ := windows.WaitForSingleObject(ev, 100)
 				if r == windows.WAIT_OBJECT_0 {
@@ -93,11 +102,15 @@ func (fs *FS) Watch(fn func(Change)) error {
 			if err := windows.GetOverlappedResult(h, &ov, &n, false); err != nil {
 				return
 			}
+			data := append([]byte(nil), buf[:n]...)
+			if err := arm(); err != nil {
+				return
+			}
 			if n == 0 {
 				fn(Change{Overflow: true})
 				continue
 			}
-			fs.dispatch(buf[:n], fn)
+			fs.dispatch(data, fn)
 		}
 	}()
 	return nil

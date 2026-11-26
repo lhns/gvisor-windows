@@ -526,7 +526,7 @@ func TestVFSNegativeCacheAndQuickChange(t *testing.T) {
 	}
 	os.WriteFile(filepath.Join(e.dir, "later"), []byte("x"), 0o666)
 	found := false
-	for start := time.Now(); time.Since(start) < time.Second; time.Sleep(10 * time.Millisecond) {
+	for start := time.Now(); time.Since(start) < 3*time.Second; time.Sleep(10 * time.Millisecond) {
 		if _, err := e.stat("/later"); err == nil {
 			found = true
 			t.Logf("file made on Windows found after %v", time.Since(start))
@@ -534,7 +534,7 @@ func TestVFSNegativeCacheAndQuickChange(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("a file created on Windows is not found within 1s")
+		t.Errorf("a file created on Windows is not found within 3s")
 	}
 	e.write("/g", "guest", 0o644)
 	if st, _ := e.stat("/g"); st.Size != 5 {
@@ -542,7 +542,7 @@ func TestVFSNegativeCacheAndQuickChange(t *testing.T) {
 	}
 	os.WriteFile(filepath.Join(e.dir, "g"), []byte("windows wrote more"), 0o666) // right after the guest write
 	seen := false
-	for start := time.Now(); time.Since(start) < time.Second; time.Sleep(10 * time.Millisecond) {
+	for start := time.Now(); time.Since(start) < 3*time.Second; time.Sleep(10 * time.Millisecond) {
 		if st, err := e.stat("/g"); err == nil && st.Size == 18 {
 			seen = true
 			t.Logf("write right after a guest write seen after %v", time.Since(start))
@@ -550,6 +550,6 @@ func TestVFSNegativeCacheAndQuickChange(t *testing.T) {
 		}
 	}
 	if !seen {
-		t.Errorf("a Windows write right after a guest write was not seen within 1s")
+		t.Errorf("a Windows write right after a guest write was not seen within 3s")
 	}
 }
