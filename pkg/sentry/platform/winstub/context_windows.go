@@ -107,12 +107,17 @@ func (c *winContext) decideSpin(t *thread) {
 			c.hasToken, c.uses = true, 0
 		} else if !c.hasToken {
 			p.tokens.Add(-1)
+			p.denied.Add(1)
 		}
 		spinSentry, spinStub = c.hasToken, c.hasToken
 		if c.hasToken {
+			// Hand the token over after a while, but only if someone asked.
 			if c.uses++; c.uses > tokenUses {
-				c.releaseToken(t.as.p)
-				c.cooldown = 32
+				c.uses = 0
+				if p.denied.Swap(0) > 0 {
+					c.releaseToken(p)
+					c.cooldown = 32
+				}
 			}
 		}
 	case policyAdaptive:
@@ -131,7 +136,7 @@ func (c *winContext) decideSpin(t *thread) {
 
 // tokenUses is how many round trips a context spins before it hands its token
 // to another.
-const tokenUses = 2000
+const tokenUses = 1000
 
 func (c *winContext) releaseToken(p *Platform) {
 	if c.hasToken {

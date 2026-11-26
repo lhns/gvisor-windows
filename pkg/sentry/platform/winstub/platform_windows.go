@@ -56,6 +56,7 @@ type Platform struct {
 	active        atomic.Int32 // contexts inside Switch
 	tokens        atomic.Int32 // spinning tokens held (policyTokens)
 	maxTokens     int32
+	denied        atomic.Int32 // contexts that found no token free since the last handover
 	spinLimit     int          // spin only while active <= spinLimit (WINSTUB_SPINLIMIT)
 	xmask         uint64
 	fpSize        int
