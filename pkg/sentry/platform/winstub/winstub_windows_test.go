@@ -17,6 +17,8 @@
 package winstub
 
 import (
+	"sort"
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -1097,5 +1099,146 @@ func checkRange(t *testing.T, f *pgalloc.MemoryFile, fr memmap.FileRange, b byte
 				t.Fatalf("range %v: byte %d is %#x, want %#x", fr, i, v, b)
 			}
 		}
+	}
+}
+
+// splitPage returns a page of NOPs with head at its start and tail at its end.
+func splitPage(head, tail []byte) []byte {
+	b := bytes.Repeat([]byte{0x90}, pageSz)
+	copy(b, head)
+	copy(b[pageSz-len(tail):], tail)
+	return b
+}
+
+// TestSplitSyscallAfterUnmap: the ends a partial unmap leaves behind take part in
+// the split-syscall handling.
+func TestSplitSyscallAfterUnmap(t *testing.T) {
+	later := []byte{0x05, 0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05}
+	t.Run("left remainder", func(t *testing.T) {
+		h := newHarness(t)
+		mm := h.newMM()
+		// One mapping of two pages; the first ends with 0f 1f 00 (a nop) across
+		// the page boundary.
+		a := splitPage([]byte{0xb8, 40, 0, 0, 0}, []byte{0x0f})
+		b := splitPage([]byte{0x1f, 0x00}, nil)
+		h.mapAt(mm, textBase, h.pages(append(a, b...), 2), rx)
+		mm.as.Unmap(textBase+pageSz, pageSz)
+		h.mapAt(mm, textBase+pageSz, h.pages(splitPage(later, nil), 1), rx)
+		c := h.p.NewContext(pkgcontext.Background())
+		defer c.Release()
+		ac := newAC(textBase, 0)
+		if nr := h.syscall(c, mm, ac); nr != 40 {
+			t.Fatalf("split syscall = %d, want 40", nr)
+		}
+		if nr := h.syscall(c, mm, ac); nr != 500 {
+			t.Fatalf("next syscall = %d, want 500", nr)
+		}
+	})
+	t.Run("right remainder", func(t *testing.T) {
+		h := newHarness(t)
+		mm := h.newMM()
+		// The second page starts with 05 (add eax,imm32 as the range was mapped).
+		a := splitPage(nil, nil)
+		b := splitPage(later, nil)
+		h.mapAt(mm, textBase, h.pages(append(a, b...), 2), rx)
+		mm.as.Unmap(textBase, pageSz)
+		h.mapAt(mm, textBase, h.pages(splitPage([]byte{0xb8, 41, 0, 0, 0}, []byte{0x0f}), 1), rx)
+		c := h.p.NewContext(pkgcontext.Background())
+		defer c.Release()
+		ac := newAC(textBase, 0)
+		if nr := h.syscall(c, mm, ac); nr != 41 {
+			t.Fatalf("split syscall = %d, want 41", nr)
+		}
+		if nr := h.syscall(c, mm, ac); nr != 500 {
+			t.Fatalf("next syscall = %d, want 500", nr)
+		}
+	})
+}
+
+// TestSplitSyscallWX: a syscall split by the boundary of two W^X windows.
+func TestSplitSyscallWX(t *testing.T) {
+	h := newHarness(t)
+	mm := h.newMM()
+	data := bytes.Repeat([]byte{0x90}, 2<<20)
+	copy(data, []byte{0xb8, 40, 0, 0, 0})
+	data[wxWindow-1] = 0x0f
+	copy(data[wxWindow:], []byte{0x05, 0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05})
+	h.mapAt(mm, 0xA00000, h.pages(data, 512), hostarch.AnyAccess)
+	c := h.p.NewContext(pkgcontext.Background())
+	defer c.Release()
+	ac := newAC(0xA00000, 0)
+	if nr := h.syscall(c, mm, ac); nr != 40 {
+		t.Fatalf("split syscall = %d, want 40", nr)
+	}
+	if got := ac.StateData().Regs.Rip; got != 0xA00000+wxWindow+1 {
+		t.Fatalf("resume at %#x", got)
+	}
+	if nr := h.syscall(c, mm, ac); nr != 500 {
+		t.Fatalf("next syscall = %d, want 500", nr)
+	}
+}
+
+// TestOversubscribed runs many more busy guest threads than there are vCPUs, all
+// making syscalls in a tight loop, and checks that none starves and that the
+// round trip of one more thread stays bounded.
+func TestOversubscribed(t *testing.T) {
+	h := newHarness(t)
+	g := buildGuest()
+	mm := h.newMM()
+	h.setup(mm, g)
+	threads := 8 * runtime.NumCPU()
+	const dur = 4 * time.Second
+	counts := make([]int, threads)
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	for w := 0; w < threads; w++ {
+		wg.Add(1)
+		go func(w int) {
+			defer wg.Done()
+			c := h.p.NewContext(pkgcontext.Background())
+			defer c.Release()
+			ac := newAC(g.loop, 0)
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				if _, _, err := c.Switch(pkgcontext.Background(), mm, ac, -1); err != nil {
+					return
+				}
+				counts[w]++
+			}
+		}(w)
+	}
+	// the probe: one more thread, its round trips timed one by one
+	var lat []time.Duration
+	probe := h.p.NewContext(pkgcontext.Background())
+	pac := newAC(g.loop, 0)
+	end := time.Now().Add(dur)
+	for time.Now().Before(end) {
+		t0 := time.Now()
+		if _, _, err := probe.Switch(pkgcontext.Background(), mm, pac, -1); err != nil {
+			t.Fatalf("probe: %v", err)
+		}
+		lat = append(lat, time.Since(t0))
+	}
+	close(stop)
+	wg.Wait()
+	probe.Release()
+	sort.Slice(lat, func(i, j int) bool { return lat[i] < lat[j] })
+	total, lo, hi := 0, counts[0], counts[0]
+	for _, c := range counts {
+		total += c
+		lo, hi = min(lo, c), max(hi, c)
+	}
+	n := len(lat)
+	t.Logf("OVERSUB %d busy threads on %d vCPUs: %d syscalls in %v (%.0f per second); per thread min %d, mean %d, max %d; probe round trip p50 %v p99 %v p99.9 %v max %v over %d",
+		threads, runtime.NumCPU(), total, dur, float64(total)/dur.Seconds(), lo, total/threads, hi, lat[n/2], lat[n*99/100], lat[n*999/1000], lat[n-1], n)
+	if lo < total/threads/20 {
+		t.Errorf("a thread starved: %d syscalls against a mean of %d", lo, total/threads)
+	}
+	if lat[n*99/100] > 50*time.Millisecond {
+		t.Errorf("probe p99 %v", lat[n*99/100])
 	}
 }
