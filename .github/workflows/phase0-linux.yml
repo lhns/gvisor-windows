@@ -34,6 +34,11 @@ jobs:
           else
             STORAGE=${{ matrix.storage }} STORAGE_DRIVER=${{ matrix.driver }} scripts/phase0/engine-runsc.sh start
           fi
+      - name: Probe sandbox (before test)
+        if: matrix.engine == 'runsc'
+        run: |
+          docker exec podman-in-runsc sh -s <scripts/phase0/probe.sh >"$RESULTS_DIR/out/probe-before.txt" 2>&1 || true
+          cat "$RESULTS_DIR/out/probe-before.txt"
       - name: Acceptance test
         run: |
           export SHARE_DIR=/tmp/acc-share RESULTS_DIR="$RESULTS_DIR/out"
