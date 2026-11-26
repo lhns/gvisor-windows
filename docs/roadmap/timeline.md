@@ -21,6 +21,8 @@ gantt
     Set the TLS register :platform_tls_register, 2026-11-26, 2026-11-26
     Restrict the stub process :platform_restricted_stub, 2026-11-26, 2026-11-26
     Stub and controller prototype :platform_stub_controller, 2026-11-26, 2026-11-26
+    Scan code pages for syscalls :platform_page_verification, 2026-11-26, 2026-11-26
+    Patch syscall sites into jumps :platform_syscall_fast_path, 2026-11-26, 2026-11-26
     Hook syscalls like zpoline :crit, platform_zpoline_hooks, 2026-11-26, 2026-11-26
     Restore the TLS register after switches :platform_fs_base_repair, 2026-11-26, 2026-11-26
     Check what exceptions do to stacks :platform_exception_stack, 2026-11-26, 2026-11-26
@@ -28,6 +30,7 @@ gantt
     Measure debugger fault handling :platform_debug_event_cost, 2026-11-26, 2026-11-26
     Survey patchable syscall sites :platform_syscall_site_survey, 2026-11-26, 2026-11-26
     Count page faults per exec :platform_faults_per_exec, 2026-11-26, 2026-11-26
+    Controller waits without busy polling :platform_controller_wakeups, 2026-11-26, 2026-11-26
     section sentry - sentry
     Recover faults in Go :sentry_go_fault_recovery, 2026-11-26, 2026-11-26
     Sentry builds for Windows :active, sentry_windows_build, 2026-11-26, 2026-11-26
@@ -60,5 +63,5 @@ gantt
     Choose how to run gVisor's tests :ops_syscall_test_strategy, 2026-11-26, 2026-11-26
 ```
 
-Not shown (no `start`): `runsc-container-on-windows`, `runsc-sandbox-lifecycle`, `platform-page-verification`, `platform-syscall-fast-path`, `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-winstub`, `platform-busybox-on-windows`, `platform-hardware-acceleration`, `platform-no-fsgsbase-fallback`, `platform-static-guest-from-memory`, `platform-binary-translation-fallback`, `platform-controller-wakeups`, `sentry-memory-file-sections`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `sentry-fault-recovery`, `sentry-host-stdio-and-tty`, `sentry-threads-and-signals`, `fs-windows-directfs`, `fs-change-notifications`, `fs-linux-metadata-on-ntfs`, `fs-handles-do-not-block-users`, `fs-root-filesystem-source`, `fs-persistent-storage-impl`, `net-netstack-windows-link`, `net-port-forwarding`, `net-bridge-networking`, `workloads-podman-on-windows`, `workloads-acceptance-test-windows`, `workloads-podman-harness`, `workloads-gvisor-bridge-netlink`, `workloads-gvisor-port-publishing`, `ops-windows-ci-standard-user`, `ops-syscall-tests-on-windows`, `ops-upstream-merges`, `ops-portable-packaging`
+Not shown (no `start`): `runsc-container-on-windows`, `runsc-sandbox-lifecycle`, `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-winstub`, `platform-busybox-on-windows`, `platform-hardware-acceleration`, `platform-no-fsgsbase-fallback`, `platform-static-guest-from-memory`, `platform-binary-translation-fallback`, `sentry-memory-file-sections`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `sentry-fault-recovery`, `sentry-host-stdio-and-tty`, `sentry-threads-and-signals`, `fs-windows-directfs`, `fs-change-notifications`, `fs-linux-metadata-on-ntfs`, `fs-handles-do-not-block-users`, `fs-root-filesystem-source`, `fs-persistent-storage-impl`, `net-netstack-windows-link`, `net-port-forwarding`, `net-bridge-networking`, `workloads-podman-on-windows`, `workloads-acceptance-test-windows`, `workloads-podman-harness`, `workloads-gvisor-bridge-netlink`, `workloads-gvisor-port-publishing`, `ops-windows-ci-standard-user`, `ops-syscall-tests-on-windows`, `ops-upstream-merges`, `ops-portable-packaging`
 <!-- END GENERATED: timeline -->

@@ -533,18 +533,20 @@
   title: Scan code pages for syscalls
   track: platform
   kind: feature
-  state: next
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/1a-stub-prototype.md
+  verdict_quote: generated code is rescanned under W^X (a JIT guest gets the Linux results with no NT-kernel syscall)
   headline: ''
   depends_on:
   - platform-stub-controller
   replaced_by: []
   lane: windows-ci
-  start: ''
-  end: ''
-  folded: []
+  start: '2026-11-26'
+  end: '2026-11-26'
+  folded:
+  - Views must be mapped RWX and lowered, raising map cost to 7.9 us per page (2026-11-26, commit b5cc61e9b)
   overview: false
   plain: Before guest code may run, each page is scanned for syscall instructions; patchable sites become jumps into the stub trampoline, the rest are made to fault into the debugger.
   notes: 'Done when: W^X holds (writes to executable pages drop execute permission and pages are re-scanned before running again), anonymous JIT memory is scanned on mmap and mprotect with PROT_EXEC, and
@@ -553,17 +555,18 @@
   title: Patch syscall sites into jumps
   track: platform
   kind: experiment
-  state: next
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/1a-stub-prototype.md
+  verdict_quote: Every syscall site of the glibc, fork and Go guests is patched (0.00% of executed syscalls on the ud2 path)
+  headline: 0.00% of executed syscalls on the ud2 path
   depends_on:
   - platform-stub-controller
   replaced_by: []
   lane: windows-ci
-  start: ''
-  end: ''
+  start: '2026-11-26'
+  end: '2026-11-26'
   folded: []
   overview: false
   plain: Syscall sites are patched like gVisor's usertrap into a jump through a table at 0x60000, so syscalls never raise an exception.
@@ -1542,18 +1545,20 @@
   title: Controller waits without busy polling
   track: platform
   kind: feature
-  state: next
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/1a-stub-prototype.md
+  verdict_quote: an event hand-off keeps the patched syscall at 0.3 us median
+  headline: 0.3 us median
   depends_on:
   - platform-stub-controller
   replaced_by: []
   lane: windows-ci
-  start: ''
-  end: ''
-  folded: []
+  start: '2026-11-26'
+  end: '2026-11-26'
+  folded:
+  - Remaining 8-9 %fs repairs per Go run follow debug events, which stop all threads (2026-11-26, commit b5cc61e9b)
   overview: false
   plain: The prototype controller polls all stubs on one thread and starves guests on small machines; replace it with spin-then-wait hand-offs per stub thread.
   notes: 'Done when: the Go guest runs on a 4-vCPU runner with no FS-base losses caused by controller starvation and syscall latency stays near 0.3 us.'
