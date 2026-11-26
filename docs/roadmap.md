@@ -144,7 +144,6 @@ flowchart TB
     fs_compat_layer_not_boundary --> fs_windows_directfs
     platform_static_guest_from_memory --> platform_fast_process_start
     net_netstack_windows_link --> runsc_container_on_windows
-    runsc_container_on_windows --> workloads_podman_on_windows
     net_bridge_networking --> workloads_podman_on_windows
     linkStyle 18 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
@@ -190,6 +189,7 @@ flowchart TB
 | Binary translation as a fallback | ⏸ parked | Translate guest code (as the owner's v3compat does with DynamoRIO on Linux) only if debugger faults or unpatchable syscalls prove too slow, or to support CPUs without FSGSBASE. |
 | Give freed guest memory back | ⚠ open | Decommitted guest memory only partly leaves the working set and never reduces commit charge, because pages stay committed in 1 GB sections. |
 | Start guest processes fast | ○ next | A guest process takes 280-560 ms to start through the Sentry, against 18 ms for a bare stub; profile the gap and keep a pool of ready stubs. |
+| Syscalls split across mappings | ⚠ open | A syscall instruction whose two bytes fall into two separately mapped ranges is not found by the scan, so it would reach the Windows kernel. |
 | Event waiting on IOCP | ⛔ blocked | Waiting for many host events at once (epoll on Linux) moves to Windows completion ports. |
 | Timers and clocks on Windows | ⛔ blocked | The Sentry's clocks and timers run on Windows' high-resolution timers. |
 | Guest terminal and stdio | ⛔ blocked | A guest program's input, output and terminal connect to the Windows console (ConPTY), including Ctrl-C. |
@@ -201,12 +201,15 @@ flowchart TB
 | Root filesystem from an OCI bundle | ⛔ blocked | The guest's root filesystem comes from an unpacked OCI bundle directory on Windows. |
 | Storage that survives restarts | ⛔ blocked | Implement the chosen writable filesystem so data inside the sandbox outlives a restart. |
 | Editor safe-saves keep Linux metadata | ⚠ open | An editor's safe-save replaces the file, which drops its metadata stream, so the guest falls back to the mount defaults for mode and owner. |
+| Bring container images onto NTFS | ○ next | Decide how an image root filesystem with symlinks, modes and device nodes reaches the sandbox: an importer that writes the metadata streams, or a read-only erofs image with a writable layer. |
 | Netstack to Windows sockets | ✔ done · successful | gVisor's own TCP/IP stack sends guest traffic out through ordinary Windows sockets, like a user-space NAT. |
 | Bridge networking inside gVisor | ✔ done · successful | Podman's default network creates a bridge and veth pairs over netlink; gVisor lacks part of that, so it fails today. Fix it in gVisor itself, first on Linux, then it carries over to Windows. |
 | Podman on gVisor on Linux | ✔ done · mixed ⚠ | Run the acceptance test on stock gVisor on Linux; whatever fails there is a gap in gVisor itself, not in the port. |
 | Podman passes on Windows | ⛔ blocked | The bar for enough features: an unmodified Podman engine passes the acceptance test on gVisor on Windows. |
 | Acceptance test for Windows | ⛔ blocked | The ten acceptance steps written for Windows, driving the stock Podman and docker clients. |
 | Serve Podman to Windows clients | ⛔ blocked | The test harness runs the Podman engine on runsc and exposes its API to the stock Windows clients. |
+| Podman API on a named pipe | ⛔ blocked | Expose the Podman engine API on a Windows named pipe owned by the user, instead of a loopback TCP port. |
+| Probe Podman inside the sandbox | ⛔ blocked | Right after busybox works, run podman --version and podman info inside the sandbox; their failures are the real gap list. |
 | Pick gVisor as the base | ✔ done · unrated | Of all ways to run Linux code on Windows without admin, gVisor's user-space Linux kernel is the only one that already runs containers. |
 | Name it gvisor-windows | ✔ done · n/a | The project is an unofficial fork of gVisor's Go branch called gvisor-windows. |
 | Go or no-go after Phase 0 | ✔ done · n/a | Go: the owner asked for the full project; ADR 0004 lists the conditions. |
@@ -230,6 +233,7 @@ flowchart TB
 - `runsc-windows-boot`: Boot runsc on Windows
 - `sentry-dynamic-elf-and-exec`: Dynamic programs, exec and pipes
 - `fs-safe-save-keeps-metadata`: Editor safe-saves keep Linux metadata
+- `platform-split-syscall-unpatched`: Syscalls split across mappings
 <!-- END GENERATED: ready-now -->
 
 ## Running
@@ -247,7 +251,7 @@ _None._
 ## Waiting on the owner
 
 <!-- BEGIN GENERATED: waiting-on-owner -->
-_None._
+- `fs-rootfs-import`: Bring container images onto NTFS
 <!-- END GENERATED: waiting-on-owner -->
 
 ## Timeline
@@ -350,11 +354,11 @@ Generated on 2026-11-26.
 Each track has its own page with its tree, node table and per-node details.
 
 - [runsc - runsc](roadmap/tracks/runsc.md): 5 nodes (2 done, 1 next, 2 blocked)
-- [platform - platform](roadmap/tracks/platform.md): 28 nodes (19 done, 2 next, 2 blocked, 4 parked, 1 abandoned)
+- [platform - platform](roadmap/tracks/platform.md): 29 nodes (19 done, 3 next, 2 blocked, 4 parked, 1 abandoned)
 - [sentry - sentry](roadmap/tracks/sentry.md): 10 nodes (5 done, 1 next, 4 blocked)
-- [fs - files](roadmap/tracks/fs.md): 10 nodes (6 done, 2 next, 2 blocked)
+- [fs - files](roadmap/tracks/fs.md): 11 nodes (6 done, 3 next, 2 blocked)
 - [net - network](roadmap/tracks/net.md): 4 nodes (4 done)
-- [workloads - workloads](roadmap/tracks/workloads.md): 10 nodes (7 done, 3 blocked)
+- [workloads - workloads](roadmap/tracks/workloads.md): 12 nodes (7 done, 5 blocked)
 - [research - research](roadmap/tracks/research.md): 8 nodes (2 done, 6 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 10 nodes (7 done, 1 next, 2 blocked)
 <!-- END GENERATED: tracks -->

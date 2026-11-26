@@ -62,9 +62,10 @@ flowchart TB
 | `fs-linux-metadata-on-ntfs` | Linux file metadata on NTFS | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | fs-windows-directfs |  |  |  | docs/results/2-windows-directfs.md |
 | `fs-handles-do-not-block-users` | Files stay editable on Windows | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | fs-windows-directfs |  |  |  | docs/results/2-windows-directfs.md |
 | `fs-persistent-storage-choice` | Choose the persistent storage | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 | fs-persistent-image-storage, fs-windows-directfs |  |  |  | docs/adr/0007-persistent-storage-in-a-windows-folder.md |
-| `fs-root-filesystem-source` | Root filesystem from an OCI bundle | feature | windows-ci | blocked | unrated | 2026-11-26 |  | fs-windows-directfs, runsc-windows-boot |  |  |  |  |
+| `fs-root-filesystem-source` | Root filesystem from an OCI bundle | feature | windows-ci | blocked | unrated | 2026-11-26 |  | fs-windows-directfs, runsc-windows-boot, fs-rootfs-import |  |  |  |  |
 | `fs-persistent-storage-impl` | Storage that survives restarts | feature | windows-ci | blocked | unrated |  |  | fs-persistent-storage-choice |  |  |  |  |
 | `fs-safe-save-keeps-metadata` | Editor safe-saves keep Linux metadata | defect | windows-ci | next | unrated | 2026-11-26 |  |  |  |  |  | docs/results/2-windows-directfs.md |
+| `fs-rootfs-import` | Bring container images onto NTFS | owner-decision | owner | next | n/a |  |  |  |  |  |  |  |
 
 ### Details per node
 
@@ -80,6 +81,7 @@ flowchart TB
 | `fs-root-filesystem-source` | Root filesystem from an OCI bundle |  |  | The guest's root filesystem comes from an unpacked OCI bundle directory on Windows. | Done when: a guest boots from an unpacked rootfs directory on NTFS through runsc boot. The mount wiring exists but has only been compiled. |  |  |  |  |
 | `fs-persistent-storage-impl` | Storage that survives restarts |  |  | Implement the chosen writable filesystem so data inside the sandbox outlives a restart. | Done when: files and image layers written in the guest are there after the sandbox restarts. |  |  |  |  |
 | `fs-safe-save-keeps-metadata` | Editor safe-saves keep Linux metadata |  |  | An editor's safe-save replaces the file, which drops its metadata stream, so the guest falls back to the mount defaults for mode and owner. | Fixed when: a safe-save (write temp, rename over) from Windows keeps the Linux mode and owner the guest set. |  |  |  |  |
+| `fs-rootfs-import` | Bring container images onto NTFS |  |  | Decide how an image root filesystem with symlinks, modes and device nodes reaches the sandbox: an importer that writes the metadata streams, or a read-only erofs image with a writable layer. | Done when: an ADR records the choice, after reading how gVisor opens erofs images and which mode a file without a metadata stream reports. |  |  |  |  |
 
 ### Folded items per node
 

@@ -36,6 +36,7 @@ gantt
     Save and restore FPU and SSE state :platform_fp_state, 2026-11-26, 2026-11-26
     Retire the stub prototype :platform_retire_prototype, 2026-11-26, 2026-11-26
     Give freed guest memory back :platform_memory_release, 2026-11-26, 2026-11-26
+    Syscalls split across mappings :platform_split_syscall_unpatched, 2026-11-26, 2026-11-26
     section sentry - sentry
     Recover faults in Go :sentry_go_fault_recovery, 2026-11-26, 2026-11-26
     Sentry builds for Windows :sentry_windows_build, 2026-11-26, 2026-11-26
@@ -83,5 +84,5 @@ gantt
     Choose how to run gVisor's tests :ops_syscall_test_strategy, 2026-11-26, 2026-11-26
 ```
 
-Not shown (no `start`): `runsc-container-on-windows`, `runsc-sandbox-lifecycle`, `runsc-windows-boot`, `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-busybox-on-windows`, `platform-hardware-acceleration`, `platform-no-fsgsbase-fallback`, `platform-binary-translation-fallback`, `platform-fast-process-start`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `sentry-host-stdio-and-tty`, `sentry-threads-and-signals`, `sentry-dynamic-elf-and-exec`, `fs-change-notifications`, `fs-persistent-storage-impl`, `workloads-podman-on-windows`, `workloads-acceptance-test-windows`, `workloads-podman-harness`, `ops-syscall-tests-on-windows`, `ops-upstream-merges`, `ops-portable-packaging`
+Not shown (no `start`): `runsc-container-on-windows`, `runsc-sandbox-lifecycle`, `runsc-windows-boot`, `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-busybox-on-windows`, `platform-hardware-acceleration`, `platform-no-fsgsbase-fallback`, `platform-binary-translation-fallback`, `platform-fast-process-start`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `sentry-host-stdio-and-tty`, `sentry-threads-and-signals`, `sentry-dynamic-elf-and-exec`, `fs-change-notifications`, `fs-persistent-storage-impl`, `fs-rootfs-import`, `workloads-podman-on-windows`, `workloads-acceptance-test-windows`, `workloads-podman-harness`, `workloads-podman-api-named-pipe`, `workloads-podman-probe`, `ops-syscall-tests-on-windows`, `ops-upstream-merges`, `ops-portable-packaging`
 <!-- END GENERATED: timeline -->

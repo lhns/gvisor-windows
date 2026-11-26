@@ -448,6 +448,8 @@
   - net-bridge-networking
   - workloads-gvisor-cgroupfs-readonly
   - net-nftables-thread-safety
+  - platform-split-syscall-unpatched
+  - workloads-podman-api-named-pipe
   replaced_by: []
   lane: windows-ci
   start: ''
@@ -1130,6 +1132,7 @@
   depends_on:
   - fs-windows-directfs
   - runsc-windows-boot
+  - fs-rootfs-import
   replaced_by: []
   lane: windows-ci
   start: '2026-11-26'
@@ -1188,6 +1191,7 @@
   depends_on:
   - runsc-container-on-windows
   - net-port-forwarding
+  - workloads-podman-probe
   replaced_by: []
   lane: windows-ci
   start: ''
@@ -1752,3 +1756,78 @@
   overview: false
   plain: An editor's safe-save replaces the file, which drops its metadata stream, so the guest falls back to the mount defaults for mode and owner.
   notes: 'Fixed when: a safe-save (write temp, rename over) from Windows keeps the Linux mode and owner the guest set.'
+- outcome: unrated
+  evidence:
+  - docs/results/1c-windows-platform.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-26'
+  end: ''
+  folded: []
+  overview: false
+  id: platform-split-syscall-unpatched
+  title: Syscalls split across mappings
+  track: platform
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: A syscall instruction whose two bytes fall into two separately mapped ranges is not found by the scan, so it would reach the Windows kernel.
+  notes: 'Fixed when: a test guest with a syscall straddling two MapFile ranges is patched and served correctly.'
+- outcome: n/a
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  id: fs-rootfs-import
+  title: Bring container images onto NTFS
+  track: fs
+  kind: owner-decision
+  state: next
+  lane: owner
+  plain: 'Decide how an image root filesystem with symlinks, modes and device nodes reaches the sandbox: an importer that writes the metadata streams, or a read-only erofs image with a writable layer.'
+  notes: 'Done when: an ADR records the choice, after reading how gVisor opens erofs images and which mode a file without a metadata stream reports.'
+- outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - workloads-podman-harness
+  replaced_by: []
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  id: workloads-podman-api-named-pipe
+  title: Podman API on a named pipe
+  track: workloads
+  kind: feature
+  state: blocked
+  lane: windows-ci
+  plain: Expose the Podman engine API on a Windows named pipe owned by the user, instead of a loopback TCP port.
+  notes: 'Done when: podman --url npipe:////./pipe/<name> and DOCKER_HOST with the same pipe reach the engine in the sandbox.'
+- outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - platform-busybox-on-windows
+  replaced_by: []
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  id: workloads-podman-probe
+  title: Probe Podman inside the sandbox
+  track: workloads
+  kind: experiment
+  state: blocked
+  lane: windows-ci
+  plain: Right after busybox works, run podman --version and podman info inside the sandbox; their failures are the real gap list.
+  notes: 'Done when: the gap list is written up in docs/results.'
