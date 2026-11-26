@@ -51,3 +51,7 @@ func installFaultHandlers() {
 		panic(fmt.Sprintf("Unable to set handler for SIGBUS: %v", err))
 	}
 }
+
+// ensureFaultStack is a no-op on Linux, where signal handlers run on the
+// signal stack.
+func ensureFaultStack() {}
