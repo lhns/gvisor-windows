@@ -228,8 +228,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        podman: ["v6.2.0"]
-        v: [ipt-priv, ipt-remount]
+        include:
+          - {podman: "v5.7.1", v: ipt-priv}
+          - {podman: "v6.2.0", v: nft-priv}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -241,16 +242,16 @@ jobs:
           docker run --rm --runtime runsc-fix --cap-add NET_ADMIN -v /tmp/nlcheck:/nlcheck:ro --entrypoint /nlcheck mirror.gcr.io/library/alpine:3.20 | tee "$RESULTS_DIR/out/nlcheck.txt" || true
       - name: Start engine
         run: |
-          export SHARE_DIR=/tmp/acc-share STORAGE=hostdir PODMAN_IMAGE=quay.io/podman/stable:${{ matrix.podman }} CGROUPS=enabled RUNTIME=runsc-fix-strace NETAVARK_TRACE=1 FW=iptables
-          [ "${{ matrix.v }}" = ipt-priv ] && export PRIVILEGED=1
-          [ "${{ matrix.v }}" = ipt-remount ] && export REMOUNT_CG=1
+          export SHARE_DIR=/tmp/acc-share STORAGE=hostdir PODMAN_IMAGE=quay.io/podman/stable:${{ matrix.podman }} CGROUPS=enabled RUNTIME=runsc-fix-strace NETAVARK_TRACE=1 PRIVILEGED=1
+          [ "${{ matrix.v }}" = ipt-priv ] && export FW=iptables
+          [ "${{ matrix.v }}" = nft-priv ] && export RUNTIME=runsc-nft-strace
           test/e2e/podman-acceptance/harness/engine-runsc.sh start
           docker exec podman-in-runsc podman version | tee "$RESULTS_DIR/out/engine-version.txt"
       - name: Acceptance test (strict)
         run: |
-          export SHARE_DIR=/tmp/acc-share RESULTS_DIR="$RESULTS_DIR/out" STORAGE=hostdir RUNTIME=runsc-fix-strace CGROUPS=enabled NETAVARK_TRACE=1 FW=iptables
-          [ "${{ matrix.v }}" = ipt-priv ] && export PRIVILEGED=1
-          [ "${{ matrix.v }}" = ipt-remount ] && export REMOUNT_CG=1
+          export SHARE_DIR=/tmp/acc-share RESULTS_DIR="$RESULTS_DIR/out" STORAGE=hostdir RUNTIME=runsc-fix-strace CGROUPS=enabled NETAVARK_TRACE=1 PRIVILEGED=1
+          [ "${{ matrix.v }}" = ipt-priv ] && export FW=iptables
+          [ "${{ matrix.v }}" = nft-priv ] && export RUNTIME=runsc-nft-strace
           export PODMAN_IMAGE=quay.io/podman/stable:${{ matrix.podman }}
           export CONTAINER_HOST=unix:///tmp/podman-runsc.sock
           export ENGINE_CTL="$PWD/test/e2e/podman-acceptance/harness/engine-runsc.sh"
@@ -261,7 +262,7 @@ jobs:
           cd "$RESULTS_DIR/out"
           docker logs podman-in-runsc >engine-container.log 2>&1 || true
           docker exec podman-in-runsc sh -c "tail -c 300000 /var/log/netavark.log" >netavark.tail 2>&1 || true
-          docker exec podman-in-runsc sh -c "grep cgroup /proc/mounts; iptables -t nat -S; iptables -S; ip addr; ip route" >sandbox-state.txt 2>&1 || true
+          docker exec podman-in-runsc sh -c "grep cgroup /proc/mounts; iptables -t nat -S; iptables -S; nft list ruleset; cat /proc/net/dev" >sandbox-state.txt 2>&1 || true
           docker inspect podman-in-runsc --format 'privileged={{.HostConfig.Privileged}} cgroupns={{.HostConfig.CgroupnsMode}}' >>sandbox-state.txt 2>&1 || true
           sudo chmod -R a+r /tmp/runsc-logs
           ( cd /tmp/runsc-logs; grep -rhE 'W1[0-9]+ .*(unexpected|netfilter|iptables|bridge|veth)|errno=(22|92|93|95|97) ' . | grep -E 'NETLINK|netlink|unexpected|iptables|IPT|bridge|veth|sendmsg|setsockopt|getsockopt' | cut -c1-400 | head -300 ) >gvisor-netlink.txt || true
