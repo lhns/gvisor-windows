@@ -7,7 +7,7 @@ for f in sorted(glob.glob(os.path.join(res, "f-*.csv"))):
     cols, last = None, None
     for line in open(f, errors="replace"):
         parts = line.rstrip("\n").split("\t")
-        if cols is None and any("/task/faults" in p for p in parts):
+        if cols is None and parts[0].startswith("Time"):
             cols = [p.strip() for p in parts]
             continue
         if all(re.fullmatch(r"-?\d+", p) for p in parts) and cols and len(parts) == len(cols):
