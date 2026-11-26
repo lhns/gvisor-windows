@@ -81,7 +81,7 @@ jobs:
             -Program C:\ci\bin\runsctest.exe `
             -Arguments '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-hostfs','-only','hostfs,forward' `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 300
-      - name: Case sensitivity as a standard user (known gap: Windows denies the flag, see docs/results/5-podman-windows.md)
+      - name: Case sensitivity as a standard user (known gap, Windows denies the flag, see docs/results/5-podman-windows.md)
         shell: pwsh
         continue-on-error: true
         run: |
