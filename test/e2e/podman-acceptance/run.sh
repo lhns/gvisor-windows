@@ -82,7 +82,7 @@ step6() { local L=$RESULTS_DIR/step-6.log rc=0 d="" w="$SHARE_DIR/proj" cid
 step7() { local L=$RESULTS_DIR/step-7.log rc=0 cid ok=1 i
   tp rm -f -t 0 acc-web >/dev/null 2>&1
   if [ "$HOSTNET" = 1 ]; then
-    cid=$(tp run -d --name acc-web --network=host "$ALPINE" httpd -f -p 8080 -h /etc 2>"$L")
+    cid=$(tp run -d --name acc-web --network=host "$ALPINE" busybox httpd -f -p 8080 -h /etc 2>"$L")
   else
     cid=$(tp run -d --name acc-web -p 8080:80 "$NGINX" 2>"$L")
   fi
@@ -98,7 +98,7 @@ step8() { local L=$RESULTS_DIR/step-8.log rc=0 d target=web nm=""
 services:
   web:
     image: $ALPINE
-    command: ["sh","-c","mkdir -p /www && echo compose-ok > /www/index.html && httpd -f -p 80 -h /www"]
+    command: ["sh","-c","mkdir -p /www && echo compose-ok > /www/index.html && busybox httpd -f -p 80 -h /www"]
     $nm
   cli:
     image: $ALPINE

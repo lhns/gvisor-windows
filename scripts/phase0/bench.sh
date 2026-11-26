@@ -22,7 +22,7 @@ run() { # label cmd...
 : >"$R/bench.tsv"
 # host: inner script as-is (rootfs dir = /tmp)
 cp "$W/small.tar" "$W/small-host.tar"
-run native-host bash -c "sed 's#/root/untar#$W/rootfs#; s#/dev/shm/untar#$W/shm#' $HERE/bench-inner.sh >$W/inner-host.sh; sh $W/inner-host.sh $W/small.tar $W/bind"
+run native-host bash -c "sed 's#/root/untar#$W/rootfs#g; s#/dev/shm/untar#$W/shm#g' $HERE/bench-inner.sh >$W/inner-host.sh; sh $W/inner-host.sh $W/small.tar $W/bind"
 for rt in runc runsc; do
   rm -rf "$W/bind"/*
   run "docker-$rt" docker run --rm --runtime "$rt" -v "$W/small.tar:/small.tar:ro" -v "$HERE/bench-inner.sh:/inner.sh:ro" -v "$W/bind:/bind" "$IMG" sh /inner.sh /small.tar /bind

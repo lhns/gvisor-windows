@@ -9,7 +9,7 @@ W=$(mktemp -d); cd "$W"
 wget -q "$URL/gvisor.tar.bz2" "$URL/gvisor.tar.bz2.sha512"
 sha512sum -c gvisor.tar.bz2.sha512
 mkdir x && tar -xjf gvisor.tar.bz2 -C x
-find x -type f | head -20
+find x -type f | head -20; sudo cp -r x/gvisor-bin /usr/local/bin/ && sudo chmod -R a+rx /usr/local/bin/gvisor-bin
 for f in runsc containerd-shim-runsc-v1; do
   p=$(find x -type f -name "$f" | head -1); chmod a+rx "$p"; sudo cp "$p" /usr/local/bin/
 done
