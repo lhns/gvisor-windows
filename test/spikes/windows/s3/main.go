@@ -195,7 +195,7 @@ func main() {
 		name := map[uint64]string{0: "fs:[0]", 1: "fs:[-8]"}[off]
 		report(nrepairs()-r0 == N, "S3.repair_"+name, fmt.Sprintf("%d/%d faults repaired, %.0f ns per (wrfsbase 0 + faulting read + repair + retry); last fault addr=%#x base-at-loss=%#x", nrepairs()-r0, N, float64(d.Nanoseconds())/N, lastFaultAddr, lastBaseAtLoss))
 	}
-	report(rdfsbase() == base, "S3.base_intact_at_end", fmt.Sprintf("base=%#x", rdfsbase()))
+	info("main thread FS base at end (unrepaired, may legitimately be 0 after a deschedule): %#x", rdfsbase())
 
 	// 7. selector
 	info("FS selector: expected(at set)=%#x, mismatches seen at loss time=%d, last selector at loss (mov eax,fs)=%#x, last CONTEXT.SegFs at loss=%#x, total losses=%d", selExpected, selMismatch, lastSelHW, lastSelCtx, nrepairs())
