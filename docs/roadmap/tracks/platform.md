@@ -25,9 +25,9 @@ flowchart TB
     platform_syscall_fast_path[/"✔ Patch syscall sites<br/>into jumps"/]
     platform_fs_base_repair["✔ Restore the TLS<br/>register after<br/>switches"]
     platform_controller_wakeups["✔ Controller waits<br/>without busy polling"]
+    platform_winstub["▶ Windows platform for<br/>the Sentry"]
     platform_own_vdso["⛔ Own vDSO for clock<br/>calls"]
     platform_64k_mapping_conflicts["⏸ Handle 64 KB mapping<br/>conflicts"]
-    platform_winstub["⛔ Windows platform for<br/>the Sentry"]
     platform_hardware_acceleration["⏸ Use hardware<br/>acceleration when<br/>available"]
     platform_static_guest_from_memory["⛔ Run a static guest<br/>from memory"]
     platform_busybox_on_windows["⛔ Run busybox under<br/>the Sentry"]
@@ -50,13 +50,14 @@ flowchart TB
     platform_stub_controller ~~~ platform_syscall_fast_path
     platform_stub_controller ~~~ platform_fs_base_repair
     platform_page_verification ~~~ platform_controller_wakeups
-    platform_syscall_fast_path ~~~ platform_own_vdso
-    platform_fs_base_repair ~~~ platform_64k_mapping_conflicts
+    platform_syscall_fast_path ~~~ platform_controller_wakeups
+    platform_fs_base_repair ~~~ platform_controller_wakeups
     platform_controller_wakeups ~~~ platform_winstub
-    platform_own_vdso ~~~ platform_winstub
-    platform_64k_mapping_conflicts ~~~ platform_winstub
+    platform_controller_wakeups ~~~ platform_own_vdso
+    platform_controller_wakeups ~~~ platform_64k_mapping_conflicts
     platform_winstub ~~~ platform_hardware_acceleration
-    platform_winstub ~~~ platform_static_guest_from_memory
+    platform_own_vdso ~~~ platform_static_guest_from_memory
+    platform_64k_mapping_conflicts ~~~ platform_static_guest_from_memory
     platform_hardware_acceleration ~~~ platform_busybox_on_windows
     platform_static_guest_from_memory ~~~ platform_binary_translation_fallback
     platform_busybox_on_windows ~~~ platform_no_fsgsbase_fallback
@@ -77,15 +78,15 @@ flowchart TB
     platform_stub_controller --> platform_syscall_fast_path
     platform_stub_controller --> platform_fs_base_repair
     platform_stub_controller --> platform_controller_wakeups
-    platform_stub_controller --> platform_own_vdso
     platform_controller_wakeups --> platform_winstub
+    platform_stub_controller --> platform_own_vdso
     platform_winstub --> platform_hardware_acceleration
     platform_winstub --> platform_static_guest_from_memory
     platform_fs_base_repair --> platform_static_guest_from_memory
     platform_static_guest_from_memory --> platform_busybox_on_windows
     platform_debug_event_cost --> platform_binary_translation_fallback
     platform_binary_translation_fallback --> platform_no_fsgsbase_fallback
-    linkStyle 28,29 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    linkStyle 29,30 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -104,7 +105,8 @@ flowchart TB
     class platform_tls_register,platform_restricted_stub,platform_syscall_site_survey mixed
     class platform_zpoline_hooks dead
     class platform_fs_base_repair unrated
-    class platform_own_vdso,platform_winstub,platform_static_guest_from_memory,platform_busybox_on_windows blocked
+    class platform_winstub inprog
+    class platform_own_vdso,platform_static_guest_from_memory,platform_busybox_on_windows blocked
     class platform_64k_mapping_conflicts,platform_hardware_acceleration,platform_binary_translation_fallback,platform_no_fsgsbase_fallback parked
 ```
 <!-- END GENERATED: track-platform -->
@@ -124,7 +126,7 @@ flowchart TB
 | `platform-syscall-fast-path` | Patch syscall sites into jumps | experiment | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-stub-controller |  |  | 0.00% of executed syscalls on the ud2 path | docs/results/1a-stub-prototype.md |
 | `platform-own-vdso` | Own vDSO for clock calls | feature | windows-ci | blocked | unrated |  |  | platform-stub-controller |  |  |  |  |
 | `platform-64k-mapping-conflicts` | Handle 64 KB mapping conflicts | feature | windows-ci | parked | unrated |  |  | sentry-memory-file-sections, platform-elf-alignment-survey |  |  |  |  |
-| `platform-winstub` | Windows platform for the Sentry | feature | windows-ci | blocked | unrated |  |  | platform-stub-controller, sentry-memory-file-sections, ops-syscall-test-strategy, platform-controller-wakeups |  |  |  |  |
+| `platform-winstub` | Windows platform for the Sentry | feature | windows-ci | in-progress | unrated | 2026-11-26 |  | platform-stub-controller, sentry-memory-file-sections, ops-syscall-test-strategy, platform-controller-wakeups |  |  |  |  |
 | `platform-busybox-on-windows` | Run busybox under the Sentry | feature | windows-ci | blocked | unrated |  |  | platform-winstub, sentry-event-loop-iocp, sentry-timers-and-clocks, sentry-fault-recovery, sentry-host-stdio-and-tty, fs-root-filesystem-source, platform-fs-base-repair, platform-static-guest-from-memory |  |  |  |  |
 | `platform-hardware-acceleration` | Use hardware acceleration when available | feature | windows-ci | parked | unrated |  |  | platform-winstub |  |  |  |  |
 | `platform-zpoline-hooks` | Hook syscalls like zpoline | experiment | windows-local | abandoned | dead-end | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/0b-windows.md |

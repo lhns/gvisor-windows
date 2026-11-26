@@ -9,13 +9,13 @@ Scope: netstack to Windows sockets, port forwarding.
 <!-- BEGIN GENERATED: track-net -->
 ```mermaid
 flowchart TB
+    net_netstack_windows_link["▶ Netstack to Windows<br/>sockets"]
+    net_port_forwarding["▶ Publish guest ports<br/>on localhost"]
     net_bridge_networking["✔ Bridge networking<br/>inside gVisor"]
     net_nftables_thread_safety>"⚠ Make nftables safe<br/>for concurrent use"]
-    net_netstack_windows_link["⛔ Netstack to Windows<br/>sockets"]
-    net_port_forwarding["⛔ Publish guest ports<br/>on localhost"]
-    net_bridge_networking ~~~ net_port_forwarding
-    net_nftables_thread_safety ~~~ net_port_forwarding
     net_netstack_windows_link ~~~ net_port_forwarding
+    net_netstack_windows_link ~~~ net_bridge_networking
+    net_netstack_windows_link ~~~ net_nftables_thread_safety
     net_netstack_windows_link --> net_port_forwarding
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
@@ -31,9 +31,9 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
+    class net_netstack_windows_link,net_port_forwarding inprog
     class net_bridge_networking succ
     class net_nftables_thread_safety finding
-    class net_netstack_windows_link,net_port_forwarding blocked
 ```
 <!-- END GENERATED: track-net -->
 
@@ -42,10 +42,10 @@ flowchart TB
 <!-- BEGIN GENERATED: table-net -->
 | id | title | kind | lane | state | outcome | start | end | depends_on | replaced_by | qualified_by | headline | evidence |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `net-netstack-windows-link` | Netstack to Windows sockets | feature | windows-ci | blocked | unrated |  |  | sentry-windows-build |  |  |  |  |
-| `net-port-forwarding` | Publish guest ports on localhost | feature | windows-ci | blocked | unrated |  |  | net-netstack-windows-link |  |  |  |  |
+| `net-netstack-windows-link` | Netstack to Windows sockets | feature | windows-ci | in-progress | unrated | 2026-11-26 |  | sentry-windows-build |  |  |  |  |
+| `net-port-forwarding` | Publish guest ports on localhost | feature | windows-ci | in-progress | unrated | 2026-11-26 |  | net-netstack-windows-link |  |  |  |  |
 | `net-bridge-networking` | Bridge networking inside gVisor | feature | linux-ci | done | successful | 2026-11-26 | 2026-11-26 | workloads-strict-bar-linux |  |  | all 10 steps on Podman 6.2.0 and 5.7.1 | docs/results/1n-bridge-networking.md |
-| `net-nftables-thread-safety` | Make nftables safe for concurrent use | defect | linux-ci | next | unrated | 2026-11-26 |  |  |  |  |  | docs/results/1n-bridge-networking.md |
+| `net-nftables-thread-safety` | Make nftables safe for concurrent use | defect | linux-ci | in-progress | unrated | 2026-11-26 |  |  |  |  |  | docs/results/1n-bridge-networking.md |
 
 ### Details per node
 

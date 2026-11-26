@@ -10,22 +10,22 @@ Scope: host files, bind mounts, image storage.
 ```mermaid
 flowchart TB
     fs_persistent_image_storage[/"✔ Test persistent<br/>image storage"/]
-    fs_windows_directfs["⛔ Open Windows files<br/>directly"]
+    fs_windows_directfs["▶ Open Windows files<br/>directly"]
+    fs_linux_metadata_on_ntfs["▶ Linux file metadata<br/>on NTFS"]
+    fs_handles_do_not_block_users["▶ Files stay editable<br/>on Windows"]
+    fs_root_filesystem_source["▶ Root filesystem from<br/>an OCI bundle"]
     fs_change_notifications["⛔ Windows changes<br/>reach the guest"]
-    fs_linux_metadata_on_ntfs["⛔ Linux file metadata<br/>on NTFS"]
-    fs_handles_do_not_block_users["⛔ Files stay editable<br/>on Windows"]
-    fs_root_filesystem_source["⛔ Root filesystem from<br/>an OCI bundle"]
     fs_persistent_storage_impl["⛔ Storage that<br/>survives restarts"]
-    fs_persistent_image_storage ~~~ fs_change_notifications
-    fs_windows_directfs ~~~ fs_linux_metadata_on_ntfs
+    fs_persistent_image_storage ~~~ fs_linux_metadata_on_ntfs
     fs_windows_directfs ~~~ fs_handles_do_not_block_users
-    fs_change_notifications ~~~ fs_root_filesystem_source
-    fs_linux_metadata_on_ntfs ~~~ fs_persistent_storage_impl
+    fs_windows_directfs ~~~ fs_root_filesystem_source
+    fs_linux_metadata_on_ntfs ~~~ fs_change_notifications
     fs_handles_do_not_block_users ~~~ fs_persistent_storage_impl
-    fs_windows_directfs --> fs_change_notifications
+    fs_root_filesystem_source ~~~ fs_persistent_storage_impl
     fs_windows_directfs --> fs_linux_metadata_on_ntfs
     fs_windows_directfs --> fs_handles_do_not_block_users
     fs_windows_directfs --> fs_root_filesystem_source
+    fs_windows_directfs --> fs_change_notifications
     fs_windows_directfs --> fs_persistent_storage_impl
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
@@ -42,7 +42,8 @@ flowchart TB
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class fs_persistent_image_storage mixed
-    class fs_windows_directfs,fs_change_notifications,fs_linux_metadata_on_ntfs,fs_handles_do_not_block_users,fs_root_filesystem_source,fs_persistent_storage_impl blocked
+    class fs_windows_directfs,fs_linux_metadata_on_ntfs,fs_handles_do_not_block_users,fs_root_filesystem_source inprog
+    class fs_change_notifications,fs_persistent_storage_impl blocked
 ```
 <!-- END GENERATED: track-fs -->
 
@@ -53,12 +54,12 @@ flowchart TB
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `fs-compat-layer-not-boundary` | Compatibility layer, not security boundary | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0005-host-files-accessed-directly.md |
 | `fs-persistent-image-storage` | Test persistent image storage | experiment | linux-ci | done | mixed | 2026-11-26 | 2026-11-26 | workloads-podman-on-gvisor-linux |  |  | 3.7 s with overlay | docs/results/0a-linux.md |
-| `fs-windows-directfs` | Open Windows files directly | feature | windows-ci | blocked | unrated |  |  | sentry-windows-build, fs-compat-layer-not-boundary |  |  |  |  |
+| `fs-windows-directfs` | Open Windows files directly | feature | windows-ci | in-progress | unrated | 2026-11-26 |  | sentry-windows-build, fs-compat-layer-not-boundary |  |  |  |  |
 | `fs-change-notifications` | Windows changes reach the guest | feature | windows-ci | blocked | unrated |  |  | fs-windows-directfs |  |  |  |  |
-| `fs-linux-metadata-on-ntfs` | Linux file metadata on NTFS | feature | windows-ci | blocked | unrated |  |  | fs-windows-directfs |  |  |  |  |
-| `fs-handles-do-not-block-users` | Files stay editable on Windows | feature | windows-ci | blocked | unrated |  |  | fs-windows-directfs |  |  |  |  |
+| `fs-linux-metadata-on-ntfs` | Linux file metadata on NTFS | feature | windows-ci | in-progress | unrated | 2026-11-26 |  | fs-windows-directfs |  |  |  |  |
+| `fs-handles-do-not-block-users` | Files stay editable on Windows | feature | windows-ci | in-progress | unrated | 2026-11-26 |  | fs-windows-directfs |  |  |  |  |
 | `fs-persistent-storage-choice` | Choose the persistent storage | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 | fs-persistent-image-storage, fs-windows-directfs |  |  |  | docs/adr/0007-persistent-storage-in-a-windows-folder.md |
-| `fs-root-filesystem-source` | Root filesystem from an OCI bundle | feature | windows-ci | blocked | unrated |  |  | fs-windows-directfs |  |  |  |  |
+| `fs-root-filesystem-source` | Root filesystem from an OCI bundle | feature | windows-ci | in-progress | unrated | 2026-11-26 |  | fs-windows-directfs |  |  |  |  |
 | `fs-persistent-storage-impl` | Storage that survives restarts | feature | windows-ci | blocked | unrated |  |  | fs-persistent-storage-choice |  |  |  |  |
 
 ### Details per node

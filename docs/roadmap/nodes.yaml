@@ -617,7 +617,7 @@
   title: Windows platform for the Sentry
   track: platform
   kind: feature
-  state: blocked
+  state: in-progress
   outcome: unrated
   evidence: []
   verdict_quote: ''
@@ -629,7 +629,7 @@
   - platform-controller-wakeups
   replaced_by: []
   lane: windows-ci
-  start: ''
+  start: '2026-11-26'
   end: ''
   folded: []
   overview: true
@@ -753,7 +753,7 @@
   title: Open Windows files directly
   track: fs
   kind: feature
-  state: blocked
+  state: in-progress
   outcome: unrated
   evidence: []
   verdict_quote: ''
@@ -763,7 +763,7 @@
   - fs-compat-layer-not-boundary
   replaced_by: []
   lane: windows-ci
-  start: ''
+  start: '2026-11-26'
   end: ''
   folded: []
   overview: true
@@ -792,7 +792,7 @@
   title: Linux file metadata on NTFS
   track: fs
   kind: feature
-  state: blocked
+  state: in-progress
   outcome: unrated
   evidence: []
   verdict_quote: ''
@@ -801,7 +801,7 @@
   - fs-windows-directfs
   replaced_by: []
   lane: windows-ci
-  start: ''
+  start: '2026-11-26'
   end: ''
   folded: []
   overview: false
@@ -811,7 +811,7 @@
   title: Files stay editable on Windows
   track: fs
   kind: feature
-  state: blocked
+  state: in-progress
   outcome: unrated
   evidence: []
   verdict_quote: ''
@@ -820,7 +820,7 @@
   - fs-windows-directfs
   replaced_by: []
   lane: windows-ci
-  start: ''
+  start: '2026-11-26'
   end: ''
   folded: []
   overview: false
@@ -851,7 +851,7 @@
   title: Netstack to Windows sockets
   track: net
   kind: feature
-  state: blocked
+  state: in-progress
   outcome: unrated
   evidence: []
   verdict_quote: ''
@@ -860,7 +860,7 @@
   - sentry-windows-build
   replaced_by: []
   lane: windows-ci
-  start: ''
+  start: '2026-11-26'
   end: ''
   folded: []
   overview: true
@@ -870,7 +870,7 @@
   title: Publish guest ports on localhost
   track: net
   kind: feature
-  state: blocked
+  state: in-progress
   outcome: unrated
   evidence: []
   verdict_quote: ''
@@ -879,7 +879,7 @@
   - net-netstack-windows-link
   replaced_by: []
   lane: windows-ci
-  start: ''
+  start: '2026-11-26'
   end: ''
   folded: []
   overview: false
@@ -968,7 +968,7 @@
   title: Windows CI as a standard user
   track: ops
   kind: tooling
-  state: next
+  state: in-progress
   outcome: unrated
   evidence: []
   verdict_quote: ''
@@ -977,7 +977,7 @@
   - ops-phase0-go-no-go
   replaced_by: []
   lane: windows-ci
-  start: ''
+  start: '2026-11-26'
   end: ''
   folded: []
   overview: false
@@ -1103,7 +1103,7 @@
   title: Root filesystem from an OCI bundle
   track: fs
   kind: feature
-  state: blocked
+  state: in-progress
   outcome: unrated
   evidence: []
   verdict_quote: ''
@@ -1112,7 +1112,7 @@
   - fs-windows-directfs
   replaced_by: []
   lane: windows-ci
-  start: ''
+  start: '2026-11-26'
   end: ''
   folded: []
   overview: false
@@ -1577,7 +1577,7 @@
   title: Make nftables safe for concurrent use
   track: net
   kind: defect
-  state: next
+  state: in-progress
   outcome: unrated
   evidence:
   - docs/results/1n-bridge-networking.md
