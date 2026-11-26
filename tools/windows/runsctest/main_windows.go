@@ -335,11 +335,9 @@ func testCase() error {
 	_ = os.RemoveAll(probe)
 	must(os.MkdirAll(probe, 0o755))
 	o, perr := exec.Command("fsutil", "file", "setCaseSensitiveInfo", probe, "enable").CombinedOutput()
-	fmt.Printf("fsutil setCaseSensitiveInfo as this user: %q err=%v
-", o, perr)
+	fmt.Println("fsutil setCaseSensitiveInfo as this user:", strings.TrimSpace(string(o)), perr)
 	o, _ = exec.Command("fsutil", "file", "queryCaseSensitiveInfo", probe).CombinedOutput()
-	fmt.Printf("fsutil queryCaseSensitiveInfo: %q
-", o)
+	fmt.Println("fsutil queryCaseSensitiveInfo:", strings.TrimSpace(string(o)))
 	extraMounts = []map[string]any{{"destination": "/w", "type": "bind", "source": dir, "options": []string{"rbind", "rw", "case-sensitive"}}}
 	defer func() { extraMounts = nil }()
 	r, err := runsc("case", []string{"/bin/sh", "-c", "cd /w; echo lower >f; echo upper >F; mkdir d; echo dl >d/a; echo du >d/A; ls; cat f F d/a d/A"}, nil)
