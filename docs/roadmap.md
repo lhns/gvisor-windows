@@ -89,9 +89,9 @@ Owner calls are the purple shape. A decided owner call is drawn in the overview 
 ## Ratings
 
 <!-- BEGIN GENERATED: ratings -->
-0 of 48 rated nodes are confirmed by the owner.
+0 of 49 rated nodes are confirmed by the owner.
 
-Not yet confirmed: `research-lkl-nommu`, `research-unkernel`, `research-flinux-translation`, `research-qemu-emulation`, `workloads-podman-on-gvisor-linux`, `research-gvisor-benchmark`, `platform-elf-alignment-survey`, `fs-persistent-image-storage`, `platform-trap-cost`, `platform-4k-section-views`, `platform-tls-register`, `platform-restricted-stub`, `sentry-go-fault-recovery`, `research-whpx-this-machine`, `platform-stub-controller`, `platform-page-verification`, `platform-syscall-fast-path`, `platform-winstub`, `platform-busybox-on-windows`, `fs-windows-directfs`, `fs-change-notifications`, `fs-linux-metadata-on-ntfs`, `fs-handles-do-not-block-users`, `net-netstack-windows-link`, `net-port-forwarding`, `runsc-measure-cli`, `ops-windows-ci-standard-user`, `sentry-fault-recovery`, `sentry-host-stdio-and-tty`, `fs-root-filesystem-source`, `sentry-threads-and-signals`, `research-file-protocol`, `platform-zpoline-hooks`, `sentry-unix-shim`, `platform-exception-stack`, `workloads-strict-bar-linux`, `platform-static-guest-from-memory`, `net-bridge-networking`, `platform-debug-event-cost`, `platform-syscall-site-survey`, `platform-faults-per-exec`, `platform-controller-wakeups`, `platform-fp-state`, `platform-retire-prototype`, `platform-fast-process-start`, `runsc-windows-boot`, `sentry-dynamic-elf-and-exec`, `fs-attribute-cache`.
+Not yet confirmed: `research-lkl-nommu`, `research-unkernel`, `research-flinux-translation`, `research-qemu-emulation`, `workloads-podman-on-gvisor-linux`, `research-gvisor-benchmark`, `platform-elf-alignment-survey`, `fs-persistent-image-storage`, `platform-trap-cost`, `platform-4k-section-views`, `platform-tls-register`, `platform-restricted-stub`, `sentry-go-fault-recovery`, `research-whpx-this-machine`, `runsc-container-on-windows`, `platform-stub-controller`, `platform-page-verification`, `platform-syscall-fast-path`, `platform-winstub`, `platform-busybox-on-windows`, `fs-windows-directfs`, `fs-change-notifications`, `fs-linux-metadata-on-ntfs`, `fs-handles-do-not-block-users`, `net-netstack-windows-link`, `net-port-forwarding`, `runsc-measure-cli`, `ops-windows-ci-standard-user`, `sentry-fault-recovery`, `sentry-host-stdio-and-tty`, `fs-root-filesystem-source`, `sentry-threads-and-signals`, `research-file-protocol`, `platform-zpoline-hooks`, `sentry-unix-shim`, `platform-exception-stack`, `workloads-strict-bar-linux`, `platform-static-guest-from-memory`, `net-bridge-networking`, `platform-debug-event-cost`, `platform-syscall-site-survey`, `platform-faults-per-exec`, `platform-controller-wakeups`, `platform-fp-state`, `platform-retire-prototype`, `platform-fast-process-start`, `runsc-windows-boot`, `sentry-dynamic-elf-and-exec`, `fs-attribute-cache`.
 <!-- END GENERATED: ratings -->
 
 ## Overview
@@ -113,10 +113,10 @@ flowchart TB
         platform_winstub["platform · ✔ Windows<br/>platform for the<br/>Sentry"]
         platform_static_guest_from_memory["platform · ✔ Run a<br/>static guest from<br/>memory"]
         platform_fast_process_start["platform · ✔ Start<br/>guest processes fast"]
+        runsc_container_on_windows["runsc · ✔ Run a<br/>container with runsc"]
         platform_busybox_on_windows["platform · ✔ Run<br/>busybox under the<br/>Sentry"]
     end
     subgraph bd_1["Later (blocked or parked)"]
-        runsc_container_on_windows["runsc · ⛔ Run a<br/>container with runsc"]
         workloads_podman_on_windows[/"workloads · ⛔ Podman<br/>passes on Windows"/]
     end
     research_gvisor_base ~~~ workloads_podman_on_gvisor_linux
@@ -132,19 +132,20 @@ flowchart TB
     platform_veh_on_guest_stack_unsafe ~~~ platform_static_guest_from_memory
     platform_winstub ~~~ platform_static_guest_from_memory
     platform_static_guest_from_memory ~~~ platform_fast_process_start
+    platform_static_guest_from_memory ~~~ runsc_container_on_windows
     platform_static_guest_from_memory ~~~ platform_busybox_on_windows
-    platform_fast_process_start ~~~ runsc_container_on_windows
-    platform_busybox_on_windows ~~~ runsc_container_on_windows
+    platform_fast_process_start ~~~ workloads_podman_on_windows
     runsc_container_on_windows ~~~ workloads_podman_on_windows
+    platform_busybox_on_windows ~~~ workloads_podman_on_windows
     research_gvisor_base --> platform_tls_register
     platform_tls_register -.-> platform_veh_on_guest_stack_unsafe
     platform_tls_register --> ops_phase0_go_no_go
     fs_compat_layer_not_boundary --> fs_windows_directfs
     platform_static_guest_from_memory --> platform_fast_process_start
     fs_windows_directfs --> runsc_container_on_windows
-    net_netstack_windows_link --> runsc_container_on_windows
+    runsc_container_on_windows --> workloads_podman_on_windows
     net_bridge_networking --> workloads_podman_on_windows
-    linkStyle 18 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    linkStyle 19 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -162,8 +163,8 @@ flowchart TB
     class research_gvisor_base unrated
     class ops_name_and_fork,fs_compat_layer_not_boundary,ops_phase0_go_no_go decided
     class workloads_podman_on_gvisor_linux,platform_tls_register mixed
-    class workloads_podman_on_windows,runsc_container_on_windows blocked
-    class platform_winstub,platform_busybox_on_windows,fs_windows_directfs,net_netstack_windows_link,platform_static_guest_from_memory,net_bridge_networking,platform_veh_on_guest_stack_unsafe succ
+    class workloads_podman_on_windows blocked
+    class runsc_container_on_windows,platform_winstub,platform_busybox_on_windows,fs_windows_directfs,net_netstack_windows_link,platform_static_guest_from_memory,net_bridge_networking,platform_veh_on_guest_stack_unsafe succ
     class platform_fast_process_start vsucc
 ```
 <!-- END GENERATED: overview -->
@@ -173,8 +174,8 @@ flowchart TB
 <!-- BEGIN GENERATED: plain-words -->
 | title | status | in plain words |
 |---|---|---|
-| Run a container with runsc | ⛔ blocked | The main goal: gVisor's runtime runs an OCI container on Windows for a standard user, with no admin, VM, WSL or Hyper-V. |
-| Start and stop sandboxes on Windows | ⛔ blocked | runsc creates, starts, signals and deletes a sandbox process on Windows. |
+| Run a container with runsc | ✔ done · successful | The main goal: gVisor's runtime runs an OCI container on Windows for a standard user, with no admin, VM, WSL or Hyper-V. |
+| Start and stop sandboxes on Windows | ⛔ blocked | runsc creates, starts, signals and deletes a sandbox process on Windows that outlives runsc.exe. |
 | Container lifecycle commands on Windows | ⛔ blocked | create, start, state, kill, delete, exec, ps and list need a sandbox process that outlives runsc.exe and a named control pipe; only run and version exist today. |
 | Set the TLS register | ✔ done · mixed ⚠ | Check whether a normal Windows program can set the register Linux programs use for thread-local data; without it native execution fails. |
 | Own vDSO for clock calls | ⛔ blocked | Time and CPU queries are answered inside the stub, so they need no trap at all. |
@@ -198,9 +199,9 @@ flowchart TB
 | Bridge networking inside gVisor | ✔ done · successful | Podman's default network creates a bridge and veth pairs over netlink; gVisor lacks part of that, so it fails today. Fix it in gVisor itself, first on Linux, then it carries over to Windows. |
 | Podman on gVisor on Linux | ✔ done · mixed ⚠ | Run the acceptance test on stock gVisor on Linux; whatever fails there is a gap in gVisor itself, not in the port. |
 | Podman passes on Windows | ⛔ blocked | The bar for enough features: an unmodified Podman engine passes the acceptance test on gVisor on Windows. |
-| Acceptance test for Windows | ⛔ blocked | The ten acceptance steps written for Windows, driving the stock Podman and docker clients. |
+| Acceptance test for Windows | ▶ in progress | The ten acceptance steps written for Windows, driving the stock Podman and docker clients. |
 | Serve Podman to Windows clients | ⛔ blocked | The test harness runs the Podman engine on runsc and exposes its API to the stock Windows clients. |
-| Podman API on a named pipe | ⛔ blocked | Expose the Podman engine API on a Windows named pipe owned by the user, instead of a loopback TCP port. |
+| Podman API on a named pipe | ▶ in progress | Expose the Podman engine API on a Windows named pipe owned by the user, instead of a loopback TCP port. |
 | Probe Podman inside the sandbox | ⛔ blocked | Right after busybox works, run podman --version and podman info inside the sandbox; their failures are the real gap list. |
 | Pick gVisor as the base | ✔ done · unrated | Of all ways to run Linux code on Windows without admin, gVisor's user-space Linux kernel is the only one that already runs containers. |
 | Name it gvisor-windows | ✔ done · n/a | The project is an unofficial fork of gVisor's Go branch called gvisor-windows. |
@@ -227,7 +228,9 @@ flowchart TB
 <!-- BEGIN GENERATED: running -->
 **windows-ci**
 
+- `workloads-acceptance-test-windows`: Acceptance test for Windows
 - `ops-syscall-tests-on-windows`: gVisor syscall tests on Windows
+- `workloads-podman-api-named-pipe`: Podman API on a named pipe
 <!-- END GENERATED: running -->
 
 ## Built, waiting
@@ -253,7 +256,7 @@ Generated on 2026-11-26.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 64 done, 7 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 65 done, 7 abandoned</summary>
 
 - `fs-attribute-cache`: Faster stat walks on host folders (✔ done · mixed). A git-status-like walk of 20000 files takes 1.2-2.4 s through the host folder; an attribute cache fed by the change watcher would bring stat near native.
   - Cold stat walk on a fresh mount is still about 4x native, 99-105 us per file (2026-11-26)
@@ -328,6 +331,7 @@ Generated on 2026-11-26.
 - `research-qemu-emulation`: QEMU software emulation (✖ dead end). Emulating a whole computer in software works but is several times slower, so it is no base for the port.
 - `research-unkernel`: Build on unkernel (✖ dead end). Linux compiled to WebAssembly runs anywhere, but it always emulates the programs, so it cannot reach native speed.
 - `research-whpx-this-machine`: Test WHPX on this machine (✖ dead end). Check whether QEMU can use the Windows hypervisor here without admin, as a fast stopgap.
+- `runsc-container-on-windows`: Run a container with runsc (✔ done · successful). The main goal: gVisor's runtime runs an OCI container on Windows for a standard user, with no admin, VM, WSL or Hyper-V.
 - `runsc-measure-cli`: Measure runsc's command side (✔ done · successful). Measure how much of runsc's container management (commands, sandbox, gofer, cli) is Linux-only.
 - `runsc-windows-boot`: Boot runsc on Windows (✔ done · successful). runsc's real boot path on Windows (spec, mounts, stdio, network) replaces the test harness that builds the kernel by hand.
   - Each runsc run takes 0.4-0.5 s (2026-11-26)
@@ -359,12 +363,12 @@ Generated on 2026-11-26.
 <!-- BEGIN GENERATED: tracks -->
 Each track has its own page with its tree, node table and per-node details.
 
-- [runsc - runsc](roadmap/tracks/runsc.md): 6 nodes (3 done, 3 blocked)
+- [runsc - runsc](roadmap/tracks/runsc.md): 6 nodes (4 done, 2 blocked)
 - [platform - platform](roadmap/tracks/platform.md): 30 nodes (22 done, 1 in progress, 1 next, 1 blocked, 4 parked, 1 abandoned)
 - [sentry - sentry](roadmap/tracks/sentry.md): 10 nodes (8 done, 1 blocked, 1 parked)
 - [fs - files](roadmap/tracks/fs.md): 12 nodes (11 done, 1 blocked)
 - [net - network](roadmap/tracks/net.md): 4 nodes (4 done)
-- [workloads - workloads](roadmap/tracks/workloads.md): 12 nodes (7 done, 5 blocked)
+- [workloads - workloads](roadmap/tracks/workloads.md): 12 nodes (7 done, 2 in progress, 3 blocked)
 - [research - research](roadmap/tracks/research.md): 8 nodes (2 done, 6 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 10 nodes (7 done, 1 in progress, 1 next, 1 blocked)
 <!-- END GENERATED: tracks -->

@@ -12,6 +12,7 @@ gantt
     dateFormat YYYY-MM-DD
     axisFormat %Y-%m-%d
     section runsc - runsc
+    Run a container with runsc :runsc_container_on_windows, 2026-11-26, 2026-11-26
     Measure runsc's command side :runsc_measure_cli, 2026-11-26, 2026-11-26
     Choose runsc commands for Windows :runsc_windows_commands, 2026-11-26, 2026-11-26
     Boot runsc on Windows :runsc_windows_boot, 2026-11-26, 2026-11-26
@@ -70,11 +71,13 @@ gantt
     section workloads - workloads
     Write the Podman acceptance test :workloads_acceptance_test, 2026-11-26, 2026-11-26
     Podman on gVisor on Linux :workloads_podman_on_gvisor_linux, 2026-11-26, 2026-11-26
+    Acceptance test for Windows :active, workloads_acceptance_test_windows, 2026-11-26, 2026-11-26
     Bridge networking fails in gVisor :workloads_gvisor_bridge_netlink, 2026-11-26, 2026-11-26
     Port publishing untested in gVisor :workloads_gvisor_port_publishing, 2026-11-26, 2026-11-26
     Does host networking meet the bar :workloads_bar_host_network, 2026-11-26, 2026-11-26
     Strict bar on stock gVisor :workloads_strict_bar_linux, 2026-11-26, 2026-11-26
     Cgroup filesystem mounted read-only :workloads_gvisor_cgroupfs_readonly, 2026-11-26, 2026-11-26
+    Podman API on a named pipe :active, workloads_podman_api_named_pipe, 2026-11-26, 2026-11-26
     section research - research
     Pick gVisor as the base :research_gvisor_base, 2026-11-17, 2026-11-26
     Revive LKL or nommu UML :crit, research_lkl_nommu, 2026-11-26, 2026-11-26
@@ -95,5 +98,5 @@ gantt
     gVisor syscall tests on Windows :active, ops_syscall_tests_on_windows, 2026-11-26, 2026-11-26
 ```
 
-Not shown (no `start`): `runsc-container-on-windows`, `runsc-sandbox-lifecycle`, `runsc-windows-lifecycle-commands`, `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-hardware-acceleration`, `platform-no-fsgsbase-fallback`, `platform-binary-translation-fallback`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `fs-persistent-storage-impl`, `workloads-podman-on-windows`, `workloads-acceptance-test-windows`, `workloads-podman-harness`, `workloads-podman-api-named-pipe`, `workloads-podman-probe`, `ops-upstream-merges`, `ops-portable-packaging`
+Not shown (no `start`): `runsc-sandbox-lifecycle`, `runsc-windows-lifecycle-commands`, `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-hardware-acceleration`, `platform-no-fsgsbase-fallback`, `platform-binary-translation-fallback`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `fs-persistent-storage-impl`, `workloads-podman-on-windows`, `workloads-podman-harness`, `workloads-podman-probe`, `ops-upstream-merges`, `ops-portable-packaging`
 <!-- END GENERATED: timeline -->

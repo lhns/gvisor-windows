@@ -462,23 +462,26 @@
   title: Run a container with runsc
   track: runsc
   kind: feature
-  state: blocked
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/3-runsc-boot.md
+  verdict_quote: '`runsc.exe run` on stock Windows boots the real Loader in-process and runs a glibc guest and busybox from a Windows-folder rootfs with stdio, exit codes, stdin, a windows-nat network,
+    a published port and a ConPTY-driven terminal with resize and Ctrl-C, as a standard user'
   headline: ''
   depends_on:
-  - runsc-sandbox-lifecycle
+  - runsc-windows-boot
   - fs-windows-directfs
-  - net-netstack-windows-link
+  - sentry-threads-and-signals
+  - ops-windows-ci-standard-user
   replaced_by: []
   lane: windows-ci
-  start: ''
-  end: ''
+  start: '2026-11-26'
+  end: '2026-11-26'
   folded: []
   overview: true
   plain: 'The main goal: gVisor''s runtime runs an OCI container on Windows for a standard user, with no admin, VM, WSL or Hyper-V.'
-  notes: 'Done when: runsc run starts an OCI bundle on windows-latest as a standard user and its output and exit code arrive.'
+  notes: 'Done: runsc.exe run starts an OCI bundle on windows-latest as a standard user with output and exit code. Lifecycle commands (create/start/exec/...) are tracked separately and do not gate this.'
 - id: ops-podman-only-the-bar
   title: Podman only as the bar
   track: ops
@@ -962,13 +965,13 @@
   end: ''
   folded: []
   overview: false
-  plain: runsc creates, starts, signals and deletes a sandbox process on Windows.
+  plain: runsc creates, starts, signals and deletes a sandbox process on Windows that outlives runsc.exe.
   notes: 'Done when: runsc create/start/kill/delete work on Windows and leave no processes behind.'
 - id: workloads-acceptance-test-windows
   title: Acceptance test for Windows
   track: workloads
   kind: tooling
-  state: blocked
+  state: in-progress
   outcome: unrated
   evidence: []
   verdict_quote: ''
@@ -977,7 +980,7 @@
   - workloads-acceptance-test
   replaced_by: []
   lane: windows-ci
-  start: ''
+  start: '2026-11-26'
   end: ''
   folded: []
   overview: false
@@ -1814,9 +1817,9 @@
   verdict_quote: ''
   headline: ''
   depends_on:
-  - workloads-podman-harness
+  - runsc-windows-boot
   replaced_by: []
-  start: ''
+  start: '2026-11-26'
   end: ''
   folded: []
   overview: false
@@ -1824,7 +1827,7 @@
   title: Podman API on a named pipe
   track: workloads
   kind: feature
-  state: blocked
+  state: in-progress
   lane: windows-ci
   plain: Expose the Podman engine API on a Windows named pipe owned by the user, instead of a loopback TCP port.
   notes: 'Done when: podman --url npipe:////./pipe/<name> and DOCKER_HOST with the same pipe reach the engine in the sandbox.'
