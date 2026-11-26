@@ -2,7 +2,7 @@ name: podman-acceptance-linux
 on:
   push:
     branches: [windows]
-    paths: ["test/e2e/podman-acceptance/**", ".github/workflows/podman-acceptance-linux.yml"]
+    paths: ["pkg/**", "runsc/**", "third_party/**", "go.mod", "test/e2e/podman-acceptance/**", ".github/workflows/podman-acceptance-linux.yml"]
   workflow_dispatch:
 
 env:
