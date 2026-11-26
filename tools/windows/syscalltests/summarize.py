@@ -55,8 +55,11 @@ CAUSES = [
 
 def cause(k):
     s = win.get(k, ('MISSING',))[0]
-    if s in ('CRASH', 'HANG'):
-        return 'Sentry crash or hang while running the case' if s == 'CRASH' else 'guest hang that stalled the kernel'
+    if s in ('CRASH', 'HANG', 'HARNESS'):
+        t0 = win_t.get(k, '')
+        m = re.search(r'(panic: [^\\]*|fatal error: [^\\]*|sentryguest: FAIL[^\\]*)', t0)
+        what = re.sub(r'0x[0-9a-f]+|\d{3,}', 'N', m.group(1))[:120] if m else 'no message'
+        return '%s: %s' % ({'CRASH': 'Sentry crash', 'HANG': 'hang that stalled the kernel', 'HARNESS': 'kernel did not start'}[s], what)
     if s == 'TIMEOUT':
         return 'timeout (case did not finish in time)'
     t = win_t.get(k, '')
@@ -126,7 +129,7 @@ md.append('|---|---|---|')
 md.append('| test cases run | %d | %d |' % (len(lin), len(win)))
 md.append('| PASS | %d (%.1f%%) | %d (%.1f%%) |' % (lin_pass, 100.0 * lin_pass / max(n, 1), win_pass, 100.0 * win_pass / max(n, 1)))
 md.append('| SKIP | %d | %d |' % (count(lin, ('SKIP',)), count(win, ('SKIP',))))
-for s in ('FAIL', 'TIMEOUT', 'SIGNAL', 'CRASH', 'HANG', 'NOTRUN'):
+for s in ('FAIL', 'TIMEOUT', 'SIGNAL', 'CRASH', 'HANG', 'HARNESS', 'NOTRUN'):
     md.append('| %s | %d | %d |' % (s, count(lin, (s,)), count(win, (s,))))
 md.append('')
 md.append('Windows-only failures (passed or skipped on Linux, not on Windows): **%d** of %d cases; Windows pass rate relative to the Linux baseline (cases that pass on Windows / cases that pass on Linux): **%.1f%%**.\n'

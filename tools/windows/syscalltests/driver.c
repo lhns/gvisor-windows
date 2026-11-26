@@ -8,6 +8,7 @@
 // runs as /bin/binary --gtest_filter=test with its own TEST_TMPDIR.
 //
 // Output lines (tab separated):
+//   S binary test                            before a case starts (so a crash names its case)
 //   R binary test status code milliseconds   status: PASS FAIL SKIP TIMEOUT SIGNAL NOTRUN
 //   O escaped-tail-of-output                 only for statuses other than PASS
 //   DONE count
@@ -97,6 +98,7 @@ int main(int argc, char** argv) {
       perror("pipe");
       return 2;
     }
+    printf("S\t%s\t%s\n", bin, test);
     long t0 = now_ms();
     pid_t pid = fork();
     if (pid < 0) {

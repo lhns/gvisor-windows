@@ -5,10 +5,14 @@ Runs one shard of the syscall tests under a guest kernel and writes R, a
 tab-separated file with one line per test case:
     binary test status code ms
 Statuses are the driver's (PASS FAIL SKIP TIMEOUT SIGNAL NOTRUN) plus
-CRASH (the Sentry or the sandbox died while the case ran) and HANG (no progress
-for --stall seconds). After a crash the rest of the list runs in a fresh kernel.
-Failure output tails go to R.out (case TAB escaped tail)."""
-import argparse, os, subprocess, sys, tempfile, time
+CRASH (the Sentry or the sandbox died while the case ran), HANG (no progress
+for --stall seconds) and HARNESS (the kernel never got to start the driver).
+The driver prints "S binary test" before each case, so the case that was
+running when the kernel died is known. After a crash the rest of the list runs
+in a fresh kernel; a binary that crashed the kernel --crash-limit times has its
+remaining cases marked CRASH without running them (same cause assumed).
+Output tails of failures go to R.out (binary TAB test TAB escaped tail)."""
+import argparse, collections, os, subprocess, sys, tempfile, time
 
 
 def esc(b):
@@ -27,15 +31,17 @@ def main():
     ap.add_argument('--runtime', default='runsc')
     ap.add_argument('--case-timeout', type=int, default=60)
     ap.add_argument('--stall', type=int, default=240)
-    ap.add_argument('--max-runs', type=int, default=60)
+    ap.add_argument('--max-runs', type=int, default=400)
+    ap.add_argument('--crash-limit', type=int, default=4)
     a = ap.parse_args()
 
     cases = [tuple(l.rstrip('\n').split('\t', 1)) for l in open(a.list) if l.strip()]
     done = {}
     tails = {}
+    crashes = collections.Counter()
     workdir = tempfile.mkdtemp()
     t_start = time.time()
-    idle_crashes = 0
+    no_start = 0
     for run in range(a.max_runs):
         todo = [c for c in cases if c not in done]
         if not todo:
@@ -52,28 +58,34 @@ def main():
             cmd = ['docker', 'run', '--rm', '--runtime', a.runtime, '--network', 'none',
                    '-v', '%s:/list.txt:ro' % lst, a.docker, '/bin/driver', '-t', str(a.case_timeout), '/list.txt']
         print('run %d: %d cases left' % (run, len(todo)), flush=True)
+        stalled = False
         with open(log, 'wb') as lf:
             proc = subprocess.Popen(cmd, stdout=lf, stderr=subprocess.STDOUT)
             last_size, last_change = 0, time.time()
             while proc.poll() is None:
-                time.sleep(5)
+                time.sleep(2)
                 size = os.path.getsize(log)
                 if size != last_size:
                     last_size, last_change = size, time.time()
                 elif time.time() - last_change > a.stall:
                     print('run %d: no output for %ds, killing' % (run, a.stall), flush=True)
+                    stalled = True
                     if os.name == 'nt':
                         subprocess.run(['taskkill', '/F', '/T', '/PID', str(proc.pid)], capture_output=True)
                     else:
                         proc.kill()
                     proc.wait()
                     break
-        finished, last = False, None
-        before = len(done)
+        finished, last, started, saw_start = False, None, None, False
         with open(log, 'rb') as lf:
             for raw in lf:
                 line = raw.decode('utf-8', 'replace').rstrip('\r\n')
-                if line.startswith('R\t'):
+                if line.startswith('S\t'):
+                    p = line.split('\t')
+                    if len(p) >= 3:
+                        started = (p[1], p[2])
+                        saw_start = True
+                elif line.startswith('R\t'):
                     p = line.split('\t')
                     if len(p) >= 6:
                         last = (p[1], p[2])
@@ -84,32 +96,35 @@ def main():
                     finished = True
         if finished:
             continue
-        if len(done) == before:
-            idle_crashes += 1
+        tail = esc(open(log, 'rb').read()[-1500:])
+        if not saw_start:
+            no_start += 1
+            if no_start >= 3:
+                # The kernel does not get as far as running the driver.
+                for c in cases:
+                    if c not in done:
+                        done[c] = ('HARNESS', '-1', '0')
+                        tails[c] = tail
+                print('run %d: the kernel fails to start the driver, giving up' % run, flush=True)
+                break
         else:
-            idle_crashes = 0
-        if idle_crashes >= 6:
-            # The harness itself fails before any case runs: give up on the shard.
-            tail = esc(open(log, "rb").read()[-1500:])
-            for c in cases:
-                if c not in done:
-                    done[c] = ('HARNESS', '-1', '0')
-                    tails[c] = tail
-            print('run %d: the kernel fails to start the driver, giving up' % run, flush=True)
+            no_start = 0
+        culprit = started if started is not None and started not in done else next((c for c in cases if c not in done), None)
+        if culprit is None:
             break
-        # The kernel died or hung: the first case not yet reported is the culprit.
-        rest = [c for c in cases if c not in done]
-        if rest:
-            culprit = rest[0]
-            tail = ''
-            try:
-                tail = open(log, 'rb').read()[-1500:].decode('utf-8', 'replace').replace('\r', '').replace('\n', '\\n').replace('\t', ' ')
-            except Exception:
-                pass
-            status = 'HANG' if (time.time() - last_change) > a.stall else 'CRASH'
-            done[culprit] = (status, '-1', '0')
-            tails[culprit] = tail
-            print('run %d: %s on %s %s' % (run, status, culprit[0], culprit[1]), flush=True)
+        status = 'HANG' if stalled else 'CRASH'
+        done[culprit] = (status, '-1', '0')
+        tails[culprit] = tail
+        crashes[culprit[0]] += 1
+        print('run %d: %s on %s %s' % (run, status, culprit[0], culprit[1]), flush=True)
+        if crashes[culprit[0]] >= a.crash_limit:
+            skipped = 0
+            for c in cases:
+                if c[0] == culprit[0] and c not in done:
+                    done[c] = (status, '-1', '0')
+                    tails[c] = 'not run: %s of this binary already killed the kernel %d times; last: %s' % (status, crashes[culprit[0]], tail)
+                    skipped += 1
+            print('%s: %d more cases not run after %d %ss' % (culprit[0], skipped, crashes[culprit[0]], status), flush=True)
     with open(a.out, 'w') as f:
         for c in cases:
             st = done.get(c, ('NOTRUN', '-1', '0'))
