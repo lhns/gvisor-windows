@@ -3,7 +3,7 @@
 name: windows-sentry-guests
 on:
   push:
-    branches: [static-guest]
+    branches: [static-guest, sentry-exec]
     paths: ["pkg/**", "tools/windows/sentryguest/**", "test/guests/**", ".github/workflows/windows-sentry-guests.yml"]
   workflow_dispatch:
 jobs:
@@ -27,6 +27,34 @@ jobs:
           gcc -static -no-pie -O1 -o out/fork_glibc $G/fork.c
           gcc -static -no-pie -O1 -o out/jit_glibc $G/jit.c
           (cd $G/gohello && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $GITHUB_WORKSPACE/out/hello_go .)
+          # Dynamic, exec, shell, signal and thread guests run from a root filesystem tar.
+          sudo apt-get update -qq && sudo apt-get install -y busybox-static
+          gcc -O1 -fstack-protector-all -o out/hello_dyn $G/hello.c
+          gcc -O1 -no-pie -o out/hello_dyn_nopie $G/hello.c
+          gcc -O1 -shared -fPIC -o out/libplug.so $G/plug.c
+          gcc -O1 -o out/dlopen_glibc $G/dlopen.c -ldl
+          gcc -static -no-pie -O1 -o out/exec $G/exec.c
+          gcc -static -no-pie -O1 -pthread -o out/signals $G/signals.c
+          gcc -static -no-pie -O1 -pthread -o out/threads $G/threads.c
+          gcc -O1 -pthread -o out/threads_dyn $G/threads.c
+          (cd $G/gostress && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $GITHUB_WORKSPACE/out/gostress .)
+          docker run --rm -v "$PWD:/w" -w /w alpine:3.20 sh -c             'apk add --no-cache gcc musl-dev >/dev/null && gcc -O1 -fstack-protector-all -o out/hello_musl test/guests/hello.c && cp -L /lib/ld-musl-x86_64.so.1 out/ld-musl'
+          R=root
+          mkdir -p $R/bin $R/lib $R/lib64 $R/t
+          cp out/hello_dyn out/hello_dyn_nopie out/dlopen_glibc out/exec out/signals out/threads out/threads_dyn out/gostress out/hello_musl $R/bin/
+          cp out/libplug.so $R/lib/
+          cp out/ld-musl $R/lib/ld-musl-x86_64.so.1
+          ln -s ld-musl-x86_64.so.1 $R/lib/libc.musl-x86_64.so.1
+          cp /bin/busybox $R/bin/busybox
+          for a in sh cat wc sort uniq grep sed sleep kill true false echo printf; do ln -s busybox $R/bin/$a; done
+          for b in out/hello_dyn out/dlopen_glibc out/threads_dyn; do
+            ldd $b | grep -o '/[^ ]*' | while read l; do cp --parents -L "$l" $R/; done
+          done
+          cp --parents -L /lib/x86_64-linux-gnu/libm.so.6 $R/
+          cp $G/t/*.sh $R/t/
+          find $R | sort | head -60
+          tar -C $R -cf out/rootfs.tar .
+          ls -l out/rootfs.tar
           file out/*
       - uses: actions/upload-artifact@v4
         with: {name: guests, path: out}
@@ -59,9 +87,35 @@ jobs:
             @{n='hello_go'; out="hello from go${nl}"; code=0},
             @{n='jit_glibc'; out="jit1 ok${nl}jit2 ok${nl}jit3 ok${nl}"; code=0}
           )
+          $hello = "hello from glibc: argc=1 tv=5 work=10 heap=ok${nl}"
+          $tcases = @(
+            @{n='dyn_glibc'; a=@('/bin/hello_dyn'); out=$hello; code=7},
+            @{n='dyn_glibc_nopie'; a=@('/bin/hello_dyn_nopie'); out=$hello; code=7},
+            @{n='dyn_musl'; a=@('/bin/hello_musl'); out=$hello; code=7},
+            @{n='dlopen_glibc'; a=@('/bin/dlopen_glibc'); out="dlopen ok: plug=46 tls=8 cos=1.0${nl}"; code=0},
+            @{n='exec_chain'; a=@('/bin/exec','chain','1'); out="level 1: argc=3 argv0=/bin/exec FOO=(unset) auxv=ok${nl}level 2: argc=3 argv0=renamed FOO=lvl2 auxv=ok${nl}level 3: argc=3 argv0=renamed FOO=lvl3 auxv=ok${nl}"; code=0},
+            @{n='fork_exec'; a=@('/bin/exec','forkexec'); out="child: argc=4 a2=a b a3=c X=1 auxv=ok${nl}forkexec: waited=1 exited=1 status=9${nl}forkexec: enoent child status=11${nl}forkexec: sum=6 wait=-1 errno_echild=1${nl}"; code=0},
+            @{n='sh_pipes'; a=@('/bin/busybox','sh','-c','echo a | cat; echo $((1+2)); for i in 1 2 3; do echo $i; done | wc -l'); out="a${nl}3${nl}3${nl}"; code=0},
+            @{n='sh_pipeline_tools'; a=@('/bin/busybox','sh','/t/pipes.sh'); out="a${nl}X${nl}done${nl}"; code=0},
+            @{n='sh_wait_status'; a=@('/bin/busybox','sh','/t/wait.sh'); out="st=3${nl}sig=143${nl}bg=143${nl}pipe=2${nl}done${nl}"; code=0},
+            @{n='sig_self'; a=@('/bin/signals','self'); out="self ok${nl}"; code=0},
+            @{n='sig_alarm'; a=@('/bin/signals','alarm'); out="alarm ok${nl}"; code=0},
+            @{n='sig_segv'; a=@('/bin/signals','segv'); out="segv ok${nl}"; code=0},
+            @{n='sig_altstack'; a=@('/bin/signals','altstack'); out="altstack ok${nl}"; code=0},
+            @{n='sig_ctx'; a=@('/bin/signals','ctx'); out="ctx ok${nl}"; code=0},
+            @{n='sig_eintr'; a=@('/bin/signals','eintr'); out="eintr ok${nl}"; code=0},
+            @{n='sig_child'; a=@('/bin/signals','child'); out="child ok${nl}"; code=0},
+            @{n='sig_group'; a=@('/bin/signals','group'); out="group ok${nl}"; code=0},
+            @{n='threads_static'; a=@('/bin/threads'); out="threads: counter=160000 idsum=28 main_tls=1${nl}"; code=0},
+            @{n='threads_dyn'; a=@('/bin/threads_dyn'); out="threads: counter=160000 idsum=28 main_tls=1${nl}"; code=0},
+            @{n='go_stress'; a=@('/bin/gostress'); out="gostress ok: ticks=20 sum=507500 spun=true procs=4${nl}"; code=0}
+          )
+          foreach ($t in $tcases) { $t.tar = $true }
+          $cases += $tcases
           foreach ($c in $cases) {
             "===== $($c.n)" | Tee-Object -Append -FilePath guests.txt
-            $a = @("-check", "-out=$($c.out)", "-code=$($c.code)", "-timeout=90s", "out/$($c.n)")
+            $a = @("-check", "-out=$($c.out)", "-code=$($c.code)", "-timeout=120s")
+            if ($c.tar) { $a += "-tar=out/rootfs.tar"; $a += $c.a } else { $a += "out/$($c.n)" }
             & ./sentryguest.exe @a 2>&1 | Tee-Object -Append -FilePath guests.txt
             "exit: $LASTEXITCODE" | Tee-Object -Append -FilePath guests.txt
             if ($LASTEXITCODE -ne 0) { $fail = 1 }
