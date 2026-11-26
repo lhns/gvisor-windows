@@ -42,7 +42,9 @@ bazel build --config=x86_64 -c opt --keep_going --noshow_progress --color=no \
   gcc -print-prog-name=ld
   f=$(find "$HOME/.cache/bazel" -name "*_test-0.params" 2>/dev/null | head -1)
   echo "$f"
-  head -c 2500 "$f"
+  grep -v '\.a$\|\.o$\|\.lo$' "$f" | head -60
+  echo "--- manual link of the same params, from the execroot:"
+  (cd "$(dirname "$f")/../../../../.." && PATH=/usr/bin:/bin /usr/bin/x86_64-linux-gnu-gcc @"bazel-out/k8-opt/bin/test/syscalls/linux/open_test-0.params" -o /tmp/open_test_manual -v 2>&1 | tail -25) || true
   echo
 } 2>&1 | tee "$OUT/debug-ld.txt" || true
 
