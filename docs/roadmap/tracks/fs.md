@@ -16,7 +16,7 @@ flowchart TB
     fs_safe_save_keeps_metadata>"⚠ Editor safe-saves<br/>keep Linux metadata"]
     fs_change_notifications["○ Windows changes<br/>reach the guest"]
     fs_persistent_storage_impl["⛔ Storage that<br/>survives restarts"]
-    fs_root_filesystem_source["⛔ Root filesystem from<br/>an OCI bundle"]
+    fs_root_filesystem_source["⛔ Root filesystem from<br/>an erofs image"]
     fs_persistent_image_storage ~~~ fs_linux_metadata_on_ntfs
     fs_windows_directfs ~~~ fs_handles_do_not_block_users
     fs_windows_directfs ~~~ fs_safe_save_keeps_metadata
@@ -62,10 +62,10 @@ flowchart TB
 | `fs-linux-metadata-on-ntfs` | Linux file metadata on NTFS | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | fs-windows-directfs |  |  |  | docs/results/2-windows-directfs.md |
 | `fs-handles-do-not-block-users` | Files stay editable on Windows | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | fs-windows-directfs |  |  |  | docs/results/2-windows-directfs.md |
 | `fs-persistent-storage-choice` | Choose the persistent storage | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 | fs-persistent-image-storage, fs-windows-directfs |  |  |  | docs/adr/0007-persistent-storage-in-a-windows-folder.md |
-| `fs-root-filesystem-source` | Root filesystem from an OCI bundle | feature | windows-ci | blocked | unrated | 2026-11-26 |  | fs-windows-directfs, runsc-windows-boot, fs-rootfs-import |  |  |  |  |
+| `fs-root-filesystem-source` | Root filesystem from an erofs image | feature | windows-ci | blocked | unrated | 2026-11-26 |  | fs-windows-directfs, runsc-windows-boot, fs-rootfs-import |  |  |  |  |
 | `fs-persistent-storage-impl` | Storage that survives restarts | feature | windows-ci | blocked | unrated |  |  | fs-persistent-storage-choice |  |  |  |  |
 | `fs-safe-save-keeps-metadata` | Editor safe-saves keep Linux metadata | defect | windows-ci | next | unrated | 2026-11-26 |  |  |  |  |  | docs/results/2-windows-directfs.md |
-| `fs-rootfs-import` | Bring container images onto NTFS | owner-decision | owner | next | n/a |  |  |  |  |  |  |  |
+| `fs-rootfs-import` | Bring container images onto NTFS | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0015-sandbox-rootfs-as-erofs-image.md |
 
 ### Details per node
 
@@ -78,10 +78,10 @@ flowchart TB
 | `fs-linux-metadata-on-ntfs` | Linux file metadata on NTFS | a Windows folder is served to the Sentry as a Linux filesystem with no gofer, by file ID through short-lived share-all handles with Linux metadata in an NTFS stream |  | Owner, mode bits, symlinks and special files survive on NTFS, using a fixed owner and alternate data streams. | Done when: chmod, chown, symlink and mknod round-trip through a Windows folder. |  |  |  |  |
 | `fs-handles-do-not-block-users` | Files stay editable on Windows | a Windows folder is served to the Sentry as a Linux filesystem with no gofer, by file ID through short-lived share-all handles with Linux metadata in an NTFS stream |  | The Sentry holds Windows file handles only briefly, so editors and git can still rename and delete files. | Done when: git checkout and an editor save on Windows succeed while a guest has the folder open. |  |  |  |  |
 | `fs-persistent-storage-choice` | Choose the persistent storage |  |  | Decided: persistent data lives as real files in a Windows folder, with Linux metadata in an NTFS stream. | Done when: an ADR records the choice with the measurements from Phase 0. |  |  |  |  |
-| `fs-root-filesystem-source` | Root filesystem from an OCI bundle |  |  | The guest's root filesystem comes from an unpacked OCI bundle directory on Windows. | Done when: a guest boots from an unpacked rootfs directory on NTFS through runsc boot. The mount wiring exists but has only been compiled. |  |  |  |  |
+| `fs-root-filesystem-source` | Root filesystem from an erofs image |  |  | The guest's root filesystem comes from an unpacked OCI bundle directory on Windows. | Done when: runsc boot on Windows mounts an erofs root image (Windows file mapping in pkg/erofs) with an overlay and runs a guest from it. |  |  |  |  |
 | `fs-persistent-storage-impl` | Storage that survives restarts |  |  | Implement the chosen writable filesystem so data inside the sandbox outlives a restart. | Done when: files and image layers written in the guest are there after the sandbox restarts. |  |  |  |  |
 | `fs-safe-save-keeps-metadata` | Editor safe-saves keep Linux metadata |  |  | An editor's safe-save replaces the file, which drops its metadata stream, so the guest falls back to the mount defaults for mode and owner. | Fixed when: a safe-save (write temp, rename over) from Windows keeps the Linux mode and owner the guest set. |  |  |  |  |
-| `fs-rootfs-import` | Bring container images onto NTFS |  |  | Decide how an image root filesystem with symlinks, modes and device nodes reaches the sandbox: an importer that writes the metadata streams, or a read-only erofs image with a writable layer. | Done when: an ADR records the choice, after reading how gVisor opens erofs images and which mode a file without a metadata stream reports. |  |  |  |  |
+| `fs-rootfs-import` | Bring container images onto NTFS |  |  | Decided: the sandbox root is a read-only erofs image with an overlay on top; persistent data such as Podman storage lives in Windows folders. | Done when: an ADR records the choice, after reading how gVisor opens erofs images and which mode a file without a metadata stream reports. |  |  |  |  |
 
 ### Folded items per node
 

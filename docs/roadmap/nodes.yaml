@@ -1121,7 +1121,7 @@
   plain: A guest program's input, output and terminal connect to the Windows console (ConPTY), including Ctrl-C.
   notes: 'Done when: an interactive guest shell works in Windows Terminal with resize and Ctrl-C.'
 - id: fs-root-filesystem-source
-  title: Root filesystem from an OCI bundle
+  title: Root filesystem from an erofs image
   track: fs
   kind: feature
   state: blocked
@@ -1140,7 +1140,7 @@
   folded: []
   overview: false
   plain: The guest's root filesystem comes from an unpacked OCI bundle directory on Windows.
-  notes: 'Done when: a guest boots from an unpacked rootfs directory on NTFS through runsc boot. The mount wiring exists but has only been compiled.'
+  notes: 'Done when: runsc boot on Windows mounts an erofs root image (Windows file mapping in pkg/erofs) with an overlay and runs a guest from it.'
 - id: sentry-threads-and-signals
   title: Guest threads and signals
   track: sentry
@@ -1776,22 +1776,23 @@
   plain: A syscall instruction whose two bytes fall into two separately mapped ranges is not found by the scan, so it would reach the Windows kernel.
   notes: 'Fixed when: a test guest with a syscall straddling two MapFile ranges is patched and served correctly.'
 - outcome: n/a
-  evidence: []
+  evidence:
+  - docs/adr/0015-sandbox-rootfs-as-erofs-image.md
   verdict_quote: ''
   headline: ''
   depends_on: []
   replaced_by: []
-  start: ''
-  end: ''
+  start: '2026-11-26'
+  end: '2026-11-26'
   folded: []
   overview: false
   id: fs-rootfs-import
   title: Bring container images onto NTFS
   track: fs
   kind: owner-decision
-  state: next
+  state: done
   lane: owner
-  plain: 'Decide how an image root filesystem with symlinks, modes and device nodes reaches the sandbox: an importer that writes the metadata streams, or a read-only erofs image with a writable layer.'
+  plain: 'Decided: the sandbox root is a read-only erofs image with an overlay on top; persistent data such as Podman storage lives in Windows folders.'
   notes: 'Done when: an ADR records the choice, after reading how gVisor opens erofs images and which mode a file without a metadata stream reports.'
 - outcome: unrated
   evidence: []

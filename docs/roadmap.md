@@ -198,10 +198,9 @@ flowchart TB
 | Compatibility layer, not security boundary | ✔ done · n/a | The sandbox may open the user's files directly with the user's rights; it isolates containers from each other, not from the user. |
 | Open Windows files directly | ✔ done · successful | The Sentry opens NTFS files itself for bind mounts, with its own caches, instead of going through a file protocol. |
 | Windows changes reach the guest | ○ next | Edits made on Windows invalidate the Sentry's caches and arrive in the guest as inotify events. |
-| Root filesystem from an OCI bundle | ⛔ blocked | The guest's root filesystem comes from an unpacked OCI bundle directory on Windows. |
+| Root filesystem from an erofs image | ⛔ blocked | The guest's root filesystem comes from an unpacked OCI bundle directory on Windows. |
 | Storage that survives restarts | ⛔ blocked | Implement the chosen writable filesystem so data inside the sandbox outlives a restart. |
 | Editor safe-saves keep Linux metadata | ⚠ open | An editor's safe-save replaces the file, which drops its metadata stream, so the guest falls back to the mount defaults for mode and owner. |
-| Bring container images onto NTFS | ○ next | Decide how an image root filesystem with symlinks, modes and device nodes reaches the sandbox: an importer that writes the metadata streams, or a read-only erofs image with a writable layer. |
 | Netstack to Windows sockets | ✔ done · successful | gVisor's own TCP/IP stack sends guest traffic out through ordinary Windows sockets, like a user-space NAT. |
 | Bridge networking inside gVisor | ✔ done · successful | Podman's default network creates a bridge and veth pairs over netlink; gVisor lacks part of that, so it fails today. Fix it in gVisor itself, first on Linux, then it carries over to Windows. |
 | Podman on gVisor on Linux | ✔ done · mixed ⚠ | Run the acceptance test on stock gVisor on Linux; whatever fails there is a gap in gVisor itself, not in the port. |
@@ -251,7 +250,7 @@ _None._
 ## Waiting on the owner
 
 <!-- BEGIN GENERATED: waiting-on-owner -->
-- `fs-rootfs-import`: Bring container images onto NTFS
+_None._
 <!-- END GENERATED: waiting-on-owner -->
 
 ## Timeline
@@ -265,13 +264,14 @@ Generated on 2026-11-26.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 52 done, 7 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 53 done, 7 abandoned</summary>
 
 - `fs-compat-layer-not-boundary`: Compatibility layer, not security boundary (✔ done · n/a). The sandbox may open the user's files directly with the user's rights; it isolates containers from each other, not from the user.
 - `fs-handles-do-not-block-users`: Files stay editable on Windows (✔ done · successful). The Sentry holds Windows file handles only briefly, so editors and git can still rename and delete files.
 - `fs-linux-metadata-on-ntfs`: Linux file metadata on NTFS (✔ done · successful). Owner, mode bits, symlinks and special files survive on NTFS, using a fixed owner and alternate data streams.
 - `fs-persistent-image-storage`: Test persistent image storage (✔ done · mixed). Find a writable filesystem inside the sandbox that survives a restart, and how fast each option is.
 - `fs-persistent-storage-choice`: Choose the persistent storage (✔ done · n/a). Decided: persistent data lives as real files in a Windows folder, with Linux metadata in an NTFS stream.
+- `fs-rootfs-import`: Bring container images onto NTFS (✔ done · n/a). Decided: the sandbox root is a read-only erofs image with an overlay on top; persistent data such as Podman storage lives in Windows folders.
 - `fs-windows-directfs`: Open Windows files directly (✔ done · successful). The Sentry opens NTFS files itself for bind mounts, with its own caches, instead of going through a file protocol.
   - Per-directory case sensitivity works without admin on empty folders (2026-11-26)
   - FIFO, socket and block device opens return ENXIO (2026-11-26)
@@ -356,7 +356,7 @@ Each track has its own page with its tree, node table and per-node details.
 - [runsc - runsc](roadmap/tracks/runsc.md): 5 nodes (2 done, 1 next, 2 blocked)
 - [platform - platform](roadmap/tracks/platform.md): 29 nodes (19 done, 3 next, 2 blocked, 4 parked, 1 abandoned)
 - [sentry - sentry](roadmap/tracks/sentry.md): 10 nodes (5 done, 1 next, 4 blocked)
-- [fs - files](roadmap/tracks/fs.md): 11 nodes (6 done, 3 next, 2 blocked)
+- [fs - files](roadmap/tracks/fs.md): 11 nodes (7 done, 2 next, 2 blocked)
 - [net - network](roadmap/tracks/net.md): 4 nodes (4 done)
 - [workloads - workloads](roadmap/tracks/workloads.md): 12 nodes (7 done, 5 blocked)
 - [research - research](roadmap/tracks/research.md): 8 nodes (2 done, 6 abandoned)
