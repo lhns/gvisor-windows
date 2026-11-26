@@ -451,6 +451,9 @@
   - platform-split-syscall-unpatched
   - workloads-podman-api-named-pipe
   - fs-standard-user-delete-rights
+  - workloads-conmon-sync-pipe
+  - workloads-overlay-userxattr
+  - fs-case-sensitivity-without-admin
   replaced_by: []
   lane: windows-ci
   start: ''
@@ -1209,7 +1212,9 @@
   lane: windows-ci
   start: '2026-11-26'
   end: ''
-  folded: []
+  folded:
+  - Podman 6.2.0 pulls and stores images on a Windows folder; steps 1-2 pass (2026-11-26, commit 61c8b8f92)
+  - Runtime -p via the forwarder expose API works as a standard user (2026-11-26, commit 61c8b8f92)
   overview: false
   plain: The test harness runs the Podman engine on runsc and exposes its API to the stock Windows clients.
   notes: Engine runs on runsc.exe with the erofs podman image; step 1 passes. Gap list in docs/results/5-podman-windows.md.
@@ -1994,3 +1999,60 @@
   lane: windows-ci
   plain: On a host folder as a standard Windows user, rename over an existing file, rmdir and unlink fail with permission denied; Podman cannot extract layers or write images.json.
   notes: 'Fixed: Unlink asked for FILE_DELETE_CHILD on the parent, which a standard user with Modify lacks; DELETE on the child is enough. hostfs test now required.'
+- outcome: unrated
+  evidence:
+  - docs/results/5-podman-windows.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-26'
+  end: ''
+  folded: []
+  overview: false
+  id: workloads-conmon-sync-pipe
+  title: conmon sees no data on its sync pipe
+  track: workloads
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: 'Every podman run fails with "conmon bytes \"\": found \x00": conmon reads nothing from its sync pipe while creating the first container inside the sandbox on Windows.'
+  notes: 'Fixed when: podman run --rm alpine echo ok passes inside the Windows sandbox.'
+- outcome: unrated
+  evidence:
+  - docs/results/5-podman-windows.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-26'
+  end: ''
+  folded: []
+  overview: false
+  id: workloads-overlay-userxattr
+  title: Overlay mounts with userxattr rejected
+  track: workloads
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: 'podman build fails: the Sentry overlay rejects the userxattr option (or the layer setup) when Podman storage sits on a Windows folder.'
+  notes: 'Fixed when: podman build of a small Containerfile passes inside the Windows sandbox.'
+- outcome: unrated
+  evidence:
+  - docs/results/5-podman-windows.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-26'
+  end: ''
+  folded: []
+  overview: false
+  id: fs-case-sensitivity-without-admin
+  title: Case-sensitive names without admin
+  track: fs
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: A standard user on the hosted runner cannot set per-directory case sensitivity (access denied), so Linux images with names differing only in case need another way, without an admin setup step.
+  notes: 'Fixed when: two names differing only in case coexist in a host folder as a standard user on windows-latest with no admin step, and Podman storage uses it.'

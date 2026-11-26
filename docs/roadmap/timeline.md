@@ -65,6 +65,7 @@ gantt
     Faster stat walks on host folders :fs_attribute_cache, 2026-11-26, 2026-11-26
     Flaky negative-cache test on host folde… :fs_flaky_negative_cache_test, 2026-11-26, 2026-11-26
     Deletes fail for standard users :fs_standard_user_delete_rights, 2026-11-26, 2026-11-26
+    Case-sensitive names without admin :fs_case_sensitivity_without_admin, 2026-11-26, 2026-11-26
     section net - network
     Netstack to Windows sockets :net_netstack_windows_link, 2026-11-26, 2026-11-26
     Publish guest ports on localhost :net_port_forwarding, 2026-11-26, 2026-11-26
@@ -82,6 +83,8 @@ gantt
     Cgroup filesystem mounted read-only :workloads_gvisor_cgroupfs_readonly, 2026-11-26, 2026-11-26
     Podman API on a named pipe :workloads_podman_api_named_pipe, 2026-11-26, 2026-11-26
     Probe Podman inside the sandbox :workloads_podman_probe, 2026-11-26, 2026-11-26
+    conmon sees no data on its sync pipe :workloads_conmon_sync_pipe, 2026-11-26, 2026-11-26
+    Overlay mounts with userxattr rejected :workloads_overlay_userxattr, 2026-11-26, 2026-11-26
     section research - research
     Pick gVisor as the base :research_gvisor_base, 2026-11-17, 2026-11-26
     Revive LKL or nommu UML :crit, research_lkl_nommu, 2026-11-26, 2026-11-26

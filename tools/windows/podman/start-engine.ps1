@@ -78,6 +78,7 @@ function Start-Engine {
     @{ destination = '/dev/pts'; type = 'devpts'; source = 'devpts'; options = @('nosuid', 'noexec', 'newinstance', 'ptmxmode=0666', 'mode=0620') },
     @{ destination = '/dev/shm'; type = 'tmpfs'; source = 'shm'; options = @('nosuid', 'noexec', 'nodev', 'mode=1777', 'size=65536k') },
     @{ destination = '/sys'; type = 'sysfs'; source = 'sysfs'; options = @('nosuid', 'noexec', 'nodev', 'ro') },
+    @{ destination = '/sys/fs/cgroup'; type = 'cgroup2'; source = 'cgroup2'; options = @('nosuid', 'noexec', 'nodev') },
     @{ destination = '/run'; type = 'tmpfs'; source = 'tmpfs'; options = @('mode=755') },
     @{ destination = '/tmp'; type = 'tmpfs'; source = 'tmpfs'; options = @('mode=1777') },
     @{ destination = '/var/lib/containers'; type = 'bind'; source = $storage; options = @('rbind', 'rw', 'case-sensitive') }
@@ -125,7 +126,7 @@ function Start-Engine {
   & icacls $sockDir /inheritance:r /grant:r "$($env:USERNAME):(OI)(CI)F" /Q | Out-Null
   $sock = Join-Path $sockDir 'podman.sock'
   $sock | Set-Content (Join-Path $Work 'sock.path')
-  $args = @('--debug', "--debug-log=$logs\", '--network=windows-nat', '--overlay2=root:memory', "--pipe-forward=8888:$pipe", "--unix-forward=8888:$sock",'run', '-bundle', $bundle, "podman-$Name")
+  $args = @('--debug', "--debug-log=$logs\", '--network=windows-nat', '--overlay2=root:memory', '--in-sandbox-cgroup=v2', "--pipe-forward=8888:$pipe", "--unix-forward=8888:$sock",'run', '-bundle', $bundle, "podman-$Name")
   $p = Start-Process -FilePath $Runsc -ArgumentList $args -PassThru -WindowStyle Hidden `
     -RedirectStandardOutput (Join-Path $logs 'engine.out') -RedirectStandardError (Join-Path $logs 'engine.err')
   $p.Id | Set-Content $pidFile

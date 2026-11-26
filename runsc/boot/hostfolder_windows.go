@@ -43,6 +43,20 @@ func hostFolderForMount(m *specs.Mount) (gofer.HostFolderOptions, bool) {
 	return hostFolderOptions(m.Source, m.Options), true
 }
 
+// isHostFolderOption reports whether o is an option of hostFolderOptions.
+func isHostFolderOption(o string) bool {
+	switch o {
+	case "emulate-symlinks", "case-sensitive", "cache=exclusive", "cache=watched":
+		return true
+	}
+	for _, p := range []string{"owner=", "file-mode=", "dir-mode="} {
+		if strings.HasPrefix(o, p) {
+			return true
+		}
+	}
+	return false
+}
+
 // hostFolderOptions reads the options of a folder mount: owner=UID:GID (the
 // owner of files without stored metadata, default 0:0), emulate-symlinks,
 // case-sensitive, cache=watched (trust the change watch, faster, with holes)
