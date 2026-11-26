@@ -14,11 +14,21 @@ import (
 	"gvisor.dev/gvisor/pkg/sentry/fsimpl/gofer"
 )
 
+// RootfsOptionsAnnotation holds the comma-separated folder options of the
+// rootfs (see hostFolderOptions).
+const RootfsOptionsAnnotation = "dev.gvisor.windows.rootfs-options"
+
 func hostFolderForRoot(spec *specs.Spec) (gofer.HostFolderOptions, bool) {
 	if spec.Root == nil || spec.Root.Path == "" {
 		return gofer.HostFolderOptions{}, false
 	}
-	return hostFolderOptions(spec.Root.Path, nil), true
+	// The root has no mount options in an OCI spec; this annotation carries
+	// them, e.g. "file-mode=0755" for a folder whose files Windows created.
+	var opts []string
+	if v := spec.Annotations[RootfsOptionsAnnotation]; v != "" {
+		opts = strings.Split(v, ",")
+	}
+	return hostFolderOptions(spec.Root.Path, opts), true
 }
 
 func hostFolderForMount(m *specs.Mount) (gofer.HostFolderOptions, bool) {
@@ -44,6 +54,15 @@ func hostFolderOptions(path string, options []string) gofer.HostFolderOptions {
 				gid, e2 := strconv.ParseUint(g, 10, 32)
 				if e1 == nil && e2 == nil {
 					hf.UID, hf.GID = uint32(uid), uint32(gid)
+				}
+			}
+		case strings.HasPrefix(o, "file-mode="), strings.HasPrefix(o, "dir-mode="):
+			k, v, _ := strings.Cut(o, "=")
+			if m, err := strconv.ParseUint(v, 8, 32); err == nil {
+				if k == "file-mode" {
+					hf.FileMode = uint32(m)
+				} else {
+					hf.DirMode = uint32(m)
 				}
 			}
 		case o == "emulate-symlinks":

@@ -1,0 +1,72 @@
+# Boot runsc on Windows: "runsc.exe run" with an OCI bundle whose rootfs is a
+# Windows folder, stdio, network and a terminal, all as a standard user.
+name: windows-runsc
+on:
+  push:
+    branches: [runsc-boot]
+    paths: ["pkg/**", "runsc/**", "tools/windows/**", "test/guests/**", ".github/workflows/windows-runsc.yml"]
+  workflow_dispatch:
+jobs:
+  guests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: test/guests
+      - name: Build guests
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq busybox-static
+          mkdir -p out
+          gcc -static -no-pie -O1 -fstack-protector-all -o out/hello test/guests/hello.c
+          cp "$(command -v busybox)" out/busybox
+          file out/*
+          ! ldd out/busybox
+      - uses: actions/upload-artifact@v4
+        with: {name: runsc-guests, path: out}
+  run:
+    needs: guests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version-file: go.mod, cache: false}
+      - uses: actions/download-artifact@v4
+        with: {name: runsc-guests, path: guests}
+      - name: Build
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force C:\ci\bin | Out-Null
+          go vet ./runsc/winrunsc
+          go build -p 2 -o C:\ci\bin\runsc.exe ./runsc
+          go build -o C:\ci\bin\runsctest.exe ./tools/windows/runsctest
+      - name: Rootfs folder
+        shell: pwsh
+        run: |
+          # busybox applets are copies: the Windows folder has no Linux symlinks.
+          $r = 'C:\ci\work\rootfs'
+          foreach ($d in 'bin','etc','proc','dev','tmp','www') { New-Item -ItemType Directory -Force "$r\$d" | Out-Null }
+          Copy-Item guests\hello "$r\bin\hello"
+          foreach ($a in 'busybox','sh','ls','cat','wget','httpd','sleep','stty','tty') { Copy-Item guests\busybox "$r\bin\$a" }
+          [IO.File]::WriteAllText("$r\etc\hostname", "ciguest`n")
+          [IO.File]::WriteAllText("$r\www\index.html", "hello-from-guest`n")
+          Get-ChildItem -Recurse $r | Select-Object FullName, Length | Format-Table -AutoSize | Out-String -Width 200
+      - name: Hello as the runner's administrator (diagnostic)
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          C:\ci\bin\runsctest.exe -runsc C:\ci\bin\runsc.exe -rootfs C:\ci\work\rootfs -work C:\ci\work\admin -only hello
+      - name: All tests as a standard user
+        shell: pwsh
+        run: |
+          pwsh tools/windows/ci/run-as-standard-user.ps1 `
+            -Program C:\ci\bin\runsctest.exe `
+            -Arguments '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std' `
+            -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 1500
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: runsc-logs
+          path: |
+            C:\ci\work\admin\logs
+            C:\ci\work\std\logs
