@@ -77,7 +77,7 @@ func main() {
 	}
 	failed := 0
 	for _, t := range tests {
-		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "forward")) {
+		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case")) {
 			continue
 		}
 		start := time.Now()
@@ -330,6 +330,16 @@ func testCase() error {
 	dir := filepath.Join(*workDir, "case")
 	_ = os.RemoveAll(dir)
 	must(os.MkdirAll(dir, 0o755))
+	// What Windows itself says about per-directory case sensitivity for this user.
+	probe := filepath.Join(*workDir, "case-probe")
+	_ = os.RemoveAll(probe)
+	must(os.MkdirAll(probe, 0o755))
+	o, perr := exec.Command("fsutil", "file", "setCaseSensitiveInfo", probe, "enable").CombinedOutput()
+	fmt.Printf("fsutil setCaseSensitiveInfo as this user: %q err=%v
+", o, perr)
+	o, _ = exec.Command("fsutil", "file", "queryCaseSensitiveInfo", probe).CombinedOutput()
+	fmt.Printf("fsutil queryCaseSensitiveInfo: %q
+", o)
 	extraMounts = []map[string]any{{"destination": "/w", "type": "bind", "source": dir, "options": []string{"rbind", "rw", "case-sensitive"}}}
 	defer func() { extraMounts = nil }()
 	r, err := runsc("case", []string{"/bin/sh", "-c", "cd /w; echo lower >f; echo upper >F; mkdir d; echo dl >d/a; echo du >d/A; ls; cat f F d/a d/A"}, nil)
