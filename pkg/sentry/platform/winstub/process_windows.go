@@ -422,14 +422,23 @@ func (as *addressSpace) onException(ev *debugEvent, ctx *ctxBuf, seenBP *bool) u
 	t.mu.Lock()
 	parked := t.parked
 	t.mu.Unlock()
-	if parked {
-		return dbgContinue // an interrupt got the thread first
-	}
 	// A stale event for a thread that was moved away meanwhile.
 	if !ctx.get(t.hThread, ctxControlInt) {
 		return dbgContinue
 	}
 	rip := *ctx.u64(ctxRipOff)
+	if parked {
+		// An interrupt captured the thread (saved its registers and redirected
+		// it) while this event was pending. The event may resume the thread with
+		// the context it had when it faulted, undoing the redirect: if the thread
+		// still is at the faulting instruction, redirect it again. Its registers
+		// are in the page already.
+		if rip == excAddr {
+			*ctx.u64(ctxRipOff) = stubasm.StubCode + stubasm.OffTrampPark
+			ctx.set(t.hThread)
+		}
+		return dbgContinue
+	}
 	if rip != excAddr && code != excBreakpoint && code != excSingleStep {
 		return dbgContinue
 	}
