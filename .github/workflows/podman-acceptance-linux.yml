@@ -206,9 +206,9 @@ jobs:
         run: |
           cd "$RESULTS_DIR/out"
           docker logs podman-in-runsc >engine-container.log 2>&1 || true
-          { docker cp podman-in-runsc:/var/log/netavark.log netavark.log && tail -c 300000 netavark.log >netavark.tail; rm -f netavark.log; } 2>/dev/null || true
+          docker exec podman-in-runsc sh -c "tail -c 400000 /var/log/netavark.log" >netavark.tail 2>&1 || true
           sudo chmod -R a+r /tmp/runsc-logs
-          ( cd /tmp/runsc-logs; grep -rhE ' (netavark|netavark.real) [EX] (sendmsg|sendto|recvmsg|recvfrom|setsockopt|socket|setns|unshare) |^W1' . | cut -c1-500 | head -400 ) >netavark-strace.txt || true
+          ( cd /tmp/runsc-logs; grep -rh 'W1.*\(netlink\|link info\|unexpected\|attribute\)' . | cut -c1-400 | head -100 ) >gvisor-netlink-warnings.txt || true
           ( cd /tmp/runsc-logs; grep -rhE ' (netavark|nft|iptables|exe) [XE] ' . | grep -E 'NETLINK|errno=(92|93|94|95|97|22|38|1|13) ' | grep -E 'socket|setsockopt|sendmsg|sendto|setns|mount|bind' | cut -c1-350 | head -200 ) >netlink-errors.txt || true
           ( cd /tmp/runsc-logs; grep -rh 'Unsupported syscall\|unexpected attribute\|not supported\|unimplemented' . | cut -c1-300 | sort | uniq -c | sort -rn | head -40 ) >gvisor-warnings.txt || true
           { echo "### probe2-${{ matrix.podman }}-${{ matrix.v }}"; echo '```'; grep -E '^Version' engine-version.txt; cat steps.txt; echo '```'; } >>"$GITHUB_STEP_SUMMARY"
