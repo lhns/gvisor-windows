@@ -310,6 +310,14 @@ func deleteCmd(args []string) int {
 		}
 		killProcess(st.PID)
 	}
+	// A sandbox that just reported its exit lingers a moment (it answers a
+	// pending wait); it holds the log files until it is gone.
+	for i := 0; i < 50 && processAlive(st.PID); i++ {
+		time.Sleep(100 * time.Millisecond)
+	}
+	if processAlive(st.PID) {
+		killProcess(st.PID)
+	}
 	if err := os.RemoveAll(stateDir(id)); err != nil {
 		return fatalf("%v", err)
 	}
