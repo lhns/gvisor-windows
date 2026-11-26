@@ -66,7 +66,7 @@ jobs:
         shell: pwsh
         working-directory: tools/windows/stubproto
         run: |
-          foreach ($p in 'layout','unmap','interrupt','threads') {
+          foreach ($p in 'layout','unmap','protect','interrupt','threads') {
             "===== probe $p" | Tee-Object -Append -FilePath probes.txt
             ./stubproto.exe probe $p -dir out 2>&1 | Tee-Object -Append -FilePath probes.txt
             "exit: $LASTEXITCODE" | Tee-Object -Append -FilePath probes.txt

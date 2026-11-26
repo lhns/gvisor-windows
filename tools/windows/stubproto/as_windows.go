@@ -225,10 +225,17 @@ func (as *AS) mapPage(a uint64, prot int) error {
 	if err != nil {
 		return err
 	}
-	r, _, e := pMapViewOfFile3.Call(as.mf.sec, as.h, uintptr(a), uintptr(off), pageSize, memReplacePH, winProt(prot), 0, 0)
+	initial := winProt(prot)
+	if mapInitialRWX {
+		initial = pageExecRW
+	}
+	r, _, e := pMapViewOfFile3.Call(as.mf.sec, as.h, uintptr(a), uintptr(off), pageSize, memReplacePH, initial, 0, 0)
 	if r == 0 {
 		as.mf.release(off)
 		return fmt.Errorf("MapViewOfFile3 at %#x: %v", a, e)
+	}
+	if initial != winProt(prot) {
+		as.vprotect(a, prot)
 	}
 	p.state, p.off, p.prot = 2, off, prot
 	return nil
@@ -304,7 +311,11 @@ func (as *AS) protect(lo, hi uint64, prot int) bool {
 	return true
 }
 
-const faultAround = 8 // pages mapped per lazy fault
+// mapInitialRWX maps every view as PAGE_EXECUTE_READWRITE and lowers it at once:
+// a view mapped without execute permission cannot be given it later.
+var mapInitialRWX = true
+
+const faultAround = 64 // pages mapped per lazy fault
 
 // fault maps the page(s) around a (a guest access to an unmapped page). It reports
 // false if a is not in a VMA or the VMA does not allow the access.
