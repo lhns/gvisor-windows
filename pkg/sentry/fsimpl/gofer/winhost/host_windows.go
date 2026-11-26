@@ -624,6 +624,7 @@ func (fs *FS) Rename(oldDir ID, oldName string, newDir ID, newName string, flags
 	}
 	srcDir := src.Mode&SIFMT == SIFDIR
 
+	targetFile := false
 	// Check the target for the errors rename(2) defines; Windows reports
 	// access denied for all of them.
 	if th, err := openChild(nh, newName, statAccess, 0); err == nil {
@@ -639,6 +640,7 @@ func (fs *FS) Rename(oldDir ID, oldName string, newDir ID, newName string, flags
 			return nil // same file: nothing to do
 		}
 		dstDir := ta.Mode&SIFMT == SIFDIR
+		targetFile = !dstDir
 		switch {
 		case srcDir && !dstDir:
 			return unix.ENOTDIR
@@ -657,7 +659,16 @@ func (fs *FS) Rename(oldDir ID, oldName string, newDir ID, newName string, flags
 		return err
 	}
 	full := np + `\` + EscapeName(newName)
-	return renameHandle(sh, full, flags&RenameNoReplace == 0)
+	err = renameHandle(sh, full, flags&RenameNoReplace == 0)
+	if targetFile && (err == unix.EACCES || err == unix.EBUSY) {
+		// A target that is held open or has an unusual state may refuse to be
+		// replaced: delete it first (POSIX delete works while it is held) and
+		// rename into the free name. Not atomic.
+		if uerr := fs.Unlink(newDir, newName, false); uerr == nil {
+			err = renameHandle(sh, full, false)
+		}
+	}
+	return err
 }
 
 // renameHandle renames an open file to the NT path full.

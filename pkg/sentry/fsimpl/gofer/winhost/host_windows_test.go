@@ -757,3 +757,25 @@ func TestProbeEnumeration(t *testing.T) {
 	h, err = ntOpen(fs.root, "", 1|0x80, shareAll, windows.FILE_OPEN, 0, 0)
 	t.Logf("relative empty open: %v", err)
 }
+
+func TestRenameOverHeldFile(t *testing.T) {
+	fs, _ := newFS(t, Options{})
+	root := fs.Root()
+	src := mustCreate(t, fs, root, "src", Spec{Mode: 0o644})
+	dst := mustCreate(t, fs, root, "dst", Spec{Mode: 0o644})
+	fs.WriteAt(dst.ID, []byte("old"), 0)
+	if err := fs.Pin(dst.ID); err != nil {
+		t.Fatal(err)
+	}
+	defer fs.Unpin(dst.ID)
+	if err := fs.Rename(root, "src", root, "dst", 0); err != nil {
+		t.Fatalf("rename over a held file: %v", err)
+	}
+	if a, err := fs.Lookup(root, "dst"); err != nil || a.ID != src.ID {
+		t.Errorf("dst is %+v %v", a, err)
+	}
+	buf := make([]byte, 3)
+	if n, _ := fs.ReadAt(dst.ID, buf, 0); string(buf[:n]) != "old" {
+		t.Errorf("the replaced file lost its data: %q", buf[:n])
+	}
+}
