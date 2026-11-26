@@ -1144,18 +1144,20 @@
   title: Guest threads and signals
   track: sentry
   kind: feature
-  state: in-progress
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/1f-exec-signals.md
+  verdict_quote: Under the real Sentry on `windows-latest`, dynamic glibc and musl programs with `dlopen`, execve chains, fork+exec+wait, busybox shell pipelines
   headline: ''
   depends_on:
   - platform-winstub
   replaced_by: []
   lane: windows-ci
   start: '2026-11-26'
-  end: ''
-  folded: []
+  end: '2026-11-26'
+  folded:
+  - A new process inside a guest costs 0.9-1.2 s; busybox pipelines take 3.3-3.8 s (2026-11-26, session record)
   overview: false
   plain: Multi-threaded guests (such as Go programs) get one stub thread per guest thread, with signals delivered correctly.
   notes: 'Done when: a multi-threaded Go program and a signal-handling test run correctly under the Sentry on Windows.'
@@ -1717,22 +1719,23 @@
   lane: windows-ci
   plain: runsc's real boot path on Windows (spec, mounts, stdio, network) replaces the test harness that builds the kernel by hand.
   notes: 'Done when: runsc boot on Windows starts a sandbox from an OCI spec with the windows-nat network and a tmpfs or directfs root, and the static guests pass through it.'
-- outcome: unrated
-  evidence: []
-  verdict_quote: ''
+- outcome: successful
+  evidence:
+  - docs/results/1f-exec-signals.md
+  verdict_quote: Under the real Sentry on `windows-latest`, dynamic glibc and musl programs with `dlopen`, execve chains, fork+exec+wait, busybox shell pipelines
   headline: ''
   depends_on:
   - platform-static-guest-from-memory
   replaced_by: []
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   id: sentry-dynamic-elf-and-exec
   title: Dynamic programs, exec and pipes
   track: sentry
   kind: feature
-  state: in-progress
+  state: done
   lane: windows-ci
   plain: Run dynamically linked programs with their interpreter and shared libraries, exec a second program, and connect processes with pipes.
   notes: 'Done when: a dynamic glibc and a dynamic musl program, an exec chain and a shell pipeline (static busybox sh -c "echo a | cat") pass under the Sentry on Windows.'

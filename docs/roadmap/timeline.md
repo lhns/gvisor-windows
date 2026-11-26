@@ -45,9 +45,9 @@ gantt
     Guest memory on Windows sections :sentry_memory_file_sections, 2026-11-26, 2026-11-26
     Port fault recovery to Windows :sentry_fault_recovery, 2026-11-26, 2026-11-26
     Guest terminal and stdio :active, sentry_host_stdio_and_tty, 2026-11-26, 2026-11-26
-    Guest threads and signals :active, sentry_threads_and_signals, 2026-11-26, 2026-11-26
+    Guest threads and signals :sentry_threads_and_signals, 2026-11-26, 2026-11-26
     Make Linux names resolve on Windows :sentry_unix_shim, 2026-11-26, 2026-11-26
-    Dynamic programs, exec and pipes :active, sentry_dynamic_elf_and_exec, 2026-11-26, 2026-11-26
+    Dynamic programs, exec and pipes :sentry_dynamic_elf_and_exec, 2026-11-26, 2026-11-26
     section fs - files
     Compatibility layer, not security bound… :fs_compat_layer_not_boundary, 2026-11-26, 2026-11-26
     Test persistent image storage :fs_persistent_image_storage, 2026-11-26, 2026-11-26
