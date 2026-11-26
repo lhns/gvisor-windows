@@ -96,3 +96,50 @@ Syscall sites in the guests (decoder-classified `SYSCALL` instructions): asm hel
 - The first run of the Go guest failed once before the repair guard was relaxed; repeated CI runs were not used to bound flakiness beyond the runs listed.
 
 Verdict: PASS. A suspended PE stub, a Go controller that builds the address space from placeholders and 4 KB section views, eager `syscall` patching with a shared-memory trampoline and debugger-only fault handling run static glibc (non-PIE and PIE), fork+wait, threads and a static Go binary on a hosted Windows runner, at 0.3 us per patched syscall, 60 us per ud2 syscall and about 18 ms per process start.
+
+## Hardening
+
+Branch `stub-hardening`, CI run https://github.com/lhns/gvisor-windows/actions/runs/45872751203 (same runner type as above; the run-to-run spread of the timings was about 1.5x between runs of this series, so single numbers are indicative). Three changes, all in `tools/windows/stubproto`; `stubasm` and `pe` stay platform-reusable (the page layout gained event handles and sleep flags, `NtDelayExecution` is gone).
+
+### 1. Every syscall site is patched
+
+`patch_windows.go` now decodes a whole executable range, collects direct-branch targets, and handles each `SYSCALL` as follows. `mov $imm32,%eax|%rax; syscall` still becomes `jmp *slot` through the table. Any other site gets the smallest window of at least 5 bytes made of whole decoded instructions around the `syscall` (up to 3 before and 3 after) in which no instruction except the first is a visible branch target, none has a rip-relative operand or is a relative branch, `call`, `int`, `ud2`, and `ret` or an indirect `jmp` appears only last. The window becomes `jmp rel32` plus nops to a per-site veneer: the displaced instructions before the `syscall`, `movabs $post,%rcx; movabs $tramp,%r11; jmp *%r11`, the displaced instructions after it, and a jump back to the end of the window. The trampoline needs no syscall number from the site, it takes `%rax` as it is, so this covers `xor %eax,%eax`, `mov %reg,%eax` and Go's `Syscall6` alike. Veneers live in a 256 KiB RX area right after the loaded image (so `rel32` always reaches, also for static-PIE); a site that cannot be patched stays `ud2`.
+
+Sites per class, `before` (ADR 0011 patterns only) and `after`:
+
+| guest | sites | before: imm patched / ud2 | after: imm patched / relocating jump (of which `xor %eax,%eax`) / ud2 |
+|---|---|---|---|
+| asm hello | 3 | 2 / 1 | 2 / 1 (0) / 0 |
+| static glibc | 135 | 97 / 38 | 97 / 38 (1) / 0 |
+| static-PIE glibc | 135 | 97 / 38 | 97 / 38 (1) / 0 |
+| glibc fork | 158 | 120 / 38 | 120 / 38 (1) / 0 |
+| Go hello | 39 | 36 / 3 | 36 / 3 (0) / 0 |
+
+Executed syscalls on the ud2 path (per run, from the controller's own counters): glibc hello 7 of 16 before, 0 of 16 after; glibc fork 9 of 24 before, 0 of 24 after; Go hello 9 of 195 before, 0 of 197 after. So the ud2 share in the glibc + fork + Go guests is 0.00% (target <1%). The JIT guest is the only one that still uses the ud2 path (2 syscalls from generated code far from the veneer area), and the bench guest has one deliberately unpatchable site (between two direct jumps) so the ud2 path stays measurable.
+
+Limits: a branch into the middle of a window through an indirect jump or jump table is invisible and would land in a nop or a half instruction; the sample guests have none (all pass). Flags are not preserved across a patched `syscall` (they are on Linux); no sample guest depends on it.
+
+### 2. W^X for guest code
+
+Guest mappings that ask for execute are mapped `PAGE_EXECUTE_READ` (a request for write plus execute loses the write). A write fault on such a page makes it `PAGE_READWRITE` (execute dropped, event `wx-drop-exec`); an execute fault on a page that was dropped rescans every mapped page of its VMA, patches the new syscalls, and makes the pages executable again (`wx-rescan`). `mprotect(PROT_EXEC)` scans the range's mapped pages; controller-side writes into guest memory (a `read` into an executable buffer) drop execute too. Anonymous executable memory with no content yet needs no scan at `mmap`; it is scanned when it is first made executable or rewritten.
+
+New guest `jit_glibc` (static C): (1) mmap RW, write `mov $39,%eax; syscall; ret`, `mprotect` RX, call; (2) mmap RWX, run getpid code, overwrite the same page with getppid code, run again; (3) the same with a register-number syscall (`mov %rdi,%rax; syscall; ret`). It prints `jit1 ok`, `jit2 ok`, `jit3 ok` and exits 0, so every generated `syscall` produced the Linux result and none reached the NT kernel (an unpatched `syscall` would have returned an NT status or terminated the process). Events: 4 `wx-drop-exec`, 4 `wx-rescan`, 2 `ud2-syscall-redirect` (the register-number sites in generated code are too far from the veneer area for a `rel32`).
+
+Finding that decided the design (probe `protect`, CI): the protection a view can later get is bounded by the protection it was mapped with. R can only go to none; RW to R/RW/none; RX to R/RX/none; **only a view mapped `PAGE_EXECUTE_READWRITE` can later become anything** (`VirtualProtectEx` otherwise fails with "The parameter is incorrect"). So every view is mapped RWX and lowered at once; that costs one more call (map 7.9 us instead of 4.9 us per 4 KB page).
+
+### 3. No busy polling
+
+One controller goroutine per guest thread replaces the single polling loop. The thread page has two event handles (duplicated into the stub) and two sleep flags. Request: the stub publishes state=1 with `xchg`, and calls `NtSetEvent(request event)` only if the controller's sleep flag is set; the controller goroutine spins about 20000 loads, then sets its flag, rechecks the state and waits on the event. Reply: the controller stores state=2 with an atomic swap and calls `SetEvent(reply event)` only if the stub's sleep flag is set; the stub spins 3000 `pause`, then sets its flag, rechecks and calls `NtWaitForSingleObject` (on its own stack). Both sides recheck after setting the flag, so no wake-up is lost. One controller mutex guards all shared state; blocked calls (futex, wait4, nanosleep) complete from the waker's context or a timer instead of being polled; `fork` is handed to the debugger thread (the only thread that may create a debuggee and receive its events) and costs up to 1 ms more latency. `NtWaitForAlertByThreadId`/`NtAlertThreadByThreadId` were not tried; events are the documented cross-process mechanism.
+
+| | before (polling) | after (event hand-off) |
+|---|---|---|
+| patched syscall, getpid x100000, median / p99 | 0.30 us / 0.40 us | 0.30 us / 0.40 us (0.20-0.40 us over runs) |
+| Go hello, `%fs` repairs per run | 19-20 | 8-9 (10 runs: 9 9 9 9 8 9 9 8 8 8) |
+| Go hello, lazy-map debug events per run | 34 | 20-21 (fault-around raised from 8 to 64 pages) |
+| ud2 syscall median | 60 us | 37-144 us over three runs (runner noise) |
+
+The remaining 8-9 repairs per Go run are not starvation: they track the debug events. Every debug event stops all threads of the stub, which deschedules them and clears their `%fs` base, so each thread that runs after an event repairs once; the number fell together with the number of events. The controller now sleeps when idle, so it no longer competes with the guest threads for the 4 vCPUs.
+
+Also measured in this series: map one 4 KB page 7.9 us, unmap 1.8 us; process start 18 ms, fork 20 ms.
+
+Verdict: PASS. Every syscall site of the glibc, fork and Go guests is patched (0.00% of executed syscalls on the ud2 path), generated code is rescanned under W^X (a JIT guest gets the Linux results with no NT-kernel syscall), and an event hand-off keeps the patched syscall at 0.3 us median without a spinning controller; the `%fs` repairs left (8-9 per Go run) follow from debug events, not from starvation.

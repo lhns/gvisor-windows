@@ -31,7 +31,12 @@ var (
 	pTerminateThread  = k32.NewProc("TerminateThread")
 	pCreateRemoteThr  = k32.NewProc("CreateRemoteThread")
 	pCloseHandle      = k32.NewProc("CloseHandle")
-	pNtDelay          = ntd.NewProc("NtDelayExecution")
+	pNtSetEvent       = ntd.NewProc("NtSetEvent")
+	pNtWaitSingle     = ntd.NewProc("NtWaitForSingleObject")
+	pCreateEventW     = k32.NewProc("CreateEventW")
+	pSetEvent         = k32.NewProc("SetEvent")
+	pWaitSingle       = k32.NewProc("WaitForSingleObject")
+	pDuplicateHandle  = k32.NewProc("DuplicateHandle")
 	pUnmapViewOfFile  = k32.NewProc("UnmapViewOfFile")
 )
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -23,27 +24,7 @@ func (c *Ctl) ctxU64(off uintptr) *uint64 { return (*uint64)(ptr(c.ctxBuf + off)
 
 const ctxRip = 0xF8
 
-// poll serves pending shared-memory syscall requests and completes blocked calls.
-func (c *Ctl) poll() bool {
-	any := false
-	for _, p := range c.live {
-		if p.exited {
-			continue
-		}
-		for _, t := range p.threads {
-			if !t.dead && !t.waiting && t.state() == 1 {
-				c.serve(t)
-				any = true
-			}
-		}
-	}
-	if len(c.pendings) > 0 && c.runPendings() {
-		any = true
-	}
-	return any
-}
-
-func (c *Ctl) serve(t *Thread) {
+func (c *Ctl) serve(t *Thread) int {
 	p := t.p
 	now := time.Now()
 	if !p.gotFirst {
@@ -73,7 +54,7 @@ func (c *Ctl) serve(t *Thread) {
 	if nr == 9999 { // probe hook: register the guest address of a counter
 		c.probeAddr = a[0]
 		c.reply(t, 0)
-		return
+		return stRet
 	}
 	ret, st := c.syscall(t, nr, a)
 	if c.trace {
@@ -81,6 +62,58 @@ func (c *Ctl) serve(t *Thread) {
 	}
 	if st == stRet {
 		c.reply(t, ret)
+	}
+	return st
+}
+
+func (c *Ctl) startLoop(t *Thread) {
+	c.wg.Add(1)
+	go c.threadLoop(t)
+}
+
+// threadLoop serves one guest thread: spin briefly for its request, then sleep on
+// its request event (the stub signals only if it sees the sleeping flag).
+func (c *Ctl) threadLoop(t *Thread) {
+	defer c.wg.Done()
+	sleepFlag := (*uint32)(unsafe.Add(t.page, stubasm.PgCtlSlp))
+	for !t.quit.Load() {
+		got := false
+		for i := 0; i < ctlSpin; i++ {
+			if t.state() == 1 {
+				got = true
+				break
+			}
+			if i&1023 == 1023 && t.quit.Load() {
+				return
+			}
+		}
+		if !got {
+			atomic.SwapUint32(sleepFlag, 1)
+			if t.state() == 1 {
+				atomic.StoreUint32(sleepFlag, 0)
+			} else {
+				pWaitSingle.Call(t.evReq, 50)
+				atomic.StoreUint32(sleepFlag, 0)
+				continue
+			}
+		}
+		c.mu.Lock()
+		if t.quit.Load() {
+			c.mu.Unlock()
+			return
+		}
+		st := stRet
+		if !t.waiting && t.state() == 1 {
+			st = c.serve(t)
+		}
+		c.mu.Unlock()
+		if st == stBlocked {
+			select {
+			case <-t.doneCh:
+			case <-t.quitCh:
+				return
+			}
+		}
 	}
 }
 
@@ -162,6 +195,14 @@ func (c *Ctl) onException(p *Proc, t *Thread) uint32 {
 			return dbgNotHandled
 		}
 		kind, addr := u64at(ev, 48), u64at(ev, 56)
+		if kind == 1 && p.as.wxWrite(addr) {
+			c.count("EXCEPTION:wx-drop-exec")
+			return dbgContinue
+		}
+		if kind == 8 && p.wxExec(addr) {
+			c.count("EXCEPTION:wx-rescan")
+			return dbgContinue
+		}
 		if p.as.findVMA(addr) != nil && p.as.fault(addr, kind == 1, kind == 8) {
 			c.count("EXCEPTION:av-lazy-map")
 			if c.probeAddr != 0 && c.holdProbe {
@@ -202,7 +243,8 @@ func (c *Ctl) onException(p *Proc, t *Thread) uint32 {
 			}
 			*t.u64(stubasm.PgRIP) = rip + 2
 			t.viaUD2 = true
-			t.setState(1)
+			atomic.SwapUint32((*uint32)(t.page), 1)
+			pSetEvent.Call(t.evReq)
 			*c.ctxU64(ctxRip) = stubasm.StubCode + stubasm.OffTrampWait
 			if !c.setCtx(t.h) {
 				return c.crash(p, t, "SetThreadContext failed", 4)
@@ -228,34 +270,36 @@ func (c *Ctl) holdEvent(p *Proc) {
 	c.holdSamples = append(c.holdSamples, v1-v0)
 }
 
-// step runs one iteration of the event loop.
-func (c *Ctl) step(idle bool) {
-	for i := 0; i < 100; i++ {
-		if c.poll() {
-			i = 0
-			idle = false
-		}
+// eventStep waits up to 1 ms for one debug event and handles it; it also runs the
+// tasks other threads hand over because they must happen on this (the debugger's) thread.
+func (c *Ctl) eventStep() {
+	select {
+	case f := <-c.tasks:
+		f()
+	default:
 	}
-	to := uintptr(0)
-	if idle {
-		to = 1
-	}
-	r, _, _ := pWaitDebugEvent.Call(c.evBuf, to)
+	r, _, _ := pWaitDebugEvent.Call(c.evBuf, 1)
 	if r == 0 {
 		return
 	}
+	c.mu.Lock()
 	status := c.handleEvent()
+	c.mu.Unlock()
 	pContinueDebug.Call(uintptr(u32at(c.evBuf, 4)), uintptr(u32at(c.evBuf, 8)), uintptr(status))
-	c.lastEvent = time.Now()
 }
 
-// run drives the loop until the main process has exited.
+// run drives the debugger loop until the main process has exited.
 func (c *Ctl) run(main *Proc, limit time.Duration) error {
 	c.mainProc = main
 	deadline := time.Now().Add(limit)
-	c.lastEvent = time.Now()
-	for !main.dead {
-		c.step(time.Since(c.lastEvent) > 2*time.Millisecond)
+	for {
+		c.mu.Lock()
+		done := main.dead
+		c.mu.Unlock()
+		if done {
+			break
+		}
+		c.eventStep()
 		if time.Now().After(deadline) {
 			c.killAll()
 			return fmt.Errorf("timeout after %v", limit)
@@ -265,21 +309,60 @@ func (c *Ctl) run(main *Proc, limit time.Duration) error {
 	return nil
 }
 
-// pump runs the loop for d.
+// pump runs the debugger loop for d.
 func (c *Ctl) pump(d time.Duration) {
 	end := time.Now().Add(d)
 	for time.Now().Before(end) {
-		c.step(false)
+		c.eventStep()
 	}
 }
 
 func (c *Ctl) killAll() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	for _, p := range c.live {
 		if !p.exited {
 			p.exited = true
+			for _, t := range p.threads {
+				t.die()
+			}
 			p.kill()
 		}
 	}
 }
 
-var _ = unsafe.Pointer(nil)
+// wxWrite handles a guest write to an executable page: the page becomes writable
+// and loses execute permission.
+func (as *AS) wxWrite(a uint64) bool {
+	v := as.findVMA(a)
+	p := as.pages[pageDown(a)]
+	if v == nil || p == nil || p.state != 2 || v.prot&2 == 0 || v.prot&4 == 0 || p.dirty {
+		return false
+	}
+	as.dropExec(pageDown(a), p)
+	return true
+}
+
+// wxExec handles an execute fault on a page that was written: every mapped page of
+// the VMA is rescanned (and its syscalls patched) before it becomes executable again.
+func (p *Proc) wxExec(a uint64) bool {
+	as := p.as
+	v := as.findVMA(a)
+	q := as.pages[pageDown(a)]
+	if v == nil || q == nil || q.state != 2 || !q.dirty || v.prot&4 == 0 {
+		return false
+	}
+	lo, hi, eff := v.lo, v.hi, effProt(v.prot)
+	st, err := p.scanRange(lo, hi)
+	if err != nil {
+		p.c.logf("rescan: %v", err)
+	}
+	p.stats.add(st)
+	for x := lo; x < hi; x += pageSize {
+		if pp := as.pages[x]; pp != nil && pp.state == 2 && pp.dirty {
+			as.vprotect(x, eff)
+			pp.prot, pp.dirty = eff, false
+		}
+	}
+	return true
+}

@@ -131,12 +131,21 @@ func (c *Ctl) report(w io.Writer) {
 	}
 	fmt.Fprintf(w, "INFO debug events: total=%d %s\n", total, strings.Join(parts, " "))
 	s := c.mainStats
-	fmt.Fprintf(w, "INFO sites (main exe): syscall insts=%d patched=%d (imm32=%d imm64=%d) ud2=%d, 0f05 byte pairs=%d, pairs not decoded as syscall=%d\n",
-		s.syscalls, s.patched, s.imm32, s.imm64, s.ud2, s.pairs, s.nonSyscal)
-	fmt.Fprintf(w, "INFO syscalls served: via patched jump=%d via ud2=%d; start to first syscall=%v\n", c.patchedServed, c.udServed, c.mainDur)
+	fmt.Fprintf(w, "INFO sites (main exe): syscall insts=%d patched=%d (imm32=%d imm64=%d reloc=%d of which xor=%d) ud2=%d (no window=%d, branch target=%d, non-relocatable=%d, no veneer=%d), 0f05 byte pairs=%d, pairs not decoded as syscall=%d\n",
+		s.syscalls, s.patched, s.imm32, s.imm64, s.reloc, s.relocXor, s.ud2, s.noWindow, s.onTarget, s.nonReloc, s.noVeneer, s.pairs, s.nonSyscal)
+	tot := c.patchedServed + c.udServed
+	fmt.Fprintf(w, "INFO syscalls served: via patched jump=%d via ud2=%d (ud2 share %.2f%%); start to first syscall=%v\n", c.patchedServed, c.udServed, 100*float64(c.udServed)/float64(max(tot, 1)), c.mainDur)
 }
 
 func (c *Ctl) cleanupAll() {
+	c.mu.Lock()
+	for _, p := range c.procs {
+		for _, t := range p.threads {
+			t.die()
+		}
+	}
+	c.mu.Unlock()
+	c.wg.Wait()
 	for _, p := range c.procs {
 		if !p.exited {
 			p.exited = true
@@ -167,6 +176,7 @@ var guests = []guestSpec{
 	{"b-glibc-static", "hello_glibc", nil, "hello from glibc: argc=1 tv=5 work=10 heap=ok\n", 7, true},
 	{"b2-glibc-static-pie", "hello_glibc_pie", nil, "hello from glibc: argc=1 tv=5 work=10 heap=ok\n", 7, true},
 	{"c-glibc-fork-wait", "fork_glibc", nil, "child\nparent: child exited 3\n", 0, true},
+	{"f-jit-wx", "jit_glibc", nil, "jit1 ok\njit2 ok\njit3 ok\n", 0, true},
 	{"d-go-hello", "hello_go", nil, "hello from go\n", 0, false},
 	{"e-asm-threads", "threads_asm", nil, "threads done\n", 0, false},
 }
@@ -262,6 +272,24 @@ func cmdSuite(args []string) int {
 			fmt.Printf("MEASURE fork (request to child's first syscall), %d runs: median=%.1f ms min=%.1f ms max=%.1f ms; controller time inside fork: median=%.1f ms\n",
 				len(d), d[len(d)/2]/1e3, d[0]/1e3, d[len(d)-1]/1e3, f[len(f)/2]/1e3)
 		}
+	}
+	if p := filepath.Join(dir, "hello_go"); fileExists(p) {
+		var rep, lazy, tot []int
+		ok := 0
+		for i := 0; i < 10; i++ {
+			exit, out, _ := c.runGuest(p, nil, nil, 30*time.Second)
+			if exit == 0 && out == "hello from go\n" {
+				ok++
+			}
+			rep = append(rep, c.ev["EXCEPTION:av-fs-repair"])
+			lazy = append(lazy, c.ev["EXCEPTION:av-lazy-map"])
+			n := 0
+			for _, v := range c.ev {
+				n += v
+			}
+			tot = append(tot, n)
+		}
+		fmt.Printf("MEASURE go guest x10: ok=%d, %%fs repairs per run %v, lazy-map events per run %v, all debug events per run %v\n", ok, rep, lazy, tot)
 	}
 	fmt.Printf("INFO memory file peak pages=%d (%d MiB)\n", c.mf.peak, c.mf.peak*4096>>20)
 	if failed > 0 {

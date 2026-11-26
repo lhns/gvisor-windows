@@ -1,4 +1,5 @@
-# 100000 getpid through a patched site, 2000 getppid through an unpatched (ud2) site.
+# 100000 getpid through a patched site, 2000 getppid through a site that cannot be
+# patched (it sits between direct jumps, so no displaced window exists): ud2 path.
 .globl _start
 .text
 _start:
@@ -10,8 +11,10 @@ _start:
 	mov $2000, %r12d
 	mov $110, %ebx
 2:	mov %ebx, %eax
-	syscall
-	dec %r12d
+	jmp 4f
+4:	syscall
+	jmp 5f
+5:	dec %r12d
 	jnz 2b
 	mov $1, %edi
 	lea msg(%rip), %rsi

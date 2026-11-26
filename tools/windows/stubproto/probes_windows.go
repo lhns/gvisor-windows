@@ -27,6 +27,8 @@ func cmdProbe(args []string) int {
 	switch args[0] {
 	case "layout":
 		probeLayout(c, 50)
+	case "protect":
+		probeProtect(c)
 	case "unmap":
 		probeUnmap(c)
 	case "interrupt":
@@ -195,4 +197,51 @@ func probeThreads(c *Ctl, guest string) {
 	fmt.Printf("RESULT threads: while a debug event was held for 20 ms, the second guest thread's counter advanced in %d of %d holds (0 advanced = all threads stopped)\n", moved, len(c.holdSamples))
 	fmt.Printf("RESULT threads: counter advance during a 100 ms nanosleep served over shared memory (no debug event pending): %v\n", c.runDelta)
 	c.report(os.Stdout)
+}
+
+// probeProtect finds which initial view protections allow a later change to execute.
+func probeProtect(c *Ctl) {
+	p, err := c.newProc("protect")
+	if err != nil {
+		fmt.Println("FAIL protect:", err)
+		return
+	}
+	defer func() { p.kill(); p.cleanup() }()
+	var base uint64
+	for _, g := range p.as.gaps {
+		if g.hi-g.lo >= 1<<20 {
+			base = g.lo
+			break
+		}
+	}
+	names := map[uintptr]string{pageReadOnly: "R", pageReadWrite: "RW", pageExecRead: "RX", pageExecRW: "RWX", pageNoAccess: "none"}
+	inits := []uintptr{pageReadOnly, pageReadWrite, pageExecRead, pageExecRW}
+	targets := []uintptr{pageReadOnly, pageReadWrite, pageExecRead, pageExecRW, pageNoAccess}
+	r, _, e := pVirtualFreeEx.Call(p.h, uintptr(base), 0x10000, memRelease|memPreservePH)
+	fmt.Printf("INFO protect: split: ok=%v %v\n", r != 0, e)
+	i := uint64(0)
+	for _, in := range inits {
+		var row string
+		for _, tg := range targets {
+			a := base + i*pageSize
+			i++
+			if i > 1 {
+				pVirtualFreeEx.Call(p.h, uintptr(a), pageSize, memRelease|memPreservePH)
+			}
+			off, _ := c.mf.alloc()
+			r, _, e := pMapViewOfFile3.Call(c.mf.sec, p.h, uintptr(a), uintptr(off), pageSize, memReplacePH, in, 0, 0)
+			if r == 0 {
+				row += fmt.Sprintf(" ->%s:map-failed(%v)", names[tg], e)
+				continue
+			}
+			var old uint32
+			r, _, e = pVirtualProtectEx.Call(p.h, uintptr(a), pageSize, tg, uintptr(unsafe.Pointer(&old)))
+			if r == 0 {
+				row += fmt.Sprintf(" ->%s:FAIL(%v)", names[tg], e)
+			} else {
+				row += fmt.Sprintf(" ->%s:ok", names[tg])
+			}
+		}
+		fmt.Printf("INFO protect: view mapped as %s:%s\n", names[in], row)
+	}
 }

@@ -7,9 +7,9 @@
 // Page layout: see stubasm.go. Registers rax, rcx, r11 are free at a syscall
 // site (the syscall instruction clobbers them); everything else is saved.
 
-// Wait for state==2 (spin, then NtDelayExecution), then restore the guest
-// registers from the page, set the %fs base and return to the guest.
-// Expects R11 = page, AX = spin budget.
+// Wait for state==2: spin, then sleep on the reply event (stubSleeping handshake),
+// then restore the guest registers from the page, set the %fs base and return to the
+// guest. Expects R11 = page, AX = spin budget.
 #define WAITRET \
 wait: \
 	CMPL 0(R11), $2 \
@@ -18,13 +18,20 @@ wait: \
 	DECQ AX \
 	JNZ  wait \
 	MOVQ 0x38(R11), SP \
-	MOVQ 0x30(R11), AX \
-	XORL CX, CX \
-	LEAQ 0x48(R11), DX \
+sleep: \
+	MOVL $1, AX \
+	XCHGL AX, 0x54(R11) \
+	CMPL 0(R11), $2 \
+	JEQ  woke \
+	MOVQ 0x60(R11), CX \
+	XORL DX, DX \
+	XORL R8, R8 \
+	MOVQ 0x70(R11), AX \
 	CALL AX \
 	BYTE $0x65; BYTE $0x4C; BYTE $0x8B; BYTE $0x1C; BYTE $0x25; LONG $0x28 \
-	MOVQ 0x40(R11), AX \
-	JMP  wait \
+	JMP  sleep \
+woke: \
+	MOVL $0, 0x54(R11) \
 done: \
 	MOVL $0, 0(R11) \
 	MOVQ 0x110(R11), DX \
@@ -66,7 +73,17 @@ TEXT ·tramp(SB),NOSPLIT|NOFRAME,$0-0
 	MOVQ R14, 0x170(R11)
 	MOVQ R15, 0x178(R11)
 	MOVQ CX, 0x18(R11)
-	MOVL $1, 0(R11)
+	MOVL $1, AX
+	XCHGL AX, 0(R11)
+	CMPL 0x50(R11), $0
+	JEQ  go
+	MOVQ 0x38(R11), SP
+	MOVQ 0x58(R11), CX
+	XORL DX, DX
+	MOVQ 0x68(R11), AX
+	CALL AX
+	BYTE $0x65; BYTE $0x4C; BYTE $0x8B; BYTE $0x1C; BYTE $0x25; LONG $0x28
+go:
 	MOVQ 0x40(R11), AX
 	WAITRET
 	BYTE $0x0F; BYTE $0x0B; BYTE $0x0F; BYTE $0x0B; BYTE $0x0F; BYTE $0x0B; BYTE $0x0F; BYTE $0x0B
