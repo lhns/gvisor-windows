@@ -558,7 +558,8 @@
   folded: []
   overview: false
   plain: Syscall sites are patched like gVisor's usertrap into a jump through a table at 0x60000, so syscalls never raise an exception.
-  notes: 'Done when: a getpid loop runs measurably faster than the trap-only path, with the numbers written up.'
+  notes: 'Done when: besides usertrap''s mov $imm32,%eax pattern, xor %eax,%eax and mov $imm,%rax sites and register-number sites (Go Syscall6, musl) are patched via a 5-byte relocating jump; measured share
+    of executed syscalls that still trap is below 1%.'
 - id: platform-own-vdso
   title: Own vDSO for clock calls
   track: platform
@@ -1445,41 +1446,43 @@
   lane: windows-ci
   plain: Measure what handling a guest fault as debugger costs without touching thread context, how many events a process start makes, and whether many stubs can be debugged at once.
   notes: 'Done when: S8 results are in docs/results/0b-windows.md.'
-- outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+- outcome: mixed
+  evidence:
+  - docs/results/0d-syscall-sites.md
+  verdict_quote: stock usertrap patching covers only 62-82% of executed syscalls (23% on musl)
+  headline: 62-82% of executed syscalls
   depends_on:
   - platform-elf-alignment-survey
   replaced_by: []
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   id: platform-syscall-site-survey
   title: Survey patchable syscall sites
   track: platform
   kind: experiment
-  state: in-progress
+  state: done
   lane: linux-ci
   plain: Count how many syscall instructions in real images can be patched into jumps, and how many would need the slow debugger path.
   notes: 'Done when: per-image counts by site class are in docs/results/0d-syscall-sites.md.'
-- outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+- outcome: successful
+  evidence:
+  - docs/results/0d-syscall-sites.md
+  verdict_quote: a fork+exec costs 10-57 Sentry-handled faults
+  headline: 10-57 Sentry-handled faults
   depends_on:
   - research-gvisor-benchmark
   replaced_by: []
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   id: platform-faults-per-exec
   title: Count page faults per exec
   track: platform
   kind: experiment
-  state: in-progress
+  state: done
   lane: linux-ci
   plain: Count how many page faults gVisor takes for one fork plus exec on Linux; times the debugger cost this gives the Windows process-start cost.
   notes: 'Done when: faults per fork+exec and the mm MapUnit/precommit behaviour are in docs/results/0d-syscall-sites.md.'
