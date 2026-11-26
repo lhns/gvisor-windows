@@ -40,9 +40,15 @@ type HostFolderOptions struct {
 	// the watch, cached state is revalidated on every use.
 	NoWatch bool
 
-	// Revalidate makes every path walk check the folder instead of trusting
-	// the cache and the watch (slower: a stat of a file looks it up again).
-	Revalidate bool
+	// Watched trusts the cache between change events of the watch: cached
+	// dentries, attributes, listings and file data stay until an event drops
+	// them (write-through). It is much faster for stat walks but has known
+	// holes: an event that is lost or late leaves stale state until the next
+	// one, and a Windows write that keeps size and time is missed. On overflow
+	// or failure of the watch the whole cache is dropped, and after a failure
+	// the mount goes back to revalidating. The default is to revalidate on
+	// every use (the same convention as remote-docker's ADR 0042).
+	Watched bool
 }
 
 // hostInode is implemented by the inode type of the host-folder backend. It
