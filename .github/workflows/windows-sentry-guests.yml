@@ -4,7 +4,7 @@ name: windows-sentry-guests
 on:
   push:
     branches: [static-guest]
-    paths: ["pkg/**", "tools/windows/sentryguest/**", "test/guests/**", "tools/windows/stubproto/guests/**", ".github/workflows/windows-sentry-guests.yml"]
+    paths: ["pkg/**", "tools/windows/sentryguest/**", "test/guests/**", ".github/workflows/windows-sentry-guests.yml"]
   workflow_dispatch:
 jobs:
   guests:
@@ -12,15 +12,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: |
-            test/guests
-            tools/windows/stubproto/guests
-            go.mod
+          sparse-checkout: test/guests
       - uses: actions/setup-go@v5
         with: {go-version: "1.26.x", cache: false}
       - name: Build guests
         run: |
-          G=$(ls -d test/guests tools/windows/stubproto/guests 2>/dev/null | head -1)
+          G=test/guests
           mkdir -p out
           gcc -nostdlib -static -no-pie -o out/hello_asm $G/hello.S
           gcc -nostdlib -static -no-pie -o out/bench_asm $G/bench.S
@@ -52,6 +49,7 @@ jobs:
           $fail = 0
           $nl = "`n"
           $cases = @(
+            @{n='bench_asm'; out="bench done${nl}"; code=0},
             @{n='hello_asm'; out="hello from asm${nl}ud2 path ok${nl}"; code=0},
             @{n='hello_glibc'; out="hello from glibc: argc=1 tv=5 work=10 heap=ok${nl}"; code=7},
             @{n='hello_glibc_pie'; out="hello from glibc: argc=1 tv=5 work=10 heap=ok${nl}"; code=7},

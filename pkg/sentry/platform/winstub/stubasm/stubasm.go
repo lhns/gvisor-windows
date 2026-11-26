@@ -24,7 +24,7 @@
 // (TEB.ArbitraryUserPointer, free for application use) and, on the full-context
 // return path, the TEB slot at %gs:0x1480 (TlsSlots[0]).
 //
-// Derived from tools/windows/stubproto/stubasm (Phase 1a); the layout differs: the
+// Derived from the Phase 1a prototype (docs/results/1a-stub-prototype.md); the layout differs: the
 // guest range starts above every region Windows maps at fixed low addresses.
 package stubasm
 
