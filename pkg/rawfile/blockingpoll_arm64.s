@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// gvisor-windows: Linux syscall assembly; windows uses blockingpoll_noyield_unsafe.go.
+//go:build linux
+
 #include "textflag.h"
 
 // BlockingPoll makes the ppoll() syscall while calling the version of
