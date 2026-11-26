@@ -79,15 +79,15 @@ func (fstype FilesystemType) getHostFolderFilesystem(ctx context.Context, vfsObj
 	}
 	var fsopts filesystemOptions
 	fsopts.aname = "/"
-	// With the watch running, cached dentries and attributes stay valid until
-	// a change event drops them (write-through, so Windows readers see
-	// guest writes at once); otherwise every use is revalidated.
-	fsopts.interop = InteropModeWritethrough
+	// Every use is revalidated unless the mount asks to trust the watch
+	// (write-through, so Windows readers see guest writes at once) or to be
+	// the folder's only user (exclusive).
+	fsopts.interop = InteropModeShared
 	switch {
 	case hf.Exclusive:
 		fsopts.interop = InteropModeExclusive
-	case hf.NoWatch || hf.Revalidate:
-		fsopts.interop = InteropModeShared
+	case hf.Watched && !hf.NoWatch:
+		fsopts.interop = InteropModeWritethrough
 	}
 	fsopts.dcache = hostFolderMaxCachedDentries
 	fsopts.dfltuid = auth.KUID(hf.UID)
@@ -121,8 +121,13 @@ func (fstype FilesystemType) getHostFolderFilesystem(ctx context.Context, vfsObj
 		return nil, nil, err
 	}
 	fs.root.refs = atomicbitops.FromInt64(2)
-	if !hf.NoWatch {
-		if err := host.Watch(func(ch winhost.Change) { fs.hostChange(ctx, ch) }); err != nil {
+	if !hf.NoWatch && !testNoWatcher {
+		if err := host.Watch(func(ch winhost.Change) { fs.hostChange(ctx, ch) }); err == nil {
+			go func() {
+				<-host.WatchDone()
+				fs.watchEnded(ctx)
+			}()
+		} else {
 			if fs.opts.interop == InteropModeWritethrough {
 				fs.opts.interop = InteropModeShared
 			}
@@ -139,9 +144,7 @@ func (fs *filesystem) hostChange(ctx context.Context, ch winhost.Change) {
 		return
 	}
 	if ch.Overflow {
-		fs.renameMu.Lock()
-		fs.evictAllCachedDentriesLocked(ctx, false /* keepRenameMu */)
-		fs.renameMu.Unlock()
+		fs.dropAllCaches(ctx)
 		return
 	}
 	var ds *[]*dentry
@@ -586,3 +589,64 @@ var (
 // hostFolderMaxCachedDentries is how many unreferenced dentries a host folder
 // keeps: a stat walk of a big tree should not look every file up again.
 const hostFolderMaxCachedDentries = 200000
+
+// testNoWatcher keeps tests from starting the watch, to model lost events.
+var testNoWatcher bool
+
+// dropAllCaches forgets everything cached about the folder: dentries,
+// listings, "does not exist" answers, and the metadata and clean data of
+// every inode. It is what the watch's overflow or failure means: changes were
+// lost, so nothing cached can be trusted.
+func (fs *filesystem) dropAllCaches(ctx context.Context) {
+	var ds *[]*dentry
+	fs.renameMu.RLock()
+	defer fs.renameMuRUnlockAndCheckCaching(ctx, &ds)
+	root := fs.root
+	var kids []*dentry
+	root.childrenMu.Lock()
+	for name, c := range root.children {
+		if c == nil {
+			delete(root.children, name)
+		} else {
+			kids = append(kids, c)
+		}
+	}
+	root.clearDirentsLocked()
+	root.childrenMu.Unlock()
+	for _, c := range kids {
+		c.invalidate(ctx, fs.vfsfs.VirtualFilesystem(), &ds)
+	}
+	root.inode.updateMetadata(ctx)
+	// Inodes of regular files outlive their dentries: refresh them too.
+	fs.inodeMu.Lock()
+	inodes := make([]*inode, 0, len(fs.inodeByKey))
+	for _, in := range fs.inodeByKey {
+		inodes = append(inodes, in)
+	}
+	fs.inodeMu.Unlock()
+	for _, in := range inodes {
+		if in.isSynthetic() {
+			continue
+		}
+		in.updateMetadata(ctx)
+		if fs.opts.interop != InteropModeShared && in.isRegularFile() {
+			in.dataMu.Lock()
+			if in.dirty.IsEmpty() {
+				in.cache.DropAll(fs.mf)
+			}
+			in.dataMu.Unlock()
+		}
+	}
+}
+
+// watchEnded runs when the watch stops other than by the mount closing: the
+// cache can no longer be kept right, so drop it and revalidate from now on.
+func (fs *filesystem) watchEnded(ctx context.Context) {
+	if fs.released.Load() != 0 {
+		return
+	}
+	fs.dropAllCaches(ctx)
+	if fs.opts.interop == InteropModeWritethrough {
+		fs.opts.interop = InteropModeShared
+	}
+}

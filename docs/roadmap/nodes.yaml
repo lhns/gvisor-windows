@@ -1876,6 +1876,7 @@
   folded:
   - Cold stat walk on a fresh mount is still about 4x native, 99-105 us per file (2026-11-26, commit 5f7bcfee2)
   - erofs xattrs and a persistent safe-save index added (2026-11-26, commit 5f7bcfee2)
+  - Watched cache made opt-in (cache=watched); overflow drops the whole cache (2026-11-26, commit 025ba5029)
   overview: false
   plain: A git-status-like walk of 20000 files takes 1.2-2.4 s through the host folder; an attribute cache fed by the change watcher would bring stat near native.
   notes: 'Done when: a 20000-file stat walk through the backend is within 2x of native on windows-latest.'
@@ -1976,19 +1977,20 @@
 - outcome: unrated
   evidence:
   - docs/results/5-podman-windows.md
+  - docs/results/2c-fs-speed.md
   verdict_quote: ''
   headline: ''
   depends_on: []
   replaced_by: []
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   id: fs-standard-user-delete-rights
   title: Deletes fail for standard users
   track: fs
   kind: defect
-  state: next
+  state: done
   lane: windows-ci
   plain: On a host folder as a standard Windows user, rename over an existing file, rmdir and unlink fail with permission denied; Podman cannot extract layers or write images.json.
-  notes: 'Fixed when: the hostfs test in windows-runsc (mv over, rmdir, rm) passes as a standard user and Podman can pull an image.'
+  notes: 'Fixed: Unlink asked for FILE_DELETE_CHILD on the parent, which a standard user with Modify lacks; DELETE on the child is enough. hostfs test now required.'
