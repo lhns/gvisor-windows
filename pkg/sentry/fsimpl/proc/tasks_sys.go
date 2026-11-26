@@ -283,6 +283,7 @@ func (fs *filesystem) sysDirFiles(ctx context.Context, root *auth.Credentials, k
 		return map[string]kernfs.Inode{
 			"ip_forward":          fs.newInode(ctx, root, 0644, &ipForwarding{stack: stack, protocol: ipv4.ProtocolNumber}),
 			"ip_local_port_range": fs.newInode(ctx, root, 0644, &portRange{stack: stack}),
+			"ping_group_range":    fs.newInode(ctx, root, 0644, newPingGroupRange()),
 			"tcp_recovery":        fs.newInode(ctx, root, 0644, &tcpRecoveryData{stack: stack}),
 			"tcp_rmem":            fs.newInode(ctx, root, 0644, &tcpMemData{stack: stack, dir: tcpRMem}),
 			"tcp_sack":            fs.newInode(ctx, root, 0644, &tcpSackData{stack: stack}),
@@ -875,6 +876,47 @@ func (pr *portRange) Write(ctx context.Context, _ *vfs.FileDescription, src user
 	if err := pr.stack.SetPortRange(uint16(ports[0]), uint16(ports[1])); err != nil {
 		return 0, err
 	}
+	return n, nil
+}
+
+// pingGroupRange implements /proc/sys/net/ipv4/ping_group_range: the range of
+// GIDs allowed to create ICMP echo sockets. Linux defaults to "1 0" (nobody);
+// runc and crun write it for containers. The value is only stored.
+//
+// +stateify savable
+type pingGroupRange struct {
+	kernfs.DynamicBytesFile
+
+	lo, hi atomicbitops.Int32
+}
+
+var _ vfs.WritableDynamicBytesSource = (*pingGroupRange)(nil)
+
+func newPingGroupRange() *pingGroupRange {
+	p := &pingGroupRange{}
+	p.lo.Store(1)
+	return p
+}
+
+// Generate implements vfs.DynamicBytesSource.Generate.
+func (p *pingGroupRange) Generate(ctx context.Context, buf *bytes.Buffer) error {
+	_, err := fmt.Fprintf(buf, "%d	%d
+", p.lo.Load(), p.hi.Load())
+	return err
+}
+
+// Write implements vfs.WritableDynamicBytesSource.Write.
+func (p *pingGroupRange) Write(ctx context.Context, _ *vfs.FileDescription, src usermem.IOSequence, offset int64) (int64, error) {
+	if offset != 0 {
+		return 0, linuxerr.EINVAL
+	}
+	v := make([]int32, 2)
+	n, err := ParseInt32Vec(ctx, src, v)
+	if err != nil || n == 0 {
+		return 0, err
+	}
+	p.lo.Store(v[0])
+	p.hi.Store(v[1])
 	return n, nil
 }
 
