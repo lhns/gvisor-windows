@@ -46,6 +46,11 @@ jobs:
           fi
           if [ "${{ matrix.hostnet }}" = 1 ]; then export HOSTNET=1 NETARGS=--network=host; fi
           test/e2e/podman-acceptance/run.sh || true
+      - name: Probe sandbox
+        if: always() && matrix.engine == 'runsc'
+        run: |
+          docker exec podman-in-runsc sh -s <scripts/phase0/probe.sh >"$RESULTS_DIR/out/probe.txt" 2>&1 || true
+          cp /tmp/socat.log "$RESULTS_DIR/out/" || true
       - name: Diagnostics
         if: always()
         run: |

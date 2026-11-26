@@ -29,14 +29,15 @@ start() {
     -p 127.0.0.1:8888:8888 -p 8080:8080 "${st[@]}" \
     quay.io/podman/stable:latest podman system service --time=0 tcp://0.0.0.0:8888 || return 1
   rm -f "$SOCK"
-  nohup socat "UNIX-LISTEN:$SOCK,fork,mode=666" TCP:127.0.0.1:8888 >/tmp/socat.log 2>&1 &
+  # restart-looped so the socket survives a dying socat; own session so runner step cleanup keeps it
+  setsid nohup bash -c "while :; do socat UNIX-LISTEN:$SOCK,unlink-early,fork,mode=666 TCP:127.0.0.1:8888; echo socat exited \$? >&2; sleep 1; done" >/tmp/socat.log 2>&1 &
   for _ in $(seq 1 120); do
     podman --url "unix://$SOCK" version >/dev/null 2>&1 && return 0
     sleep 1
   done
   echo "engine in $RUNTIME not ready" >&2; docker logs "$NAME" 2>&1 | tail -30 >&2; return 1
 }
-stop() { pkill -f "UNIX-LISTEN:$SOCK" || true; docker rm -f "$NAME" >/dev/null 2>&1 || true; }
+stop() { pkill -f "while :; do socat UNIX-LISTEN:$SOCK" || true; pkill -f "UNIX-LISTEN:$SOCK" || true; rm -f "$SOCK"; docker rm -f "$NAME" >/dev/null 2>&1 || true; }
 case "$1" in
   start) start ;;
   stop) stop ;;
