@@ -73,9 +73,9 @@ jobs:
         shell: pwsh
         env: {WINSTUB_TRACE: "1"}
         run: |
-          foreach ($n in 'hello_asm','hello_glibc','fork_glibc') {
+          foreach ($n in "hello_asm","hello_glibc","fork_glibc") {
             "===== trace $n" | Tee-Object -Append -FilePath trace.txt
-            & ./sentryguest.exe "-timeout=90s" "-code=$(if ($n -eq 'hello_glibc') {7} else {0})" "out/$n" 2>&1 | Tee-Object -Append -FilePath trace.txt
+            & ./sentryguest.exe "-sample" "-timeout=90s" "-code=$(if ($n -eq 'hello_glibc') {7} else {0})" "out/$n" 2>&1 | Tee-Object -Append -FilePath trace.txt
           }
       - uses: actions/upload-artifact@v4
         if: always()

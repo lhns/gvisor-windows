@@ -26,6 +26,9 @@
 package main
 
 import (
+	"bytes"
+	"runtime/pprof"
+	"strings"
 	"flag"
 	"fmt"
 	"os"
@@ -74,6 +77,7 @@ func main() {
 	wantCode := flag.Int("code", 0, "expected exit status")
 	timeout := flag.Duration("timeout", 60*time.Second, "give up after")
 	verbose := flag.Bool("v", false, "Sentry logging")
+	sample := flag.Bool("sample", false, "print where the task creating the process spends its time")
 	flag.Parse()
 	if flag.NArg() < 1 {
 		fail("usage: sentryguest [flags] guest [args...]")
@@ -163,6 +167,9 @@ func main() {
 	tInit := time.Since(t0)
 	winstub.Trace("boot: kernel ready")
 
+	if *sample {
+		go sampler()
+	}
 	must(k.Start(), "kernel start")
 	winstub.Trace("boot: kernel started")
 	t1 := time.Now()
@@ -217,6 +224,31 @@ func main() {
 	}
 	fmt.Println("sentryguest: PASS")
 	os.Exit(0)
+}
+
+// sampler prints, every 2 ms, the innermost frames of the goroutine inside
+// kernel.CreateProcess (a poor man's profile of a run too short for pprof).
+func sampler() {
+	for {
+		time.Sleep(2 * time.Millisecond)
+		var buf bytes.Buffer
+		pprof.Lookup("goroutine").WriteTo(&buf, 2)
+		for _, g := range strings.Split(buf.String(), "\n\n") {
+			if !strings.Contains(g, "Kernel).CreateProcess") {
+				continue
+			}
+			var fr []string
+			for _, l := range strings.Split(g, "\n") {
+				if strings.HasPrefix(l, "gvisor.dev/gvisor/") || strings.HasPrefix(l, "syscall.") || strings.HasPrefix(l, "runtime.") {
+					fr = append(fr, strings.TrimPrefix(strings.SplitN(l, "(", 2)[0], "gvisor.dev/gvisor/pkg/"))
+				}
+				if len(fr) == 7 {
+					break
+				}
+			}
+			winstub.Trace("sample: %s", strings.Join(fr, " < "))
+		}
+	}
 }
 
 func readAll(ctx context.Context, vfsObj *vfs.VirtualFilesystem, creds *auth.Credentials, root vfs.VirtualDentry, path string) []byte {
