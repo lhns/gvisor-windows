@@ -54,6 +54,8 @@ type Platform struct {
 
 	scans         scanCache
 	active        atomic.Int32 // contexts inside Switch
+	tokens        atomic.Int32 // spinning tokens held (policyTokens)
+	maxTokens     int32
 	spinLimit     int          // spin only while active <= spinLimit (WINSTUB_SPINLIMIT)
 	xmask         uint64
 	fpSize        int
@@ -91,6 +93,7 @@ func New(opts platform.Options) (*Platform, error) {
 	}
 	return &Platform{
 		spinLimit: envInt("WINSTUB_SPINLIMIT", runtime.NumCPU()),
+		maxTokens: int32(envInt("WINSTUB_TOKENS", max(1, runtime.NumCPU()/2))),
 		xmask:    stubasm.XSaveMask(),
 		fpSize:   int(fpSize),
 		stubPath: f.Name(),

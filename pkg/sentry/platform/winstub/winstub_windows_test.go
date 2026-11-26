@@ -1355,8 +1355,8 @@ func TestPolicyMatrix(t *testing.T) {
 	mm := h.newMM()
 	h.setup(mm, g)
 	defer func(p int) { spinPolicy = p }(spinPolicy)
-	names := map[int]string{policyAdaptive: "adaptive", policyLimit: "limit", policyAlways: "always"}
-	for _, pol := range []int{policyAlways, policyLimit, policyAdaptive} {
+	names := map[int]string{policyAdaptive: "adaptive", policyLimit: "limit", policyAlways: "always", policyTokens: "tokens"}
+	for _, pol := range []int{policyAlways, policyLimit, policyAdaptive, policyTokens} {
 		spinPolicy = pol
 		for _, threads := range []int{1, 2, 4, 8, 16, 32} {
 			const dur = 1500 * time.Millisecond
