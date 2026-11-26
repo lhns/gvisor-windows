@@ -173,9 +173,10 @@ jobs:
       fail-fast: false
       matrix:
         podman: ["v5.7.1", "v6.2.0"]
-        v: [nft-shim, nft-shim-cgroupfs, nft-only, slirp]
+        v: [nft-shim, nft-shim-cgroupfs, nft-only, slirp, cgfs-host]
         exclude:
           - {podman: "v6.2.0", v: slirp}
+          - {podman: "v6.2.0", v: nft-only}
     steps:
       - uses: actions/checkout@v4
         with: {sparse-checkout: "test/e2e"}
@@ -191,6 +192,7 @@ jobs:
             nft-shim-cgroupfs) export SHIM=1 SHIM_SO=/tmp/shim.so CGROUPS=enabled REMOUNT_CG=1 ;;
             nft-only) ;;
             slirp) export INSTALL_SLIRP=1 ;;
+            cgfs-host) export CGROUPS=enabled REMOUNT_CG=1 RUNTIME=runsc ;;
           esac
           test/e2e/podman-acceptance/harness/engine-runsc.sh start
           docker exec podman-in-runsc podman version | tee "$RESULTS_DIR/out/engine-version.txt"
@@ -200,14 +202,16 @@ jobs:
           export CONTAINER_HOST=unix:///tmp/podman-runsc.sock
           export ENGINE_CTL="$PWD/test/e2e/podman-acceptance/harness/engine-runsc.sh"
           [ "${{ matrix.v }}" = slirp ] && export NETARGS=--network=slirp4netns
-          # steps 1-3,6,7,8,10 are the network-relevant ones; 4/5/9 add nothing here
-          ONLY="1 2 3 6 7 8 10" test/e2e/podman-acceptance/run.sh || true
+          if [ "${{ matrix.v }}" = cgfs-host ]; then export HOSTNET=1 NETARGS=--network=host RUNTIME=runsc; fi
+          test/e2e/podman-acceptance/run.sh || true
       - name: Diagnostics
         if: always()
         run: |
           cd "$RESULTS_DIR/out"
           docker logs podman-in-runsc >engine-container.log 2>&1 || true
+          docker cp podman-in-runsc:/var/log/netavark.log netavark.log 2>/dev/null; tail -c 200000 netavark.log >netavark.tail 2>/dev/null; rm -f netavark.log
           sudo chmod -R a+r /tmp/runsc-logs
+          ( cd /tmp/runsc-logs; grep -rhE ' (netavark|netavark.real) [EX] (sendmsg|sendto|recvmsg|recvfrom|setsockopt|socket|setns|unshare) |^W1' . | cut -c1-500 | head -400 ) >netavark-strace.txt || true
           ( cd /tmp/runsc-logs; grep -rhE ' (netavark|nft|iptables|exe) [XE] ' . | grep -E 'NETLINK|errno=(92|93|94|95|97|22|38|1|13) ' | grep -E 'socket|setsockopt|sendmsg|sendto|setns|mount|bind' | cut -c1-350 | head -200 ) >netlink-errors.txt || true
           ( cd /tmp/runsc-logs; grep -rh 'Unsupported syscall\|unexpected attribute\|not supported\|unimplemented' . | cut -c1-300 | sort | uniq -c | sort -rn | head -40 ) >gvisor-warnings.txt || true
           { echo "### probe2-${{ matrix.podman }}-${{ matrix.v }}"; echo '```'; grep -E '^Version' engine-version.txt; cat steps.txt; echo '```'; } >>"$GITHUB_STEP_SUMMARY"
