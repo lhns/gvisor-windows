@@ -1422,22 +1422,23 @@
   state: done
   lane: windows-ci
   plain: Windows writes about 3 KB of exception data below the faulting thread stack pointer, so in-process handlers can corrupt Linux code; faults must go to the Sentry as debugger instead.
-- outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+- outcome: successful
+  evidence:
+  - docs/results/0b-windows.md
+  verdict_quote: A debugger-per-stub costs about 45-60 us per fault without touching the thread context
+  headline: about 45-60 us per fault
   depends_on:
   - platform-exception-stack
   replaced_by: []
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   id: platform-debug-event-cost
   title: Measure debugger fault handling
   track: platform
   kind: experiment
-  state: in-progress
+  state: done
   lane: windows-ci
   plain: Measure what handling a guest fault as debugger costs without touching thread context, how many events a process start makes, and whether many stubs can be debugged at once.
   notes: 'Done when: S8 results are in docs/results/0b-windows.md.'
