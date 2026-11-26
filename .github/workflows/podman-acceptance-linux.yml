@@ -138,8 +138,20 @@ jobs:
             cat "$RESULTS_DIR/probe/run-$net.txt"
             docker rm -f nlp >/dev/null 2>&1
           done
+          # Same podman commands under runc (control), and raw netlink operations under runsc.
+          for net in bridge pasta; do
+            docker rm -f nlc >/dev/null 2>&1
+            docker run --name nlc --privileged --user root --entrypoint '' --tmpfs /var/lib/containers:rw,exec,mode=755               -e CONTAINERS_STORAGE_CONF=/etc/containers/storage.conf               -v "$PWD/test/e2e/podman-acceptance/harness/containers.conf:/etc/containers/containers.conf:ro"               -v "$PWD/test/e2e/podman-acceptance/harness/storage.conf:/etc/containers/storage.conf:ro"               quay.io/podman/stable:latest sh -c "podman run --rm --network=$net mirror.gcr.io/library/alpine:3.20 sh -c 'echo NET_OK'"               >"$RESULTS_DIR/probe/control-runc-$net.txt" 2>&1 || true
+            cat "$RESULTS_DIR/probe/control-runc-$net.txt"
+          done
+          sudo rm -rf /tmp/runsc-logs/*
+          docker rm -f nlp >/dev/null 2>&1
+          docker run --name nlp --runtime runsc-strace --cap-add all --security-opt seccomp=unconfined --user root --entrypoint ''             -i quay.io/podman/stable:latest sh -s <test/e2e/podman-acceptance/harness/netprobe.sh >"$RESULTS_DIR/probe/netprobe.txt" 2>&1 || true
+          cat "$RESULTS_DIR/probe/netprobe.txt"
           sudo chmod -R a+r /tmp/runsc-logs
           cd /tmp/runsc-logs
+          grep -rhE 'errno=' . 2>/dev/null | grep -E 'sendmsg|sendto|recvmsg|setns|unshare|mount|socket\(|setsockopt' | grep -vE 'errno=(2|11) ' | cut -c1-400 | head -150 >"$RESULTS_DIR/probe/netprobe-errors.txt" || true
+          grep -rhE 'nl_msg|NLM_|RTM_|NFNL|nfnetlink' . 2>/dev/null | head -100 | cut -c1-400 >"$RESULTS_DIR/probe/netprobe-nlmsgs.txt" || true
           grep -rhoE 'socket\(AF_NETLINK[^)]*\)[^ ]* *[^ ]*' . | sort | uniq -c | sort -rn | head -40 >"$RESULTS_DIR/probe/netlink-sockets.txt" || true
           grep -rhE 'AF_NETLINK|sendmsg|sendto' . 2>/dev/null | grep -iE 'netlink|NETLINK' | head -300 >"$RESULTS_DIR/probe/netlink-lines.txt" || true
           grep -rhE 'EPROTONOSUPPORT|EOPNOTSUPP|ENOTSUP|EINVAL|ENOSYS|EPERM' . 2>/dev/null | grep -E 'sendmsg|sendto|socket|setsockopt|bind' | head -200 >"$RESULTS_DIR/probe/errors.txt" || true
