@@ -764,7 +764,6 @@ func bareStart(p *Platform, reserve, nodebug bool, holes ...rng) (time.Duration,
 
 func TestStubStartExperiment(t *testing.T) {
 	h := newHarness(t)
-	top := stubasm.CtlBase + stubasm.CtlSize
 	for i := 0; i < 3; i++ {
 		for _, c := range []struct {
 			name  string
