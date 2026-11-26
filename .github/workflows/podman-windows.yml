@@ -54,6 +54,8 @@ jobs:
       - name: Rootfs folder from the image
         shell: pwsh
         run: |
+          # Everything below C:\ci inherits access for the standard user (icacls /T would trip over the symlinks).
+          icacls C:\ci /grant 'Users:(OI)(CI)M' /Q
           New-Item -ItemType Directory -Force C:\ci\rootfs | Out-Null
           tar -xzf dl\rootfs.tar.gz -C C:\ci\rootfs 2>&1 | Select-Object -Last 20
           "extracted: $((Get-ChildItem C:\ci\rootfs).Count) top-level entries"
@@ -66,7 +68,7 @@ jobs:
           & tools/windows/ci/run-as-standard-user.ps1 `
             -Program 'C:\Program Files\PowerShell\7\pwsh.exe' `
             -Arguments '-NoProfile','-File',"$PWD\tools\windows\podman\ci-run.ps1",'-Root','C:\ci' `
-            -GrantPath C:\ci,$PWD -WritablePath C:\ci\std,C:\ci\rootfs -TimeoutSeconds 6000
+            -GrantPath C:\ci\bin,C:\ci\tools,$PWD -WritablePath C:\ci\std -TimeoutSeconds 6000
       - name: Summary
         if: always()
         shell: pwsh

@@ -54,7 +54,7 @@ func (f *pipeForward) start() error {
 	if err != nil {
 		return fmt.Errorf("reading the current user: %w", err)
 	}
-	path := `\.\pipe\` + f.name
+	path := `\\.\pipe\` + f.name
 	l, err := winio.ListenPipe(path, &winio.PipeConfig{SecurityDescriptor: sd, MessageMode: false, InputBufferSize: 64 << 10, OutputBufferSize: 64 << 10})
 	if err != nil {
 		return fmt.Errorf("creating %s: %w", path, err)
