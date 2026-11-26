@@ -14,7 +14,7 @@ flowchart TB
     research_unkernel[/"✖ Build on unkernel"/]
     research_flinux_translation[/"✖ Translate syscalls<br/>like flinux"/]
     research_qemu_emulation[/"✖ QEMU software<br/>emulation"/]
-    research_gvisor_benchmark[/"▶ Benchmark gVisor<br/>against native Linux"/]
+    research_gvisor_benchmark[/"✔ Benchmark gVisor<br/>against native Linux"/]
     research_whpx_this_machine[/"✖ Test WHPX on this<br/>machine"/]
     research_file_protocol[/"✖ Reach host files<br/>over a protocol"/]
     research_gvisor_base ~~~ research_flinux_translation
@@ -41,7 +41,7 @@ flowchart TB
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class research_gvisor_base unrated
     class research_lkl_nommu,research_unkernel,research_flinux_translation,research_qemu_emulation,research_whpx_this_machine,research_file_protocol dead
-    class research_gvisor_benchmark inprog
+    class research_gvisor_benchmark succ
 ```
 <!-- END GENERATED: track-research -->
 
@@ -55,7 +55,7 @@ flowchart TB
 | `research-unkernel` | Build on unkernel | experiment | none | abandoned | dead-end | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0001-port-gvisor-to-windows-hosts.md |
 | `research-flinux-translation` | Translate syscalls like flinux | experiment | none | abandoned | dead-end | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0001-port-gvisor-to-windows-hosts.md |
 | `research-qemu-emulation` | QEMU software emulation | experiment | none | abandoned | dead-end | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0001-port-gvisor-to-windows-hosts.md |
-| `research-gvisor-benchmark` | Benchmark gVisor against native Linux | experiment | linux-ci | in-progress | unrated | 2026-11-26 |  | research-gvisor-base |  |  |  |  |
+| `research-gvisor-benchmark` | Benchmark gVisor against native Linux | experiment | linux-ci | done | successful | 2026-11-26 | 2026-11-26 | research-gvisor-base |  |  | 5.3 s against 0.9 s | docs/results/0a-linux.md |
 | `research-whpx-this-machine` | Test WHPX on this machine | experiment | windows-local | abandoned | dead-end | 2026-11-26 | 2026-11-26 | research-gvisor-base |  |  |  | docs/results/0b-windows.md |
 | `research-file-protocol` | Reach host files over a protocol | experiment | none | abandoned | dead-end | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0005-host-files-accessed-directly.md |
 
@@ -68,7 +68,7 @@ flowchart TB
 | `research-unkernel` | Build on unkernel | Runs Linux compiled to wasm off Linux today, but guest code is always emulated (aarch64 only), so it cannot run x86 user code natively. |  | Linux compiled to WebAssembly runs anywhere, but it always emulates the programs, so it cannot reach native speed. |  |  |  |  |  |
 | `research-flinux-translation` | Translate syscalls like flinux | Translates Linux syscalls onto Windows calls; has no namespaces, cgroups or overlay, so it cannot host a container engine without writing a kernel. |  | Mapping each Linux call onto a Windows call cannot provide what containers need, such as namespaces and cgroups. |  |  |  |  |  |
 | `research-qemu-emulation` | QEMU software emulation | Works today, but software emulation of the whole machine is several times slower; WHPX needs a one-time admin step. |  | Emulating a whole computer in software works but is several times slower, so it is no base for the port. |  |  |  |  |  |
-| `research-gvisor-benchmark` | Benchmark gVisor against native Linux |  |  | Measure how much slower process start, small files and CPU work are inside gVisor than natively. | Done when: the benchmark table is in docs/results/0a-linux.md. |  |  |  |  |
+| `research-gvisor-benchmark` | Benchmark gVisor against native Linux | runsc/systrap was about 5x slower on fork+exec (2000 `/bin/true`: 5.3 s against 0.9 s), 2 to 3 times slower on small-file work on a bind mount, about 1.1x to 1.4x on CPU-bound work | 5.3 s against 0.9 s | Measure how much slower process start, small files and CPU work are inside gVisor than natively. | Done when: the benchmark table is in docs/results/0a-linux.md. |  |  |  |  |
 | `research-whpx-this-machine` | Test WHPX on this machine | WHPX cannot be used on this machine as a standard user (QEMU reports "WHPX: No accelerator found"), so only QEMU software emulation (TCG) works here |  | Check whether QEMU can use the Windows hypervisor here without admin, as a fast stopgap. | Done when: S6 results are in docs/results/0b-windows.md. |  |  |  |  |
 | `research-file-protocol` | Reach host files over a protocol | Here the Sentry is the kernel and runs on the same machine as the files; gVisor has no NFS client. |  | Serving Windows files to the sandbox over NFS, 9P or gVisor's lisafs was rejected: the sandbox runs on the same machine and can open them itself. |  |  |  |  |  |
 

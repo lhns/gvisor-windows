@@ -9,7 +9,7 @@ Scope: host files, bind mounts, image storage.
 <!-- BEGIN GENERATED: track-fs -->
 ```mermaid
 flowchart TB
-    fs_persistent_image_storage[/"▶ Test persistent<br/>image storage"/]
+    fs_persistent_image_storage[/"✔ Test persistent<br/>image storage"/]
     fs_windows_directfs["⛔ Open Windows files<br/>directly"]
     fs_change_notifications["⛔ Windows changes<br/>reach the guest"]
     fs_linux_metadata_on_ntfs["⛔ Linux file metadata<br/>on NTFS"]
@@ -41,7 +41,7 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class fs_persistent_image_storage inprog
+    class fs_persistent_image_storage mixed
     class fs_windows_directfs,fs_change_notifications,fs_linux_metadata_on_ntfs,fs_handles_do_not_block_users,fs_root_filesystem_source,fs_persistent_storage_impl blocked
 ```
 <!-- END GENERATED: track-fs -->
@@ -52,7 +52,7 @@ flowchart TB
 | id | title | kind | lane | state | outcome | start | end | depends_on | replaced_by | qualified_by | headline | evidence |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `fs-compat-layer-not-boundary` | Compatibility layer, not security boundary | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0005-host-files-accessed-directly.md |
-| `fs-persistent-image-storage` | Test persistent image storage | experiment | linux-ci | in-progress | unrated | 2026-11-26 |  | workloads-podman-on-gvisor-linux |  |  |  |  |
+| `fs-persistent-image-storage` | Test persistent image storage | experiment | linux-ci | done | mixed | 2026-11-26 | 2026-11-26 | workloads-podman-on-gvisor-linux |  |  | 3.7 s with overlay | docs/results/0a-linux.md |
 | `fs-windows-directfs` | Open Windows files directly | feature | windows-local | blocked | unrated |  |  | sentry-windows-build, fs-compat-layer-not-boundary |  |  |  |  |
 | `fs-change-notifications` | Windows changes reach the guest | feature | windows-local | blocked | unrated |  |  | fs-windows-directfs |  |  |  |  |
 | `fs-linux-metadata-on-ntfs` | Linux file metadata on NTFS | feature | windows-local | blocked | unrated |  |  | fs-windows-directfs |  |  |  |  |
@@ -66,7 +66,7 @@ flowchart TB
 | id | title | verdict | headline | in plain words | notes | confirmed | waiting on | queue order | order reason |
 |---|---|---|---|---|---|---|---|---|---|
 | `fs-compat-layer-not-boundary` | Compatibility layer, not security boundary |  |  | The sandbox may open the user's files directly with the user's rights; it isolates containers from each other, not from the user. |  |  |  |  |  |
-| `fs-persistent-image-storage` | Test persistent image storage |  |  | Find a writable filesystem inside the sandbox that survives a restart, and how fast each option is. | Done when: pull/build timings on tmpfs and on a host directory, and the overlay restart test, are in docs/results/0a-linux.md. |  |  |  |  |
+| `fs-persistent-image-storage` | Test persistent image storage | Podman's image store on a gofer-mounted host directory works for pull, build and run and survives a sandbox restart (python:3-slim pull 3.7 s with overlay, 7.2 s with vfs, against 1.7 s natively; a 3000-file build 5.2 s against 1.7 s natively), while the in-sandbox tmpfs is faster but lost on restar | 3.7 s with overlay | Find a writable filesystem inside the sandbox that survives a restart, and how fast each option is. | Done when: pull/build timings on tmpfs and on a host directory, and the overlay restart test, are in docs/results/0a-linux.md. |  |  |  |  |
 | `fs-windows-directfs` | Open Windows files directly |  |  | The Sentry opens NTFS files itself for bind mounts, with its own caches, instead of going through a file protocol. | Done when: the gofer's Windows backend implements open, create, readdir, stat, rename, unlink, link, symlink and xattr calls; a Linux guest edits a Windows folder correctly. |  |  |  |  |
 | `fs-change-notifications` | Windows changes reach the guest |  |  | Edits made on Windows invalidate the Sentry's caches and arrive in the guest as inotify events. | Done when: a file changed in Explorer is visible in the guest within one second and fires an inotify event. |  |  |  |  |
 | `fs-linux-metadata-on-ntfs` | Linux file metadata on NTFS |  |  | Owner, mode bits, symlinks and special files survive on NTFS, using a fixed owner and alternate data streams. | Done when: chmod, chown, symlink and mknod round-trip through a Windows folder. |  |  |  |  |

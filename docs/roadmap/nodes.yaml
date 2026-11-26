@@ -168,9 +168,11 @@
   title: Write the Podman acceptance test
   track: workloads
   kind: tooling
-  state: in-progress
+  state: done
   outcome: unrated
-  evidence: []
+  evidence:
+  - test/e2e/podman-acceptance/run.sh
+  - docs/results/0a-linux.md
   verdict_quote: ''
   headline: ''
   depends_on:
@@ -178,8 +180,9 @@
   replaced_by: []
   lane: linux-ci
   start: '2026-11-26'
-  end: ''
-  folded: []
+  end: '2026-11-26'
+  folded:
+  - Native Podman baseline passes all 10 steps (2026-11-26, commit 0d3203400)
   overview: false
   plain: 'One test of ten steps defines when Podman counts as working: pull, run, build, mounts, ports, compose, restart, isolation.'
   notes: 'Done when: the test exists under test/e2e/podman-acceptance and passes against native Podman on Linux.'
@@ -187,36 +190,42 @@
   title: Podman on gVisor on Linux
   track: workloads
   kind: experiment
-  state: in-progress
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  state: done
+  outcome: mixed
+  evidence:
+  - docs/results/0a-linux.md
+  verdict_quote: passes all 10 acceptance steps when containers use host networking, the store is on a host directory (kernel overlayfs or vfs) and runsc runs with `--in-sandbox-cgroup=v2`; with the default
+    bridge network netavark fails on its netlink socket, so only steps 1, 2 and 5 pass
   headline: ''
   depends_on:
   - workloads-acceptance-test
   replaced_by: []
   lane: linux-ci
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: true
   plain: Run the acceptance test on stock gVisor on Linux; whatever fails there is a gap in gVisor itself, not in the port.
   notes: 'Done when: the acceptance test ran against Podman inside runsc and docs/results/0a-linux.md records each step.'
+  qualified_by:
+  - workloads-gvisor-bridge-netlink
+  - workloads-gvisor-port-publishing
 - id: research-gvisor-benchmark
   title: Benchmark gVisor against native Linux
   track: research
   kind: experiment
-  state: in-progress
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/0a-linux.md
+  verdict_quote: 'runsc/systrap was about 5x slower on fork+exec (2000 `/bin/true`: 5.3 s against 0.9 s), 2 to 3 times slower on small-file work on a bind mount, about 1.1x to 1.4x on CPU-bound work'
+  headline: 5.3 s against 0.9 s
   depends_on:
   - research-gvisor-base
   replaced_by: []
   lane: linux-ci
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   plain: Measure how much slower process start, small files and CPU work are inside gVisor than natively.
@@ -225,17 +234,18 @@
   title: Survey ELF segment alignment
   track: platform
   kind: experiment
-  state: in-progress
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/0a-linux.md
+  verdict_quote: so a 64 KiB-granularity host cannot map ELF segments 1:1 and the conflict path of R2 is the common case.
   headline: ''
   depends_on:
   - research-gvisor-base
   replaced_by: []
   lane: linux-ci
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   plain: Count how often program files place code at addresses Windows cannot map directly (64 KB alignment).
@@ -244,17 +254,19 @@
   title: Test persistent image storage
   track: fs
   kind: experiment
-  state: in-progress
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  state: done
+  outcome: mixed
+  evidence:
+  - docs/results/0a-linux.md
+  verdict_quote: Podman's image store on a gofer-mounted host directory works for pull, build and run and survives a sandbox restart (python:3-slim pull 3.7 s with overlay, 7.2 s with vfs, against 1.7 s
+    natively; a 3000-file build 5.2 s against 1.7 s natively), while the in-sandbox tmpfs is faster but lost on restar
+  headline: 3.7 s with overlay
   depends_on:
   - workloads-podman-on-gvisor-linux
   replaced_by: []
   lane: linux-ci
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   plain: Find a writable filesystem inside the sandbox that survives a restart, and how fast each option is.
@@ -574,7 +586,8 @@
   folded: []
   overview: false
   plain: When Linux puts two file pieces inside one 64 KB Windows window, the Sentry copies them into one fresh range instead.
-  notes: 'Parked: S2 showed 4 KB section views work with placeholders on Windows 10.0.26300. Done when: needed only on builds without that.'
+  notes: 'Parked: the ELF survey shows non-64K-aligned segments in 73-82% of files, but S2 showed 4 KB section views work with placeholders on Windows 10.0.26300, so no conflict path is needed there. Done
+    when: needed only on Windows builds without 4 KB placeholder views.'
 - id: platform-winstub
   title: Windows platform for the Sentry
   track: platform
@@ -1180,3 +1193,41 @@
   folded: []
   overview: false
   plain: Rewriting each syscall into a call to a trampoline at address 0 cannot work on Windows.
+- id: workloads-gvisor-bridge-netlink
+  title: Bridge networking fails in gVisor
+  track: workloads
+  kind: defect
+  state: next
+  outcome: unrated
+  evidence:
+  - docs/results/0a-linux.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: linux-ci
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: In stock gVisor, Podman's default bridge network fails because netavark cannot open its netlink socket; only host networking works.
+  notes: 'Open gap in gVisor itself. Fixed when: the acceptance test passes with the default bridge network on stock runsc.'
+- id: workloads-gvisor-port-publishing
+  title: Port publishing untested in gVisor
+  track: workloads
+  kind: defect
+  state: next
+  outcome: unrated
+  evidence:
+  - docs/results/0a-linux.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: linux-ci
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: Publishing container ports with -p and service-name lookup in compose never worked or were never exercised inside gVisor.
+  notes: 'Fixed when: -p and compose service names pass inside stock runsc.'

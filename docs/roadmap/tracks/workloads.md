@@ -9,18 +9,27 @@ Scope: workloads that measure compatibility; the Podman acceptance test is the b
 <!-- BEGIN GENERATED: track-workloads -->
 ```mermaid
 flowchart TB
-    workloads_acceptance_test["▶ Write the Podman<br/>acceptance test"]
-    workloads_podman_on_gvisor_linux[/"▶ Podman on gVisor on<br/>Linux"/]
+    workloads_acceptance_test["✔ Write the Podman<br/>acceptance test"]
+    workloads_podman_on_gvisor_linux[/"✔ Podman on gVisor on<br/>Linux"/]
     workloads_acceptance_test_windows["⛔ Acceptance test for<br/>Windows"]
     workloads_podman_on_windows[/"⛔ Podman passes on<br/>Windows"/]
     workloads_podman_harness["⛔ Serve Podman to<br/>Windows clients"]
+    workloads_gvisor_bridge_netlink>"⚠ Bridge networking<br/>fails in gVisor"]
+    workloads_gvisor_port_publishing>"⚠ Port publishing<br/>untested in gVisor"]
     workloads_acceptance_test ~~~ workloads_podman_on_gvisor_linux
     workloads_acceptance_test ~~~ workloads_acceptance_test_windows
     workloads_podman_on_gvisor_linux ~~~ workloads_podman_on_windows
     workloads_acceptance_test_windows ~~~ workloads_podman_harness
+    workloads_acceptance_test_windows ~~~ workloads_gvisor_bridge_netlink
+    workloads_podman_on_windows ~~~ workloads_gvisor_port_publishing
+    workloads_podman_harness ~~~ workloads_gvisor_port_publishing
+    workloads_gvisor_bridge_netlink ~~~ workloads_gvisor_port_publishing
     workloads_acceptance_test --> workloads_podman_on_gvisor_linux
+    workloads_podman_on_gvisor_linux -.-> workloads_gvisor_bridge_netlink
+    workloads_podman_on_gvisor_linux -.-> workloads_gvisor_port_publishing
     workloads_acceptance_test --> workloads_acceptance_test_windows
     workloads_acceptance_test_windows --> workloads_podman_on_windows
+    linkStyle 9,10 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -35,8 +44,10 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class workloads_acceptance_test,workloads_podman_on_gvisor_linux inprog
+    class workloads_acceptance_test unrated
+    class workloads_podman_on_gvisor_linux mixed
     class workloads_acceptance_test_windows,workloads_podman_on_windows,workloads_podman_harness blocked
+    class workloads_gvisor_bridge_netlink,workloads_gvisor_port_publishing finding
 ```
 <!-- END GENERATED: track-workloads -->
 
@@ -45,19 +56,28 @@ flowchart TB
 <!-- BEGIN GENERATED: table-workloads -->
 | id | title | kind | lane | state | outcome | start | end | depends_on | replaced_by | qualified_by | headline | evidence |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `workloads-acceptance-test` | Write the Podman acceptance test | tooling | linux-ci | in-progress | unrated | 2026-11-26 |  | research-gvisor-base |  |  |  |  |
-| `workloads-podman-on-gvisor-linux` | Podman on gVisor on Linux | experiment | linux-ci | in-progress | unrated | 2026-11-26 |  | workloads-acceptance-test |  |  |  |  |
+| `workloads-acceptance-test` | Write the Podman acceptance test | tooling | linux-ci | done | unrated | 2026-11-26 | 2026-11-26 | research-gvisor-base |  |  |  | test/e2e/podman-acceptance/run.sh; docs/results/0a-linux.md |
+| `workloads-podman-on-gvisor-linux` | Podman on gVisor on Linux | experiment | linux-ci | done | mixed | 2026-11-26 | 2026-11-26 | workloads-acceptance-test |  | workloads-gvisor-bridge-netlink, workloads-gvisor-port-publishing |  | docs/results/0a-linux.md |
 | `workloads-podman-on-windows` | Podman passes on Windows | experiment | windows-ci | blocked | unrated |  |  | runsc-container-on-windows, workloads-acceptance-test-windows, net-port-forwarding, fs-persistent-storage-choice, fs-change-notifications, fs-linux-metadata-on-ntfs |  |  |  |  |
 | `workloads-acceptance-test-windows` | Acceptance test for Windows | tooling | windows-local | blocked | unrated |  |  | workloads-acceptance-test |  |  |  |  |
 | `workloads-podman-harness` | Serve Podman to Windows clients | tooling | windows-local | blocked | unrated |  |  | runsc-container-on-windows, net-port-forwarding |  |  |  |  |
+| `workloads-gvisor-bridge-netlink` | Bridge networking fails in gVisor | defect | linux-ci | next | unrated |  |  |  |  |  |  | docs/results/0a-linux.md |
+| `workloads-gvisor-port-publishing` | Port publishing untested in gVisor | defect | linux-ci | next | unrated |  |  |  |  |  |  | docs/results/0a-linux.md |
 
 ### Details per node
 
 | id | title | verdict | headline | in plain words | notes | confirmed | waiting on | queue order | order reason |
 |---|---|---|---|---|---|---|---|---|---|
 | `workloads-acceptance-test` | Write the Podman acceptance test |  |  | One test of ten steps defines when Podman counts as working: pull, run, build, mounts, ports, compose, restart, isolation. | Done when: the test exists under test/e2e/podman-acceptance and passes against native Podman on Linux. |  |  |  |  |
-| `workloads-podman-on-gvisor-linux` | Podman on gVisor on Linux |  |  | Run the acceptance test on stock gVisor on Linux; whatever fails there is a gap in gVisor itself, not in the port. | Done when: the acceptance test ran against Podman inside runsc and docs/results/0a-linux.md records each step. |  |  |  |  |
+| `workloads-podman-on-gvisor-linux` | Podman on gVisor on Linux | passes all 10 acceptance steps when containers use host networking, the store is on a host directory (kernel overlayfs or vfs) and runsc runs with `--in-sandbox-cgroup=v2`; with the default bridge network netavark fails on its netlink socket, so only steps 1, 2 and 5 pass |  | Run the acceptance test on stock gVisor on Linux; whatever fails there is a gap in gVisor itself, not in the port. | Done when: the acceptance test ran against Podman inside runsc and docs/results/0a-linux.md records each step. |  |  |  |  |
 | `workloads-podman-on-windows` | Podman passes on Windows |  |  | The bar for enough features: an unmodified Podman engine passes the acceptance test on gVisor on Windows. | Done when: all 10 acceptance steps pass in CI on windows-latest as a standard user. |  |  |  |  |
 | `workloads-acceptance-test-windows` | Acceptance test for Windows |  |  | The ten acceptance steps written for Windows, driving the stock Podman and docker clients. | Done when: a PowerShell twin of the test runs the same ten steps and reports each one. |  |  |  |  |
 | `workloads-podman-harness` | Serve Podman to Windows clients |  |  | The test harness runs the Podman engine on runsc and exposes its API to the stock Windows clients. | Done when: podman version from a Windows client reaches the engine running on runsc. |  |  |  |  |
+| `workloads-gvisor-bridge-netlink` | Bridge networking fails in gVisor |  |  | In stock gVisor, Podman's default bridge network fails because netavark cannot open its netlink socket; only host networking works. | Open gap in gVisor itself. Fixed when: the acceptance test passes with the default bridge network on stock runsc. |  |  |  |  |
+| `workloads-gvisor-port-publishing` | Port publishing untested in gVisor |  |  | Publishing container ports with -p and service-name lookup in compose never worked or were never exercised inside gVisor. | Fixed when: -p and compose service names pass inside stock runsc. |  |  |  |  |
+
+### Folded items per node
+
+- `workloads-acceptance-test`: Write the Podman acceptance test
+  - Native Podman baseline passes all 10 steps (2026-11-26, commit 0d3203400)
 <!-- END GENERATED: table-workloads -->

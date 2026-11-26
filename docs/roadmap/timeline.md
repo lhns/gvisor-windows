@@ -14,7 +14,7 @@ gantt
     section runsc - runsc
     Measure runsc's command side :runsc_measure_cli, 2026-11-26, 2026-11-26
     section platform - platform
-    Survey ELF segment alignment :active, platform_elf_alignment_survey, 2026-11-26, 2026-11-26
+    Survey ELF segment alignment :platform_elf_alignment_survey, 2026-11-26, 2026-11-26
     Measure syscall trap cost :platform_trap_cost, 2026-11-26, 2026-11-26
     Test 4 KB section views :platform_4k_section_views, 2026-11-26, 2026-11-26
     Set the TLS register :active, platform_tls_register, 2026-11-26, 2026-11-26
@@ -24,17 +24,17 @@ gantt
     Recover faults in Go :sentry_go_fault_recovery, 2026-11-26, 2026-11-26
     section fs - files
     Compatibility layer, not security bound… :fs_compat_layer_not_boundary, 2026-11-26, 2026-11-26
-    Test persistent image storage :active, fs_persistent_image_storage, 2026-11-26, 2026-11-26
+    Test persistent image storage :fs_persistent_image_storage, 2026-11-26, 2026-11-26
     section workloads - workloads
-    Write the Podman acceptance test :active, workloads_acceptance_test, 2026-11-26, 2026-11-26
-    Podman on gVisor on Linux :active, workloads_podman_on_gvisor_linux, 2026-11-26, 2026-11-26
+    Write the Podman acceptance test :workloads_acceptance_test, 2026-11-26, 2026-11-26
+    Podman on gVisor on Linux :workloads_podman_on_gvisor_linux, 2026-11-26, 2026-11-26
     section research - research
     Pick gVisor as the base :research_gvisor_base, 2026-11-17, 2026-11-26
     Revive LKL or nommu UML :crit, research_lkl_nommu, 2026-11-26, 2026-11-26
     Build on unkernel :crit, research_unkernel, 2026-11-26, 2026-11-26
     Translate syscalls like flinux :crit, research_flinux_translation, 2026-11-26, 2026-11-26
     QEMU software emulation :crit, research_qemu_emulation, 2026-11-26, 2026-11-26
-    Benchmark gVisor against native Linux :active, research_gvisor_benchmark, 2026-11-26, 2026-11-26
+    Benchmark gVisor against native Linux :research_gvisor_benchmark, 2026-11-26, 2026-11-26
     Test WHPX on this machine :crit, research_whpx_this_machine, 2026-11-26, 2026-11-26
     Reach host files over a protocol :crit, research_file_protocol, 2026-11-26, 2026-11-26
     section ops - operations
@@ -44,5 +44,5 @@ gantt
     Podman only as the bar :ops_podman_only_the_bar, 2026-11-26, 2026-11-26
 ```
 
-Not shown (no `start`): `runsc-container-on-windows`, `runsc-windows-commands`, `runsc-sandbox-lifecycle`, `platform-stub-controller`, `platform-page-verification`, `platform-syscall-fast-path`, `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-winstub`, `platform-busybox-on-windows`, `platform-hardware-acceleration`, `sentry-windows-build`, `sentry-memory-file-sections`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `sentry-fault-recovery`, `sentry-host-stdio-and-tty`, `sentry-threads-and-signals`, `fs-windows-directfs`, `fs-change-notifications`, `fs-linux-metadata-on-ntfs`, `fs-handles-do-not-block-users`, `fs-persistent-storage-choice`, `fs-root-filesystem-source`, `fs-persistent-storage-impl`, `net-netstack-windows-link`, `net-port-forwarding`, `workloads-podman-on-windows`, `workloads-acceptance-test-windows`, `workloads-podman-harness`, `ops-phase0-go-no-go`, `ops-windows-ci-standard-user`, `ops-syscall-test-strategy`, `ops-syscall-tests-on-windows`, `ops-upstream-merges`, `ops-portable-packaging`
+Not shown (no `start`): `runsc-container-on-windows`, `runsc-windows-commands`, `runsc-sandbox-lifecycle`, `platform-stub-controller`, `platform-page-verification`, `platform-syscall-fast-path`, `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-winstub`, `platform-busybox-on-windows`, `platform-hardware-acceleration`, `sentry-windows-build`, `sentry-memory-file-sections`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `sentry-fault-recovery`, `sentry-host-stdio-and-tty`, `sentry-threads-and-signals`, `fs-windows-directfs`, `fs-change-notifications`, `fs-linux-metadata-on-ntfs`, `fs-handles-do-not-block-users`, `fs-persistent-storage-choice`, `fs-root-filesystem-source`, `fs-persistent-storage-impl`, `net-netstack-windows-link`, `net-port-forwarding`, `workloads-podman-on-windows`, `workloads-acceptance-test-windows`, `workloads-podman-harness`, `workloads-gvisor-bridge-netlink`, `workloads-gvisor-port-publishing`, `ops-phase0-go-no-go`, `ops-windows-ci-standard-user`, `ops-syscall-test-strategy`, `ops-syscall-tests-on-windows`, `ops-upstream-merges`, `ops-portable-packaging`
 <!-- END GENERATED: timeline -->

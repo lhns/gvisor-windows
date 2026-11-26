@@ -9,7 +9,7 @@ Scope: stub processes, syscall trap, memory mapping, TLS.
 <!-- BEGIN GENERATED: track-platform -->
 ```mermaid
 flowchart TB
-    platform_elf_alignment_survey[/"▶ Survey ELF segment<br/>alignment"/]
+    platform_elf_alignment_survey[/"✔ Survey ELF segment<br/>alignment"/]
     platform_trap_cost[/"✔ Measure syscall trap<br/>cost"/]
     platform_4k_section_views[/"✔ Test 4 KB section<br/>views"/]
     platform_tls_register[/"⏳ Set the TLS register"/]
@@ -63,8 +63,7 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class platform_elf_alignment_survey inprog
-    class platform_trap_cost,platform_4k_section_views succ
+    class platform_elf_alignment_survey,platform_trap_cost,platform_4k_section_views succ
     class platform_tls_register waiting
     class platform_restricted_stub mixed
     class platform_zpoline_hooks dead
@@ -78,7 +77,7 @@ flowchart TB
 <!-- BEGIN GENERATED: table-platform -->
 | id | title | kind | lane | state | outcome | start | end | depends_on | replaced_by | qualified_by | headline | evidence |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `platform-elf-alignment-survey` | Survey ELF segment alignment | experiment | linux-ci | in-progress | unrated | 2026-11-26 |  | research-gvisor-base |  |  |  |  |
+| `platform-elf-alignment-survey` | Survey ELF segment alignment | experiment | linux-ci | done | successful | 2026-11-26 | 2026-11-26 | research-gvisor-base |  |  |  | docs/results/0a-linux.md |
 | `platform-trap-cost` | Measure syscall trap cost | experiment | windows-local | done | successful | 2026-11-26 | 2026-11-26 | research-gvisor-base |  |  | about 8 us per trap | docs/results/0b-windows.md |
 | `platform-4k-section-views` | Test 4 KB section views | experiment | windows-local | done | successful | 2026-11-26 | 2026-11-26 | research-gvisor-base |  |  |  | docs/results/0b-windows.md |
 | `platform-tls-register` | Set the TLS register | experiment | windows-local | in-progress | unrated | 2026-11-26 |  | research-gvisor-base |  |  |  | docs/results/0b-windows.md |
@@ -97,7 +96,7 @@ flowchart TB
 
 | id | title | verdict | headline | in plain words | notes | confirmed | waiting on | queue order | order reason |
 |---|---|---|---|---|---|---|---|---|---|
-| `platform-elf-alignment-survey` | Survey ELF segment alignment |  |  | Count how often program files place code at addresses Windows cannot map directly (64 KB alignment). | Done when: per-image counts are in docs/results/0a-linux.md. |  |  |  |  |
+| `platform-elf-alignment-survey` | Survey ELF segment alignment | so a 64 KiB-granularity host cannot map ELF segments 1:1 and the conflict path of R2 is the common case. |  | Count how often program files place code at addresses Windows cannot map directly (64 KB alignment). | Done when: per-image counts are in docs/results/0a-linux.md. |  |  |  |  |
 | `platform-trap-cost` | Measure syscall trap cost | A `ud2` caught by a raw-assembly vectored exception handler costs about 8 us per trap on this QEMU-guest machine | about 8 us per trap | Measure what it costs to catch one Linux system call on Windows and hand it to another process. | Done when: S1 results are in docs/results/0b-windows.md. |  |  |  |  |
 | `platform-4k-section-views` | Test 4 KB section views | With placeholders, a non-elevated process can map section views into a child at 4 KB-aligned addresses (not 64 KB-aligned), at 4 KB-multiple file offsets, with 4 KB view sizes, and change protection per 4 KB page |  | Check whether Windows can map shared memory at the 4 KB steps Linux programs expect, instead of 64 KB. | Done when: S2 results are in docs/results/0b-windows.md. |  |  |  |  |
 | `platform-tls-register` | Set the TLS register |  |  | Check whether a normal Windows program can set the register Linux programs use for thread-local data; without it native execution fails. | Go/no-go. Done when: S3 results are in docs/results/0b-windows.md. |  | measuring FS base loss and fault-based repair on hosted runners |  |  |
@@ -106,7 +105,7 @@ flowchart TB
 | `platform-page-verification` | Scan code pages for syscalls |  |  | Before guest code may run, each page is scanned for every instruction that enters the Windows kernel and those are rewritten to traps. | Done when: no page is ever writable and executable at once; a test binary with syscall, sysenter, int and JIT-generated code never reaches the NT kernel. |  |  |  |  |
 | `platform-syscall-fast-path` | Patch hot syscall sites |  |  | Call sites that trapped once are patched to jump straight into the controller hand-off, avoiding the exception cost. | Done when: a getpid loop runs measurably faster than the trap-only path, with the numbers written up. |  |  |  |  |
 | `platform-own-vdso` | Own vDSO for clock calls |  |  | Time and CPU queries are answered inside the stub, so they need no trap at all. | Done when: clock_gettime, gettimeofday and getcpu run without a trap and return correct values. |  |  |  |  |
-| `platform-64k-mapping-conflicts` | Handle 64 KB mapping conflicts |  |  | When Linux puts two file pieces inside one 64 KB Windows window, the Sentry copies them into one fresh range instead. | Parked: S2 showed 4 KB section views work with placeholders on Windows 10.0.26300. Done when: needed only on builds without that. |  |  |  |  |
+| `platform-64k-mapping-conflicts` | Handle 64 KB mapping conflicts |  |  | When Linux puts two file pieces inside one 64 KB Windows window, the Sentry copies them into one fresh range instead. | Parked: the ELF survey shows non-64K-aligned segments in 73-82% of files, but S2 showed 4 KB section views work with placeholders on Windows 10.0.26300, so no conflict path is needed there. Done when: needed only on Windows builds without 4 KB placeholder views. |  |  |  |  |
 | `platform-winstub` | Windows platform for the Sentry |  |  | gVisor's platform interface implemented for Windows: address spaces, context switches and syscall delivery through stub processes. | Done when: pkg/sentry/platform/winstub passes the platform's own tests on Windows. |  |  |  |  |
 | `platform-busybox-on-windows` | Run busybox under the Sentry |  |  | First end-to-end milestone: gVisor's kernel runs an unmodified busybox shell on Windows. | Done when: busybox sh runs a script with fork, exec, pipes and mmap under the Sentry on Windows as a standard user. |  |  |  |  |
 | `platform-hardware-acceleration` | Use hardware acceleration when available |  |  | Where the Windows Hypervisor Platform is enabled, a second platform could run guests in a hardware VM, chosen automatically like runsc's autoplatform. | Done when: a WHPX platform is picked automatically when available and falls back to stub processes. |  |  |  |  |
