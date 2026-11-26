@@ -31,6 +31,7 @@ fi
 # Static: the same link options as tools/bazeldefs/cc.bzl uses for static=True.
 bazel build --config=x86_64 -c opt --keep_going --noshow_progress --color=no \
   --disk_cache="$HOME/.cache/bazel-disk" --repository_cache="$HOME/.cache/bazel-repo" \
+  --action_env=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin --host_action_env=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin --linkopt=-B/usr/bin --verbose_failures
   --strip=always --copt=-w --cxxopt=-w --host_copt=-w --host_cxxopt=-w \
   --linkopt=-static --linkopt=-lstdc++ --linkopt=-Wl,--whole-archive --linkopt=-lpthread --linkopt=-Wl,--no-whole-archive \
   ${BAZEL_FLAGS:-} $TARGETS 2>&1 | tee "$OUT/bazel.log" | tail -n 200 || true
