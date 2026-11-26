@@ -93,6 +93,8 @@ func Open(path string, opts Options) (*FS, error) {
 	}
 	fs.vol = idi.VolumeSerialNumber
 	fs.rootID = ID{Vol: idi.VolumeSerialNumber, File: idi.FileID}
+	fs.loadIndex()
+	fs.startIndexFlusher()
 	if opts.CaseSensitive {
 		_ = setCaseSensitive(h, true) // only succeeds on an empty directory
 	}
@@ -102,6 +104,7 @@ func Open(path string, opts Options) (*FS, error) {
 // Close releases the root handle and pins.
 func (fs *FS) Close() {
 	fs.stopWatch()
+	fs.stopIndexFlusher()
 	fs.pinMu.Lock()
 	for _, p := range fs.pins {
 		windows.CloseHandle(p.h)

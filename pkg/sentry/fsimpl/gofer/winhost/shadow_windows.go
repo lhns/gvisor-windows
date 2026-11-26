@@ -36,6 +36,12 @@ type shadowState struct {
 	mu    sync.Mutex
 	files map[shadowKey]shadowEntry
 
+	// The persisted log (index_windows.go).
+	pending   []indexRec
+	indexSize int64
+	stopIdx   chan struct{}
+	idxDone   chan struct{}
+
 	// Changes the backend makes itself produce directory-change events that
 	// must not be reported as Windows changes. Names and IDs of recent own
 	// changes are kept for selfWindow.
@@ -60,15 +66,23 @@ func (fs *FS) remember(dir ID, name string, id ID, m *Metadata) {
 			}
 		}
 	}
+	k := shadowKey{dir, name}
+	if old, ok := s.files[k]; ok && sameEntry(old, id, m) {
+		return
+	}
 	c := *m
-	s.files[shadowKey{dir, name}] = shadowEntry{id: id, meta: c}
+	s.files[k] = shadowEntry{id: id, meta: c}
+	s.queueIndex(indexRec{dir: dir, name: name, id: id, meta: c})
 }
 
 // forget drops the memory of a name the guest removed or renamed.
 func (fs *FS) forget(dir ID, name string) {
 	s := &fs.shadow
 	s.mu.Lock()
-	delete(s.files, shadowKey{dir, name})
+	if _, ok := s.files[shadowKey{dir, name}]; ok {
+		delete(s.files, shadowKey{dir, name})
+		s.queueIndex(indexRec{del: true, dir: dir, name: name})
+	}
 	s.mu.Unlock()
 }
 
