@@ -13,6 +13,7 @@ ARCH=$(uname -m)
 URL=https://storage.googleapis.com/gvisor/releases/release/latest/${ARCH}
 wget -q "$URL/gvisor.tar.bz2" "$URL/gvisor.tar.bz2.sha512" && sha512sum -c gvisor.tar.bz2.sha512
 mkdir x && tar -xjf gvisor.tar.bz2 -C x
+sudo cp -r x/gvisor-bin /usr/local/bin/ && sudo chmod -R a+rx /usr/local/bin/gvisor-bin
 sudo cp "$(find x -type f -name runsc | head -1)" /usr/local/bin/runsc && sudo chmod a+rx /usr/local/bin/runsc
 runsc --version | tee "$RES/runsc-version.txt"
 
@@ -37,9 +38,7 @@ run() { # label rootfs-name loop-body N
     run --bundle="$b" "$id" >"$RES/$id.out" 2>&1
   echo "$id exit $?"; sudo chmod a+r "$log" 2>/dev/null
 }
-for spec in "true debian /bin/true 0 40 120" "gohello debian /hello 0 40 120" "python3 python python3\ -c\ pass 0 15 45"; do
-  set -- $spec
-  for n in "${@:4}"; do run "$1" "$2" "$3" "$n"; done
-done
+for n in 0 40 120; do run true debian /bin/true $n; run gohello debian /hello $n; done
+for n in 0 15 45; do run python3 python "python3 -c pass" $n; done
 head -c 1500 "$RES"/f-true-40.csv || true
 python3 "$HERE/faults-report.py" "$RES" | tee "$RES/faults.tsv"
