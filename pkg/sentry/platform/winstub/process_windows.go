@@ -218,9 +218,11 @@ func (as *addressSpace) start() error {
 	}
 	as.mu.Lock()
 	defer as.mu.Unlock()
+	Trace("start: CreateProcess done")
 	if err := as.reserve(queryUsed(as.h, stubasm.ReserveMin, stubasm.ReserveMax)); err != nil {
 		return fail(err)
 	}
+	Trace("start: placeholders reserved")
 	section := func(size uint64) (uintptr, unsafe.Pointer, error) {
 		s, err := call(pCreateMapping, ^uintptr(0), 0, pageExecRW, uintptr(size>>32), uintptr(size&0xFFFFFFFF), 0)
 		if err != nil {
@@ -239,6 +241,7 @@ func (as *addressSpace) start() error {
 	if as.ctlSec, as.ctlView, err = section(stubasm.CtlSize); err != nil {
 		return fail(fmt.Errorf("control area: %w", err))
 	}
+	Trace("start: sections created")
 	for _, m := range []struct {
 		lo, size uint64
 		prot     int
@@ -255,6 +258,7 @@ func (as *addressSpace) start() error {
 	if err := as.mapSys(stubasm.CtlBase, stubasm.CtlSize, as.ctlSec, 0, protR|protW|protX); err != nil {
 		return fail(err)
 	}
+	Trace("start: views mapped")
 	as.areaWrite(stubasm.StubCode, as.p.image)
 
 	// Slot 0 is the anchor: the initial thread, parked for good, so that the
@@ -268,6 +272,7 @@ func (as *addressSpace) start() error {
 	if r, _, e := pResumeThread.Call(as.hMain); int32(r) == -1 {
 		return fail(fmt.Errorf("ResumeThread: %v", e))
 	}
+	Trace("start: main thread resumed")
 	return nil
 }
 
@@ -292,6 +297,9 @@ func (as *addressSpace) debugLoop() {
 		}
 		status := uint32(dbgContinue)
 		exited := false
+		if traceOn && ev.code() != 1 {
+			Trace("debug event %d (pid %d tid %d)", ev.code(), ev.pid(), ev.tid())
+		}
 		switch ev.code() {
 		case 1: // EXCEPTION_DEBUG_EVENT
 			status = as.onException(&ev, &ctx, &seenBP)
