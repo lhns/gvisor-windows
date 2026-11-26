@@ -289,3 +289,40 @@ func TestCaseSensitivityAfterGrant(t *testing.T) {
 		t.Logf("after granting %-5s set case sensitive: %v", g, err)
 	}
 }
+
+// A mount with the case-sensitive option makes its folder case sensitive
+// without an administrator, in a folder the user was only granted Modify on.
+func TestCaseSensitiveMountWithoutAdmin(t *testing.T) {
+	base := os.Getenv("GVISOR_PROBE_DIR")
+	if base == "" {
+		base = t.TempDir()
+	}
+	dir, err := os.MkdirTemp(base, "mount")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	fs, err := Open(dir, Options{CaseSensitive: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fs.Close()
+	if err := fs.CaseSensitiveError(); err != nil {
+		t.Fatalf("the folder is not case sensitive: %v", err)
+	}
+	root := fs.Root()
+	a := mustCreate(t, fs, root, "name", Spec{Mode: 0o644})
+	b := mustCreate(t, fs, root, "NAME", Spec{Mode: 0o644})
+	if a.ID == b.ID {
+		t.Errorf("name and NAME are one file")
+	}
+	d := mustCreate(t, fs, root, "Sub", Spec{Mode: SIFDIR | 0o755})
+	x := mustCreate(t, fs, d.ID, "f", Spec{Mode: 0o644})
+	y := mustCreate(t, fs, d.ID, "F", Spec{Mode: 0o644})
+	if x.ID == y.ID {
+		t.Errorf("f and F are one file in a directory made through the mount")
+	}
+	if _, err := fs.Lookup(root, "Name"); err == nil {
+		t.Errorf("Name found in a case-sensitive folder")
+	}
+}

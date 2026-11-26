@@ -1067,12 +1067,3 @@ func (fs *FS) IsCaseSensitive(dir ID) (bool, error) {
 	return flags&1 != 0, nil
 }
 
-// SetCaseSensitive changes a directory's case sensitivity (it must be empty).
-func (fs *FS) SetCaseSensitive(dir ID, on bool) error {
-	h, err := fs.openID(dir, fileReadAttributes|fileWriteAttributes)
-	if err != nil {
-		return err
-	}
-	defer fs.closeID(dir, h)
-	return setCaseSensitive(h, on)
-}
