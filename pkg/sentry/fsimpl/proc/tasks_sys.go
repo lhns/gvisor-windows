@@ -900,8 +900,7 @@ func newPingGroupRange() *pingGroupRange {
 
 // Generate implements vfs.DynamicBytesSource.Generate.
 func (p *pingGroupRange) Generate(ctx context.Context, buf *bytes.Buffer) error {
-	_, err := fmt.Fprintf(buf, "%d	%d
-", p.lo.Load(), p.hi.Load())
+	_, err := fmt.Fprintf(buf, "%d\t%d\n", p.lo.Load(), p.hi.Load())
 	return err
 }
 
