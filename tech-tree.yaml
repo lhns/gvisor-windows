@@ -21,7 +21,7 @@ kinds:
 
 lanes: [linux-ci, windows-ci, windows-local, owner, none]
 
-overview: {min: 3, max: 14}
+overview: {min: 3, max: 25}
 
 history:
   weak_refs:
