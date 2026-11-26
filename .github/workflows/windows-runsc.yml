@@ -16,12 +16,18 @@ jobs:
       - name: Build guests
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq busybox-static
+          sudo apt-get install -y -qq busybox-static erofs-utils
           mkdir -p out
           gcc -static -no-pie -O1 -fstack-protector-all -o out/hello test/guests/hello.c
           cp "$(command -v busybox)" out/busybox
           file out/*
           ! ldd out/busybox
+          # The same rootfs as an erofs image, applets as symlinks.
+          r=$(mktemp -d); mkdir -p $r/bin $r/etc $r/proc $r/dev $r/tmp
+          cp out/hello $r/bin/hello; cp out/busybox $r/bin/busybox
+          for a in sh cat; do ln -s busybox $r/bin/$a; done
+          echo ciguest > $r/etc/hostname
+          mkfs.erofs out/rootfs.erofs $r
       - uses: actions/upload-artifact@v4
         with: {name: runsc-guests, path: out}
   run:
@@ -48,6 +54,7 @@ jobs:
           foreach ($d in 'bin','etc','proc','dev','tmp','www') { New-Item -ItemType Directory -Force "$r\$d" | Out-Null }
           Copy-Item guests\hello "$r\bin\hello"
           foreach ($a in 'busybox','sh','ls','cat','wget','httpd','sleep','stty','tty') { Copy-Item guests\busybox "$r\bin\$a" }
+          Copy-Item guestsootfs.erofs C:\ci\workootfs.erofs
           [IO.File]::WriteAllText("$r\etc\hostname", "ciguest`n")
           [IO.File]::WriteAllText("$r\www\index.html", "hello-from-guest`n")
           Get-ChildItem -Recurse $r | Select-Object FullName, Length | Format-Table -AutoSize | Out-String -Width 200
@@ -66,7 +73,7 @@ jobs:
         run: |
           & tools/windows/ci/run-as-standard-user.ps1 `
             -Program C:\ci\bin\runsctest.exe `
-            -Arguments '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std' `
+            -Arguments '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std','-image','C:\ci\workootfs.erofs' `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 1500
       - uses: actions/upload-artifact@v4
         if: always()
