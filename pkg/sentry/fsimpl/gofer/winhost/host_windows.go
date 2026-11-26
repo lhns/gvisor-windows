@@ -5,6 +5,7 @@ package winhost
 import (
 	"strings"
 	"sync"
+	"sync/atomic"
 	"unicode/utf16"
 	"unsafe"
 
@@ -41,7 +42,10 @@ type FS struct {
 	pinMu sync.Mutex
 	pins  map[ID]*pin
 
-	watcher *watcher
+	watcher  *watcher
+	watching atomic.Bool
+	cbMu     sync.Mutex
+	recheck  map[string]bool
 
 	shadow shadowState // metadata kept across replacements and own-change marks
 }
@@ -323,7 +327,7 @@ func (fs *FS) Create(dir ID, name string, spec Spec) (Attr, error) {
 // create is Create but also returns the new file's handle (opened for
 // reading and writing for regular files); the caller closes it.
 func (fs *FS) create(dir ID, name string, spec Spec) (windows.Handle, Attr, error) {
-	fs.markName(name)
+	fs.expect(tokAppeared, name)
 	if err := validName(name); err != nil {
 		return 0, Attr{}, err
 	}
@@ -533,7 +537,7 @@ func readNativeLink(h windows.Handle) (string, bool) {
 
 // Link creates name in dir as a hard link to target.
 func (fs *FS) Link(dir ID, name string, target ID) (Attr, error) {
-	fs.markName(name)
+	fs.expect(tokAppeared, name)
 	if err := validName(name); err != nil {
 		return Attr{}, err
 	}
@@ -592,7 +596,7 @@ func setDisposition(h windows.Handle) error {
 // Unlink removes name from dir. rmdir selects rmdir(2) over unlink(2).
 func (fs *FS) Unlink(dir ID, name string, rmdir bool) error {
 	fs.forget(dir, name)
-	fs.markName(name)
+	fs.expect(tokGone, name)
 	dh, err := fs.openID(dir, dirAccess|fileDeleteChild)
 	if err != nil {
 		return err
@@ -628,8 +632,8 @@ func (fs *FS) Rename(oldDir ID, oldName string, newDir ID, newName string, flags
 	}
 	fs.forget(oldDir, oldName)
 	fs.forget(newDir, newName)
-	fs.markName(oldName)
-	fs.markName(newName)
+	fs.expect(tokGone, oldName)
+	fs.expect(tokAppeared, newName)
 	oh, err := fs.openID(oldDir, dirAccess)
 	if err != nil {
 		return err
@@ -809,7 +813,7 @@ type SetAttr struct {
 
 // SetAttr applies changes to a file.
 func (fs *FS) SetAttr(id ID, s SetAttr) error {
-	fs.markID(id)
+	defer fs.noteSelf(id) // runs after the handles are closed
 	access := uint32(fileReadAttributes | fileWriteAttributes | fileReadEA | fileWriteEA)
 	if s.HasSize {
 		access |= fileWriteData
@@ -881,7 +885,7 @@ func (fs *FS) Truncate(id ID, size uint64) error {
 
 // Allocate extends a file to at least off+length (fallocate mode 0).
 func (fs *FS) Allocate(id ID, mode uint32, off, length uint64) error {
-	fs.markID(id)
+	defer fs.noteSelf(id) // runs after the handles are closed
 	if mode != 0 {
 		return unix.EOPNOTSUPP
 	}
@@ -934,7 +938,7 @@ func (fs *FS) ReadAt(id ID, p []byte, off int64) (int, error) {
 
 // WriteAt writes to a regular file through a short-lived handle.
 func (fs *FS) WriteAt(id ID, p []byte, off int64) (int, error) {
-	fs.markID(id)
+	defer fs.noteSelf(id) // runs after the handles are closed
 	h, err := fs.openID(id, fileWriteData)
 	if err != nil {
 		return 0, err

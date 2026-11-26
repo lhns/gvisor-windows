@@ -2,10 +2,7 @@
 
 package winhost
 
-import (
-	"sync"
-	"time"
-)
+import "sync"
 
 // A file that Windows replaces (an editor's write-temp-then-rename "safe
 // save", git checkout) gets a new file ID and no metadata stream, so the
@@ -28,8 +25,6 @@ type shadowEntry struct {
 
 const (
 	maxShadow   = 100000
-	selfWindow  = 750 * time.Millisecond
-	maxSelfMark = 4096
 )
 
 type shadowState struct {
@@ -45,9 +40,7 @@ type shadowState struct {
 	// Changes the backend makes itself produce directory-change events that
 	// must not be reported as Windows changes. Names and IDs of recent own
 	// changes are kept for selfWindow.
-	selfMu    sync.Mutex
-	selfNames map[string]time.Time
-	selfIDs   map[ID]time.Time
+	own ownChanges
 }
 
 func (fs *FS) remember(dir ID, name string, id ID, m *Metadata) {
@@ -108,7 +101,7 @@ func (fs *FS) noteMeta(dir ID, name string, a Attr, m *Metadata) Attr {
 	m2 := e.meta
 	m2.Mode = SIFREG | e.meta.Mode&0o7777
 	m2.RdevMajor, m2.RdevMinor, m2.Target = 0, 0, ""
-	fs.markID(a.ID)
+	defer fs.noteSelf(a.ID)
 	h, err := fs.openID(a.ID, xattrAccess)
 	if err != nil {
 		return a
@@ -125,44 +118,3 @@ func (fs *FS) noteMeta(dir ID, name string, a Attr, m *Metadata) Attr {
 	return a
 }
 
-func (fs *FS) markName(name string) {
-	s := &fs.shadow
-	s.selfMu.Lock()
-	if s.selfNames == nil {
-		s.selfNames = map[string]time.Time{}
-	}
-	if len(s.selfNames) > maxSelfMark {
-		s.selfNames = map[string]time.Time{}
-	}
-	s.selfNames[name] = time.Now().Add(selfWindow)
-	s.selfMu.Unlock()
-}
-
-func (fs *FS) markID(id ID) {
-	s := &fs.shadow
-	s.selfMu.Lock()
-	if s.selfIDs == nil {
-		s.selfIDs = map[ID]time.Time{}
-	}
-	if len(s.selfIDs) > maxSelfMark {
-		s.selfIDs = map[ID]time.Time{}
-	}
-	s.selfIDs[id] = time.Now().Add(selfWindow)
-	s.selfMu.Unlock()
-}
-
-func (fs *FS) isSelfName(name string) bool {
-	s := &fs.shadow
-	s.selfMu.Lock()
-	defer s.selfMu.Unlock()
-	t, ok := s.selfNames[name]
-	return ok && time.Now().Before(t)
-}
-
-func (fs *FS) isSelfID(id ID) bool {
-	s := &fs.shadow
-	s.selfMu.Lock()
-	defer s.selfMu.Unlock()
-	t, ok := s.selfIDs[id]
-	return ok && time.Now().Before(t)
-}

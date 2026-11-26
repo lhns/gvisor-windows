@@ -62,6 +62,7 @@ func (fs *FS) Watch(fn func(Change)) error {
 	}
 	w := &watcher{stop: make(chan struct{}), done: make(chan struct{})}
 	fs.watcher = w
+	fs.watching.Store(true)
 	go func() {
 		defer close(w.done)
 		defer windows.CloseHandle(ev)
@@ -144,26 +145,68 @@ func (fs *FS) deliver(rel string, action uint32, fn func(Change)) {
 		parts[i] = UnescapeName(parts[i])
 	}
 	c.Path = strings.Join(parts, "/")
-	if fs.isSelfName(leaf) {
-		return
+	switch c.Action {
+	case Added, RenamedTo:
+		if fs.consume(tokAppeared, leaf) {
+			return
+		}
+	case Removed, RenamedFrom:
+		if fs.consume(tokGone, leaf) {
+			return
+		}
 	}
 	if c.Action == Modified {
-		// Directory timestamps change with every entry: only files count; the
-		// backend's own writes are recognized by file ID.
-		h, err := ntOpen(fs.root, rel, fileReadAttributes, shareAll, windows.FILE_OPEN, windows.FILE_OPEN_REPARSE_POINT, 0)
-		if err != nil {
+		// Directory timestamps change with every entry: only files count.
+		id, cur, isDir, ok := fs.modifiedState(rel)
+		if !ok || isDir || fs.isSelfSig(id, cur) {
 			return
 		}
-		var bi fileBasicInfo
-		var idi fileIDInfo
-		ok := getInfo(h, classBasic, unsafe.Pointer(&bi), uint32(unsafe.Sizeof(bi))) == nil &&
-			getInfo(h, classIDInfo, unsafe.Pointer(&idi), uint32(unsafe.Sizeof(idi))) == nil
-		windows.CloseHandle(h)
-		if !ok || bi.FileAttributes&attrDirectory != 0 || fs.isSelfID(ID{Vol: idi.VolumeSerialNumber, File: idi.FileID}) {
+		// It may be our own write whose state is not recorded yet (the event
+		// can arrive before the writer has read the file back): look again
+		// shortly, once per path.
+		fs.cbMu.Lock()
+		if fs.recheck == nil {
+			fs.recheck = map[string]bool{}
+		}
+		if fs.recheck[rel] {
+			fs.cbMu.Unlock()
 			return
 		}
+		fs.recheck[rel] = true
+		fs.cbMu.Unlock()
+		time.AfterFunc(40*time.Millisecond, func() {
+			fs.cbMu.Lock()
+			delete(fs.recheck, rel)
+			fs.cbMu.Unlock()
+			id2, cur2, isDir2, ok2 := fs.modifiedState(rel)
+			if !ok2 || isDir2 || fs.isSelfSig(id2, cur2) {
+				return
+			}
+			fs.cbMu.Lock()
+			defer fs.cbMu.Unlock()
+			fn(c)
+		})
+		return
 	}
+	fs.cbMu.Lock()
+	defer fs.cbMu.Unlock()
 	fn(c)
+}
+
+// modifiedState reads the ID, last write time and size of the file at rel.
+func (fs *FS) modifiedState(rel string) (id ID, cur sig, isDir, ok bool) {
+	h, err := ntOpen(fs.root, rel, fileReadAttributes, shareAll, windows.FILE_OPEN, windows.FILE_OPEN_REPARSE_POINT, 0)
+	if err != nil {
+		return
+	}
+	defer windows.CloseHandle(h)
+	var bi fileBasicInfo
+	var idi fileIDInfo
+	var si fileStandardInfo
+	ok = getInfo(h, classBasic, unsafe.Pointer(&bi), uint32(unsafe.Sizeof(bi))) == nil &&
+		getInfo(h, classStandard, unsafe.Pointer(&si), uint32(unsafe.Sizeof(si))) == nil &&
+		getInfo(h, classIDInfo, unsafe.Pointer(&idi), uint32(unsafe.Sizeof(idi))) == nil
+	return ID{Vol: idi.VolumeSerialNumber, File: idi.FileID}, sig{mtime: bi.LastWriteTime, size: si.EndOfFile}, bi.FileAttributes&attrDirectory != 0, ok
 }
 
 // ResolvePath returns the ID of the file at a slash-separated path relative

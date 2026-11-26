@@ -142,7 +142,7 @@ func (fs *FS) GetXattr(id ID, name string) ([]byte, error) {
 
 // SetXattr sets an extended attribute. flags is XATTR_CREATE or XATTR_REPLACE.
 func (fs *FS) SetXattr(id ID, name string, value []byte, flags uint32) error {
-	fs.markID(id)
+	defer fs.noteSelf(id)
 	if len(name) > xattrNameMax || name == "" {
 		return unix.ERANGE
 	}
@@ -193,7 +193,7 @@ func (fs *FS) ListXattr(id ID) ([]string, error) {
 
 // RemoveXattr deletes an extended attribute.
 func (fs *FS) RemoveXattr(id ID, name string) error {
-	fs.markID(id)
+	defer fs.noteSelf(id)
 	h, err := fs.openID(id, xattrAccess)
 	if err != nil {
 		return err

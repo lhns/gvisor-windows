@@ -197,3 +197,23 @@ func TestSafeSaveAcrossRestart(t *testing.T) {
 		t.Errorf("a file at a name the guest removed got old metadata: %+v %v", c, err)
 	}
 }
+
+// A Windows write right after a write of the backend's own is still reported.
+func TestWatchSeesChangeRightAfterOwnWrite(t *testing.T) {
+	fs, dir := newFS(t, Options{})
+	var c changes
+	if err := fs.Watch(c.add); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(100 * time.Millisecond)
+	a := mustCreate(t, fs, fs.Root(), "q.txt", Spec{Mode: 0o644})
+	fs.WriteAt(a.ID, []byte("guest"), 0)
+	if err := os.WriteFile(filepath.Join(dir, "q.txt"), []byte("windows wrote more than the guest"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	if d, ok := c.waitFor("q.txt", Modified); !ok {
+		t.Errorf("a Windows write right after a guest write was not reported")
+	} else {
+		t.Logf("reported after %v", d)
+	}
+}
