@@ -14,6 +14,9 @@ NAME=${NAME:-podman-in-runsc}
 HOSTDIR=${HOSTDIR:-/srv/podman-storage}
 PODMAN_IMAGE=${PODMAN_IMAGE:-quay.io/podman/stable:latest}
 CGROUPS=${CGROUPS:-disabled}   # disabled | enabled (cgroupfs manager, needs runsc --in-sandbox-cgroup=v2)
+# Probe knobs: SHIM=1 wraps netavark with shim.so (SHIM_SO on the host), REMOUNT_CG=1 tries rw /sys/fs/cgroup,
+# INSTALL_SLIRP=1 installs slirp4netns (missing from the 5.x image).
+SHIM=${SHIM:-0}; REMOUNT_CG=${REMOUNT_CG:-0}; INSTALL_SLIRP=${INSTALL_SLIRP:-0}; SHIM_SO=${SHIM_SO:-}
 HERE=$(cd "$(dirname "$0")" && pwd)
 
 start() {
@@ -25,6 +28,13 @@ start() {
   esac
   st+=(-e CONTAINERS_STORAGE_CONF=/etc/containers/storage.conf)  # ignore the image's fuse-overlayfs drop-ins
   [ -n "$STORAGE_DRIVER" ] && st+=(-e "STORAGE_DRIVER=$STORAGE_DRIVER")
+  local pre='grep cgroup /proc/mounts'
+  [ "$REMOUNT_CG" = 1 ] && pre="$pre; mount -o remount,rw /sys/fs/cgroup; grep cgroup /proc/mounts"
+  [ "$INSTALL_SLIRP" = 1 ] && pre="$pre; dnf install -y -q slirp4netns"
+  if [ "$SHIM" = 1 ]; then
+    st+=(-v "$SHIM_SO:/opt/shim.so:ro")
+    pre="$pre; NV=\$(ls /usr/libexec/podman/netavark /usr/lib/podman/netavark 2>/dev/null | head -1); mv \$NV \$NV.real; printf '#!/bin/sh\nLD_PRELOAD=/opt/shim.so exec %s.real \"\$@\"\n' \$NV >\$NV; chmod +x \$NV"
+  fi
   CONF=/tmp/containers-$NAME.conf; sed "s/^cgroups = .*/cgroups = \"$CGROUPS\"/" "$HERE/containers.conf" >"$CONF"
   docker rm -f "$NAME" >/dev/null 2>&1
   docker run -d --name "$NAME" --runtime "$RUNTIME" \
@@ -32,7 +42,7 @@ start() {
     --user root --entrypoint '' \
     -v "$SHARE_DIR:$SHARE_DIR" -v "$CONF:/etc/containers/containers.conf:ro" -v "$HERE/storage.conf:/etc/containers/storage.conf:ro" \
     -p 127.0.0.1:8888:8888 -p 8080:8080 "${st[@]}" \
-    "$PODMAN_IMAGE" podman system service --time=0 tcp://0.0.0.0:8888 || return 1
+    "$PODMAN_IMAGE" sh -c "$pre; exec podman system service --time=0 tcp://0.0.0.0:8888" || return 1
   rm -f "$SOCK"
   # restart-looped so the socket survives a dying socat; own session so runner step cleanup keeps it
   setsid nohup bash -c "while :; do socat UNIX-LISTEN:$SOCK,unlink-early,fork,mode=666 TCP:127.0.0.1:8888; echo socat exited \$? >&2; sleep 1; done" >/tmp/socat.log 2>&1 &

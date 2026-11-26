@@ -29,6 +29,8 @@ sudo tee /etc/docker/daemon.json >/dev/null <<EOF
   "runtimes": {
     "runsc": { "path": "/usr/local/bin/runsc", "runtimeArgs": [$COMMON] },
     "runsc-strace": { "path": "/usr/local/bin/runsc", "runtimeArgs": [$COMMON_NS,"--strace=true","--strace-log-size=4096"] },
+    "runsc-nft": { "path": "/usr/local/bin/runsc", "runtimeArgs": [$COMMON_NS,"--strace=false","--TESTONLY-nftables"] },
+    "runsc-nft-strace": { "path": "/usr/local/bin/runsc", "runtimeArgs": [$COMMON_NS,"--strace=true","--strace-log-size=4096","--TESTONLY-nftables"] },
     "runsc-ovldir": { "path": "/usr/local/bin/runsc", "runtimeArgs": [$COMMON,"--overlay2=root:dir=/srv/overlay-dir"] }
   }
 }
