@@ -39,7 +39,8 @@ gantt
     Write the Podman acceptance test :workloads_acceptance_test, 2026-11-26, 2026-11-26
     Podman on gVisor on Linux :workloads_podman_on_gvisor_linux, 2026-11-26, 2026-11-26
     Does host networking meet the bar :workloads_bar_host_network, 2026-11-26, 2026-11-26
-    Strict bar on stock gVisor :active, workloads_strict_bar_linux, 2026-11-26, 2026-11-26
+    Strict bar on stock gVisor :workloads_strict_bar_linux, 2026-11-26, 2026-11-26
+    Cgroup filesystem mounted read-only :workloads_gvisor_cgroupfs_readonly, 2026-11-26, 2026-11-26
     section research - research
     Pick gVisor as the base :research_gvisor_base, 2026-11-17, 2026-11-26
     Revive LKL or nommu UML :crit, research_lkl_nommu, 2026-11-26, 2026-11-26

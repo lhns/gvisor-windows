@@ -11,7 +11,7 @@ Scope: netstack to Windows sockets, port forwarding.
 flowchart TB
     net_netstack_windows_link["⛔ Netstack to Windows<br/>sockets"]
     net_port_forwarding["⛔ Publish guest ports<br/>on localhost"]
-    net_bridge_networking["⛔ Bridge networking<br/>inside gVisor"]
+    net_bridge_networking["○ Bridge networking<br/>inside gVisor"]
     net_netstack_windows_link ~~~ net_port_forwarding
     net_netstack_windows_link ~~~ net_bridge_networking
     net_netstack_windows_link --> net_port_forwarding
@@ -29,7 +29,8 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class net_netstack_windows_link,net_port_forwarding,net_bridge_networking blocked
+    class net_netstack_windows_link,net_port_forwarding blocked
+    class net_bridge_networking next
 ```
 <!-- END GENERATED: track-net -->
 
@@ -40,7 +41,7 @@ flowchart TB
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `net-netstack-windows-link` | Netstack to Windows sockets | feature | windows-ci | blocked | unrated |  |  | sentry-windows-build |  |  |  |  |
 | `net-port-forwarding` | Publish guest ports on localhost | feature | windows-ci | blocked | unrated |  |  | net-netstack-windows-link |  |  |  |  |
-| `net-bridge-networking` | Bridge networking inside gVisor | feature | linux-ci | blocked | unrated |  |  | workloads-strict-bar-linux |  |  |  |  |
+| `net-bridge-networking` | Bridge networking inside gVisor | feature | linux-ci | next | unrated |  |  | workloads-strict-bar-linux |  |  |  |  |
 
 ### Details per node
 
@@ -48,5 +49,5 @@ flowchart TB
 |---|---|---|---|---|---|---|---|---|---|
 | `net-netstack-windows-link` | Netstack to Windows sockets |  |  | gVisor's own TCP/IP stack sends guest traffic out through ordinary Windows sockets, like a user-space NAT. | Done when: a guest resolves DNS and downloads over HTTPS on Windows without admin. |  |  |  |  |
 | `net-port-forwarding` | Publish guest ports on localhost |  |  | A port opened in the guest becomes reachable on the Windows machine's localhost. | Done when: a guest web server answers on localhost on Windows. |  |  |  |  |
-| `net-bridge-networking` | Bridge networking inside gVisor |  |  | Podman's default network creates a bridge and veth pairs over netlink; gVisor lacks part of that, so it fails today. Fix it in gVisor itself, first on Linux, then it carries over to Windows. | Done when: the acceptance test passes with the default bridge network on runsc (Linux CI), including -p and compose service names. Fixes defect workloads-gvisor-bridge-netlink. |  |  |  |  |
+| `net-bridge-networking` | Bridge networking inside gVisor |  |  | Podman's default network creates a bridge and veth pairs over netlink; gVisor lacks part of that, so it fails today. Fix it in gVisor itself, first on Linux, then it carries over to Windows. | Done when: the strict acceptance test (-p and compose service names on the default bridge network) passes on runsc built from this repo in Linux CI. Known gaps in order: accept NETLINK_DUMP_STRICT_CHK and related netlink options, ignore NLM_F_CREATE on RTM_SETLINK, enable NETLINK_NETFILTER (nftables) by default and cover what netavark needs for DNAT and masquerade, then whatever follows. |  |  |  |  |
 <!-- END GENERATED: table-net -->

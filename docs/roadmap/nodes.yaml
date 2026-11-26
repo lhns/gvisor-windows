@@ -446,6 +446,7 @@
   - fs-change-notifications
   - fs-linux-metadata-on-ntfs
   - net-bridge-networking
+  - workloads-gvisor-cgroupfs-readonly
   replaced_by: []
   lane: windows-ci
   start: ''
@@ -1221,6 +1222,7 @@
   outcome: unrated
   evidence:
   - docs/results/0a-linux.md
+  - docs/results/0c-linux-strict-bar.md
   verdict_quote: ''
   headline: ''
   depends_on: []
@@ -1230,7 +1232,7 @@
   end: ''
   folded: []
   overview: false
-  plain: In stock gVisor, Podman's default bridge network fails because netavark cannot open its netlink socket; only host networking works.
+  plain: netavark dies on setsockopt(NETLINK_DUMP_STRICT_CHK) (ENOPROTOOPT) and then on RTM_SETLINK with NLM_F_CREATE (EINVAL); nftables (NETLINK_NETFILTER) is only enabled by a test-only flag.
   notes: 'Open gap in gVisor itself. Fixed when: the acceptance test passes with the default bridge network on stock runsc.'
 - id: workloads-gvisor-port-publishing
   title: Port publishing untested in gVisor
@@ -1348,22 +1350,23 @@
   lane: windows-ci
   plain: Windows writes exception data onto the faulting thread stack; check whether that destroys data Linux code keeps there, and what happens on unmapped stacks.
   notes: 'Done when: S7 results are in docs/results/0b-windows.md.'
-- outcome: unrated
-  evidence: []
-  verdict_quote: ''
+- outcome: mixed
+  evidence:
+  - docs/results/0c-linux-strict-bar.md
+  verdict_quote: Stock runsc passes the strict bar in no tested configuration
   headline: ''
   depends_on:
   - workloads-podman-on-gvisor-linux
   replaced_by: []
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   id: workloads-strict-bar-linux
   title: Strict bar on stock gVisor
   track: workloads
   kind: experiment
-  state: in-progress
+  state: done
   lane: linux-ci
   plain: Find out what stock gVisor on Linux needs for -p port publishing and compose service names, across Podman versions and network modes.
   notes: 'Done when: docs/results/0c-linux-strict-bar.md records the matrix and the precise gVisor gaps.'
@@ -1392,7 +1395,7 @@
   title: Bridge networking inside gVisor
   track: net
   kind: feature
-  state: blocked
+  state: next
   outcome: unrated
   evidence: []
   verdict_quote: ''
@@ -1406,7 +1409,8 @@
   folded: []
   overview: true
   plain: Podman's default network creates a bridge and veth pairs over netlink; gVisor lacks part of that, so it fails today. Fix it in gVisor itself, first on Linux, then it carries over to Windows.
-  notes: 'Done when: the acceptance test passes with the default bridge network on runsc (Linux CI), including -p and compose service names. Fixes defect workloads-gvisor-bridge-netlink.'
+  notes: 'Done when: the strict acceptance test (-p and compose service names on the default bridge network) passes on runsc built from this repo in Linux CI. Known gaps in order: accept NETLINK_DUMP_STRICT_CHK
+    and related netlink options, ignore NLM_F_CREATE on RTM_SETLINK, enable NETLINK_NETFILTER (nftables) by default and cover what netavark needs for DNAT and masquerade, then whatever follows.'
 - outcome: unrated
   evidence:
   - docs/results/0b-windows.md
@@ -1507,3 +1511,22 @@
   plain: Translate guest code (as the owner's v3compat does with DynamoRIO on Linux) only if debugger faults or unpatchable syscalls prove too slow, or to support CPUs without FSGSBASE.
   notes: 'Parked to keep complexity down (ADR 0010). Reopen if S8, the syscall-site survey or faults per exec give tens of ms per exec. Starting points from v3compat: unseg() %fs/%gs rewrite in src/expand.c,
     off-stack helper thunk, cmake/FetchDynamoRIO.cmake, translation stress tests; its measured DynamoRIO overhead is 1.15-1.67x on plain code but 2.4x (Node) to 13x (Java) on JIT startup.'
+- id: workloads-gvisor-cgroupfs-readonly
+  title: Cgroup filesystem mounted read-only
+  track: workloads
+  kind: defect
+  state: next
+  outcome: unrated
+  evidence:
+  - docs/results/0c-linux-strict-bar.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: linux-ci
+  start: '2026-11-26'
+  end: ''
+  folded: []
+  overview: false
+  plain: With Podman managing cgroups, crun cannot write cgroup.subtree_control because gVisor mounts /sys/fs/cgroup read-only; a remount makes it pass.
+  notes: 'Fixed when: Podman runs with its default cgroup manager on runsc without the remount workaround.'
