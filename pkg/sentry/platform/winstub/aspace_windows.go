@@ -394,7 +394,11 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 	}
 	if content != nil {
 		head := content[0] == 0x05
-		st, scan := as.patchCode(content, lo)
+		from := 0
+		if head && as.edges[lo].tail0f {
+			from = 1 // the 0x05 belongs to a syscall that starts in the range below
+		}
+		st, scan := as.patchCode(content, lo, from)
 		debugf("text %#x-%#x: %+v", lo, hi, st)
 		// A syscall instruction may straddle two mapped ranges: 0x0f ends one,
 		// 0x05 starts the next. Whichever range is mapped second turns the 0x05
@@ -408,7 +412,7 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 		highE.tail0f = scan.tail0f
 		as.edges[lo], as.edges[hi] = lowE, highE
 		if scan.tail0f && highE.head05 {
-			if as.patchByte(hi, 0x0B) {
+			if as.fixHead(hi) {
 				as.ud2Sites[hi-1] = true
 				highE.head05 = false
 				as.edges[hi] = highE
@@ -576,7 +580,7 @@ func (as *addressSpace) wxExec(a uint64) bool {
 		return false
 	}
 	ws, wo := v.wxSec, v.wxOff+(lo-v.lo)
-	st, _ := as.patchCode(buf, lo)
+	st, _ := as.patchCode(buf, lo, 0)
 	debugf("wx rescan %#x-%#x: %+v", lo, hi, st)
 	ps, err := as.newPrivate(buf)
 	if err != nil {
@@ -620,21 +624,37 @@ func (as *addressSpace) wxWrite(a uint64) bool {
 // there ends with (tail0f) and the range starting there begins with (head05).
 type edge struct{ tail0f, head05 bool }
 
-// patchByte changes one byte of the private text mapped at a.
-func (as *addressSpace) patchByte(a uint64, b byte) bool {
+// fixHead handles the range mapped at a whose first byte (0x05) completes a
+// syscall instruction that starts in the range below, which was mapped later:
+// the first byte becomes 0x0b (ud2) and, because the sweep over the range began
+// at the wrong offset, the rest is scanned again from offset 1 and the private
+// text updated in place.
+func (as *addressSpace) fixHead(a uint64) bool {
 	v := as.findView(a)
-	if v == nil || v.priv == nil {
+	if v == nil || v.priv == nil || v.lo != a {
 		return false
 	}
-	off := v.off + (a - v.lo)
+	buf, ok := as.readStub(v.lo, int(v.hi-v.lo))
+	if !ok {
+		return false
+	}
+	orig := append([]byte(nil), buf...)
+	as.patchCode(buf, v.lo, 1)
+	buf[0] = 0x0B
+	off := v.off
 	base := off &^ 0xFFFF
-	n := off - base + 1
+	n := off - base + uint64(len(buf))
 	m, err := call(pMapViewOfFile, v.priv.h, fileMapWrite, uintptr(base>>32), uintptr(base&0xFFFFFFFF), uintptr(n))
 	if err != nil {
-		debugf("patchByte: %v", err)
+		debugf("fixHead: %v", err)
 		return false
 	}
-	*(*byte)(ptr(m + uintptr(off-base))) = b
+	dst := unsafe.Slice((*byte)(ptr(m+uintptr(off-base))), len(buf))
+	for i := range buf {
+		if buf[i] != orig[i] {
+			dst[i] = buf[i]
+		}
+	}
 	pUnmapViewOfFile.Call(m)
 	return true
 }

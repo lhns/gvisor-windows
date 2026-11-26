@@ -143,7 +143,7 @@ func decodeAll(code []byte) []ins {
 }
 
 // scanText finds every syscall instruction in code and its surroundings.
-func scanText(code []byte) *scanResult {
+func scanText(code []byte, from int) *scanResult {
 	r := &scanResult{}
 	for i := 0; i+1 < len(code); i++ {
 		if code[i] == 0x0F && code[i+1] == 0x05 {
@@ -153,8 +153,12 @@ func scanText(code []byte) *scanResult {
 	if r.pairs == 0 && (len(code) == 0 || code[len(code)-1] != 0x0F) {
 		return r
 	}
-	list := decodeAll(code)
-	end := 0
+	list := decodeAll(code[from:])
+	for i := range list {
+		list[i].off += from
+		list[i].tgt += from
+	}
+	end := from
 	if n := len(list); n > 0 {
 		end = list[n-1].off + list[n-1].n
 	}
@@ -187,15 +191,21 @@ type scanCache struct {
 	m  map[[32]byte]*scanResult
 }
 
-func (c *scanCache) scan(code []byte) *scanResult {
-	key := sha256.Sum256(code)
+// scan scans code, starting at offset from (1 when the first byte is the second
+// half of a syscall instruction that begins in the previous range).
+func (c *scanCache) scan(code []byte, from int) *scanResult {
+	h := sha256.New()
+	h.Write(code)
+	h.Write([]byte{byte(from)})
+	var key [32]byte
+	h.Sum(key[:0])
 	c.mu.Lock()
 	r := c.m[key]
 	c.mu.Unlock()
 	if r != nil {
 		return r
 	}
-	r = scanText(code)
+	r = scanText(code, from)
 	c.mu.Lock()
 	if c.m == nil || len(c.m) >= 512 {
 		c.m = map[[32]byte]*scanResult{}
@@ -227,9 +237,9 @@ func (as *addressSpace) areaWrite(addr uint64, b []byte) {
 //
 // Bookkeeping for restarts and ud2 sites goes to as.restartAt and as.ud2Sites.
 // The caller holds as.mu.
-func (as *addressSpace) patchCode(code []byte, base uint64) (siteStats, *scanResult) {
+func (as *addressSpace) patchCode(code []byte, base uint64, from int) (siteStats, *scanResult) {
 	var st siteStats
-	scan := as.p.scans.scan(code)
+	scan := as.p.scans.scan(code, from)
 	st.pairs = scan.pairs
 	for i := range scan.sites {
 		site := &scan.sites[i]
