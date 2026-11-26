@@ -36,6 +36,16 @@ bazel build --config=x86_64 -c opt --keep_going --noshow_progress --color=no \
   --linkopt=-static --linkopt=-lstdc++ --linkopt=-Wl,--whole-archive --linkopt=-lpthread --linkopt=-Wl,--no-whole-archive \
   ${BAZEL_FLAGS:-} $TARGETS 2>&1 | tee "$OUT/bazel.log" | tail -n 200 || true
 
+{
+  echo "--- debug: linker"
+  ls -l /usr/bin/ld /usr/bin/ld.* /usr/bin/x86_64-linux-gnu-ld* 2>&1 | head -20
+  gcc -print-prog-name=ld
+  f=$(find "$HOME/.cache/bazel" -name "*_test-0.params" 2>/dev/null | head -1)
+  echo "$f"
+  head -c 2500 "$f"
+  echo
+} 2>&1 | tee "$OUT/debug-ld.txt" || true
+
 BIN=$(bazel info bazel-bin --config=x86_64 2>/dev/null)/test/syscalls/linux
 for t in $TARGETS; do
   n=${t##*:}
