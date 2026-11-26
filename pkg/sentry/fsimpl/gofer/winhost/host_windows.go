@@ -755,7 +755,9 @@ func renameHandle(h windows.Handle, full string, replace bool) error {
 		// Replacing a read-only file needs the flag that ignores the attribute;
 		// it is not asked for first because it needs more rights.
 		*(*uint32)(unsafe.Pointer(&b[0])) = flags | renameIgnoreReadOnly
-		err = setInfo(h, classRenameEx, unsafe.Pointer(&b[0]), uint32(size))
+		if err2 := setInfo(h, classRenameEx, unsafe.Pointer(&b[0]), uint32(size)); err2 != unix.EINVAL {
+			err = err2
+		} // else the flag is refused to this user: keep the access error
 	}
 	if err == unix.EINVAL || err == unix.EOPNOTSUPP {
 		// No POSIX rename (before Windows 10 1809): classic rename.
