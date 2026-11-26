@@ -44,10 +44,14 @@ const (
 	PgRIP     = 0x18 // resume address
 	PgScratch = 0x20
 	PgRetRIP  = 0x28 // %fs repair trampoline return address
-	PgNtDelay = 0x30 // ntdll!NtDelayExecution
 	PgStkTop  = 0x38 // 16-byte aligned top of the stub stack
-	PgSpins   = 0x40
-	PgDelay   = 0x48  // LARGE_INTEGER relative timeout
+	PgSpins   = 0x40 // pause iterations before the stub sleeps on the reply event
+	PgCtlSlp  = 0x50 // uint32: the controller thread sleeps on the request event
+	PgStubSlp = 0x54 // uint32: the stub sleeps on the reply event
+	PgHReq    = 0x58 // stub-side handle of the request event (stub signals)
+	PgHReply  = 0x60 // stub-side handle of the reply event (stub waits)
+	PgNtSet   = 0x68 // ntdll!NtSetEvent
+	PgNtWait  = 0x70 // ntdll!NtWaitForSingleObject
 	PgRegs    = 0x100 // 16 qwords in hardware order: rax rcx rdx rbx rsp rbp rsi rdi r8..r15
 	PgRepair  = 0x200 // per-thread %fs repair code
 )

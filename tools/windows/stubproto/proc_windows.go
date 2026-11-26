@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -31,7 +32,10 @@ type Ctl struct {
 	trace                   bool
 	stdout                  io.Writer
 	stderr                  io.Writer
-	ntDelay                 uint64
+	ntSet, ntWait           uint64
+	mu                      sync.Mutex
+	wg                      sync.WaitGroup
+	tasks                   chan func()
 	imgCode                 []byte
 	unknown                 map[uint64]int
 	sysCount                map[uint64]int
@@ -104,6 +108,37 @@ type Thread struct {
 	lastRip    uint64
 	repairN    int
 	lastRepair time.Time
+	evReq      uintptr // the stub signals it after publishing a request
+	evReply    uintptr // the controller signals it after writing a reply
+	quit       atomic.Bool
+	quitCh     chan struct{}
+	doneCh     chan struct{}
+}
+
+const (
+	stubSpin = 3000  // pause iterations on the stub side before it sleeps
+	ctlSpin  = 20000 // polls on the controller side before it sleeps
+)
+
+func newEvent() uintptr {
+	h, _, _ := pCreateEventW.Call(0, 0, 0, 0) // auto-reset, not signalled
+	return h
+}
+
+// dupInto duplicates one of our handles into the stub process.
+func dupInto(proc, h uintptr) uintptr {
+	var d uintptr
+	pDuplicateHandle.Call(^uintptr(0), h, proc, uintptr(unsafe.Pointer(&d)), 0, 0, 2)
+	return d
+}
+
+// die marks a thread finished and wakes its controller goroutine.
+func (t *Thread) die() {
+	t.dead = true
+	if !t.quit.Swap(true) {
+		close(t.quitCh)
+	}
+	pSetEvent.Call(t.evReq)
 }
 
 type pending struct {
@@ -147,10 +182,14 @@ func newCtl(stubPath string, memSize uint64) (*Ctl, error) {
 	}
 	c.ctxBuf = valloc(4096)
 	c.evBuf = valloc(4096)
-	if err := pNtDelay.Find(); err != nil {
+	if err := pNtSetEvent.Find(); err != nil {
 		return nil, err
 	}
-	c.ntDelay = uint64(pNtDelay.Addr())
+	if err := pNtWaitSingle.Find(); err != nil {
+		return nil, err
+	}
+	c.ntSet, c.ntWait = uint64(pNtSetEvent.Addr()), uint64(pNtWaitSingle.Addr())
+	c.tasks = make(chan func(), 16)
 	c.imgCode = stubasm.Image()
 	img := pe.Stub(stubasm.CtlBase, stubasm.StubCode+stubasm.OffThreadEnt)
 	if err := os.WriteFile(stubPath, img, 0o755); err != nil {
@@ -241,10 +280,16 @@ func (p *Proc) newThread() (*Thread, error) {
 	t := &Thread{p: p, idx: idx, tid: p.c.nextTid, addr: addr,
 		page: unsafe.Add(p.ctlView, uint64(idx)*stubasm.ThreadRegion)}
 	p.c.nextTid++
-	*t.u64(stubasm.PgNtDelay) = p.c.ntDelay
+	t.quitCh = make(chan struct{})
+	t.doneCh = make(chan struct{}, 1)
+	t.evReq = newEvent()
+	t.evReply = newEvent()
+	*t.u64(stubasm.PgNtSet) = p.c.ntSet
+	*t.u64(stubasm.PgNtWait) = p.c.ntWait
+	*t.u64(stubasm.PgHReq) = uint64(dupInto(p.h, t.evReq))
+	*t.u64(stubasm.PgHReply) = uint64(dupInto(p.h, t.evReply))
 	*t.u64(stubasm.PgStkTop) = addr + stubasm.ThreadRegion - 0x100
-	*t.u64(stubasm.PgSpins) = 30000
-	*t.u64(stubasm.PgDelay) = uint64(0xFFFFFFFFFFFFEC78) // -5000 = 500 us
+	*t.u64(stubasm.PgSpins) = stubSpin
 	code := stubasm.RepairCode(addr)
 	copy(unsafe.Slice((*byte)(unsafe.Add(t.page, stubasm.PgRepair)), len(code)), code)
 	p.threads = append(p.threads, t)
@@ -296,6 +341,7 @@ func (c *Ctl) spawnMain(path string, args []string) (*Proc, error) {
 	*t.u64(stubasm.PgRIP) = ld.entry
 	t.register(p.mainWtid, p.hMain)
 	c.logf("pid %d loaded %s entry=%#x sites: %+v, reserved %d GiB, windows holes %v", p.pid, path, ld.entry, p.stats, p.reserved>>30, p.used)
+	c.startLoop(t)
 	if r, _, e := pResumeThread.Call(p.hMain); int32(r) == -1 {
 		return nil, fmt.Errorf("ResumeThread: %v", e)
 	}
@@ -308,12 +354,29 @@ func (c *Ctl) exitProc(p *Proc, code, sig int) {
 	}
 	p.exited, p.exitCode, p.termSig = true, code, sig
 	for _, t := range p.threads {
-		t.dead = true
+		t.die()
 	}
+	c.kick()
 }
 
 // doFork clones the calling thread's process into a new stub (copy, not COW).
 func (c *Ctl) doFork(t *Thread, flags uint64, ctid uint64) int64 {
+	// Processes must be created on the debugger thread: hand the work over and
+	// wait without holding the controller lock.
+	res := make(chan int64, 1)
+	c.mu.Unlock()
+	c.tasks <- func() {
+		c.mu.Lock()
+		r := c.doForkOnDebugThread(t, flags, ctid)
+		c.mu.Unlock()
+		res <- r
+	}
+	r := <-res
+	c.mu.Lock()
+	return r
+}
+
+func (c *Ctl) doForkOnDebugThread(t *Thread, flags uint64, ctid uint64) int64 {
 	parent := t.p
 	t0 := time.Now()
 	var child *Proc
@@ -356,6 +419,7 @@ func (c *Ctl) doFork(t *Thread, flags uint64, ctid uint64) int64 {
 	if flags&0x00200000 != 0 { // CLONE_CHILD_CLEARTID
 		ct.clearTid = ctid
 	}
+	c.startLoop(ct)
 	pResumeThread.Call(child.hMain)
 	c.times["fork-call"] = time.Since(t0)
 	return int64(child.pid)
@@ -393,11 +457,12 @@ func (c *Ctl) doCloneThread(t *Thread, flags, stack, ptid, ctid, tls uint64) int
 	h, _, e := pCreateRemoteThr.Call(p.h, 0, 0, uintptr(stubasm.StubCode+stubasm.OffThreadEnt), uintptr(nt.addr), 0, uintptr(unsafe.Pointer(&wtid)))
 	if h == 0 {
 		c.logf("CreateRemoteThread: %v", e)
-		nt.dead = true
+		nt.die()
 		p.alive--
 		return -11
 	}
 	nt.register(wtid, h)
+	c.startLoop(nt)
 	return int64(nt.tid)
 }
 
@@ -412,6 +477,10 @@ func (p *Proc) cleanup() {
 			p.as.mf.release(pgs.off)
 			pgs.state = 1
 		}
+	}
+	for _, t := range p.threads {
+		pCloseHandle.Call(t.evReq)
+		pCloseHandle.Call(t.evReply)
 	}
 	pUnmapViewOfFile.Call(uintptr(p.ctlView))
 	pCloseHandle.Call(p.ctlSec)

@@ -138,6 +138,14 @@ func (c *Ctl) report(w io.Writer) {
 }
 
 func (c *Ctl) cleanupAll() {
+	c.mu.Lock()
+	for _, p := range c.procs {
+		for _, t := range p.threads {
+			t.die()
+		}
+	}
+	c.mu.Unlock()
+	c.wg.Wait()
 	for _, p := range c.procs {
 		if !p.exited {
 			p.exited = true

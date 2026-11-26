@@ -3,7 +3,9 @@ package main
 import (
 	"crypto/rand"
 	"fmt"
+	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"stubproto/stubasm"
 )
@@ -43,14 +45,21 @@ const monoOffset = time.Hour
 
 func (c *Ctl) monoNow() time.Duration { return monoOffset + time.Since(c.start) }
 
-func (c *Ctl) block(t *Thread, poll func() (int64, bool)) (int64, int) {
+func (c *Ctl) block(t *Thread, deadline time.Time, poll func() (int64, bool)) (int64, int) {
 	t.waiting = true
 	c.pendings = append(c.pendings, &pending{t, poll})
+	if !deadline.IsZero() {
+		time.AfterFunc(time.Until(deadline)+200*time.Microsecond, func() {
+			c.mu.Lock()
+			c.kick()
+			c.mu.Unlock()
+		})
+	}
 	return 0, stBlocked
 }
 
-func (c *Ctl) runPendings() bool {
-	any := false
+// kick completes every blocked call whose condition now holds. Callers hold c.mu.
+func (c *Ctl) kick() {
 	out := c.pendings[:0]
 	for _, pe := range c.pendings {
 		if pe.t.dead || pe.t.p.exited {
@@ -58,19 +67,25 @@ func (c *Ctl) runPendings() bool {
 		}
 		if ret, done := pe.poll(); done {
 			c.reply(pe.t, ret)
-			any = true
+			select {
+			case pe.t.doneCh <- struct{}{}:
+			default:
+			}
 			continue
 		}
 		out = append(out, pe)
 	}
 	c.pendings = out
-	return any
 }
 
+// reply publishes a result; the stub is woken only if it went to sleep.
 func (c *Ctl) reply(t *Thread, ret int64) {
 	*t.u64(stubasm.PgReply) = uint64(ret)
 	t.waiting = false
-	t.setState(2)
+	atomic.SwapUint32((*uint32)(t.page), 2)
+	if atomic.LoadUint32((*uint32)(unsafe.Add(t.page, stubasm.PgStubSlp))) != 0 {
+		pSetEvent.Call(t.evReply)
+	}
 }
 
 func (p *Proc) fileStat(buf uint64) int64 {
@@ -139,7 +154,7 @@ func (c *Ctl) waitChild(t *Thread, want int32, status uint64, opts uint64) (int6
 	if r, done := try(); done {
 		return r, stRet
 	}
-	return c.block(t, try)
+	return c.block(t, time.Time{}, try)
 }
 
 func (c *Ctl) killSelf(p *Proc, sig int) {
@@ -402,11 +417,12 @@ func (c *Ctl) syscall(t *Thread, nr uint64, a [6]uint64) (int64, int) {
 		}
 		return -einval, stRet
 	case 60: // exit
-		t.dead = true
+		t.die()
 		p.alive--
 		if t.clearTid != 0 {
 			as.writeUser(t.clearTid, putLE(0, 4))
 			c.wake(p, t.clearTid, 1)
+			c.kick()
 		}
 		if p.alive <= 0 {
 			c.exitProc(p, int(a[0]&0xff), 0)
@@ -467,7 +483,7 @@ func (c *Ctl) syscall(t *Thread, nr uint64, a [6]uint64) (int64, int) {
 			}
 			w := &waiter{p: p, addr: a[0]}
 			futexQ = append(futexQ, w)
-			return c.block(t, func() (int64, bool) {
+			return c.block(t, deadline, func() (int64, bool) {
 				if w.woken {
 					return 0, true
 				}
@@ -479,7 +495,11 @@ func (c *Ctl) syscall(t *Thread, nr uint64, a [6]uint64) (int64, int) {
 				return 0, false
 			})
 		case 1, 10:
-			return int64(c.wake(p, a[0], int(int32(a[2])))), stRet
+			n := c.wake(p, a[0], int(int32(a[2])))
+			if n > 0 {
+				c.kick()
+			}
+			return int64(n), stRet
 		}
 		return -enosys, stRet
 	case 35, 230: // nanosleep clock_nanosleep
@@ -500,7 +520,7 @@ func (c *Ctl) syscall(t *Thread, nr uint64, a [6]uint64) (int64, int) {
 		if c.probeAddr != 0 {
 			v0, _ = as.readU64(c.probeAddr)
 		}
-		return c.block(t, func() (int64, bool) {
+		return c.block(t, deadline, func() (int64, bool) {
 			if !time.Now().After(deadline) {
 				return 0, false
 			}

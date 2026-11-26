@@ -298,8 +298,7 @@ func (as *AS) protect(lo, hi uint64, prot int) bool {
 		if p == nil || p.state != 2 || (p.prot == eff && !p.dirty) {
 			continue
 		}
-		var old uint32
-		pVirtualProtectEx.Call(as.h, uintptr(a), pageSize, winProt(eff), uintptr(unsafe.Pointer(&old)))
+		as.vprotect(a, eff)
 		p.prot, p.dirty = eff, false
 	}
 	return true
@@ -384,8 +383,7 @@ func (as *AS) writeUser(a uint64, b []byte) bool {
 
 // dropExec makes an executable page writable and non-executable.
 func (as *AS) dropExec(pa uint64, p *pg) {
-	var old uint32
-	pVirtualProtectEx.Call(as.h, uintptr(pa), pageSize, pageReadWrite, uintptr(unsafe.Pointer(&old)))
+	as.vprotect(pa, 3)
 	p.prot, p.dirty = 3, true
 }
 
@@ -498,4 +496,13 @@ func (as *AS) cloneInto(dst *AS) error {
 		copy(dst.mf.page(dst.pages[a].off), as.mf.page(p.off))
 	}
 	return nil
+}
+
+// vprotect changes the Windows protection of one mapped page.
+func (as *AS) vprotect(a uint64, prot int) {
+	var old uint32
+	r, _, e := pVirtualProtectEx.Call(as.h, uintptr(a), pageSize, winProt(prot), uintptr(unsafe.Pointer(&old)))
+	if r == 0 {
+		fmt.Printf("stubproto: VirtualProtectEx(%#x, prot %d): %v\n", a, prot, e)
+	}
 }
