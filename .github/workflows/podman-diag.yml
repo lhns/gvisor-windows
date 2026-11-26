@@ -79,7 +79,6 @@ jobs:
           & tools/windows/ci/run-as-standard-user.ps1 `
             -Program 'C:\Program Files\PowerShell\7\pwsh.exe' `
             -Arguments '-NoProfile','-File',"$PWD\tools\windows\podman\diag-run.ps1",'-Root','C:\ci' `
-            -Environment @{ RUNSC_EXTRA_FLAGS = '--strace' } `
             -GrantPath C:\ci\bin,C:\ci\tools,$PWD -WritablePath C:\ci\std -TimeoutSeconds 1500
       - name: Summary
         if: always()
