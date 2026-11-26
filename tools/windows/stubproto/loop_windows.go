@@ -59,9 +59,9 @@ func (c *Ctl) serve(t *Thread) {
 	if c.benchOn {
 		switch {
 		case nr == 39 && !t.viaUD2:
-			c.stamps["patched"] = append(c.stamps["patched"], now.UnixNano())
+			c.stamps["patched"] = append(c.stamps["patched"], qpcNs())
 		case nr == 110 && t.viaUD2:
-			c.stamps["ud2"] = append(c.stamps["ud2"], now.UnixNano())
+			c.stamps["ud2"] = append(c.stamps["ud2"], qpcNs())
 		}
 	}
 	if t.viaUD2 {

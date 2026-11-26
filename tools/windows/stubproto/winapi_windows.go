@@ -125,3 +125,23 @@ func winProt(prot int) uintptr {
 	}
 	return pageNoAccess
 }
+
+var (
+	pQPC     = k32.NewProc("QueryPerformanceCounter")
+	pQPF     = k32.NewProc("QueryPerformanceFrequency")
+	qpcFreq  float64
+	qpcStart int64
+)
+
+// qpcNs returns a high-resolution monotonic time in ns (Go's own clock on Windows
+// only ticks every 0.5-15 ms).
+func qpcNs() int64 {
+	if qpcFreq == 0 {
+		var f int64
+		pQPF.Call(uintptr(unsafe.Pointer(&f)))
+		qpcFreq = float64(f)
+	}
+	var c int64
+	pQPC.Call(uintptr(unsafe.Pointer(&c)))
+	return int64(float64(c) / qpcFreq * 1e9)
+}

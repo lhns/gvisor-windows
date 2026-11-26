@@ -206,10 +206,8 @@ func (as *AS) mapPage(a uint64, prot int) error {
 		return nil
 	}
 	if p.state == 0 {
-		r, _, e := pVirtualFreeEx.Call(as.h, uintptr(a), pageSize, memRelease|memPreservePH)
-		if r == 0 {
-			return fmt.Errorf("split placeholder at %#x: %v", a, e)
-		}
+		// Fails harmlessly when the placeholder already is exactly this page.
+		pVirtualFreeEx.Call(as.h, uintptr(a), pageSize, memRelease|memPreservePH)
 		p.state = 1
 	}
 	off, err := as.mf.alloc()

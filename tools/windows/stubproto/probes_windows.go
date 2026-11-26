@@ -156,16 +156,16 @@ func probeInterrupt(c *Ctl, guest string) {
 	t := p.threads[0]
 	var susp, full, resume []float64
 	for i := 0; i < 300; i++ {
-		t0 := time.Now()
+		t0 := qpcNs()
 		pSuspendThread.Call(t.h)
-		t1 := time.Now()
+		t1 := qpcNs()
 		c.getCtx(t.h, ctxControlInt)
-		t2 := time.Now()
+		t2 := qpcNs()
 		pResumeThread.Call(t.h)
-		t3 := time.Now()
-		susp = append(susp, float64(t1.Sub(t0).Nanoseconds()))
-		full = append(full, float64(t3.Sub(t0).Nanoseconds()))
-		resume = append(resume, float64(t3.Sub(t2).Nanoseconds()))
+		t3 := qpcNs()
+		susp = append(susp, float64(t1-t0))
+		full = append(full, float64(t3-t0))
+		resume = append(resume, float64(t3-t2))
 		c.pump(time.Millisecond)
 	}
 	sort.Float64s(susp)
