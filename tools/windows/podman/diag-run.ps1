@@ -11,7 +11,7 @@ try {
   & "$repo\tools\windows\podman\start-engine.ps1" -Action start -Runsc "$Root\bin\runsc.exe" -Work "$work\engine" -Image "$Root\podman.erofs" -Name ci -Podman $podman
 } catch { "engine start failed: $_" | Tee-Object -Append $log }
 $sock = Get-Content "$work\engine\sock.path"
-$env:CONTAINER_HOST = 'unix://' + ($sock -replace '^[A-Za-z]:', '' -replace '\', '/')
+$env:CONTAINER_HOST = 'unix://' + ($sock -replace '^[A-Za-z]:', '' -replace '\\', '/')
 "url $env:CONTAINER_HOST sock '$sock'" | Tee-Object -Append $log
 P pull mirror.gcr.io/library/alpine:3.20
 "=== run" | Tee-Object -Append $log
