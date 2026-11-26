@@ -105,19 +105,22 @@ flowchart TB
         fs_compat_layer_not_boundary{{"fs · ✔ Compatibility<br/>layer, not security<br/>boundary"}}
     end
     subgraph bd_1["Now (in progress)"]
-        podman_inside_gvisor_linux[/"podman · ▶ Podman<br/>inside gVisor on Linux"/]
+        workloads_podman_on_gvisor_linux[/"workloads · ▶ Podman<br/>on gVisor on Linux"/]
         platform_tls_register[/"platform · ▶ Set the<br/>TLS register"/]
     end
     subgraph bd_2["Later (blocked or parked)"]
-        podman_acceptance_on_windows["podman · ⛔ Run Podman<br/>on Windows"]
+        runsc_container_on_windows["runsc · ⛔ Run a<br/>container with runsc"]
+        workloads_podman_on_windows[/"workloads · ⛔ Podman<br/>passes on Windows"/]
     end
-    research_gvisor_base ~~~ podman_inside_gvisor_linux
+    research_gvisor_base ~~~ workloads_podman_on_gvisor_linux
     ops_name_and_fork ~~~ platform_tls_register
     fs_compat_layer_not_boundary ~~~ platform_tls_register
-    podman_inside_gvisor_linux ~~~ podman_acceptance_on_windows
-    platform_tls_register ~~~ podman_acceptance_on_windows
+    workloads_podman_on_gvisor_linux ~~~ runsc_container_on_windows
+    platform_tls_register ~~~ runsc_container_on_windows
+    runsc_container_on_windows ~~~ workloads_podman_on_windows
     research_gvisor_base --> platform_tls_register
-    platform_tls_register --> podman_acceptance_on_windows
+    platform_tls_register --> runsc_container_on_windows
+    runsc_container_on_windows --> workloads_podman_on_windows
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -134,8 +137,8 @@ flowchart TB
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class research_gvisor_base unrated
     class ops_name_and_fork,fs_compat_layer_not_boundary decided
-    class podman_inside_gvisor_linux,platform_tls_register inprog
-    class podman_acceptance_on_windows blocked
+    class workloads_podman_on_gvisor_linux,platform_tls_register inprog
+    class workloads_podman_on_windows,runsc_container_on_windows blocked
 ```
 <!-- END GENERATED: overview -->
 
@@ -144,9 +147,7 @@ flowchart TB
 <!-- BEGIN GENERATED: plain-words -->
 | title | status | in plain words |
 |---|---|---|
-| Pick gVisor as the base | ✔ done · unrated | Of all ways to run Linux code on Windows without admin, gVisor's user-space Linux kernel is the only one that already runs containers. |
-| Benchmark gVisor against native Linux | ▶ in progress | Measure how much slower process start, small files and CPU work are inside gVisor than natively. |
-| Test WHPX on this machine | ▶ in progress | Check whether QEMU can use the Windows hypervisor here without admin, as a fast stopgap. |
+| Run a container with runsc | ⛔ blocked | The main goal: gVisor's runtime runs an OCI container on Windows for a standard user, with no admin, VM, WSL or Hyper-V. |
 | Survey ELF segment alignment | ▶ in progress | Count how often program files place code at addresses Windows cannot map directly (64 KB alignment). |
 | Measure syscall trap cost | ▶ in progress | Measure what it costs to catch one Linux system call on Windows and hand it to another process. |
 | Test 4 KB section views | ▶ in progress | Check whether Windows can map shared memory at the 4 KB steps Linux programs expect, instead of 64 KB. |
@@ -154,10 +155,13 @@ flowchart TB
 | Restrict the stub process | ▶ in progress | Check that the process running Linux code can be locked down, so a missed system call does little harm. |
 | Recover faults in Go | ▶ in progress | Check that the Go kernel process can survive reading bad guest memory on Windows, as it does on Linux. |
 | Compatibility layer, not security boundary | ✔ done · n/a | The sandbox may open the user's files directly with the user's rights; it isolates containers from each other, not from the user. |
-| Test persistent image storage | ▶ in progress | Find out where Podman's images can live so they survive a restart of the sandbox, and how fast each option is. |
+| Test persistent image storage | ▶ in progress | Find a writable filesystem inside the sandbox that survives a restart, and how fast each option is. |
 | Write the Podman acceptance test | ▶ in progress | One test of ten steps defines when Podman counts as working: pull, run, build, mounts, ports, compose, restart, isolation. |
-| Podman inside gVisor on Linux | ▶ in progress | Check on Linux whether Podman's engine runs inside gVisor at all; this is the baseline for the Windows port. |
-| Run Podman on Windows | ⛔ blocked | The goal: a standard Windows user runs Podman containers with no admin, VM, WSL or Hyper-V. |
+| Podman on gVisor on Linux | ▶ in progress | Run the acceptance test on stock gVisor on Linux; whatever fails there is a gap in gVisor itself, not in the port. |
+| Podman passes on Windows | ⛔ blocked | The bar for enough features: an unmodified Podman engine passes the acceptance test on gVisor on Windows. |
+| Pick gVisor as the base | ✔ done · unrated | Of all ways to run Linux code on Windows without admin, gVisor's user-space Linux kernel is the only one that already runs containers. |
+| Benchmark gVisor against native Linux | ▶ in progress | Measure how much slower process start, small files and CPU work are inside gVisor than natively. |
+| Test WHPX on this machine | ▶ in progress | Check whether QEMU can use the Windows hypervisor here without admin, as a fast stopgap. |
 | Name it gvisor-windows | ✔ done · n/a | The project is an unofficial fork of gVisor's Go branch called gvisor-windows. |
 | Go or no-go after Phase 0 | ⛔ blocked | The owner decides, from the Phase 0 results, whether the port goes ahead. |
 <!-- END GENERATED: plain-words -->
@@ -173,8 +177,8 @@ _None._
 <!-- BEGIN GENERATED: running -->
 **linux-ci**
 
-- `podman-acceptance-test`: Write the Podman acceptance test
-- `podman-inside-gvisor-linux`: Podman inside gVisor on Linux
+- `workloads-acceptance-test`: Write the Podman acceptance test
+- `workloads-podman-on-gvisor-linux`: Podman on gVisor on Linux
 - `research-gvisor-benchmark`: Benchmark gVisor against native Linux
 - `platform-elf-alignment-survey`: Survey ELF segment alignment
 - `fs-persistent-image-storage`: Test persistent image storage
@@ -212,12 +216,13 @@ Generated on 2026-11-26.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 5 done, 4 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 6 done, 4 abandoned</summary>
 
 - `fs-compat-layer-not-boundary`: Compatibility layer, not security boundary (✔ done · n/a). The sandbox may open the user's files directly with the user's rights; it isolates containers from each other, not from the user.
 - `ops-borrow-code`: Borrow code, check licenses later (✔ done · n/a). Code from other projects may be reused; its origin is recorded so the owner can review licences later.
 - `ops-linux-tests-on-actions`: Run Linux tests on GitHub Actions (✔ done · n/a). Everything that needs a Linux host runs on GitHub's hosted runners.
 - `ops-name-and-fork`: Name it gvisor-windows (✔ done · n/a). The project is an unofficial fork of gVisor's Go branch called gvisor-windows.
+- `ops-podman-only-the-bar`: Podman only as the bar (✔ done · n/a). The project is gVisor for Windows hosts; Podman is only the workload that shows enough features work.
 - `research-flinux-translation`: Translate syscalls like flinux (✖ dead end). Mapping each Linux call onto a Windows call cannot provide what containers need, such as namespaces and cgroups.
 - `research-gvisor-base`: Pick gVisor as the base (✔ done · unrated). Of all ways to run Linux code on Windows without admin, gVisor's user-space Linux kernel is the only one that already runs containers.
 - `research-lkl-nommu`: Revive LKL or nommu UML (✖ dead end). Running the real Linux kernel as a library was rejected: without memory management it cannot fork, and its Windows support is gone.
@@ -232,11 +237,12 @@ Generated on 2026-11-26.
 <!-- BEGIN GENERATED: tracks -->
 Each track has its own page with its tree, node table and per-node details.
 
-- [research - research](roadmap/tracks/research.md): 7 nodes (1 done, 2 in progress, 4 abandoned)
+- [runsc - runsc](roadmap/tracks/runsc.md): 1 nodes (1 blocked)
 - [platform - platform](roadmap/tracks/platform.md): 5 nodes (5 in progress)
 - [sentry - sentry](roadmap/tracks/sentry.md): 1 nodes (1 in progress)
 - [fs - files](roadmap/tracks/fs.md): 2 nodes (1 done, 1 in progress)
 - [net - network](roadmap/tracks/net.md): 0 nodes
-- [podman - podman](roadmap/tracks/podman.md): 3 nodes (2 in progress, 1 blocked)
-- [ops - operations](roadmap/tracks/ops.md): 4 nodes (3 done, 1 blocked)
+- [workloads - workloads](roadmap/tracks/workloads.md): 3 nodes (2 in progress, 1 blocked)
+- [research - research](roadmap/tracks/research.md): 7 nodes (1 done, 2 in progress, 4 abandoned)
+- [ops - operations](roadmap/tracks/ops.md): 5 nodes (4 done, 1 blocked)
 <!-- END GENERATED: tracks -->

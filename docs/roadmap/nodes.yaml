@@ -5,7 +5,7 @@
   state: done
   outcome: unrated
   evidence:
-  - docs/adr/0001-gvisor-sentry-as-the-base.md
+  - docs/adr/0001-port-gvisor-to-windows-hosts.md
   verdict_quote: ''
   headline: ''
   depends_on: []
@@ -23,7 +23,7 @@
   state: abandoned
   outcome: dead-end
   evidence:
-  - docs/adr/0001-gvisor-sentry-as-the-base.md
+  - docs/adr/0001-port-gvisor-to-windows-hosts.md
   verdict_quote: Real Linux kernel, but nommu mode has no `fork()` and no memory protection between processes; LKL dropped Windows hosts in 2020; nommu UML is unmerged (v14, Feb 2026).
   headline: ''
   depends_on: []
@@ -41,7 +41,7 @@
   state: abandoned
   outcome: dead-end
   evidence:
-  - docs/adr/0001-gvisor-sentry-as-the-base.md
+  - docs/adr/0001-port-gvisor-to-windows-hosts.md
   verdict_quote: Runs Linux compiled to wasm off Linux today, but guest code is always emulated (aarch64 only), so it cannot run x86 user code natively.
   headline: ''
   depends_on: []
@@ -59,7 +59,7 @@
   state: abandoned
   outcome: dead-end
   evidence:
-  - docs/adr/0001-gvisor-sentry-as-the-base.md
+  - docs/adr/0001-port-gvisor-to-windows-hosts.md
   verdict_quote: Translates Linux syscalls onto Windows calls; has no namespaces, cgroups or overlay, so it cannot host a container engine without writing a kernel.
   headline: ''
   depends_on: []
@@ -77,7 +77,7 @@
   state: abandoned
   outcome: dead-end
   evidence:
-  - docs/adr/0001-gvisor-sentry-as-the-base.md
+  - docs/adr/0001-port-gvisor-to-windows-hosts.md
   verdict_quote: Works today, but software emulation of the whole machine is several times slower; WHPX needs a one-time admin step.
   headline: ''
   depends_on: []
@@ -161,9 +161,9 @@
   folded: []
   overview: true
   plain: The sandbox may open the user's files directly with the user's rights; it isolates containers from each other, not from the user.
-- id: podman-acceptance-test
+- id: workloads-acceptance-test
   title: Write the Podman acceptance test
-  track: podman
+  track: workloads
   kind: tooling
   state: in-progress
   outcome: unrated
@@ -180,9 +180,9 @@
   overview: false
   plain: 'One test of ten steps defines when Podman counts as working: pull, run, build, mounts, ports, compose, restart, isolation.'
   notes: 'Done when: the test exists under test/e2e/podman-acceptance and passes against native Podman on Linux.'
-- id: podman-inside-gvisor-linux
-  title: Podman inside gVisor on Linux
-  track: podman
+- id: workloads-podman-on-gvisor-linux
+  title: Podman on gVisor on Linux
+  track: workloads
   kind: experiment
   state: in-progress
   outcome: unrated
@@ -190,14 +190,14 @@
   verdict_quote: ''
   headline: ''
   depends_on:
-  - podman-acceptance-test
+  - workloads-acceptance-test
   replaced_by: []
   lane: linux-ci
   start: '2026-11-26'
   end: ''
   folded: []
   overview: true
-  plain: Check on Linux whether Podman's engine runs inside gVisor at all; this is the baseline for the Windows port.
+  plain: Run the acceptance test on stock gVisor on Linux; whatever fails there is a gap in gVisor itself, not in the port.
   notes: 'Done when: the acceptance test ran against Podman inside runsc and docs/results/0a-linux.md records each step.'
 - id: research-gvisor-benchmark
   title: Benchmark gVisor against native Linux
@@ -247,14 +247,14 @@
   verdict_quote: ''
   headline: ''
   depends_on:
-  - podman-inside-gvisor-linux
+  - workloads-podman-on-gvisor-linux
   replaced_by: []
   lane: linux-ci
   start: '2026-11-26'
   end: ''
   folded: []
   overview: false
-  plain: Find out where Podman's images can live so they survive a restart of the sandbox, and how fast each option is.
+  plain: Find a writable filesystem inside the sandbox that survives a restart, and how fast each option is.
   notes: 'Done when: pull/build timings on tmpfs and on a host directory, and the overlay restart test, are in docs/results/0a-linux.md.'
 - id: platform-trap-cost
   title: Measure syscall trap cost
@@ -380,7 +380,7 @@
   verdict_quote: ''
   headline: ''
   depends_on:
-  - podman-inside-gvisor-linux
+  - workloads-podman-on-gvisor-linux
   - research-gvisor-benchmark
   - platform-elf-alignment-survey
   - fs-persistent-image-storage
@@ -398,9 +398,28 @@
   overview: true
   plain: The owner decides, from the Phase 0 results, whether the port goes ahead.
   notes: 'Input: docs/adr/0004-phase-0-results.md.'
-- id: podman-acceptance-on-windows
-  title: Run Podman on Windows
-  track: podman
+- id: workloads-podman-on-windows
+  title: Podman passes on Windows
+  track: workloads
+  kind: experiment
+  state: blocked
+  outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - runsc-container-on-windows
+  replaced_by: []
+  lane: windows-local
+  start: '2026-11-26'
+  end: ''
+  folded: []
+  overview: true
+  plain: 'The bar for enough features: an unmodified Podman engine passes the acceptance test on gVisor on Windows.'
+  notes: 'Done when: all 10 acceptance steps pass in CI on windows-latest as a standard user.'
+- id: runsc-container-on-windows
+  title: Run a container with runsc
+  track: runsc
   kind: feature
   state: blocked
   outcome: unrated
@@ -415,5 +434,23 @@
   end: ''
   folded: []
   overview: true
-  plain: 'The goal: a standard Windows user runs Podman containers with no admin, VM, WSL or Hyper-V.'
-  notes: 'Done when: all 10 acceptance steps pass in CI on windows-latest as a standard user.'
+  plain: 'The main goal: gVisor''s runtime runs an OCI container on Windows for a standard user, with no admin, VM, WSL or Hyper-V.'
+  notes: 'Done when: runsc run starts an OCI bundle on windows-latest as a standard user and its output and exit code arrive.'
+- id: ops-podman-only-the-bar
+  title: Podman only as the bar
+  track: ops
+  kind: owner-decision
+  state: done
+  outcome: n/a
+  evidence:
+  - docs/adr/0002-what-done-means.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: owner
+  start: '2026-11-26'
+  end: '2026-11-26'
+  folded: []
+  overview: false
+  plain: The project is gVisor for Windows hosts; Podman is only the workload that shows enough features work.

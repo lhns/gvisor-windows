@@ -11,14 +11,8 @@ Generated on 2026-11-26. Open bars end on that date.
 gantt
     dateFormat YYYY-MM-DD
     axisFormat %Y-%m-%d
-    section research - research
-    Pick gVisor as the base :research_gvisor_base, 2026-11-17, 2026-11-26
-    Revive LKL or nommu UML :crit, research_lkl_nommu, 2026-11-26, 2026-11-26
-    Build on unkernel :crit, research_unkernel, 2026-11-26, 2026-11-26
-    Translate syscalls like flinux :crit, research_flinux_translation, 2026-11-26, 2026-11-26
-    QEMU software emulation :crit, research_qemu_emulation, 2026-11-26, 2026-11-26
-    Benchmark gVisor against native Linux :active, research_gvisor_benchmark, 2026-11-26, 2026-11-26
-    Test WHPX on this machine :active, research_whpx_this_machine, 2026-11-26, 2026-11-26
+    section runsc - runsc
+    Run a container with runsc :runsc_container_on_windows, 2026-11-26, 2026-11-26
     section platform - platform
     Survey ELF segment alignment :active, platform_elf_alignment_survey, 2026-11-26, 2026-11-26
     Measure syscall trap cost :active, platform_trap_cost, 2026-11-26, 2026-11-26
@@ -30,14 +24,23 @@ gantt
     section fs - files
     Compatibility layer, not security bound… :fs_compat_layer_not_boundary, 2026-11-26, 2026-11-26
     Test persistent image storage :active, fs_persistent_image_storage, 2026-11-26, 2026-11-26
-    section podman - podman
-    Write the Podman acceptance test :active, podman_acceptance_test, 2026-11-26, 2026-11-26
-    Podman inside gVisor on Linux :active, podman_inside_gvisor_linux, 2026-11-26, 2026-11-26
-    Run Podman on Windows :podman_acceptance_on_windows, 2026-11-26, 2026-11-26
+    section workloads - workloads
+    Write the Podman acceptance test :active, workloads_acceptance_test, 2026-11-26, 2026-11-26
+    Podman on gVisor on Linux :active, workloads_podman_on_gvisor_linux, 2026-11-26, 2026-11-26
+    Podman passes on Windows :workloads_podman_on_windows, 2026-11-26, 2026-11-26
+    section research - research
+    Pick gVisor as the base :research_gvisor_base, 2026-11-17, 2026-11-26
+    Revive LKL or nommu UML :crit, research_lkl_nommu, 2026-11-26, 2026-11-26
+    Build on unkernel :crit, research_unkernel, 2026-11-26, 2026-11-26
+    Translate syscalls like flinux :crit, research_flinux_translation, 2026-11-26, 2026-11-26
+    QEMU software emulation :crit, research_qemu_emulation, 2026-11-26, 2026-11-26
+    Benchmark gVisor against native Linux :active, research_gvisor_benchmark, 2026-11-26, 2026-11-26
+    Test WHPX on this machine :active, research_whpx_this_machine, 2026-11-26, 2026-11-26
     section ops - operations
     Name it gvisor-windows :ops_name_and_fork, 2026-11-26, 2026-11-26
     Run Linux tests on GitHub Actions :ops_linux_tests_on_actions, 2026-11-26, 2026-11-26
     Borrow code, check licenses later :ops_borrow_code, 2026-11-26, 2026-11-26
     Go or no-go after Phase 0 :ops_phase0_go_no_go, 2026-11-26, 2026-11-26
+    Podman only as the bar :ops_podman_only_the_bar, 2026-11-26, 2026-11-26
 ```
 <!-- END GENERATED: timeline -->

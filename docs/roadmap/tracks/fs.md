@@ -34,12 +34,12 @@ flowchart TB
 | id | title | kind | lane | state | outcome | start | end | depends_on | replaced_by | qualified_by | headline | evidence |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `fs-compat-layer-not-boundary` | Compatibility layer, not security boundary | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0005-host-files-accessed-directly.md |
-| `fs-persistent-image-storage` | Test persistent image storage | experiment | linux-ci | in-progress | unrated | 2026-11-26 |  | podman-inside-gvisor-linux |  |  |  |  |
+| `fs-persistent-image-storage` | Test persistent image storage | experiment | linux-ci | in-progress | unrated | 2026-11-26 |  | workloads-podman-on-gvisor-linux |  |  |  |  |
 
 ### Details per node
 
 | id | title | verdict | headline | in plain words | notes | confirmed | waiting on | queue order | order reason |
 |---|---|---|---|---|---|---|---|---|---|
 | `fs-compat-layer-not-boundary` | Compatibility layer, not security boundary |  |  | The sandbox may open the user's files directly with the user's rights; it isolates containers from each other, not from the user. |  |  |  |  |  |
-| `fs-persistent-image-storage` | Test persistent image storage |  |  | Find out where Podman's images can live so they survive a restart of the sandbox, and how fast each option is. | Done when: pull/build timings on tmpfs and on a host directory, and the overlay restart test, are in docs/results/0a-linux.md. |  |  |  |  |
+| `fs-persistent-image-storage` | Test persistent image storage |  |  | Find a writable filesystem inside the sandbox that survives a restart, and how fast each option is. | Done when: pull/build timings on tmpfs and on a host directory, and the overlay restart test, are in docs/results/0a-linux.md. |  |  |  |  |
 <!-- END GENERATED: table-fs -->

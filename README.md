@@ -1,6 +1,6 @@
 # gvisor-windows
 
-**Unofficial** port of [gVisor](https://gvisor.dev) to Windows hosts: Linux containers (Podman) for a standard Windows user, without admin, Hyper-V, WSL or a VM. Not a Google project.
+gVisor is an application kernel for containers: it implements the Linux system-call interface in user space and runs OCI containers through its runtime, `runsc`. **This unofficial fork adds Windows as a host**, so `runsc` and the Sentry run on Windows for a standard user, without admin rights, Hyper-V, WSL or a VM. Not a Google project.
 
 Status: Phase 0 (feasibility gates). Roadmap: [docs/roadmap.md](docs/roadmap.md). Decisions: [docs/adr/](docs/adr/).
 

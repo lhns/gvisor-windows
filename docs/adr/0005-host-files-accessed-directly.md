@@ -12,4 +12,4 @@ A Windows directfs backend: the Sentry opens NTFS files itself (NtCreateFile and
 ## Consequences
 - No 9P, lisafs or NFS hop; consistency and caching semantics are taken from remote-docker (ADR 0042/0044 there), not its transport.
 - Handles are held briefly and files are not mapped as sections, so editors and git can still rename and delete them.
-- Where Podman's image store lives across restarts is still open (gate 0a.4).
+- A writable filesystem that survives sandbox restarts is still open (gate 0a.4).

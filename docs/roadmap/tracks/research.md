@@ -49,11 +49,11 @@ flowchart TB
 <!-- BEGIN GENERATED: table-research -->
 | id | title | kind | lane | state | outcome | start | end | depends_on | replaced_by | qualified_by | headline | evidence |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `research-gvisor-base` | Pick gVisor as the base | experiment | none | done | unrated | 2026-11-17 | 2026-11-26 |  |  |  |  | docs/adr/0001-gvisor-sentry-as-the-base.md |
-| `research-lkl-nommu` | Revive LKL or nommu UML | experiment | none | abandoned | dead-end | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0001-gvisor-sentry-as-the-base.md |
-| `research-unkernel` | Build on unkernel | experiment | none | abandoned | dead-end | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0001-gvisor-sentry-as-the-base.md |
-| `research-flinux-translation` | Translate syscalls like flinux | experiment | none | abandoned | dead-end | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0001-gvisor-sentry-as-the-base.md |
-| `research-qemu-emulation` | QEMU software emulation | experiment | none | abandoned | dead-end | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0001-gvisor-sentry-as-the-base.md |
+| `research-gvisor-base` | Pick gVisor as the base | experiment | none | done | unrated | 2026-11-17 | 2026-11-26 |  |  |  |  | docs/adr/0001-port-gvisor-to-windows-hosts.md |
+| `research-lkl-nommu` | Revive LKL or nommu UML | experiment | none | abandoned | dead-end | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0001-port-gvisor-to-windows-hosts.md |
+| `research-unkernel` | Build on unkernel | experiment | none | abandoned | dead-end | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0001-port-gvisor-to-windows-hosts.md |
+| `research-flinux-translation` | Translate syscalls like flinux | experiment | none | abandoned | dead-end | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0001-port-gvisor-to-windows-hosts.md |
+| `research-qemu-emulation` | QEMU software emulation | experiment | none | abandoned | dead-end | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0001-port-gvisor-to-windows-hosts.md |
 | `research-gvisor-benchmark` | Benchmark gVisor against native Linux | experiment | linux-ci | in-progress | unrated | 2026-11-26 |  | research-gvisor-base |  |  |  |  |
 | `research-whpx-this-machine` | Test WHPX on this machine | experiment | windows-local | in-progress | unrated | 2026-11-26 |  | research-gvisor-base |  |  |  |  |
 

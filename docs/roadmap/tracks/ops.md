@@ -18,7 +18,8 @@ _No nodes in this track yet._
 | `ops-name-and-fork` | Name it gvisor-windows | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0003-fork-of-the-go-branch.md |
 | `ops-linux-tests-on-actions` | Run Linux tests on GitHub Actions | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0003-fork-of-the-go-branch.md |
 | `ops-borrow-code` | Borrow code, check licenses later | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0003-fork-of-the-go-branch.md; NOTICE |
-| `ops-phase0-go-no-go` | Go or no-go after Phase 0 | owner-decision | owner | blocked | n/a | 2026-11-26 |  | podman-inside-gvisor-linux, research-gvisor-benchmark, platform-elf-alignment-survey, fs-persistent-image-storage, platform-trap-cost, platform-4k-section-views, platform-tls-register, platform-restricted-stub, sentry-go-fault-recovery, research-whpx-this-machine |  |  |  |  |
+| `ops-phase0-go-no-go` | Go or no-go after Phase 0 | owner-decision | owner | blocked | n/a | 2026-11-26 |  | workloads-podman-on-gvisor-linux, research-gvisor-benchmark, platform-elf-alignment-survey, fs-persistent-image-storage, platform-trap-cost, platform-4k-section-views, platform-tls-register, platform-restricted-stub, sentry-go-fault-recovery, research-whpx-this-machine |  |  |  |  |
+| `ops-podman-only-the-bar` | Podman only as the bar | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0002-what-done-means.md |
 
 ### Details per node
 
@@ -28,4 +29,5 @@ _No nodes in this track yet._
 | `ops-linux-tests-on-actions` | Run Linux tests on GitHub Actions |  |  | Everything that needs a Linux host runs on GitHub's hosted runners. |  |  |  |  |  |
 | `ops-borrow-code` | Borrow code, check licenses later |  |  | Code from other projects may be reused; its origin is recorded so the owner can review licences later. |  |  |  |  |  |
 | `ops-phase0-go-no-go` | Go or no-go after Phase 0 |  |  | The owner decides, from the Phase 0 results, whether the port goes ahead. | Input: docs/adr/0004-phase-0-results.md. |  |  |  |  |
+| `ops-podman-only-the-bar` | Podman only as the bar |  |  | The project is gVisor for Windows hosts; Podman is only the workload that shows enough features work. |  |  |  |  |  |
 <!-- END GENERATED: table-ops -->

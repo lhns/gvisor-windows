@@ -3,12 +3,13 @@ nodes: docs/roadmap/nodes.yaml
 page: docs/roadmap.md
 
 tracks:
-  research: {name: "research", scope: "choosing the base and rejected designs"}
+  runsc:    {name: "runsc", scope: "gVisor's runtime on Windows hosts: commands, sandbox lifecycle, OCI bundles"}
   platform: {name: "platform", scope: "stub processes, syscall trap, memory mapping, TLS"}
   sentry:   {name: "sentry", scope: "Windows host layers for gVisor's Sentry"}
   fs:       {name: "files", scope: "host files, bind mounts, image storage"}
   net:      {name: "network", scope: "netstack to Windows sockets, port forwarding"}
-  podman:   {name: "podman", scope: "Podman engine inside the sandbox, Windows front-end, acceptance test"}
+  workloads: {name: "workloads", scope: "workloads that measure compatibility; the Podman acceptance test is the bar"}
+  research: {name: "research", scope: "choosing the base and rejected designs"}
   ops:      {name: "operations", scope: "CI, packaging, owner decisions on process"}
 
 kinds:
