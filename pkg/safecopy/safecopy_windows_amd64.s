@@ -51,7 +51,9 @@ not_memcpy:
 	JB   not_memclr
 	CMPQ AX, ·memclrEnd(SB)
 	JAE  not_memclr
-	LEAQ handleMemclrFault(SB), DX
+	LEAQ winMemclrProbe(SB), DX
+	MOVQ 0x98(R10), R9
+	MOVQ R9, ·dbgCtx+56(SB)
 	JMP  fix
 
 not_memclr:
@@ -105,6 +107,13 @@ fix:
 search:
 	XORL AX, AX
 	RET
+
+// DEBUG: records R8 and CX when the memclr stub starts.
+TEXT winMemclrProbe(SB),NOSPLIT|NOFRAME,$0
+	MOVQ R8, ·dbgCtx+40(SB)
+	MOVQ CX, ·dbgCtx+48(SB)
+	MOVQ SP, ·dbgCtx+64(SB)
+	JMP handleMemclrFault(SB)
 
 TEXT ·addrOfVEHHandler(SB),NOSPLIT,$0-8
 	LEAQ ·vehHandler(SB), AX

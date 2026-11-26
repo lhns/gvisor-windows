@@ -43,4 +43,4 @@ func installFaultHandlers() {
 func ensureFaultStack()
 
 // dbgCtx is DEBUG: RIP, R8, RCX, RDI and the fault address of the last fault.
-var dbgCtx [5]uint64
+var dbgCtx [9]uint64
