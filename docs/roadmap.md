@@ -204,7 +204,7 @@ flowchart TB
 | Pick gVisor as the base | ✔ done · unrated | Of all ways to run Linux code on Windows without admin, gVisor's user-space Linux kernel is the only one that already runs containers. |
 | Name it gvisor-windows | ✔ done · n/a | The project is an unofficial fork of gVisor's Go branch called gvisor-windows. |
 | Go or no-go after Phase 0 | ✔ done · n/a | Go: the owner asked for the full project; ADR 0004 lists the conditions. |
-| gVisor syscall tests on Windows | ⛔ blocked | gVisor's own syscall test suite runs against the Windows port to show which Linux calls work. |
+| gVisor syscall tests on Windows | ▶ in progress | gVisor's own syscall test suite runs against the Windows port to show which Linux calls work. |
 | Merge upstream gVisor regularly | ○ next | Regularly take in upstream gVisor's Go branch so the port does not drift. |
 | Portable zip, no installer | ⛔ blocked | Ship runsc for Windows as a zip or per-user installer that needs no admin. |
 <!-- END GENERATED: plain-words -->
@@ -215,10 +215,6 @@ flowchart TB
 **linux-ci**
 
 - `ops-upstream-merges`: Merge upstream gVisor regularly
-
-**windows-ci**
-
-- `platform-memory-release`: Give freed guest memory back
 <!-- END GENERATED: ready-now -->
 
 ## Running
@@ -226,6 +222,7 @@ flowchart TB
 <!-- BEGIN GENERATED: running -->
 **windows-ci**
 
+- `ops-syscall-tests-on-windows`: gVisor syscall tests on Windows
 - `sentry-host-stdio-and-tty`: Guest terminal and stdio
 - `runsc-windows-boot`: Boot runsc on Windows
 <!-- END GENERATED: running -->
@@ -355,11 +352,11 @@ Generated on 2026-11-26.
 Each track has its own page with its tree, node table and per-node details.
 
 - [runsc - runsc](roadmap/tracks/runsc.md): 5 nodes (2 done, 1 in progress, 2 blocked)
-- [platform - platform](roadmap/tracks/platform.md): 29 nodes (21 done, 1 next, 2 blocked, 4 parked, 1 abandoned)
+- [platform - platform](roadmap/tracks/platform.md): 29 nodes (21 done, 1 in progress, 2 blocked, 4 parked, 1 abandoned)
 - [sentry - sentry](roadmap/tracks/sentry.md): 10 nodes (7 done, 1 in progress, 2 blocked)
 - [fs - files](roadmap/tracks/fs.md): 12 nodes (11 done, 1 blocked)
 - [net - network](roadmap/tracks/net.md): 4 nodes (4 done)
 - [workloads - workloads](roadmap/tracks/workloads.md): 12 nodes (7 done, 5 blocked)
 - [research - research](roadmap/tracks/research.md): 8 nodes (2 done, 6 abandoned)
-- [ops - operations](roadmap/tracks/ops.md): 10 nodes (7 done, 1 next, 2 blocked)
+- [ops - operations](roadmap/tracks/ops.md): 10 nodes (7 done, 1 in progress, 1 next, 1 blocked)
 <!-- END GENERATED: tracks -->

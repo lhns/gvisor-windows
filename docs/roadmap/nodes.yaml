@@ -1028,17 +1028,17 @@
   title: gVisor syscall tests on Windows
   track: ops
   kind: feature
-  state: blocked
+  state: in-progress
   outcome: unrated
   evidence: []
   verdict_quote: ''
   headline: ''
   depends_on:
   - ops-syscall-test-strategy
-  - platform-busybox-on-windows
+  - platform-static-guest-from-memory
   replaced_by: []
   lane: windows-ci
-  start: ''
+  start: '2026-11-26'
   end: ''
   folded: []
   overview: false
@@ -1679,7 +1679,7 @@
   title: Give freed guest memory back
   track: platform
   kind: defect
-  state: next
+  state: in-progress
   lane: windows-ci
   plain: Decommitted guest memory only partly leaves the working set and never reduces commit charge, because pages stay committed in 1 GB sections.
   notes: 'Fixed when: a guest that allocates and frees 1 GB returns it to Windows (working set and commit charge), measured in CI.'

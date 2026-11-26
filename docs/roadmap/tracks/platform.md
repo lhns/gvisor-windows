@@ -155,7 +155,7 @@ flowchart TB
 | `platform-controller-wakeups` | Controller waits without busy polling | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-stub-controller |  |  | 0.3 us median | docs/results/1a-stub-prototype.md |
 | `platform-fp-state` | Save and restore FPU and SSE state | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-winstub |  |  |  | docs/results/1d-static-guest.md |
 | `platform-retire-prototype` | Retire the stub prototype | tooling | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-static-guest-from-memory |  |  |  | docs/results/1d-static-guest.md |
-| `platform-memory-release` | Give freed guest memory back | defect | windows-ci | next | unrated | 2026-11-26 |  |  |  |  |  | docs/adr/0013-memory-file-on-reserved-sections.md |
+| `platform-memory-release` | Give freed guest memory back | defect | windows-ci | in-progress | unrated | 2026-11-26 |  |  |  |  |  | docs/adr/0013-memory-file-on-reserved-sections.md |
 | `platform-fast-process-start` | Start guest processes fast | feature | windows-ci | done | very-successful | 2026-11-26 | 2026-11-26 | platform-static-guest-from-memory |  |  | about 380 ms to 42 ms | docs/results/1e-platform-perf.md |
 | `platform-split-syscall-unpatched` | Syscalls split across mappings | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/1c-windows-platform.md; docs/results/1e-platform-perf.md |
 

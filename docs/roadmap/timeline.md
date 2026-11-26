@@ -36,7 +36,7 @@ gantt
     Controller waits without busy polling :platform_controller_wakeups, 2026-11-26, 2026-11-26
     Save and restore FPU and SSE state :platform_fp_state, 2026-11-26, 2026-11-26
     Retire the stub prototype :platform_retire_prototype, 2026-11-26, 2026-11-26
-    Give freed guest memory back :platform_memory_release, 2026-11-26, 2026-11-26
+    Give freed guest memory back :active, platform_memory_release, 2026-11-26, 2026-11-26
     Start guest processes fast :platform_fast_process_start, 2026-11-26, 2026-11-26
     Syscalls split across mappings :platform_split_syscall_unpatched, 2026-11-26, 2026-11-26
     section sentry - sentry
@@ -90,7 +90,8 @@ gantt
     Podman only as the bar :ops_podman_only_the_bar, 2026-11-26, 2026-11-26
     Windows CI as a standard user :ops_windows_ci_standard_user, 2026-11-26, 2026-11-26
     Choose how to run gVisor's tests :ops_syscall_test_strategy, 2026-11-26, 2026-11-26
+    gVisor syscall tests on Windows :active, ops_syscall_tests_on_windows, 2026-11-26, 2026-11-26
 ```
 
-Not shown (no `start`): `runsc-container-on-windows`, `runsc-sandbox-lifecycle`, `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-busybox-on-windows`, `platform-hardware-acceleration`, `platform-no-fsgsbase-fallback`, `platform-binary-translation-fallback`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `fs-persistent-storage-impl`, `workloads-podman-on-windows`, `workloads-acceptance-test-windows`, `workloads-podman-harness`, `workloads-podman-api-named-pipe`, `workloads-podman-probe`, `ops-syscall-tests-on-windows`, `ops-upstream-merges`, `ops-portable-packaging`
+Not shown (no `start`): `runsc-container-on-windows`, `runsc-sandbox-lifecycle`, `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-busybox-on-windows`, `platform-hardware-acceleration`, `platform-no-fsgsbase-fallback`, `platform-binary-translation-fallback`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `fs-persistent-storage-impl`, `workloads-podman-on-windows`, `workloads-acceptance-test-windows`, `workloads-podman-harness`, `workloads-podman-api-named-pipe`, `workloads-podman-probe`, `ops-upstream-merges`, `ops-portable-packaging`
 <!-- END GENERATED: timeline -->
