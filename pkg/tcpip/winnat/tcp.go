@@ -109,3 +109,15 @@ func relay(a, b net.Conn) {
 	a.Close()
 	b.Close()
 }
+
+// DialGuest opens a connection from the gateway to a TCP port of the guest,
+// for host-side services that are not a published loopback port (the Windows
+// named-pipe forwarder of runsc), so no other local user can reach them.
+func (n *NAT) DialGuest(guestPort uint16) (net.Conn, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), dialTimeout)
+	defer cancel()
+	return gonet.DialContextTCP(ctx, n.gw, tcpip.FullAddress{Addr: addr(GuestIP), Port: guestPort}, ipv4.ProtocolNumber)
+}
+
+// Relay copies between a and b until both directions end, then closes both.
+func Relay(a, b net.Conn) { relay(a, b) }

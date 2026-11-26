@@ -11,6 +11,15 @@ import (
 	"gvisor.dev/gvisor/runsc/config"
 )
 
+// WindowsNATHostLoopback (runsc --host-loopback) lets the guest reach the
+// host's 127.0.0.1 services at the gateway address 10.0.2.2. It exposes every
+// loopback listener of the host to the guest, so it is off by default.
+var WindowsNATHostLoopback bool
+
+// WindowsNAT is the NAT of the sandbox of this process, nil without
+// --network=windows-nat.
+var WindowsNAT *winnat.NAT
+
 // ParsePublish parses --publish: comma-separated hostPort:guestPort pairs.
 func ParsePublish(s string) ([][2]uint16, error) {
 	var out [][2]uint16
@@ -40,7 +49,7 @@ func setupWindowsNAT(conf *config.Config, s *stack.Stack) error {
 	if err != nil {
 		return err
 	}
-	nat, err := winnat.New(winnat.Options{})
+	nat, err := winnat.New(winnat.Options{HostLoopback: WindowsNATHostLoopback})
 	if err != nil {
 		return fmt.Errorf("creating NAT: %w", err)
 	}
@@ -57,5 +66,6 @@ func setupWindowsNAT(conf *config.Config, s *stack.Stack) error {
 		log.Infof("Published guest port %d on 127.0.0.1:%d", p[1], hp)
 	}
 	// The NAT lives as long as the sandbox process.
+	WindowsNAT = nat
 	return nil
 }
