@@ -55,7 +55,11 @@ func main() {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 			t0 := time.Now()
-			if err := exec.Command("/bin/true").Run(); err != nil {
+			// (there is no /dev/null in the root: give it pipes instead)
+			cmd := exec.Command("/bin/true")
+			var out bytes.Buffer
+			cmd.Stdin, cmd.Stdout, cmd.Stderr = bytes.NewReader(nil), &out, &out
+			if err := cmd.Run(); err != nil {
 				if childFail.Add(1) == 1 {
 					fmt.Println("gopodman: first child error:", err)
 				}
