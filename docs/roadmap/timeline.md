@@ -14,7 +14,7 @@ gantt
     section runsc - runsc
     Measure runsc's command side :runsc_measure_cli, 2026-11-26, 2026-11-26
     Choose runsc commands for Windows :runsc_windows_commands, 2026-11-26, 2026-11-26
-    Boot runsc on Windows :active, runsc_windows_boot, 2026-11-26, 2026-11-26
+    Boot runsc on Windows :runsc_windows_boot, 2026-11-26, 2026-11-26
     section platform - platform
     Survey ELF segment alignment :platform_elf_alignment_survey, 2026-11-26, 2026-11-26
     Measure syscall trap cost :platform_trap_cost, 2026-11-26, 2026-11-26
@@ -25,6 +25,7 @@ gantt
     Scan code pages for syscalls :platform_page_verification, 2026-11-26, 2026-11-26
     Patch syscall sites into jumps :platform_syscall_fast_path, 2026-11-26, 2026-11-26
     Windows platform for the Sentry :platform_winstub, 2026-11-26, 2026-11-26
+    Run busybox under the Sentry :platform_busybox_on_windows, 2026-11-26, 2026-11-26
     Hook syscalls like zpoline :crit, platform_zpoline_hooks, 2026-11-26, 2026-11-26
     Restore the TLS register after switches :platform_fs_base_repair, 2026-11-26, 2026-11-26
     Check what exceptions do to stacks :platform_exception_stack, 2026-11-26, 2026-11-26
@@ -39,12 +40,13 @@ gantt
     Give freed guest memory back :active, platform_memory_release, 2026-11-26, 2026-11-26
     Start guest processes fast :platform_fast_process_start, 2026-11-26, 2026-11-26
     Syscalls split across mappings :platform_split_syscall_unpatched, 2026-11-26, 2026-11-26
+    Map files not in the memory file :platform_map_files_without_sections, 2026-11-26, 2026-11-26
     section sentry - sentry
     Recover faults in Go :sentry_go_fault_recovery, 2026-11-26, 2026-11-26
     Sentry builds for Windows :sentry_windows_build, 2026-11-26, 2026-11-26
     Guest memory on Windows sections :sentry_memory_file_sections, 2026-11-26, 2026-11-26
     Port fault recovery to Windows :sentry_fault_recovery, 2026-11-26, 2026-11-26
-    Guest terminal and stdio :active, sentry_host_stdio_and_tty, 2026-11-26, 2026-11-26
+    Guest terminal and stdio :sentry_host_stdio_and_tty, 2026-11-26, 2026-11-26
     Guest threads and signals :sentry_threads_and_signals, 2026-11-26, 2026-11-26
     Make Linux names resolve on Windows :sentry_unix_shim, 2026-11-26, 2026-11-26
     Dynamic programs, exec and pipes :sentry_dynamic_elf_and_exec, 2026-11-26, 2026-11-26
@@ -93,5 +95,5 @@ gantt
     gVisor syscall tests on Windows :active, ops_syscall_tests_on_windows, 2026-11-26, 2026-11-26
 ```
 
-Not shown (no `start`): `runsc-container-on-windows`, `runsc-sandbox-lifecycle`, `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-busybox-on-windows`, `platform-hardware-acceleration`, `platform-no-fsgsbase-fallback`, `platform-binary-translation-fallback`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `fs-persistent-storage-impl`, `workloads-podman-on-windows`, `workloads-acceptance-test-windows`, `workloads-podman-harness`, `workloads-podman-api-named-pipe`, `workloads-podman-probe`, `ops-upstream-merges`, `ops-portable-packaging`
+Not shown (no `start`): `runsc-container-on-windows`, `runsc-sandbox-lifecycle`, `runsc-windows-lifecycle-commands`, `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-hardware-acceleration`, `platform-no-fsgsbase-fallback`, `platform-binary-translation-fallback`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `fs-persistent-storage-impl`, `workloads-podman-on-windows`, `workloads-acceptance-test-windows`, `workloads-podman-harness`, `workloads-podman-api-named-pipe`, `workloads-podman-probe`, `ops-upstream-merges`, `ops-portable-packaging`
 <!-- END GENERATED: timeline -->

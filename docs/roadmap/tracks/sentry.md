@@ -14,10 +14,10 @@ flowchart TB
     sentry_windows_build["✔ Sentry builds for<br/>Windows"]
     sentry_memory_file_sections["✔ Guest memory on<br/>Windows sections"]
     sentry_fault_recovery["✔ Port fault recovery<br/>to Windows"]
-    sentry_host_stdio_and_tty["▶ Guest terminal and<br/>stdio"]
+    sentry_host_stdio_and_tty["✔ Guest terminal and<br/>stdio"]
     sentry_threads_and_signals["✔ Guest threads and<br/>signals"]
     sentry_dynamic_elf_and_exec["✔ Dynamic programs,<br/>exec and pipes"]
-    sentry_event_loop_iocp["⛔ Event waiting on<br/>IOCP"]
+    sentry_event_loop_iocp["⏸ Event waiting on<br/>IOCP"]
     sentry_timers_and_clocks["⛔ Timers and clocks on<br/>Windows"]
     sentry_go_fault_recovery ~~~ sentry_unix_shim
     sentry_unix_shim ~~~ sentry_windows_build
@@ -51,10 +51,10 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class sentry_go_fault_recovery,sentry_unix_shim,sentry_fault_recovery,sentry_threads_and_signals,sentry_dynamic_elf_and_exec succ
+    class sentry_go_fault_recovery,sentry_unix_shim,sentry_fault_recovery,sentry_host_stdio_and_tty,sentry_threads_and_signals,sentry_dynamic_elf_and_exec succ
     class sentry_windows_build,sentry_memory_file_sections unrated
-    class sentry_host_stdio_and_tty inprog
-    class sentry_event_loop_iocp,sentry_timers_and_clocks blocked
+    class sentry_event_loop_iocp parked
+    class sentry_timers_and_clocks blocked
 ```
 <!-- END GENERATED: track-sentry -->
 
@@ -66,10 +66,10 @@ flowchart TB
 | `sentry-go-fault-recovery` | Recover faults in Go | experiment | windows-local | done | successful | 2026-11-26 | 2026-11-26 | research-gvisor-base |  |  | about 6 us per fault | docs/results/0b-windows.md |
 | `sentry-windows-build` | Sentry builds for Windows | feature | none | done | unrated | 2026-11-26 | 2026-11-26 | sentry-unix-shim, sentry-go-fault-recovery |  |  |  | docs/results/1b-windows-build.md; docs/results/1b-sentry-host-basics.md |
 | `sentry-memory-file-sections` | Guest memory on Windows sections | feature | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 | sentry-windows-build, platform-4k-section-views, ops-syscall-test-strategy |  |  |  | docs/results/1b-sentry-host-basics.md; docs/adr/0013-memory-file-on-reserved-sections.md; docs/results/1c-windows-platform.md |
-| `sentry-event-loop-iocp` | Event waiting on IOCP | feature | windows-ci | blocked | unrated |  |  | sentry-windows-build, ops-syscall-test-strategy |  |  |  |  |
+| `sentry-event-loop-iocp` | Event waiting on IOCP | feature | windows-ci | parked | unrated |  |  | sentry-windows-build, ops-syscall-test-strategy |  |  |  |  |
 | `sentry-timers-and-clocks` | Timers and clocks on Windows | feature | windows-ci | blocked | unrated |  |  | sentry-windows-build, ops-syscall-test-strategy |  |  |  |  |
 | `sentry-fault-recovery` | Port fault recovery to Windows | feature | none | done | successful | 2026-11-26 | 2026-11-26 | sentry-windows-build, sentry-go-fault-recovery |  |  | 1.3 us per fault | docs/results/1b-sentry-host-basics.md |
-| `sentry-host-stdio-and-tty` | Guest terminal and stdio | feature | windows-ci | in-progress | unrated | 2026-11-26 |  | sentry-windows-build |  |  |  |  |
+| `sentry-host-stdio-and-tty` | Guest terminal and stdio | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | sentry-windows-build |  |  |  | docs/results/3-runsc-boot.md; docs/adr/0017-runsc-run-boots-in-process.md |
 | `sentry-threads-and-signals` | Guest threads and signals | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-winstub |  |  |  | docs/results/1f-exec-signals.md |
 | `sentry-unix-shim` | Make Linux names resolve on Windows | feature | none | done | successful | 2026-11-26 | 2026-11-26 | ops-phase0-go-no-go |  |  | 25 hand-edited shared files | docs/adr/0006-a-linux-abi-shim-for-x-sys-unix.md; docs/results/1b-windows-build.md |
 | `sentry-dynamic-elf-and-exec` | Dynamic programs, exec and pipes | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-static-guest-from-memory |  |  |  | docs/results/1f-exec-signals.md |
@@ -81,10 +81,10 @@ flowchart TB
 | `sentry-go-fault-recovery` | Recover faults in Go | is recoverable via `debug.SetPanicOnFault(true)` + `recover` at about 6 us per fault | about 6 us per fault | Check that the Go kernel process can survive reading bad guest memory on Windows, as it does on Linux. | Done when: S5 results are in docs/results/0b-windows.md. |  |  |  |  |
 | `sentry-windows-build` | Sentry builds for Windows |  |  | gVisor's kernel compiles as a Windows program, with host-specific parts stubbed out. | Done when: the Sentry process starts on Windows and reaches its init without a guest. Reached on 2026-11-26: the init of every package up to runsc/boot passes on windows-latest (safecopy handler, clocks, task size and minimum address replaced; hosttid and cpuid worked as they are). |  |  |  |  |
 | `sentry-memory-file-sections` | Guest memory on Windows sections |  |  | The Sentry's memory file becomes Windows section objects, one per 1 GB chunk. | Mapping memory-file sections into stubs is exercised by the platform tests; freed memory is only partly returned to Windows (ADR 0013). |  |  |  |  |
-| `sentry-event-loop-iocp` | Event waiting on IOCP |  |  | Waiting for many host events at once (epoll on Linux) moves to Windows completion ports. | Done when: fdnotifier's Windows backend delivers readiness for sockets and pipes; its tests pass. |  |  |  |  |
+| `sentry-event-loop-iocp` | Event waiting on IOCP |  |  | Waiting for many host events at once (epoll on Linux) moves to Windows completion ports. | Parked: runsc on Windows registers no host FDs (stdio, terminal and NAT use goroutine pumps), so no IOCP backend is needed unless host-FD imports, hostinet or host Unix sockets are added. |  |  |  |  |
 | `sentry-timers-and-clocks` | Timers and clocks on Windows |  |  | The Sentry's clocks and timers run on Windows' high-resolution timers. | Done when: sleep, timerfd and clock tests pass inside a guest on Windows. |  |  |  |  |
 | `sentry-fault-recovery` | Port fault recovery to Windows | pkg/safecopy recovers faults on Windows through a vectored exception handler (1.3 us per fault, 292 upstream subtests passing) | 1.3 us per fault | The Sentry's safe copies of guest memory recover from access violations on Windows instead of crashing. | Done when: pkg/safecopy's Windows variant returns an error for a faulting guest address under concurrent copies. |  |  |  |  |
-| `sentry-host-stdio-and-tty` | Guest terminal and stdio |  |  | A guest program's input, output and terminal connect to the Windows console (ConPTY), including Ctrl-C. | Done when: an interactive guest shell works in Windows Terminal with resize and Ctrl-C. |  |  |  |  |
+| `sentry-host-stdio-and-tty` | Guest terminal and stdio | `runsc.exe run` on stock Windows boots the real Loader in-process and runs a glibc guest and busybox from a Windows-folder rootfs with stdio, exit codes, stdin, a windows-nat network, a published port and a ConPTY-driven terminal with resize and Ctrl-C, as a standard user |  | A guest program's input, output and terminal connect to the Windows console (ConPTY), including Ctrl-C. | Done when: an interactive guest shell works in Windows Terminal with resize and Ctrl-C. |  |  |  |  |
 | `sentry-threads-and-signals` | Guest threads and signals | Under the real Sentry on `windows-latest`, dynamic glibc and musl programs with `dlopen`, execve chains, fork+exec+wait, busybox shell pipelines |  | Multi-threaded guests (such as Go programs) get one stub thread per guest thread, with signals delivered correctly. | Done when: a multi-threaded Go program and a signal-handling test run correctly under the Sentry on Windows. |  |  |  |  |
 | `sentry-unix-shim` | Make Linux names resolve on Windows | the sandbox side compiles for Windows with 25 hand-edited shared files and one x/sys shim | 25 hand-edited shared files | A Windows copy of x/sys/unix defines the Linux constants and types and stubs the calls, so the Sentry compiles with few edits. | Done when: ./runsc/boot type-checks for GOOS=windows with Linux-only subsystems excluded by build tags. |  |  |  |  |
 | `sentry-dynamic-elf-and-exec` | Dynamic programs, exec and pipes | Under the real Sentry on `windows-latest`, dynamic glibc and musl programs with `dlopen`, execve chains, fork+exec+wait, busybox shell pipelines |  | Run dynamically linked programs with their interpreter and shared libraries, exec a second program, and connect processes with pipes. | Done when: a dynamic glibc and a dynamic musl program, an exec chain and a shell pipeline (static busybox sh -c "echo a \| cat") pass under the Sentry on Windows. |  |  |  |  |

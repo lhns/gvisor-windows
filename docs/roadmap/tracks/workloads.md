@@ -77,7 +77,7 @@ flowchart TB
 | `workloads-strict-bar-linux` | Strict bar on stock gVisor | experiment | linux-ci | done | mixed | 2026-11-26 | 2026-11-26 | workloads-podman-on-gvisor-linux |  |  |  | docs/results/0c-linux-strict-bar.md |
 | `workloads-gvisor-cgroupfs-readonly` | Cgroup filesystem mounted read-only | defect | linux-ci | done | unrated | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/1n-bridge-networking.md |
 | `workloads-podman-api-named-pipe` | Podman API on a named pipe | feature | windows-ci | blocked | unrated |  |  | workloads-podman-harness |  |  |  |  |
-| `workloads-podman-probe` | Probe Podman inside the sandbox | experiment | windows-ci | blocked | unrated |  |  | platform-busybox-on-windows |  |  |  |  |
+| `workloads-podman-probe` | Probe Podman inside the sandbox | experiment | windows-ci | blocked | unrated |  |  | platform-busybox-on-windows, platform-map-files-without-sections |  |  |  |  |
 
 ### Details per node
 

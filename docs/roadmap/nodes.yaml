@@ -643,14 +643,15 @@
   title: Run busybox under the Sentry
   track: platform
   kind: feature
-  state: blocked
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/3-runsc-boot.md
+  - docs/results/1f-exec-signals.md
+  verdict_quote: runs a glibc guest and busybox from a Windows-folder rootfs with stdio, exit codes, stdin, a windows-nat network, a published port
   headline: ''
   depends_on:
   - platform-winstub
-  - sentry-event-loop-iocp
   - sentry-timers-and-clocks
   - sentry-fault-recovery
   - sentry-host-stdio-and-tty
@@ -661,8 +662,8 @@
   - runsc-windows-boot
   replaced_by: []
   lane: windows-ci
-  start: ''
-  end: ''
+  start: '2026-11-26'
+  end: '2026-11-26'
   folded: []
   overview: true
   plain: 'First end-to-end milestone: gVisor''s kernel runs an unmodified busybox shell on Windows.'
@@ -719,7 +720,7 @@
   title: Event waiting on IOCP
   track: sentry
   kind: feature
-  state: blocked
+  state: parked
   outcome: unrated
   evidence: []
   verdict_quote: ''
@@ -734,7 +735,7 @@
   folded: []
   overview: false
   plain: Waiting for many host events at once (epoll on Linux) moves to Windows completion ports.
-  notes: 'Done when: fdnotifier''s Windows backend delivers readiness for sockets and pipes; its tests pass.'
+  notes: 'Parked: runsc on Windows registers no host FDs (stdio, terminal and NAT use goroutine pumps), so no IOCP backend is needed unless host-FD imports, hostinet or host Unix sockets are added.'
 - id: sentry-timers-and-clocks
   title: Timers and clocks on Windows
   track: sentry
@@ -954,9 +955,7 @@
   verdict_quote: ''
   headline: ''
   depends_on:
-  - runsc-windows-commands
-  - platform-busybox-on-windows
-  - runsc-windows-boot
+  - runsc-windows-lifecycle-commands
   replaced_by: []
   lane: windows-ci
   start: ''
@@ -1106,17 +1105,20 @@
   title: Guest terminal and stdio
   track: sentry
   kind: feature
-  state: in-progress
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/3-runsc-boot.md
+  - docs/adr/0017-runsc-run-boots-in-process.md
+  verdict_quote: '`runsc.exe run` on stock Windows boots the real Loader in-process and runs a glibc guest and busybox from a Windows-folder rootfs with stdio, exit codes, stdin, a windows-nat network,
+    a published port and a ConPTY-driven terminal with resize and Ctrl-C, as a standard user'
   headline: ''
   depends_on:
   - sentry-windows-build
   replaced_by: []
   lane: windows-ci
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   plain: A guest program's input, output and terminal connect to the Windows console (ConPTY), including Ctrl-C.
@@ -1139,7 +1141,8 @@
   lane: windows-ci
   start: '2026-11-26'
   end: '2026-11-26'
-  folded: []
+  folded:
+  - Booting from the image fails until the platform maps non-memory-file pages (2026-11-26, commit 7f1e94454)
   overview: false
   plain: The guest's root filesystem comes from an unpacked OCI bundle directory on Windows.
   notes: Done as a library (pkg/sentry/fsimpl/rootfs); wiring into runsc boot belongs to Boot runsc on Windows.
@@ -1704,23 +1707,27 @@
   lane: windows-ci
   plain: A guest process takes 280-560 ms to start through the Sentry, against 18 ms for a bare stub; profile the gap and keep a pool of ready stubs.
   notes: 'Done when: static glibc hello starts and exits through the Sentry in under 50 ms median on windows-latest, and fork+waitpid adds under 50 ms; the profile is written up.'
-- outcome: unrated
-  evidence: []
-  verdict_quote: ''
+- outcome: successful
+  evidence:
+  - docs/results/3-runsc-boot.md
+  - docs/adr/0017-runsc-run-boots-in-process.md
+  verdict_quote: '`runsc.exe run` on stock Windows boots the real Loader in-process and runs a glibc guest and busybox from a Windows-folder rootfs with stdio, exit codes, stdin, a windows-nat network,
+    a published port and a ConPTY-driven terminal with resize and Ctrl-C, as a standard user'
   headline: ''
   depends_on:
   - platform-static-guest-from-memory
   - runsc-windows-commands
   replaced_by: []
   start: '2026-11-26'
-  end: ''
-  folded: []
+  end: '2026-11-26'
+  folded:
+  - Each runsc run takes 0.4-0.5 s (2026-11-26, commit 7f1e94454)
   overview: false
   id: runsc-windows-boot
   title: Boot runsc on Windows
   track: runsc
   kind: feature
-  state: in-progress
+  state: done
   lane: windows-ci
   plain: runsc's real boot path on Windows (spec, mounts, stdio, network) replaces the test harness that builds the kernel by hand.
   notes: 'Done when: runsc boot on Windows starts a sandbox from an OCI spec with the windows-nat network and a tmpfs or directfs root, and the static guests pass through it.'
@@ -1827,6 +1834,7 @@
   headline: ''
   depends_on:
   - platform-busybox-on-windows
+  - platform-map-files-without-sections
   replaced_by: []
   start: ''
   end: ''
@@ -1862,3 +1870,41 @@
   overview: false
   plain: A git-status-like walk of 20000 files takes 1.2-2.4 s through the host folder; an attribute cache fed by the change watcher would bring stat near native.
   notes: 'Done when: a 20000-file stat walk through the backend is within 2x of native on windows-latest.'
+- outcome: unrated
+  evidence:
+  - docs/results/3-runsc-boot.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-26'
+  end: ''
+  folded: []
+  overview: false
+  id: platform-map-files-without-sections
+  title: Map files not in the memory file
+  track: platform
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: The platform can only map pages of the Sentry memory file; erofs image pages (and any other memmap.File) make the guest fault on its first instruction.
+  notes: 'Fixed when: runsc run boots busybox from an erofs image root (mkfs.erofs --all-root) on windows-latest.'
+- outcome: unrated
+  evidence: []
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - runsc-windows-boot
+  replaced_by: []
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  id: runsc-windows-lifecycle-commands
+  title: Container lifecycle commands on Windows
+  track: runsc
+  kind: feature
+  state: blocked
+  lane: windows-ci
+  plain: create, start, state, kill, delete, exec, ps and list need a sandbox process that outlives runsc.exe and a named control pipe; only run and version exist today.
+  notes: 'Done when: Podman-style lifecycle (create, start, exec, kill, delete, state, list) works on Windows against a sandbox process, tested in CI.'
