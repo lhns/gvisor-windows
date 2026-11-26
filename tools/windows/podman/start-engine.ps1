@@ -67,6 +67,8 @@ function Start-Engine {
     # Gap (docs/results/5-podman-windows.md): sqlite on the host-folder mount fails with "disk I/O error:
     # permission denied"; the database goes to a tmpfs until that is fixed (so it does not survive a restart).
     if ($StaticOnTmpfs) { (Get-Content $etc\containers.conf) -replace '^\[engine\]', "[engine]`nstatic_dir = `"/run/podman-static`"" | Set-Content $etc\containers.conf -Encoding ascii }
+    # The Sentry writes no resolv.conf: the virtual DNS of windows-nat is 10.0.2.3 (ADR 0014).
+    [IO.File]::WriteAllText((Join-Path $root 'etc\resolv.conf'), "nameserver 10.0.2.3`n")
     foreach ($d in 'run', 'tmp', 'var\lib\containers', 'mnt') { New-Item -ItemType Directory -Force (Join-Path $root $d) | Out-Null }
   }
 
