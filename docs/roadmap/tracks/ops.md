@@ -9,7 +9,7 @@ Scope: CI, packaging, owner decisions on process.
 <!-- BEGIN GENERATED: track-ops -->
 ```mermaid
 flowchart TB
-    ops_windows_ci_standard_user["▶ Windows CI as a<br/>standard user"]
+    ops_windows_ci_standard_user["✔ Windows CI as a<br/>standard user"]
     ops_upstream_merges["○ Merge upstream<br/>gVisor regularly"]
     ops_syscall_tests_on_windows["⛔ gVisor syscall tests<br/>on Windows"]
     ops_portable_packaging["⛔ Portable zip, no<br/>installer"]
@@ -30,7 +30,7 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class ops_windows_ci_standard_user inprog
+    class ops_windows_ci_standard_user succ
     class ops_upstream_merges next
     class ops_syscall_tests_on_windows,ops_portable_packaging blocked
 ```
@@ -46,7 +46,7 @@ flowchart TB
 | `ops-borrow-code` | Borrow code, check licenses later | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0003-fork-of-the-go-branch.md; NOTICE |
 | `ops-phase0-go-no-go` | Go or no-go after Phase 0 | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 | workloads-podman-on-gvisor-linux, research-gvisor-benchmark, platform-elf-alignment-survey, fs-persistent-image-storage, platform-trap-cost, platform-4k-section-views, platform-tls-register, platform-restricted-stub, sentry-go-fault-recovery, runsc-measure-cli |  |  |  | docs/adr/0004-phase-0-results.md |
 | `ops-podman-only-the-bar` | Podman only as the bar | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0002-what-done-means.md |
-| `ops-windows-ci-standard-user` | Windows CI as a standard user | tooling | windows-ci | in-progress | unrated | 2026-11-26 |  | ops-phase0-go-no-go |  |  |  |  |
+| `ops-windows-ci-standard-user` | Windows CI as a standard user | tooling | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | ops-phase0-go-no-go |  |  |  | docs/results/2-windows-network.md |
 | `ops-syscall-test-strategy` | Choose how to run gVisor's tests | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0009-running-gvisors-tests.md |
 | `ops-syscall-tests-on-windows` | gVisor syscall tests on Windows | feature | windows-ci | blocked | unrated |  |  | ops-syscall-test-strategy, platform-busybox-on-windows |  |  |  |  |
 | `ops-upstream-merges` | Merge upstream gVisor regularly | tooling | linux-ci | next | unrated |  |  |  |  |  |  |  |
@@ -61,7 +61,7 @@ flowchart TB
 | `ops-borrow-code` | Borrow code, check licenses later |  |  | Code from other projects may be reused; its origin is recorded so the owner can review licences later. |  |  |  |  |  |
 | `ops-phase0-go-no-go` | Go or no-go after Phase 0 |  |  | Go: the owner asked for the full project; ADR 0004 lists the conditions. | Input: docs/adr/0004-phase-0-results.md (recommendation: go, with conditions). |  |  |  |  |
 | `ops-podman-only-the-bar` | Podman only as the bar |  |  | The project is gVisor for Windows hosts; Podman is only the workload that shows enough features work. |  |  |  |  |  |
-| `ops-windows-ci-standard-user` | Windows CI as a standard user |  |  | CI on windows-latest creates a standard user and runs every Windows test as that user. | Done when: a workflow runs a test as a freshly created non-admin user and fails if anything needs elevation. |  |  |  |  |
+| `ops-windows-ci-standard-user` | Windows CI as a standard user | a standard user on stock windows-latest can resolve DNS, fetch https://github.com and publish a guest port on 127.0.0.1 through a netstack NAT with no admin rights, and CI proves the account really was unprivileged. |  | CI on windows-latest creates a standard user and runs every Windows test as that user. | Done when: a workflow runs a test as a freshly created non-admin user and fails if anything needs elevation. |  |  |  |  |
 | `ops-syscall-test-strategy` | Choose how to run gVisor's tests |  |  | The Go branch ships no tests; decide whether gVisor's unit and syscall tests run from a master checkout with Bazel or get ported. | Done when: an ADR records the choice. |  |  |  |  |
 | `ops-syscall-tests-on-windows` | gVisor syscall tests on Windows |  |  | gVisor's own syscall test suite runs against the Windows port to show which Linux calls work. | Done when: the suite runs in CI on Windows and its pass rate is published. |  |  |  |  |
 | `ops-upstream-merges` | Merge upstream gVisor regularly |  |  | Regularly take in upstream gVisor's Go branch so the port does not drift. | Done when: a scheduled workflow merges upstream/go into windows or opens an issue on conflict. |  |  |  |  |

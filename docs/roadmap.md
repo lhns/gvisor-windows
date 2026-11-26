@@ -89,9 +89,9 @@ Owner calls are the purple shape. A decided owner call is drawn in the overview 
 ## Ratings
 
 <!-- BEGIN GENERATED: ratings -->
-0 of 30 rated nodes are confirmed by the owner.
+0 of 33 rated nodes are confirmed by the owner.
 
-Not yet confirmed: `research-lkl-nommu`, `research-unkernel`, `research-flinux-translation`, `research-qemu-emulation`, `workloads-podman-on-gvisor-linux`, `research-gvisor-benchmark`, `platform-elf-alignment-survey`, `fs-persistent-image-storage`, `platform-trap-cost`, `platform-4k-section-views`, `platform-tls-register`, `platform-restricted-stub`, `sentry-go-fault-recovery`, `research-whpx-this-machine`, `platform-stub-controller`, `platform-page-verification`, `platform-syscall-fast-path`, `platform-winstub`, `runsc-measure-cli`, `sentry-fault-recovery`, `research-file-protocol`, `platform-zpoline-hooks`, `sentry-unix-shim`, `platform-exception-stack`, `workloads-strict-bar-linux`, `net-bridge-networking`, `platform-debug-event-cost`, `platform-syscall-site-survey`, `platform-faults-per-exec`, `platform-controller-wakeups`.
+Not yet confirmed: `research-lkl-nommu`, `research-unkernel`, `research-flinux-translation`, `research-qemu-emulation`, `workloads-podman-on-gvisor-linux`, `research-gvisor-benchmark`, `platform-elf-alignment-survey`, `fs-persistent-image-storage`, `platform-trap-cost`, `platform-4k-section-views`, `platform-tls-register`, `platform-restricted-stub`, `sentry-go-fault-recovery`, `research-whpx-this-machine`, `platform-stub-controller`, `platform-page-verification`, `platform-syscall-fast-path`, `platform-winstub`, `net-netstack-windows-link`, `net-port-forwarding`, `runsc-measure-cli`, `ops-windows-ci-standard-user`, `sentry-fault-recovery`, `research-file-protocol`, `platform-zpoline-hooks`, `sentry-unix-shim`, `platform-exception-stack`, `workloads-strict-bar-linux`, `net-bridge-networking`, `platform-debug-event-cost`, `platform-syscall-site-survey`, `platform-faults-per-exec`, `platform-controller-wakeups`.
 <!-- END GENERATED: ratings -->
 
 ## Overview
@@ -106,13 +106,13 @@ flowchart TB
         workloads_podman_on_gvisor_linux[/"workloads · ✔ Podman<br/>on gVisor on Linux"/]
         platform_tls_register[/"platform · ✔ Set the<br/>TLS register"/]
         ops_phase0_go_no_go{{"ops · ✔ Go or no-go<br/>after Phase 0"}}
+        net_netstack_windows_link["net · ✔ Netstack to<br/>Windows sockets"]
         net_bridge_networking["net · ✔ Bridge<br/>networking inside<br/>gVisor"]
         platform_veh_on_guest_stack_unsafe>"platform · ✔<br/>Exceptions overwrite<br/>guest stacks"]
         platform_winstub["platform · ✔ Windows<br/>platform for the<br/>Sentry"]
     end
     subgraph bd_1["Now (in progress)"]
         fs_windows_directfs["fs · ▶ Open Windows<br/>files directly"]
-        net_netstack_windows_link["net · ▶ Netstack to<br/>Windows sockets"]
     end
     subgraph bd_2["Later (blocked or parked)"]
         platform_static_guest_from_memory["platform · ⛔ Run a<br/>static guest from<br/>memory"]
@@ -124,15 +124,14 @@ flowchart TB
     ops_name_and_fork ~~~ platform_tls_register
     fs_compat_layer_not_boundary ~~~ platform_tls_register
     workloads_podman_on_gvisor_linux ~~~ ops_phase0_go_no_go
+    platform_tls_register ~~~ net_netstack_windows_link
     platform_tls_register ~~~ net_bridge_networking
-    platform_tls_register ~~~ platform_veh_on_guest_stack_unsafe
-    ops_phase0_go_no_go ~~~ platform_winstub
+    ops_phase0_go_no_go ~~~ platform_veh_on_guest_stack_unsafe
+    net_netstack_windows_link ~~~ platform_winstub
     net_bridge_networking ~~~ platform_winstub
-    platform_veh_on_guest_stack_unsafe ~~~ platform_winstub
+    platform_veh_on_guest_stack_unsafe ~~~ fs_windows_directfs
     platform_winstub ~~~ fs_windows_directfs
-    platform_winstub ~~~ net_netstack_windows_link
     fs_windows_directfs ~~~ platform_static_guest_from_memory
-    net_netstack_windows_link ~~~ platform_static_guest_from_memory
     platform_static_guest_from_memory ~~~ platform_busybox_on_windows
     platform_static_guest_from_memory ~~~ runsc_container_on_windows
     platform_busybox_on_windows ~~~ workloads_podman_on_windows
@@ -145,7 +144,7 @@ flowchart TB
     net_netstack_windows_link --> runsc_container_on_windows
     runsc_container_on_windows --> workloads_podman_on_windows
     net_bridge_networking --> workloads_podman_on_windows
-    linkStyle 18 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    linkStyle 17 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -164,8 +163,8 @@ flowchart TB
     class ops_name_and_fork,fs_compat_layer_not_boundary,ops_phase0_go_no_go decided
     class workloads_podman_on_gvisor_linux,platform_tls_register mixed
     class workloads_podman_on_windows,runsc_container_on_windows,platform_busybox_on_windows,platform_static_guest_from_memory blocked
-    class platform_winstub,net_bridge_networking,platform_veh_on_guest_stack_unsafe succ
-    class fs_windows_directfs,net_netstack_windows_link inprog
+    class platform_winstub,net_netstack_windows_link,net_bridge_networking,platform_veh_on_guest_stack_unsafe succ
+    class fs_windows_directfs inprog
 ```
 <!-- END GENERATED: overview -->
 
@@ -200,8 +199,7 @@ flowchart TB
 | Files stay editable on Windows | ▶ in progress | The Sentry holds Windows file handles only briefly, so editors and git can still rename and delete files. |
 | Root filesystem from an OCI bundle | ▶ in progress | The guest's root filesystem comes from an unpacked OCI bundle directory on Windows. |
 | Storage that survives restarts | ⛔ blocked | Implement the chosen writable filesystem so data inside the sandbox outlives a restart. |
-| Netstack to Windows sockets | ▶ in progress | gVisor's own TCP/IP stack sends guest traffic out through ordinary Windows sockets, like a user-space NAT. |
-| Publish guest ports on localhost | ▶ in progress | A port opened in the guest becomes reachable on the Windows machine's localhost. |
+| Netstack to Windows sockets | ✔ done · successful | gVisor's own TCP/IP stack sends guest traffic out through ordinary Windows sockets, like a user-space NAT. |
 | Bridge networking inside gVisor | ✔ done · successful | Podman's default network creates a bridge and veth pairs over netlink; gVisor lacks part of that, so it fails today. Fix it in gVisor itself, first on Linux, then it carries over to Windows. |
 | Podman on gVisor on Linux | ✔ done · mixed ⚠ | Run the acceptance test on stock gVisor on Linux; whatever fails there is a gap in gVisor itself, not in the port. |
 | Podman passes on Windows | ⛔ blocked | The bar for enough features: an unmodified Podman engine passes the acceptance test on gVisor on Windows. |
@@ -210,7 +208,6 @@ flowchart TB
 | Pick gVisor as the base | ✔ done · unrated | Of all ways to run Linux code on Windows without admin, gVisor's user-space Linux kernel is the only one that already runs containers. |
 | Name it gvisor-windows | ✔ done · n/a | The project is an unofficial fork of gVisor's Go branch called gvisor-windows. |
 | Go or no-go after Phase 0 | ✔ done · n/a | Go: the owner asked for the full project; ADR 0004 lists the conditions. |
-| Windows CI as a standard user | ▶ in progress | CI on windows-latest creates a standard user and runs every Windows test as that user. |
 | gVisor syscall tests on Windows | ⛔ blocked | gVisor's own syscall test suite runs against the Windows port to show which Linux calls work. |
 | Merge upstream gVisor regularly | ○ next | Regularly take in upstream gVisor's Go branch so the port does not drift. |
 | Portable zip, no installer | ⛔ blocked | Ship runsc for Windows as a zip or per-user installer that needs no admin. |
@@ -237,9 +234,6 @@ flowchart TB
 - `fs-windows-directfs`: Open Windows files directly
 - `fs-linux-metadata-on-ntfs`: Linux file metadata on NTFS
 - `fs-handles-do-not-block-users`: Files stay editable on Windows
-- `net-netstack-windows-link`: Netstack to Windows sockets
-- `net-port-forwarding`: Publish guest ports on localhost
-- `ops-windows-ci-standard-user`: Windows CI as a standard user
 - `fs-root-filesystem-source`: Root filesystem from an OCI bundle
 <!-- END GENERATED: running -->
 
@@ -266,19 +260,23 @@ Generated on 2026-11-26.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 43 done, 7 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 46 done, 7 abandoned</summary>
 
 - `fs-compat-layer-not-boundary`: Compatibility layer, not security boundary (✔ done · n/a). The sandbox may open the user's files directly with the user's rights; it isolates containers from each other, not from the user.
 - `fs-persistent-image-storage`: Test persistent image storage (✔ done · mixed). Find a writable filesystem inside the sandbox that survives a restart, and how fast each option is.
 - `fs-persistent-storage-choice`: Choose the persistent storage (✔ done · n/a). Decided: persistent data lives as real files in a Windows folder, with Linux metadata in an NTFS stream.
 - `net-bridge-networking`: Bridge networking inside gVisor (✔ done · successful). Podman's default network creates a bridge and veth pairs over netlink; gVisor lacks part of that, so it fails today. Fix it in gVisor itself, first on Linux, then it carries over to Windows.
+- `net-netstack-windows-link`: Netstack to Windows sockets (✔ done · successful). gVisor's own TCP/IP stack sends guest traffic out through ordinary Windows sockets, like a user-space NAT.
+  - Library-tested only: no guest process has used the NAT yet (2026-11-26)
 - `net-nftables-thread-safety`: Make nftables safe for concurrent use (✔ fixed). Podman 6's netavark only speaks nftables, and gVisor's nftables package says it is not thread-safe, so --nftables stays off by default.
+- `net-port-forwarding`: Publish guest ports on localhost (✔ done · successful). A port opened in the guest becomes reachable on the Windows machine's localhost.
 - `ops-borrow-code`: Borrow code, check licenses later (✔ done · n/a). Code from other projects may be reused; its origin is recorded so the owner can review licences later.
 - `ops-linux-tests-on-actions`: Run Linux tests on GitHub Actions (✔ done · n/a). Everything that needs a Linux host runs on GitHub's hosted runners.
 - `ops-name-and-fork`: Name it gvisor-windows (✔ done · n/a). The project is an unofficial fork of gVisor's Go branch called gvisor-windows.
 - `ops-phase0-go-no-go`: Go or no-go after Phase 0 (✔ done · n/a). Go: the owner asked for the full project; ADR 0004 lists the conditions.
 - `ops-podman-only-the-bar`: Podman only as the bar (✔ done · n/a). The project is gVisor for Windows hosts; Podman is only the workload that shows enough features work.
 - `ops-syscall-test-strategy`: Choose how to run gVisor's tests (✔ done · n/a). The Go branch ships no tests; decide whether gVisor's unit and syscall tests run from a master checkout with Bazel or get ported.
+- `ops-windows-ci-standard-user`: Windows CI as a standard user (✔ done · successful). CI on windows-latest creates a standard user and runs every Windows test as that user.
 - `platform-4k-section-views`: Test 4 KB section views (✔ done · successful). Check whether Windows can map shared memory at the 4 KB steps Linux programs expect, instead of 64 KB.
 - `platform-controller-wakeups`: Controller waits without busy polling (✔ done · successful). The prototype controller polls all stubs on one thread and starves guests on small machines; replace it with spin-then-wait hand-offs per stub thread.
   - Remaining 8-9 %fs repairs per Go run follow debug events, which stop all threads (2026-11-26)
@@ -345,8 +343,8 @@ Each track has its own page with its tree, node table and per-node details.
 - [platform - platform](roadmap/tracks/platform.md): 27 nodes (16 done, 2 next, 4 blocked, 4 parked, 1 abandoned)
 - [sentry - sentry](roadmap/tracks/sentry.md): 9 nodes (5 done, 4 blocked)
 - [fs - files](roadmap/tracks/fs.md): 9 nodes (3 done, 4 in progress, 2 blocked)
-- [net - network](roadmap/tracks/net.md): 4 nodes (2 done, 2 in progress)
+- [net - network](roadmap/tracks/net.md): 4 nodes (4 done)
 - [workloads - workloads](roadmap/tracks/workloads.md): 10 nodes (7 done, 3 blocked)
 - [research - research](roadmap/tracks/research.md): 8 nodes (2 done, 6 abandoned)
-- [ops - operations](roadmap/tracks/ops.md): 10 nodes (6 done, 1 in progress, 1 next, 2 blocked)
+- [ops - operations](roadmap/tracks/ops.md): 10 nodes (7 done, 1 next, 2 blocked)
 <!-- END GENERATED: tracks -->

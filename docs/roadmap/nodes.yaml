@@ -853,18 +853,22 @@
   title: Netstack to Windows sockets
   track: net
   kind: feature
-  state: in-progress
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/2-windows-network.md
+  - docs/adr/0014-user-space-nat-for-the-windows-network.md
+  verdict_quote: a standard user on stock windows-latest can resolve DNS, fetch https://github.com and publish a guest port on 127.0.0.1 through a netstack NAT with no admin rights, and CI proves the account
+    really was unprivileged.
   headline: ''
   depends_on:
   - sentry-windows-build
   replaced_by: []
   lane: windows-ci
   start: '2026-11-26'
-  end: ''
-  folded: []
+  end: '2026-11-26'
+  folded:
+  - 'Library-tested only: no guest process has used the NAT yet (2026-11-26, commit 9b1c3cc4a)'
   overview: true
   plain: gVisor's own TCP/IP stack sends guest traffic out through ordinary Windows sockets, like a user-space NAT.
   notes: 'Done when: a guest resolves DNS and downloads over HTTPS on Windows without admin.'
@@ -872,17 +876,20 @@
   title: Publish guest ports on localhost
   track: net
   kind: feature
-  state: in-progress
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/2-windows-network.md
+  - docs/adr/0014-user-space-nat-for-the-windows-network.md
+  verdict_quote: a standard user on stock windows-latest can resolve DNS, fetch https://github.com and publish a guest port on 127.0.0.1 through a netstack NAT with no admin rights, and CI proves the account
+    really was unprivileged.
   headline: ''
   depends_on:
   - net-netstack-windows-link
   replaced_by: []
   lane: windows-ci
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   plain: A port opened in the guest becomes reachable on the Windows machine's localhost.
@@ -970,17 +977,19 @@
   title: Windows CI as a standard user
   track: ops
   kind: tooling
-  state: in-progress
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/2-windows-network.md
+  verdict_quote: a standard user on stock windows-latest can resolve DNS, fetch https://github.com and publish a guest port on 127.0.0.1 through a netstack NAT with no admin rights, and CI proves the account
+    really was unprivileged.
   headline: ''
   depends_on:
   - ops-phase0-go-no-go
   replaced_by: []
   lane: windows-ci
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-26'
   folded: []
   overview: false
   plain: CI on windows-latest creates a standard user and runs every Windows test as that user.

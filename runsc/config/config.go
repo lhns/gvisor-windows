@@ -501,6 +501,11 @@ type Config struct {
 	// SystrapDisableFastPath disables the Systrap fast path entirely.
 	SystrapDisableFastPath bool `flag:"systrap-disable-fast-path"`
 
+	// Publish lists the guest ports to publish on 127.0.0.1 with
+	// --network=windows-nat, as "hostPort:guestPort" pairs separated by commas.
+	// gvisor-windows: new flag.
+	Publish string `flag:"publish"`
+
 	// Nftables enables support for nftables to be used instead of iptables.
 	Nftables bool `flag:"nftables"`
 
@@ -898,6 +903,11 @@ const (
 
 	// NetworkPlugin uses third-party network stack.
 	NetworkPlugin
+
+	// NetworkWindowsNAT gives the sandbox an eth0 behind a user-space NAT
+	// that re-originates its traffic as host sockets.
+	// gvisor-windows: new network type.
+	NetworkWindowsNAT
 )
 
 func networkTypePtr(v NetworkType) *NetworkType {
@@ -915,6 +925,8 @@ func (n *NetworkType) Set(v string) error {
 		*n = NetworkNone
 	case "plugin":
 		*n = NetworkPlugin
+	case "windows-nat":
+		*n = NetworkWindowsNAT
 	default:
 		return fmt.Errorf("invalid network type %q", v)
 	}
@@ -937,6 +949,8 @@ func (n NetworkType) String() string {
 		return "none"
 	case NetworkPlugin:
 		return "plugin"
+	case NetworkWindowsNAT:
+		return "windows-nat"
 	}
 	panic(fmt.Sprintf("Invalid network type %d", n))
 }

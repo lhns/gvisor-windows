@@ -48,8 +48,8 @@ gantt
     Choose the persistent storage :fs_persistent_storage_choice, 2026-11-26, 2026-11-26
     Root filesystem from an OCI bundle :active, fs_root_filesystem_source, 2026-11-26, 2026-11-26
     section net - network
-    Netstack to Windows sockets :active, net_netstack_windows_link, 2026-11-26, 2026-11-26
-    Publish guest ports on localhost :active, net_port_forwarding, 2026-11-26, 2026-11-26
+    Netstack to Windows sockets :net_netstack_windows_link, 2026-11-26, 2026-11-26
+    Publish guest ports on localhost :net_port_forwarding, 2026-11-26, 2026-11-26
     Bridge networking inside gVisor :net_bridge_networking, 2026-11-26, 2026-11-26
     Make nftables safe for concurrent use :net_nftables_thread_safety, 2026-11-26, 2026-11-26
     section workloads - workloads
@@ -75,7 +75,7 @@ gantt
     Borrow code, check licenses later :ops_borrow_code, 2026-11-26, 2026-11-26
     Go or no-go after Phase 0 :ops_phase0_go_no_go, 2026-11-26, 2026-11-26
     Podman only as the bar :ops_podman_only_the_bar, 2026-11-26, 2026-11-26
-    Windows CI as a standard user :active, ops_windows_ci_standard_user, 2026-11-26, 2026-11-26
+    Windows CI as a standard user :ops_windows_ci_standard_user, 2026-11-26, 2026-11-26
     Choose how to run gVisor's tests :ops_syscall_test_strategy, 2026-11-26, 2026-11-26
 ```
 

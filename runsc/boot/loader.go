@@ -2391,6 +2391,17 @@ func newRootNetworkNamespace(conf *config.Config, clock tcpip.Clock, userns *aut
 			return nil, err
 		}
 		return inet.NewRootNamespace(s, creator, userns), nil
+	case config.NetworkWindowsNAT:
+		creator := newSandboxNetstackCreator(conf, clock, uid)
+		s, err := creator.newEmptySandboxNetworkStack()
+		if err != nil {
+			return nil, err
+		}
+		// gvisor-windows: eth0 behind the user-space NAT.
+		if err := setupWindowsNAT(conf, s.Stack); err != nil {
+			return nil, err
+		}
+		return inet.NewRootNamespace(s, creator, userns), nil
 	case config.NetworkPlugin:
 		return inet.NewRootNamespace(plugin.GetPluginStack(), nil, userns), nil
 
