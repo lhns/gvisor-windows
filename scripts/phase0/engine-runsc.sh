@@ -18,7 +18,7 @@ start() {
   mkdir -p "$SHARE_DIR"; sudo mkdir -p "$HOSTDIR"
   local st=()
   case "$STORAGE" in
-    tmpfs) st=(--tmpfs /var/lib/containers) ;;
+    tmpfs) st=(--tmpfs /var/lib/containers:rw,exec,mode=755)  # docker defaults tmpfs to noexec, which breaks running container binaries ;;
     hostdir) st=(-v "$HOSTDIR:/var/lib/containers") ;;
   esac
   st+=(-e CONTAINERS_STORAGE_CONF=/etc/containers/storage.conf)  # ignore the image's fuse-overlayfs drop-ins
