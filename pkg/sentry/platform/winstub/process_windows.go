@@ -163,6 +163,7 @@ func (as *addressSpace) startThread(t *thread) error {
 	if r, _, e := pResumeThread.Call(h); int32(r) == -1 {
 		return fmt.Errorf("ResumeThread: %v", e)
 	}
+	Trace("thread %d started (tid %d)", t.idx, tid)
 	return nil
 }
 
@@ -173,12 +174,14 @@ func (as *addressSpace) startThread(t *thread) error {
 // process, so that goroutine stays locked to its OS thread for the process's
 // lifetime.
 func (p *Platform) newAS() (*addressSpace, error) {
+	Trace("as: start")
 	as := newAddressSpace(p)
 	go as.debugLoop()
 	if err := <-as.started; err != nil {
 		<-as.loopDone
 		return nil, err
 	}
+	Trace("as: process set up")
 	// Wait for the anchor thread to reach its wait: Windows finishes initializing
 	// the process on it, and CreateRemoteThread needs that.
 	anchor := as.slots[0]
@@ -190,6 +193,7 @@ func (p *Platform) newAS() (*addressSpace, error) {
 		}
 		time.Sleep(200 * time.Microsecond)
 	}
+	Trace("as: anchor parked")
 	return as, nil
 }
 
@@ -343,6 +347,9 @@ func (as *addressSpace) onException(ev *debugEvent, ctx *ctxBuf, seenBP *bool) u
 		return dbgContinue
 	}
 	excAddr := ev.u64(32)
+	if traceOn {
+		Trace("exception %#x at %#x (thread %d)", code, excAddr, t.idx)
+	}
 	t.stopMu.Lock()
 	defer t.stopMu.Unlock()
 	t.mu.Lock()

@@ -443,9 +443,11 @@ func (as *addressSpace) Release() {
 	if as.released.Swap(true) {
 		return
 	}
+	Trace("as: release")
 	as.markDead()
 	pTerminateProcess.Call(as.h, 0)
 	<-as.loopDone
+	Trace("as: process gone")
 	as.mu.Lock()
 	defer as.mu.Unlock()
 	as.tmu.Lock()

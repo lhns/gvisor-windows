@@ -46,6 +46,7 @@ type winContext struct {
 	// ac's (every stop); PullFullState copies it.
 	needRestore bool
 	needPull    bool
+	nreq        int
 }
 
 const eflagsUser = 0x246 // what a Linux syscall leaves in r11
@@ -214,6 +215,12 @@ func (c *winContext) wait(t *thread) (request, error) {
 	t.req = request{}
 	t.lastKind = req.kind
 	t.mu.Unlock()
+	if traceOn {
+		if c.nreq == 0 {
+			Trace("ctx %p: first request (kind %d)", c, req.kind)
+		}
+		c.nreq++
+	}
 	return req, nil
 }
 
@@ -250,6 +257,9 @@ func (c *winContext) FullStateChanged() {
 
 // Release implements platform.Context.Release.
 func (c *winContext) Release() {
+	if traceOn && c.nreq > 0 {
+		Trace("ctx %p: release after %d requests", c, c.nreq)
+	}
 	c.cur.Store(nil)
 	if c.t != nil {
 		c.t.as.freeThread(c.t)

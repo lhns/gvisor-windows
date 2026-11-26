@@ -161,8 +161,10 @@ func main() {
 	ls.SetUnchecked(limits.NumberOfFiles, limits.Limit{Cur: 1024, Max: 4096})
 	args := append([]string{"/guest"}, flag.Args()[1:]...)
 	tInit := time.Since(t0)
+	winstub.Trace("boot: kernel ready")
 
 	must(k.Start(), "kernel start")
+	winstub.Trace("boot: kernel started")
 	t1 := time.Now()
 	tg, _, err := k.CreateProcess(kernel.CreateProcessArgs{
 		Filename:             "/guest",
@@ -181,6 +183,7 @@ func main() {
 		ContainerID:          "winstub",
 	})
 	must(err, "creating the process")
+	winstub.Trace("boot: process created")
 	fdt.DecRef(ctx)
 	k.StartProcess(tg)
 	done := make(chan struct{})
@@ -191,6 +194,7 @@ func main() {
 		fail("the guest did not exit within %v", *timeout)
 	}
 	tRun := time.Since(t1)
+	winstub.Trace("boot: exit observed")
 	ws := tg.ExitStatus()
 
 	out := readAll(ctx, vfsObj, creds, root, "/stdout")

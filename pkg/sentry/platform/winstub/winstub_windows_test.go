@@ -637,3 +637,43 @@ func TestFPState(t *testing.T) {
 		t.Fatalf("after an interrupt ymm0 = %x, want %x", got, want)
 	}
 }
+
+// TestSyscallLatency logs the syscall round trip per thread count: every thread
+// runs its own context in one address space.
+func TestSyscallLatency(t *testing.T) {
+	h := newHarness(t)
+	g := buildGuest()
+	mm := h.newMM()
+	h.setup(mm, g)
+	const iters = 20000
+	for _, n := range []int{1, 2, 4, 8} {
+		var wg sync.WaitGroup
+		durs := make([]time.Duration, n)
+		for w := 0; w < n; w++ {
+			wg.Add(1)
+			go func(w int) {
+				defer wg.Done()
+				c := h.p.NewContext(pkgcontext.Background())
+				defer c.Release()
+				ac := newAC(g.loop, 0)
+				// warm up: the thread exists and the code is mapped
+				if _, _, err := c.Switch(pkgcontext.Background(), mm, ac, -1); err != nil {
+					return
+				}
+				start := time.Now()
+				for i := 0; i < iters; i++ {
+					if _, _, err := c.Switch(pkgcontext.Background(), mm, ac, -1); err != nil {
+						return
+					}
+				}
+				durs[w] = time.Since(start) / iters
+			}(w)
+		}
+		wg.Wait()
+		var sum time.Duration
+		for _, d := range durs {
+			sum += d
+		}
+		t.Logf("LATENCY threads=%d: %v per syscall round trip per thread (%v each)", n, sum/time.Duration(n), durs)
+	}
+}

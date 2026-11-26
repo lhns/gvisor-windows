@@ -3,7 +3,7 @@
 name: windows-sentry-guests
 on:
   push:
-    branches: [static-guest]
+    branches: [static-guest, platform-perf]
     paths: ["pkg/**", "tools/windows/sentryguest/**", "test/guests/**", ".github/workflows/windows-sentry-guests.yml"]
   workflow_dispatch:
 jobs:
@@ -67,6 +67,16 @@ jobs:
             if ($LASTEXITCODE -ne 0) { $fail = 1 }
           }
           exit $fail
+      - name: Trace
+        if: always()
+        continue-on-error: true
+        shell: pwsh
+        env: {WINSTUB_TRACE: "1"}
+        run: |
+          foreach ($n in 'hello_asm','hello_glibc','fork_glibc') {
+            "===== trace $n" | Tee-Object -Append -FilePath trace.txt
+            & ./sentryguest.exe "-timeout=90s" "-code=$(if ($n -eq 'hello_glibc') {7} else {0})" "out/$n" 2>&1 | Tee-Object -Append -FilePath trace.txt
+          }
       - uses: actions/upload-artifact@v4
         if: always()
-        with: {name: sentry-guests-output, path: guests.txt}
+        with: {name: sentry-guests-output, path: "guests.txt\ntrace.txt"}
