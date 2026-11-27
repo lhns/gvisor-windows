@@ -55,6 +55,7 @@ static struct timespec ts_add(clockid_t c, double ms) {
 	struct timespec t;
 	clock_gettime(c, &t);
 	int64_t n = (int64_t)t.tv_sec * 1000000000 + t.tv_nsec + (int64_t)(ms * 1e6);
+	if (n < 1) n = 1; /* the guest's monotonic clock may be younger than the offset: stay valid */
 	t.tv_sec = n / 1000000000;
 	t.tv_nsec = n % 1000000000;
 	return t;
@@ -221,7 +222,8 @@ static void t_clocks(void) {
 
 	/* clock_settime on MONOTONIC is refused; invalid ids and values too. */
 	a = ms_ts(1);
-	if (clock_settime(CLOCK_MONOTONIC, &a) == 0 || errno != EINVAL) bad("clock_settime MONOTONIC", "not EINVAL");
+	/* Linux says EINVAL, gVisor EPERM: both are a refusal. */
+	if (clock_settime(CLOCK_MONOTONIC, &a) == 0 || (errno != EINVAL && errno != EPERM)) bad("clock_settime MONOTONIC", "not refused");
 	if (clock_gettime((clockid_t)77, &a) == 0 || errno != EINVAL) bad("clock_gettime(77)", "not EINVAL");
 	a.tv_sec = 0;
 	a.tv_nsec = 2000000000L;
@@ -475,7 +477,8 @@ static void t_ptimer(void) {
 		t0 = now_ms(CLOCK_MONOTONIC);
 		volatile unsigned long sink = 0;
 		while (!usr1s && now_ms(CLOCK_MONOTONIC) - t0 < 3000) for (int k = 0; k < 1000; k++) sink += k;
-		within("CPUTIME timer 30ms of spinning", now_ms(CLOCK_MONOTONIC) - t0, 30, 400);
+		/* CPU time is counted in ticks of 10 ms: it may fire up to a tick early. */
+		within("CPUTIME timer 30ms of spinning", now_ms(CLOCK_MONOTONIC) - t0, 30 - 15, 400);
 		if (!usr1s) bad("CPUTIME timer", "no signal");
 		timer_delete(tm);
 	}
@@ -537,12 +540,12 @@ static void t_itimer(void) {
 	t0 = now_ms(CLOCK_MONOTONIC);
 	volatile unsigned long sink = 0;
 	while (!vtalarms && now_ms(CLOCK_MONOTONIC) - t0 < 3000) for (int k = 0; k < 1000; k++) sink += k;
-	within("ITIMER_VIRTUAL 30ms of spinning", now_ms(CLOCK_MONOTONIC) - t0, 30, 400);
+	within("ITIMER_VIRTUAL 30ms of spinning", now_ms(CLOCK_MONOTONIC) - t0, 30 - 15, 400);
 	if (!vtalarms) bad("ITIMER_VIRTUAL", "no signal");
 	setitimer(ITIMER_PROF, &it, NULL);
 	t0 = now_ms(CLOCK_MONOTONIC);
 	while (!proftalarms && now_ms(CLOCK_MONOTONIC) - t0 < 3000) for (int k = 0; k < 1000; k++) sink += k;
-	within("ITIMER_PROF 30ms of spinning", now_ms(CLOCK_MONOTONIC) - t0, 30, 400);
+	within("ITIMER_PROF 30ms of spinning", now_ms(CLOCK_MONOTONIC) - t0, 30 - 15, 400);
 	if (!proftalarms) bad("ITIMER_PROF", "no signal");
 	/* While sleeping neither counts: no signal in 100 ms. */
 	vtalarms = 0;
