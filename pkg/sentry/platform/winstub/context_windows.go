@@ -185,6 +185,9 @@ func (c *winContext) Switch(ctx pkgcontext.Context, mm platform.MemoryManager, a
 		c.cpu = max(cpu, 0)
 	}
 	if !c.intr.Enable() {
+		if sigLatOn {
+			c.sl = sigLatSwitch{t0: qpc(), early: true}
+		}
 		return nil, hostarch.NoAccess, platform.ErrContextInterrupt
 	}
 	defer c.intr.Disable()

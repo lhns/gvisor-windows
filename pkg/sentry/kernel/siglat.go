@@ -6,6 +6,7 @@
 //
 //	late    the timer goroutine ran after the expiry (Sentry clock)
 //	fire    NotifyTimer: the signal is sent
+//	sent    SendSignal returned in the timer goroutine (the task was told)
 //	out     the task left its block (woken by the interrupt) or Platform.Switch
 //	deliver the handler frame is set up
 //	resume  Platform.Switch is entered to run the handler
@@ -46,12 +47,14 @@ func init() {
 }
 
 type sigLatTrace struct {
-	t                          *Task
-	signo                      int32
-	late                       int64 // ns of the Sentry clock
-	blocked                    int64 // when t blocked, if it was woken from a block
-	fire, out, deliver, resume int64
-	how                        string // "block" or "switch": how the task was reached
+	t                                *Task
+	signo                            int32
+	late                             int64 // ns of the Sentry clock
+	blocked                          int64 // when t blocked, if it was woken from a block
+	fire, sent, out, deliver, resume int64
+	how                              string // "block" or "switch": how the task was reached
+	cpuFire, cpuSent, cpuOut         int32  // processors at fire, sent and out
+	outInfo                          string // the platform's account of the interrupted Switch
 }
 
 // sigLatBuckets are the upper bounds (ms) of the histogram of total latencies.
@@ -81,7 +84,18 @@ func sigLatFire(signo int32) {
 	if sigLat.cur.fire != 0 {
 		sigLat.dropped++
 	}
-	sigLat.cur = sigLatTrace{signo: signo, late: late, fire: now}
+	sigLat.cur = sigLatTrace{signo: signo, late: late, fire: now, cpuFire: profCPU(), cpuSent: -1, cpuOut: -1}
+	sigLat.mu.Unlock()
+}
+
+// sigLatSent is called when the timer goroutine has sent the signal.
+func sigLatSent() {
+	now := profNow()
+	cpu := profCPU()
+	sigLat.mu.Lock()
+	if c := &sigLat.cur; c.fire != 0 && c.sent == 0 {
+		c.sent, c.cpuSent = now, cpu
+	}
 	sigLat.mu.Unlock()
 }
 
@@ -99,7 +113,7 @@ func sigLatOut(t *Task, how string) {
 	sigLat.mu.Lock()
 	c := &sigLat.cur
 	if c.fire != 0 && c.out == 0 {
-		c.out, c.t, c.how = now, t, how
+		c.out, c.t, c.how, c.cpuOut = now, t, how, profCPU()
 		if how == "block" && sigLat.blockT == t {
 			c.blocked = sigLat.blockAt
 		}
@@ -113,7 +127,7 @@ func sigLatDeliver(t *Task, signo int32) {
 	c := &sigLat.cur
 	if c.fire != 0 && c.signo == signo && c.deliver == 0 {
 		if c.out == 0 {
-			c.out, c.how = now, "running"
+			c.out, c.how, c.cpuOut = now, "running", profCPU()
 		}
 		c.deliver, c.t = now, t
 	}
@@ -137,7 +151,10 @@ func sigLatSwitch(t *Task, enter bool, err error) {
 	}
 	if c.resume == 0 {
 		if c.out == 0 && err != nil {
-			c.out, c.t, c.how = now, t, "switch"
+			c.out, c.t, c.how, c.cpuOut = now, t, "switch", profCPU()
+			if p, ok := t.p.(SigLatPlatformInfo); ok {
+				c.outInfo = p.SigLatInfo()
+			}
 		}
 		return
 	}
@@ -153,17 +170,21 @@ func sigLatSwitch(t *Task, enter bool, err error) {
 	sigLat.max = max(sigLat.max, total)
 	if total*1e6 >= float64(sigLatMin) {
 		sigLat.over++
-		info := ""
-		if p, ok := t.p.(SigLatPlatformInfo); ok {
-			info = p.SigLatInfo()
+		info := c.outInfo
+		if info == "" {
+			info = "none (not reached in Switch)"
+		}
+		sent := c.sent
+		if sent == 0 {
+			sent = c.fire
 		}
 		blocked := ""
 		if c.blocked != 0 {
 			blocked = fmt.Sprintf(", blocked %.2f ms before the signal", ms(c.blocked, c.fire))
 		}
-		fmt.Fprintf(os.Stderr, "SIGLAT signal %d total %.2f ms: timer late %.2f, fire->out(%s) %.2f, out->deliver %.2f, deliver->resume %.2f, resume->return %.2f (%v)%s; platform: %s; qpc %.3f ms, %s UTC\n",
-			c.signo, total, float64(c.late)/1e6, c.how, ms(c.fire, c.out), ms(c.out, c.deliver), ms(c.deliver, c.resume), ms(c.resume, now), err,
-			blocked, info, float64(now)/1e6, time.Now().UTC().Format("15:04:05.000"))
+		fmt.Fprintf(os.Stderr, "SIGLAT signal %d total %.2f ms: timer late %.2f, fire->sent %.2f, sent->out(%s) %.2f, out->deliver %.2f, deliver->resume %.2f, resume->return %.2f (%v)%s; cpu fire/sent/out %d/%d/%d; platform at out: %s; fire qpc %.3f ms, qpc %.3f ms, %s UTC\n",
+			c.signo, total, float64(c.late)/1e6, ms(c.fire, sent), c.how, ms(sent, c.out), ms(c.out, c.deliver), ms(c.deliver, c.resume), ms(c.resume, now), err,
+			blocked, c.cpuFire, c.cpuSent, c.cpuOut, info, float64(c.fire)/1e6, float64(now)/1e6, time.Now().UTC().Format("15:04:05.000"))
 	}
 	sigLat.cur = sigLatTrace{}
 }

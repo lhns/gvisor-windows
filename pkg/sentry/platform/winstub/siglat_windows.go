@@ -48,6 +48,8 @@ type sigLatSwitch struct {
 	stubSlept bool  // the stub slept on its reply event (SetEvent needed)
 	ctlSlept  bool  // the Sentry side slept on the request event
 	stale     bool  // an interrupt was still pending from the last Switch
+	early     bool  // Switch returned at once: the interrupt came before it
+	intrAt    int64 // when the interrupt this Switch answered was raised (qpc ns)
 	refusals  [nRefuse]int
 	kind      int
 }
@@ -70,8 +72,11 @@ func (c *winContext) SigLatInfo() string {
 	if r == "" {
 		r = " none"
 	}
-	return fmt.Sprintf("last switch %.2f ms (request kind %d), stub slept %v, sentry slept %v, stale interrupt %v, refusals%s",
-		float64(s.t1-s.t0)/1e6, s.kind, s.stubSlept, s.ctlSlept, s.stale, r)
+	if s.early {
+		return fmt.Sprintf("switch refused at entry (interrupt already forwarded), qpc %.3f ms", float64(s.t0)/1e6)
+	}
+	return fmt.Sprintf("switch from qpc %.3f to %.3f ms (request kind %d), interrupt raised at qpc %.3f ms, stub slept %v, sentry slept %v, stale interrupt %v, refusals%s",
+		float64(s.t0)/1e6, float64(s.t1)/1e6, s.kind, float64(s.intrAt)/1e6, s.stubSlept, s.ctlSlept, s.stale, r)
 }
 
 // sigLatInterrupted records an interrupt request that arrived at now.
@@ -80,6 +85,7 @@ func (c *winContext) sigLatInterrupted(now int64) {
 	if at == 0 {
 		return
 	}
+	c.sl.intrAt = at
 	d := now - at
 	sigLatStats.interrupts.Add(1)
 	for {

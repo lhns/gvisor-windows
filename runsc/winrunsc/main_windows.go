@@ -68,7 +68,7 @@ func Main() {
 	// process for stalls (docs/results/3e-signal-latency.md).
 	var stalls *stallwatch.Watch
 	if kernel.SigLat {
-		stalls = stallwatch.Start("runsc", os.Stderr, 20*time.Millisecond)
+		stalls = stallwatch.Start("runsc", os.Stderr, 20*time.Millisecond, false)
 	}
 	code := run(os.Args[1:])
 	if stalls != nil {

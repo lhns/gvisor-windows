@@ -125,6 +125,7 @@ func (it *IntervalTimer) NotifyTimer(exp uint64) {
 	}
 	if SigLat {
 		sigLatFire(int32(it.signo)) // gvisor-windows
+		defer sigLatSent()          // after the unlock below
 	}
 
 	sh := it.target.tg.signalLock()
