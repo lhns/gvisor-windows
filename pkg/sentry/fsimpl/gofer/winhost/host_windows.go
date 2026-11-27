@@ -3,6 +3,7 @@
 package winhost
 
 import (
+	"gvisor.dev/gvisor/pkg/log"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -762,7 +763,11 @@ func renameHandle(h windows.Handle, full string, replace bool) error {
 	for i, c := range name {
 		*(*uint16)(unsafe.Pointer(&b[hdr+2*i])) = c
 	}
-	err := setInfo(h, classRenameEx, unsafe.Pointer(&b[0]), uint32(size))
+	raw := windows.SetFileInformationByHandle(h, classRenameEx, (*byte)(unsafe.Pointer(&b[0])), uint32(size))
+	err := toErrno(raw)
+	if err == unix.EINVAL {
+		log.Warningf("winhost: rename to %q (%d chars, replace %v) refused: %v", full, len(full), replace, raw)
+	}
 	if err == unix.EACCES && replace {
 		// Replacing a read-only file needs the flag that ignores the attribute;
 		// it is not asked for first because it needs more rights.
@@ -770,6 +775,13 @@ func renameHandle(h windows.Handle, full string, replace bool) error {
 		if err2 := setInfo(h, classRenameEx, unsafe.Pointer(&b[0]), uint32(size)); err2 != unix.EINVAL {
 			err = err2
 		} // else the flag is refused to this user: keep the access error
+	}
+	if err == unix.EINVAL && strings.HasPrefix(full, `\??\`) {
+		// The path was refused (ERROR_INVALID_NAME for some names); try the Win32 long form.
+		if e2 := renameHandle(h, win32Path(full), replace); e2 != unix.EINVAL {
+			log.Warningf("winhost: rename to %q: the Win32 long form gave %v", full, e2)
+			return e2
+		}
 	}
 	if err == unix.EINVAL || err == unix.EOPNOTSUPP {
 		// No POSIX rename (before Windows 10 1809): classic rename.

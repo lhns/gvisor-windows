@@ -103,7 +103,10 @@ function Start-Engine {
         'CONTAINERS_STORAGE_CONF=/etc/containers/storage.conf', 'CONTAINERS_CONF=/etc/containers/containers.conf',
         # Without it a build chooses buildah's rootless isolation (pasta networking, which fails as root: it drops
         # its capabilities before setns, on real Linux too, docs/results/0c-linux-strict-bar.md); the OCI isolation uses netavark.
-        'BUILDAH_ISOLATION=oci')
+        'BUILDAH_ISOLATION=oci',
+        # The guest sees the host's CPUID (no cpuid faulting on Windows), and the Go GC's AVX-512 scan loop crashes now
+        # and then (docs/results/5-podman-windows.md, round 5); Go leaves it out with this.
+        'GODEBUG=cpu.avx512f=off,cpu.avx512cd=off,cpu.avx512bw=off,cpu.avx512dq=off,cpu.avx512vl=off')
       cwd          = '/'
       capabilities = @{ bounding = $caps; effective = $caps; permitted = $caps; inheritable = $caps }
     }

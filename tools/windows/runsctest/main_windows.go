@@ -85,6 +85,8 @@ func main() {
 		{"lifecycle", testLifecycle},
 		{"sockfs", testSockfs},
 		{"fsstress", testFsStress},
+		{"cfr", testCfr},
+		{"debian", testDebian},
 		{"bench", testBench},
 		{"forward", testForward},
 		{"mounts", func() error { return profileRun("mounts", "cat /proc/self/mountinfo; pwd; ls -la /tmp") }},
@@ -103,7 +105,7 @@ func main() {
 	}
 	failed := 0
 	for _, t := range tests {
-		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "strace" || t.name == "restart" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec" || t.name == "sockfs" || t.name == "fsstress")) {
+		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "strace" || t.name == "restart" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec" || t.name == "sockfs" || t.name == "fsstress" || t.name == "cfr" || t.name == "debian")) {
 			continue
 		}
 		start := time.Now()
@@ -346,12 +348,12 @@ func testHostfs() error {
 	must(os.MkdirAll(dir, 0o755))
 	extraMounts = []map[string]any{{"destination": "/w", "type": "bind", "source": dir, "options": []string{"rbind", "rw"}}}
 	defer func() { extraMounts = nil }()
-	script := `cd /w; set -x; echo a >x; echo b >y; mv x y && echo replace-ok; cat y; mkdir d; mkdir d/e; rmdir d/e && echo rmdir-ok; mv d d2 && echo dirmove-ok; rmdir d2 && echo rmdir2-ok; echo c >z; rm z && echo rm-ok; mkfifo p; echo fifo-data >p & cat p; wait; echo fifo-ok; exit 0`
+	script := `cd /w; set -x; echo a >x; echo b >y; mv x y && echo replace-ok; cat y; mkdir d; mkdir d/e; rmdir d/e && echo rmdir-ok; mv d d2 && echo dirmove-ok; rmdir d2 && echo rmdir2-ok; echo c >z; rm z && echo rm-ok; mkfifo p; echo fifo-data >p & cat p; wait; echo fifo-ok; echo link-data >lt; ln -s /w/lt sl-abs; cat sl-abs && echo abs-symlink-ok; ln -s lt sl-rel; cat sl-rel && echo rel-symlink-ok; ln lt hl; cat hl && echo hardlink-ok; mkdir -p ld; ln -s /w/lt ld/00-a%3ab.deb; cat ld/00-a%3ab.deb && echo odd-name-symlink-ok; ln -s /w/lt /w/ld/abs2; cat /w/ld/abs2 && echo abs-in-dir-ok; mkdir -p arch/partial tmpd; echo deb >arch/partial/p%3a1.deb; mv arch/partial/p%3a1.deb arch/p%3a1.deb; ln arch/p%3a1.deb tmpd/00-p%3a1.deb; cat tmpd/00-p%3a1.deb && echo renamed-hardlink-ok; ln -s /w/arch/p%3a1.deb tmpd/01-p; cat tmpd/01-p && echo renamed-symlink-ok; echo dpkg-stat; ls -l tmpd; for n in q%3a1.deb plain.deb; do echo x >arch/partial/$n; chown 42:65534 arch/partial/$n; touch -d 2024-01-01 arch/partial/$n; chmod 0640 arch/partial/$n; mv arch/partial/$n arch/$n && echo apt-rename-ok; done; ls -ln arch; mkdir -p lists/partial; : >lists/partial/deb.debian.org_debian_dists_bookworm-updates_InRelease; chown 42:65534 lists/partial/deb.debian.org_debian_dists_bookworm-updates_InRelease; touch -d 2024-01-01 lists/partial/deb.debian.org_debian_dists_bookworm-updates_InRelease; mv lists/partial/deb.debian.org_debian_dists_bookworm-updates_InRelease lists/deb.debian.org_debian_dists_bookworm-updates_InRelease && echo apt-empty-rename-ok; echo data >lists/partial/a-b; mv lists/partial/a-b lists/a-b && echo hyphen-rename-ok; ls arch >/dev/null; [ -e arch/neg%3a1.deb ]; echo n >arch/partial/neg%3a1.deb; chown 0:0 arch/partial/neg%3a1.deb; mv arch/partial/neg%3a1.deb arch/neg%3a1.deb; ls arch >/dev/null; [ -e arch/neg%3a1.deb ] && echo neg-rename-ok; cat arch/neg%3a1.deb; exit 0`
 	r, err := runsc("hostfs", []string{"/bin/sh", "-c", script}, nil)
 	if err != nil {
 		return err
 	}
-	for _, want := range []string{"replace-ok", "rmdir-ok", "dirmove-ok", "rmdir2-ok", "rm-ok", "fifo-data", "fifo-ok"} {
+	for _, want := range []string{"replace-ok", "rmdir-ok", "dirmove-ok", "rmdir2-ok", "rm-ok", "fifo-data", "fifo-ok", "abs-symlink-ok", "rel-symlink-ok", "hardlink-ok", "odd-name-symlink-ok", "abs-in-dir-ok", "renamed-hardlink-ok", "renamed-symlink-ok", "apt-rename-ok", "apt-empty-rename-ok", "hyphen-rename-ok", "neg-rename-ok"} {
 		if !strings.Contains(r.stdout, want) {
 			return fmt.Errorf("%q missing; stdout %q stderr %q", want, r.stdout, r.stderr)
 		}
@@ -693,4 +695,67 @@ func testRestart() error {
 	script := "cat /s/vol/accvol/_data/f; cat /s/db.sql; ls /s/vfs-containers; mkdir -p /s/vfs-containers/b/userdata && echo cfg2 >/s/vfs-containers/b/userdata/config.json && cat /s/vfs-containers/b/userdata/config.json; echo again >/s/db.sql && mv /s/db.sql /s/db.old && echo db2 >/s/db.sql && cat /s/db.sql; echo second-ok"
 	r, err = runsc("restart2", []string{"/bin/sh", "-c", script}, nil)
 	return expect(r, err, "keep\ndb\ncfg2\ndb2\nsecond-ok\n", 0)
+}
+
+// testCfr: copy_file_range onto a host folder (the vfs storage driver's layer copy), then reads
+// of the copy from the same and from another process, and an exec of it (cfr.c), with the
+// folder revalidated (default) and trusted (cache=exclusive).
+func testCfr() error {
+	for _, cache := range []string{"", "cache=exclusive"} {
+		dir := filepath.Join(*workDir, "cfr")
+		_ = os.RemoveAll(dir)
+		must(os.MkdirAll(dir, 0o755))
+		opts := []string{"rbind", "rw"}
+		if cache != "" {
+			opts = append(opts, cache)
+		}
+		extraMounts = []map[string]any{{"destination": "/w", "type": "bind", "source": dir, "options": opts}}
+		r, err := runsc("cfr", []string{"/bin/cfr", "/w", "/bin/busybox"}, nil)
+		extraMounts = nil
+		if err != nil {
+			return err
+		}
+		fmt.Printf("cfr (%q): exit %d\n%s%s\n", cache, r.code, r.stdout, r.stderr)
+		if r.code != 0 {
+			return fmt.Errorf("cfr with %q: exit %d, stdout %q", cache, r.code, r.stdout)
+		}
+	}
+	return nil
+}
+
+// testDebian runs Debian 12's dynamic loader and echo from the root folder (a lower layer of the
+// root overlay) and from a bind mounted host folder: "libc.so.6: file too short" in Podman.
+func testDebian() error {
+	dir := filepath.Join(*workDir, "debian")
+	_ = os.RemoveAll(dir)
+	must(os.MkdirAll(dir, 0o755))
+	for _, f := range []string{"ld-linux-x86-64.so.2", "libc.so.6", "echo"} {
+		b, err := os.ReadFile(filepath.Join(*rootfs, "dbin", f))
+		must(err)
+		must(os.WriteFile(filepath.Join(dir, f), b, 0o755))
+	}
+	extraMounts = []map[string]any{{"destination": "/dw", "type": "bind", "source": dir, "options": []string{"rbind", "rw", "file-mode=0755"}}}
+	defer func() { extraMounts = nil }()
+	bad := 0
+	for _, d := range []string{"/dbin", "/dw"} {
+		r, err := runsc("debian", []string{d + "/ld-linux-x86-64.so.2", "--library-path", d, d + "/echo", "ok-from-" + d}, nil, "--strace")
+		if err != nil {
+			return err
+		}
+		fmt.Printf("debian ld.so from %s: exit %d stdout %q stderr %q\n", d, r.code, r.stdout, r.stderr)
+		if r.code != 0 {
+			bad++
+			if b, err := os.ReadFile(filepath.Join(*workDir, "logs", "debian.log")); err == nil {
+				for _, l := range strings.Split(string(b), "\n") {
+					if (strings.Contains(l, " X ") && (strings.Contains(l, "ld-linux") || strings.Contains(l, " echo "))) || strings.Contains(l, "gofer Translate") {
+						fmt.Println(l)
+					}
+				}
+			}
+		}
+	}
+	if bad > 0 {
+		return fmt.Errorf("%d of 2 runs failed", bad)
+	}
+	return nil
 }

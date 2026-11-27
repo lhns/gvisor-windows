@@ -9,6 +9,7 @@ O=$1; G=test/guests
 mkdir -p $O
 gcc -static -no-pie -O1 -fstack-protector-all -o $O/hello $G/hello.c
 gcc -static -no-pie -O1 -o $O/unixsock $G/unixsock.c
+gcc -static -no-pie -O1 -o $O/cfr $G/cfr.c
 [ "$2" = all ] || exit 0
 gcc -static -no-pie -O1 -fstack-protector-all -o $O/hello_glibc $G/hello.c
 gcc -static-pie -O1 -fstack-protector-all -o $O/hello_glibc_pie $G/hello.c

@@ -947,13 +947,6 @@ func New(args Args) (*Loader, error) {
 	if args.Conf.Platform == "systrap" {
 		cpufs = cpufs.UnsetFSGSBASE()
 	}
-	if args.Conf.Platform == "winstub" && os.Getenv("WINSTUB_KEEP_AVX512") == "" {
-		// (WINSTUB_KEEP_AVX512=1 keeps it, to test the idea that the crashes were a lost %fs base,
-		// which rewrite mode cannot have.)
-		// Guest Go runtimes (Podman) crashed in their AVX-512 GC scan loop now and then
-		// (fault at -8, runs 45926978291 and 45927543429); Go uses it only if CPUID has it.
-		cpufs = cpufs.UnsetAVX512()
-	}
 
 	maxFDLimit := kernel.MaxFdLimit
 	if args.Spec.Linux != nil && args.Spec.Linux.Sysctl != nil {
