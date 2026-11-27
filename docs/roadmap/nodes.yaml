@@ -1094,22 +1094,25 @@
   title: Portable zip, no installer
   track: ops
   kind: feature
-  state: next
+  state: done
   outcome: unrated
-  evidence: []
+  evidence:
+  - tools/windows/podman/README-release.md
+  - tools/windows/ci/release-test.ps1
   verdict_quote: ''
   headline: ''
   depends_on:
   - runsc-container-on-windows
   replaced_by: []
   lane: windows-ci
-  start: ''
-  end: ''
+  start: '2026-11-27'
+  end: '2026-11-27'
   folded:
   - CI uploads a runsc-windows package (runsc.exe, hello bundle, README) on each push to windows (2026-11-27, commit 20ac3fb3b)
   overview: false
   plain: Ship runsc for Windows as a zip or per-user installer that needs no admin.
-  notes: 'Done when: a release zip runs from a user folder on a clean Windows machine.'
+  notes: CI builds gvisor-windows-<sha>.zip (runsc.exe, Podman engine image, podman-engine.ps1 start/stop/status, README); release-test extracts it into a fresh standard user profile and runs hello, the
+    engine, podman version and podman run (run 46044621936). Publishing a GitHub Release is the owner's call.
 - id: sentry-fault-recovery
   title: Port fault recovery to Windows
   track: sentry
@@ -2016,7 +2019,7 @@
   lane: owner
   depends_on: []
   plain: All evidence comes from GitHub hosted Windows images; the owner runs runsc.exe once on a work machine to check FSGSBASE and whether security software tolerates the generated stub being debugged.
-  notes: 'Ready: download the runsc-windows artifact of the latest ci run on windows and run its README command. Done when: the owner reports the result of one run.'
+  notes: 'Ready: download the gvisor-windows-zip artifact of the latest ci run on windows and follow its README. Done when: the owner reports the result of one run.'
 - outcome: unrated
   evidence:
   - docs/results/5-podman-windows.md

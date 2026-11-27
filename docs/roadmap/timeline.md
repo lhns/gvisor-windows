@@ -142,8 +142,9 @@ gantt
     Windows CI as a standard user :ops_windows_ci_standard_user, 2026-11-26, 2026-11-26
     Choose how to run gVisor's tests :ops_syscall_test_strategy, 2026-11-26, 2026-11-26
     gVisor syscall tests on Windows :ops_syscall_tests_on_windows, 2026-11-26, 2026-11-27
+    Portable zip, no installer :ops_portable_packaging, 2026-11-27, 2026-11-27
     Build once, run suites on demand :ops_ci_build_once, 2026-11-27, 2026-11-27
 ```
 
-Not shown (no `start`): `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-hardware-acceleration`, `platform-binary-translation-fallback`, `platform-recycle-stubs`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `ops-upstream-merges`, `ops-portable-packaging`, `ops-run-on-a-work-machine`
+Not shown (no `start`): `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-hardware-acceleration`, `platform-binary-translation-fallback`, `platform-recycle-stubs`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `ops-upstream-merges`, `ops-run-on-a-work-machine`
 <!-- END GENERATED: timeline -->

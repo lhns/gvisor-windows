@@ -1,9 +1,12 @@
 <#
 .SYNOPSIS
-  Packs runsc.exe and a hello/busybox OCI bundle with a README into a folder (the CI "release" artifact).
+  Packs runsc.exe, a hello/busybox OCI bundle, the Podman engine image and its scripts into a folder and a zip (the CI "release" artifact).
 .PARAMETER Guests  Folder of the runsc-guests artifact (hello, busybox, ...).
+.PARAMETER Image   podman.erofs of the Podman engine.
+.PARAMETER Zip     The zip to write, gvisor-windows-<sha>.zip.
 #>
-param([Parameter(Mandatory)][string]$Guests, [Parameter(Mandatory)][string]$Runsc, [Parameter(Mandatory)][string]$Out)
+param([Parameter(Mandatory)][string]$Guests, [Parameter(Mandatory)][string]$Runsc, [Parameter(Mandatory)][string]$Image,
+  [Parameter(Mandatory)][string]$Out, [Parameter(Mandatory)][string]$Zip)
 $ErrorActionPreference = 'Stop'
 $r = "$Out\bundle\rootfs"
 foreach ($d in 'bin', 'etc', 'proc', 'dev', 'tmp') { New-Item -ItemType Directory -Force "$r\$d" | Out-Null }
@@ -30,14 +33,17 @@ $spec = [ordered]@{
   }
 }
 $spec | ConvertTo-Json -Depth 8 | Set-Content -Encoding ascii "$Out\bundle\config.json"
-@'
-# runsc.exe for Windows, built by CI from this commit
-
-Run the bundled guest (a static glibc program that prints a line and exits with 7):
-
-    runsc.exe --network=none run -bundle bundle hello
-
-To get a shell in the same root folder: edit `bundle\config.json`, set `process.args` to
-`["/bin/sh"]` and `process.terminal` to true, and run the same command.
-Needs 64-bit Windows 10 or later and no administrator rights. CPUs without FSGSBASE or XSAVE use a slower rewrite mode automatically; the Podman acceptance passes in both modes.
-'@ | Set-Content -Encoding ascii "$Out\README.md"
+# The Podman engine: erofs image, start-engine.ps1 (lib) and the end-user wrapper, README of the zip.
+$pm = Join-Path $PSScriptRoot '..\podman'
+New-Item -ItemType Directory -Force "$Out\lib" | Out-Null
+Copy-Item $Image "$Out\podman.erofs"
+Copy-Item "$pm\start-engine.ps1" "$Out\lib\start-engine.ps1"
+Copy-Item "$pm\podman-engine.ps1" "$Out\podman-engine.ps1"
+Copy-Item "$pm\README-release.md" "$Out\README.md"
+# The zip (Compress-Archive stops at 2 GB). Keep -Zip outside -Out.
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$z = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Zip)
+New-Item -ItemType Directory -Force (Split-Path -Parent $z) | Out-Null
+if (Test-Path $z) { Remove-Item $z }
+[IO.Compression.ZipFile]::CreateFromDirectory((Resolve-Path $Out).Path, $z, [IO.Compression.CompressionLevel]::Optimal, $false)
+Get-Item $z | ForEach-Object { "{0}: {1:N1} MB" -f $_.Name, ($_.Length / 1MB) }

@@ -11,12 +11,12 @@ Scope: CI, packaging, owner decisions on process.
 flowchart TB
     ops_windows_ci_standard_user["✔ Windows CI as a<br/>standard user"]
     ops_syscall_tests_on_windows["✔ gVisor syscall tests<br/>on Windows"]
+    ops_portable_packaging["✔ Portable zip, no<br/>installer"]
     ops_ci_build_once["✔ Build once, run<br/>suites on demand"]
     ops_upstream_merges["○ Merge upstream<br/>gVisor regularly"]
-    ops_portable_packaging["○ Portable zip, no<br/>installer"]
-    ops_windows_ci_standard_user ~~~ ops_upstream_merges
-    ops_syscall_tests_on_windows ~~~ ops_portable_packaging
-    ops_ci_build_once ~~~ ops_portable_packaging
+    ops_windows_ci_standard_user ~~~ ops_ci_build_once
+    ops_syscall_tests_on_windows ~~~ ops_upstream_merges
+    ops_portable_packaging ~~~ ops_upstream_merges
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -33,8 +33,8 @@ flowchart TB
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class ops_windows_ci_standard_user succ
     class ops_syscall_tests_on_windows mixed
-    class ops_ci_build_once unrated
-    class ops_upstream_merges,ops_portable_packaging next
+    class ops_portable_packaging,ops_ci_build_once unrated
+    class ops_upstream_merges next
 ```
 <!-- END GENERATED: track-ops -->
 
@@ -52,7 +52,7 @@ flowchart TB
 | `ops-syscall-test-strategy` | Choose how to run gVisor's tests | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0009-running-gvisors-tests.md |
 | `ops-syscall-tests-on-windows` | gVisor syscall tests on Windows | feature | windows-ci | done | mixed | 2026-11-26 | 2026-11-27 | ops-syscall-test-strategy, platform-static-guest-from-memory |  |  | 83.6% | docs/results/4-syscall-tests.md |
 | `ops-upstream-merges` | Merge upstream gVisor regularly | tooling | linux-ci | next | unrated |  |  |  |  |  |  |  |
-| `ops-portable-packaging` | Portable zip, no installer | feature | windows-ci | next | unrated |  |  | runsc-container-on-windows |  |  |  |  |
+| `ops-portable-packaging` | Portable zip, no installer | feature | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 | runsc-container-on-windows |  |  |  | tools/windows/podman/README-release.md; tools/windows/ci/release-test.ps1 |
 | `ops-run-on-a-work-machine` | Try it on a real work machine | owner-decision | owner | next | n/a |  |  |  |  |  |  |  |
 | `ops-ci-build-once` | Build once, run suites on demand | tooling | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/6-ci.md |
 
@@ -69,8 +69,8 @@ flowchart TB
 | `ops-syscall-test-strategy` | Choose how to run gVisor's tests |  |  | The Go branch ships no tests; decide whether gVisor's unit and syscall tests run from a master checkout with Bazel or get ported. | Done when: an ADR records the choice. |  |  |  |  |
 | `ops-syscall-tests-on-windows` | gVisor syscall tests on Windows | 83.6% of the cases that pass on Linux pass (11298 of 14620, 138 of 256 binaries complete) | 83.6% | gVisor's own syscall test suite runs against the Windows port to show which Linux calls work. | Done when: the suite runs in CI on Windows and its pass rate is published. |  |  |  |  |
 | `ops-upstream-merges` | Merge upstream gVisor regularly |  |  | Regularly take in upstream gVisor's Go branch so the port does not drift. | Done when: a scheduled workflow merges upstream/go into windows or opens an issue on conflict. |  |  |  |  |
-| `ops-portable-packaging` | Portable zip, no installer |  |  | Ship runsc for Windows as a zip or per-user installer that needs no admin. | Done when: a release zip runs from a user folder on a clean Windows machine. |  |  |  |  |
-| `ops-run-on-a-work-machine` | Try it on a real work machine |  |  | All evidence comes from GitHub hosted Windows images; the owner runs runsc.exe once on a work machine to check FSGSBASE and whether security software tolerates the generated stub being debugged. | Ready: download the runsc-windows artifact of the latest ci run on windows and run its README command. Done when: the owner reports the result of one run. |  |  |  |  |
+| `ops-portable-packaging` | Portable zip, no installer |  |  | Ship runsc for Windows as a zip or per-user installer that needs no admin. | CI builds gvisor-windows-<sha>.zip (runsc.exe, Podman engine image, podman-engine.ps1 start/stop/status, README); release-test extracts it into a fresh standard user profile and runs hello, the engine, podman version and podman run (run 46044621936). Publishing a GitHub Release is the owner's call. |  |  |  |  |
+| `ops-run-on-a-work-machine` | Try it on a real work machine |  |  | All evidence comes from GitHub hosted Windows images; the owner runs runsc.exe once on a work machine to check FSGSBASE and whether security software tolerates the generated stub being debugged. | Ready: download the gvisor-windows-zip artifact of the latest ci run on windows and follow its README. Done when: the owner reports the result of one run. |  |  |  |  |
 | `ops-ci-build-once` | Build once, run suites on demand |  |  | One ci.yml builds runsc.exe and the test binaries once and calls every Windows suite; worker branches start no runs and dispatch only what they need; heavy repeats run nightly. About 62 to 40 job-minutes per push. | Next lever: merge the 16 small Linux acceptance jobs. Also uploads a runsc-windows package (runsc.exe, hello bundle, README) for trying it on a work machine. |  |  |  |  |
 
 ### Folded items per node

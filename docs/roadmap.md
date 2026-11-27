@@ -207,7 +207,6 @@ flowchart TB
 | Name it gvisor-windows | ✔ done · n/a | The project is an unofficial fork of gVisor's Go branch called gvisor-windows. |
 | Go or no-go after Phase 0 | ✔ done · n/a | Go: the owner asked for the full project; ADR 0004 lists the conditions. |
 | Merge upstream gVisor regularly | ○ next | Regularly take in upstream gVisor's Go branch so the port does not drift. |
-| Portable zip, no installer | ○ next | Ship runsc for Windows as a zip or per-user installer that needs no admin. |
 | Try it on a real work machine | ○ next | All evidence comes from GitHub hosted Windows images; the owner runs runsc.exe once on a work machine to check FSGSBASE and whether security software tolerates the generated stub being debugged. |
 <!-- END GENERATED: plain-words -->
 
@@ -222,7 +221,6 @@ flowchart TB
 
 - `platform-own-vdso`: Own vDSO for clock calls
 - `sentry-timers-and-clocks`: Timers and clocks on Windows
-- `ops-portable-packaging`: Portable zip, no installer
 - `platform-recycle-stubs`: Reuse stub processes across exec
 - `platform-fs-veneer-capacity`: More room for %fs veneers
 - `fs-overlay-native-diff`: Fast layer diffs with overlay
@@ -259,7 +257,7 @@ Generated on 2026-11-27.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 112 done, 7 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 113 done, 7 abandoned</summary>
 
 - `fs-attribute-cache`: Faster stat walks on host folders (✔ done · mixed). A git-status-like walk of 20000 files takes 1.2-2.4 s through the host folder; an attribute cache fed by the change watcher would bring stat near native.
   - Cold stat walk on a fresh mount is still about 4x native, 99-105 us per file (2026-11-26)
@@ -373,6 +371,8 @@ Generated on 2026-11-27.
 - `fs-persistent-storage-impl`: Storage that survives restarts (✔ done · unrated). Implement the chosen writable filesystem so data inside the sandbox outlives a restart.
 - `fs-unix-sockets-on-host-folders`: Unix sockets on host folders (✔ fixed). Binding a Unix socket on a Windows folder and connecting to it (by path or via /proc/self/fd) is refused, so Podman cannot reach conmon's attach socket.
 - `ops-ci-build-once`: Build once, run suites on demand (✔ done · unrated). One ci.yml builds runsc.exe and the test binaries once and calls every Windows suite; worker branches start no runs and dispatch only what they need; heavy repeats run nightly. About 62 to 40 job-minutes per push.
+- `ops-portable-packaging`: Portable zip, no installer (✔ done · unrated). Ship runsc for Windows as a zip or per-user installer that needs no admin.
+  - CI uploads a runsc-windows package (runsc.exe, hello bundle, README) on each push to windows (2026-11-27)
 - `ops-syscall-tests-on-windows`: gVisor syscall tests on Windows (✔ done · mixed). gVisor's own syscall test suite runs against the Windows port to show which Linux calls work.
   - Linux runsc 81.5%, Windows with network 77.3% of 14620 cases (2026-11-27)
 - `platform-avx-on-non-avx-cpu`: glibc runs AVX code on a non-AVX CPU (✔ fixed). On the dev VM a static glibc hello dies with SIGILL on vmovd (AVX) in start-up code, although the CPU has no AVX; busybox runs fine.
@@ -438,5 +438,5 @@ Each track has its own page with its tree, node table and per-node details.
 - [net - network](roadmap/tracks/net.md): 4 nodes (4 done)
 - [workloads - workloads](roadmap/tracks/workloads.md): 22 nodes (22 done)
 - [research - research](roadmap/tracks/research.md): 8 nodes (2 done, 6 abandoned)
-- [ops - operations](roadmap/tracks/ops.md): 12 nodes (9 done, 3 next)
+- [ops - operations](roadmap/tracks/ops.md): 12 nodes (10 done, 2 next)
 <!-- END GENERATED: tracks -->

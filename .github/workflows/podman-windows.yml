@@ -38,34 +38,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # The image depends only on the podman version and the harness files (bump v1 to rebuild).
-      - uses: actions/cache@v4
-        id: cache
-        with:
-          path: podman.erofs
-          key: podman-erofs-v3-${{ env.PODMAN_VERSION }}-${{ hashFiles('test/e2e/podman-acceptance/harness/**') }}
-      - name: Erofs image from the podman image
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: |
-          set -euo pipefail
-          sudo apt-get update -qq && sudo apt-get install -y -qq erofs-utils
-          podman pull -q quay.io/podman/stable:v${PODMAN_VERSION}
-          c=$(podman create quay.io/podman/stable:v${PODMAN_VERSION} sh)
-          sudo rm -rf /tmp/root && mkdir /tmp/root
-          podman export "$c" | sudo tar -x -C /tmp/root --numeric-owner --same-owner -p --xattrs --xattrs-include="*"
-          # Engine settings baked into the read-only image (same files as the Linux harness; the
-          # sqlite database goes to a tmpfs until sqlite works on a host folder, see the results).
-          h=test/e2e/podman-acceptance/harness
-          sudo mkdir -p /tmp/root/etc/containers /tmp/root/run /tmp/root/tmp /tmp/root/var/lib/containers
-          sudo cp $h/containers.conf /tmp/root/etc/containers/containers.conf
-          sudo sed 's/^driver = .*/driver = "vfs"/' $h/storage.conf | sudo tee /tmp/root/etc/containers/storage.conf >/dev/null
-          # Marker that makes Podman ask the gateway to expose published ports (libpod/networking_machine.go);
-          # the windows-nat gateway answers at gateway.containers.internal (10.0.2.2:80).
-          echo qemu | sudo tee /tmp/root/etc/containers/podman-machine >/dev/null
-          echo "10.0.2.2 gateway.containers.internal host.containers.internal" | sudo tee -a /tmp/root/etc/hosts >/dev/null
-          echo "nameserver 10.0.2.3" | sudo tee /tmp/root/etc/resolv.conf >/dev/null
-          sudo mkfs.erofs -b 4096 -T 0 podman.erofs /tmp/root >/dev/null
-          ls -l podman.erofs
+      - uses: ./.github/actions/podman-image
+        with: {podman-version: "${{ env.PODMAN_VERSION }}"}
       - uses: actions/upload-artifact@v4
         with: {name: podman-rootfs, path: podman.erofs, compression-level: 0}
   acceptance:
