@@ -18,7 +18,6 @@ package winstub
 
 import (
 	"os"
-	"sync/atomic"
 	"unsafe"
 
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/stubasm"
@@ -102,43 +101,22 @@ func (p *Platform) takeRecycled() *addressSpace {
 func (as *addressSpace) reset() string {
 	as.relMu.Lock()
 	defer as.relMu.Unlock()
-	// The guest threads must end themselves: one that is not waiting for a reply would
-	// need TerminateThread, which can leave a lock of ntdll held and the stub unable to
-	// start a thread again (docs/results/1m-platform-repair.md).
+	// Every guest thread must be waiting for a reply, in the stub's code: it then
+	// waits on for the next owner (allocThread hands it out with the whole context).
+	// A thread anywhere else would need TerminateThread, which can leave a lock of
+	// ntdll held and the stub unable to start a thread again
+	// (docs/results/1m-platform-repair.md).
 	as.tmu.Lock()
-	var ts []*thread
 	for _, t := range as.slots[1:] {
-		if t != nil && t.started {
-			ts = append(ts, t)
-		}
-	}
-	as.tmu.Unlock()
-	if len(ts) > 1 {
-		return "more than one thread" // (threads of other tasks may be ending concurrently)
-	}
-	for _, t := range ts {
-		if t.hThread == 0 || t.state() != 1 {
+		if t != nil && t.started && (t.hThread == 0 || t.state() != 1) {
+			as.tmu.Unlock()
 			return "a thread is not waiting for a reply"
 		}
 	}
-	for _, t := range ts {
-		*t.u32(stubasm.PgMode) = 2
-		atomic.StoreUint32(t.u32(0), 2)
-		if atomic.LoadUint32(t.u32(stubasm.PgStubSlp)) != 0 {
-			pSetEvent.Call(t.evReply)
+	for _, t := range as.slots[1:] {
+		if t != nil && t.started {
+			t.idle = true
 		}
-	}
-	for _, t := range ts {
-		if r, _, _ := pWaitSingle.Call(t.hThread, 2000); r != 0 {
-			return "a thread did not end"
-		}
-	}
-	as.tmu.Lock()
-	for _, t := range ts {
-		pCloseHandle.Call(t.hThread)
-		t.hThread = 0
-		t.started = false
-		delete(as.byTid, t.tid)
 	}
 	as.freeSlots = as.freeSlots[:0]
 	for i := len(as.slots) - 1; i >= 1; i-- {
