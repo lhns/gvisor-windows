@@ -107,6 +107,7 @@ func probeTime() {
 	info("time.Rdtsc", "%d", ktime.Rdtsc())
 }
 
+// The addresses from virtualAlloc are not Go memory, so the unsafe.Pointer conversions of them below (flagged by go vet) are fine.
 func virtualAlloc(size uintptr, prot uint32) uintptr {
 	p, err := windows.VirtualAlloc(0, size, windows.MEM_COMMIT|windows.MEM_RESERVE, prot)
 	if err != nil {

@@ -1814,23 +1814,24 @@
   evidence:
   - docs/results/1c-windows-platform.md
   - docs/results/1e-platform-perf.md
+  - docs/results/1m-platform-repair.md
   verdict_quote: ''
   headline: ''
   depends_on: []
   replaced_by: []
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-27'
   folded: []
   overview: false
   id: platform-split-syscall-unpatched
   title: Syscalls split across mappings
   track: platform
   kind: defect
-  state: next
+  state: done
   lane: windows-ci
   plain: A syscall instruction whose two bytes fall into two separately mapped ranges is not found by the scan, so it would reach the Windows kernel.
-  notes: 'Reopened: a syscall at the seam of two MapFile ranges is still missed (Debian ld.so from the root folder, runsctest debian). Fixed when: the debian step is required and green and a tripwire catches
-    any kernel return into guest text.'
+  notes: 'Fixed: seams are re-decoded from a real instruction boundary when the lower piece arrives; the Debian case was a patch window spanning nop padding into a function entry (now a branch target).
+    A process instrumentation callback tripwire ends the address space if a syscall ever returns into guest text.'
 - outcome: n/a
   evidence:
   - docs/adr/0015-sandbox-rootfs-as-erofs-image.md
@@ -2214,10 +2215,11 @@
   lane: windows-ci
   start: ''
   end: ''
-  folded: []
+  folded:
+  - 'Background spare stubs gave no gain: process creation is not the dominant fork+exec cost (2026-11-27, commit 1dab61a25)'
   overview: false
   plain: Each fork+exec starts two stub processes at about 10 ms each; recycling a stub on release and execve and mapping memory up front would cut process start further.
-  notes: 'Done when: the 100x fork+exec loop through runsc.exe is at least 4x faster than the 3.47 s baseline in docs/results/3b.'
+  notes: 'Next: profile fork+exec (about 20 ms per iteration native) before building recycling. Done when the 100x loop is 4x faster than 3.47 s.'
 - outcome: unrated
   evidence:
   - docs/results/5-podman-windows.md
@@ -2297,23 +2299,25 @@
 - outcome: unrated
   evidence:
   - docs/results/5-podman-windows.md
+  - docs/results/1m-platform-repair.md
   verdict_quote: ''
   headline: ''
   depends_on: []
   replaced_by: []
   start: '2026-11-27'
-  end: ''
+  end: '2026-11-27'
   folded: []
   overview: false
   id: platform-avx512-state-lost
   title: AVX-512 state lost across stops
   track: platform
   kind: defect
-  state: next
+  state: done
   lane: windows-ci
   plain: 'Podman''s Go GC crashed at 0xfffffffffffffff8; a likely cause was found: a straddling instruction at a text-piece start swallowed Go''s mov %fs:-8 load, now fixed. AVX-512 stays hidden until repeated
     acceptance runs are clean.'
-  notes: 'Fixed when: a guest keeps zmm and k registers across syscalls, faults and interrupts on an AVX-512 runner, and the CPUID workaround in runsc/boot/loader.go is removed.'
+  notes: 'Fixed: not AVX-512 state but the native %fs repair giving up after 20 repairs in 5 ms; the debugger now decides from the fault address whether a base was lost. A Go reproducer died 12/12 with
+    the old rule and passes 12/12 now.'
 - outcome: unrated
   evidence:
   - docs/results/5-podman-windows.md
@@ -2332,7 +2336,8 @@
   state: next
   lane: windows-ci
   plain: '"libc.so.6: file too short" in podman build was an unpatched read syscall at a MapFile seam in Debian ld.so; a gofer change fills whole executable VMAs, which fixes bind mounts; from the root
-    folder it still needs the platform seam fix. apt renames on the storage folder still fail intermittently. Latest: dpkg cannot stat the archive apt just moved under /tmp/apt-dpkg-install-*.'
+    folder it still needs the platform seam fix. apt renames on the storage folder still fail intermittently. Latest: dpkg cannot stat the archive apt just moved under /tmp/apt-dpkg-install-*. The root-folder
+    loader case is fixed by the platform (padding before __read_nocancel).'
   notes: 'Fixed when: a guest that copy_file_range-s into a host-folder file can read it from another process, and podman build of a debian RUN step passes.'
 - outcome: unrated
   evidence:
@@ -2512,15 +2517,15 @@
   plain: 'On host folders 45-60% of consecutive writes report the same mtime as the previous one (tmpfs: none), which can hide changes from tools that compare mtimes.'
   notes: 'Fixed: the Sentry records the time of each guest write and reports max(host, last write); 0 repeated mtimes over 20000 writes.'
 - outcome: unrated
-  evidence: &id010
+  evidence:
   - docs/results/5-podman-windows.md
   verdict_quote: ''
   headline: ''
-  depends_on: &id011 []
-  replaced_by: &id012 []
+  depends_on: &id010 []
+  replaced_by: &id011 []
   start: '2026-11-27'
   end: ''
-  folded: &id013 []
+  folded: &id012 []
   overview: false
   id: fs-layer-store-corrupt-after-restart
   title: Layer store unreadable after restart
@@ -2532,20 +2537,22 @@
     runs.
   notes: 'Fixed when: step 9 passes 8 of 8 in both modes.'
 - outcome: unrated
-  evidence: *id010
+  evidence:
+  - docs/results/5-podman-windows.md
+  - docs/results/1m-platform-repair.md
   verdict_quote: ''
   headline: ''
-  depends_on: *id011
-  replaced_by: *id012
+  depends_on: *id010
+  replaced_by: *id011
   start: '2026-11-27'
-  end: ''
-  folded: *id013
+  end: '2026-11-27'
+  folded: *id012
   overview: false
   id: platform-unrewritten-fs-in-library
   title: Unrewritten %fs site in a library
   track: platform
   kind: defect
-  state: next
+  state: done
   lane: windows-ci
   plain: In rewrite mode the engine once died at start with SIGSEGV addr=0x28 during a cgo call, which looks like a %fs:0x28 stack-canary access with a zero base in a shared library.
-  notes: 'Fixed when: the tripwire (or a %fs equivalent) reports such misses and rewrite mode starts the engine 8 of 8 times.'
+  notes: Covered by the seam re-decode for %fs sites and an FS TRIPWIRE log that names any missed %fs site in rewrite mode; not seen since.

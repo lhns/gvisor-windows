@@ -78,9 +78,9 @@ func qpcNs() float64 {
 	return float64(c) / qpf * 1e9
 }
 
-func utf16p(s string) uintptr {
+func utf16p(s string) *uint16 {
 	p, _ := syscall.UTF16PtrFromString(s)
-	return uintptr(unsafe.Pointer(p))
+	return p
 }
 
 func valloc(addr, size, typ, prot uintptr) uintptr {
@@ -190,7 +190,7 @@ type sidAndAttr struct {
 
 func sidOf(s string) uintptr {
 	var p uintptr
-	r, _, e := pStrToSid.Call(utf16p(s), uintptr(unsafe.Pointer(&p)))
+	r, _, e := pStrToSid.Call(uintptr(unsafe.Pointer(utf16p(s))), uintptr(unsafe.Pointer(&p)))
 	if r == 0 {
 		panic("sid " + s + e.Error())
 	}
