@@ -78,7 +78,7 @@ On 29621d134 (windows merged in at bc1d28677):
 | windows-runsc, all legs | green, run 46067974837 |
 | fs-flakes, all legs | green, run 46068003609 |
 | podman-windows modes=native,rewrite,rewrite-fxsave runs=4 | all 10 steps in all 12 runs, run 46067979033 |
-| windows-profile fs-share (fails at 1% or more) | green, at most 0.057%, run 46067983533 |
+| windows-profile fs-share (fails at 1% or more, or if a run does not exit 0) | green, at most 0.057%, runs 46067983533 and 46070291284 (705b2d321) |
 | windows-stability, 300 runs per leg | 300 of 300 in every leg, run 46067939850 |
 
 Fork+exec (`windows-stability`, median of 7, without / with 2 spare stubs, seconds); the runners differ by up to 50% between runs (rewrite-fxsave "all off" 2.2 to 2.9 s), so several runs:
