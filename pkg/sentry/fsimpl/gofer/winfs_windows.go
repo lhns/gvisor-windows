@@ -668,6 +668,7 @@ var testNoWatcher bool
 // every inode. It is what the watch's overflow or failure means: changes were
 // lost, so nothing cached can be trusted.
 func (fs *filesystem) dropAllCaches(ctx context.Context) {
+	ctx.Warningf("gofer: host folder change stream overflowed or ended: dropping every cached dentry (mounts on it are kept)")
 	var ds *[]*dentry
 	fs.renameMu.RLock()
 	defer fs.renameMuRUnlockAndCheckCaching(ctx, &ds)

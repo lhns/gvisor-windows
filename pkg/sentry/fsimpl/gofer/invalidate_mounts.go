@@ -59,7 +59,7 @@ func (d *dentry) subtreeMounted() bool {
 //
 // Precondition: fs.renameMu must be locked.
 func (d *dentry) invalidateAroundMounts(ctx context.Context, vfsObj *vfs.VirtualFilesystem, ds **[]*dentry) {
-	log.Debugf("gofer: invalidating around the mounts below %q", d.name)
+	log.Infof("gofer: invalidating around the mounts below %q", d.name)
 	if d.isDir() {
 		d.opMu.RLock()
 		d.childrenMu.Lock()
