@@ -72,7 +72,7 @@ What the numbers say:
 - `release` job in `ci.yml`: artifact `runsc-windows` on every push to `windows` with `runsc.exe`, a hello/busybox
   OCI bundle and a README; try it with `runsc.exe --network=none run -bundle bundle hello`
   (`tools/windows/ci/make-release.ps1`).
-- podman-windows "Steps that must pass": all 10 steps, except step 5 in rewrite mode until the rewrite fix lands.
+- podman-windows "Steps that must pass": all 10 steps, except step 5 outside native mode (it still fails in default and rewrite mode).
 
 ## How workers run suites now
 
