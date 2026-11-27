@@ -17,12 +17,12 @@ param([string]`$Action = 'start')
 try { & $ctl -Action start } catch { Write-Host "engine start failed: $_" }
 if ($LASTEXITCODE -ne 0 -and -not (Test-Path "$work\engine\runsc.pid")) { Write-Host 'engine did not start' }
 # Which network backend and firewall driver netavark will use (needed for -p), recorded in the log.
-$only = if ($Only -and $Only -ne 'all') { [int[]]($Only -split "[, ]+" | Where-Object { $_ }) } else { 1..10 }
+$steps = if ($Only -and $Only -ne 'all') { [int[]]($Only -split "[, ]+" | Where-Object { $_ }) } else { 1..10 }
 $sock = (Get-Content "$work\engine\sock.path" -ErrorAction SilentlyContinue)
 $purl = 'unix://' + ($sock -replace '^[A-Za-z]:', '' -replace '\\', '/')
 & $podman --url $purl info --format '{{.Host.NetworkBackend}} {{.Host.NetworkBackendInfo.Package}} {{.Version.Version}}'
 & "$repo\test\e2e\podman-acceptance\run.ps1" -Podman $podman -Docker $docker -PodmanUrl $purl -Pipe podman-ci -ShareDir "$work\share" `
-  -Only $only -EngineCtl $ctl -TtyDrive "$Root\bin\ttydrive.exe" -ResultsDir "$work\results"
+  -Only $steps -EngineCtl $ctl -TtyDrive "$Root\bin\ttydrive.exe" -ResultsDir "$work\results"
 $rc = $LASTEXITCODE
 try { & $ctl -Action stop } catch { }
 exit $rc
