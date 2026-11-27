@@ -240,7 +240,8 @@ func newInstance(id, bundle string, terminal bool) (*instance, int) {
 		if err != nil {
 			return nil, fatalf("opening the debug log: %v", err)
 		}
-		defer f.Close()
+		// The instance closes the log (closeLog); closing it here silenced every message after startup.
+		in.logFile = f
 		log.SetTarget(log.GoogleEmitter{Writer: &log.Writer{Next: f}})
 	}
 	log.Infof("runsc %s %s, %d CPUs, args %v", version.Version(), runtime.Version(), runtime.NumCPU(), os.Args)
