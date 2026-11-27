@@ -819,6 +819,20 @@ func renameWith(h, root windows.Handle, name string, replace bool) error {
 			err = err2
 		} // else the flag is refused to this user: keep the access error
 	}
+	if err == unix.EACCES && replace {
+		// A standard user is refused the POSIX replace of an existing file
+		// (seen on every c/storage rewrite of layers.json). The plain replace
+		// is still one atomic operation, unlike delete + rename.
+		if err2 := ntRename(h, ntClassRenameEx, renameReplace, root, name); err2 == nil {
+			log.Infof("winhost: rename to %q: the plain replace worked where the POSIX replace was refused", name)
+			return nil
+		} else if err3 := ntRename(h, ntClassRename, renameReplace, root, name); err3 == nil {
+			log.Infof("winhost: rename to %q: the classic replace worked where the Ex replaces were refused (%v)", name, err2)
+			return nil
+		} else {
+			log.Infof("winhost: rename to %q: every replace refused: POSIX %v, plain %v, classic %v", name, err, err2, err3)
+		}
+	}
 	if err == unix.EINVAL || err == unix.EOPNOTSUPP {
 		// No POSIX rename (before Windows 10 1809), or a refused name: classic rename.
 		first := err
