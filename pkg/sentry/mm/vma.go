@@ -254,6 +254,13 @@ func (mm *MemoryManager) findAlignedAvailableLocked(length, alignment uint64, al
 	if opts.Map32Bit {
 		return mm.findLowestAvailableLocked(length, alignment, allowedAR)
 	}
+	// gvisor-windows: file mappings (libraries) go near the platform's code first.
+	if NearFileMaps.Length() > 0 && opts.Mappable != nil && !opts.GrowsDown && !opts.Stack && length <= nearFileMapMax {
+		top := NearFileMaps.End - hostarch.Addr(uint64(mm.layout.TopDownBase)%NearFileMapsRand)
+		if addr, err := mm.findHighestAvailableLocked(length, alignment, hostarch.AddrRange{NearFileMaps.Start, top}); err == nil {
+			return addr, nil
+		}
+	}
 	if mm.layout.DefaultDirection == arch.MmapBottomUp {
 		return mm.findLowestAvailableLocked(length, alignment, hostarch.AddrRange{mm.layout.BottomUpBase, mm.layout.MaxAddr})
 	}

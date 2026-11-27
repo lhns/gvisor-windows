@@ -209,8 +209,13 @@ jobs:
           PY
           cat > t/nv.sh <<'SH'
           /usr/lib/podman/netavark --version
+          mkdir -p /tmp/nv
+          cat > /tmp/opts.json <<'J'
+          {"container_id":"c0ffee","container_name":"c","networks":{"podman":{"interface_name":"eth1","static_ips":["10.88.0.2"]}},"network_info":{"podman":{"name":"podman","id":"2f259bab93aaaaa2542ba43ef33eb990d0999ee1b9924b557b7be53c0b7a1bb9","driver":"bridge","network_interface":"podman0","subnets":[{"subnet":"10.88.0.0/16","gateway":"10.88.0.1"}],"ipv6_enabled":false,"internal":false,"dns_enabled":false,"ipam_options":{"driver":"host-local"}}},"port_mappings":[]}
+          J
           for i in 1 2 3; do
-            echo '{"name":"n1","driver":"bridge","network_interface":"podman1","subnets":[{"subnet":"10.89.0.0/24","gateway":"10.89.0.1"}],"ipv6_enabled":false,"internal":false,"dns_enabled":false,"ipam_options":{"driver":"host-local"}}' | /usr/lib/podman/netavark create
+            NETAVARK_FW=none /usr/lib/podman/netavark --config /tmp/nv setup /proc/self/ns/net < /tmp/opts.json; echo "setup $?"
+            NETAVARK_FW=none /usr/lib/podman/netavark --config /tmp/nv teardown /proc/self/ns/net < /tmp/opts.json; echo "teardown $?"
           done
           echo nv done
           SH
@@ -233,23 +238,25 @@ jobs:
         run: |
           . tools/windows/ci/leg.ps1
           New-Item -ItemType Directory -Force out | Out-Null
+          $env:GVISOR_PROFSTATS = '1' # (the platform's counters; -profstats sets only the Sentry's)
           $work = @(
-            @{n='python3'; a=@('/usr/bin/python3', '/t/py.py', '2000')},
+            @{n='python3'; a=@('/usr/bin/python3', '/t/py.py', '1000')},
             @{n='python3-start'; a=@('/usr/bin/python3', '-c', 'pass')},
             @{n='netavark'; a=@('/bin/sh', '/t/nv.sh')}
           )
-          foreach ($leg in 'rewrite', 'rewrite-fxsave') {
-            Set-Leg $leg
+          foreach ($leg in 'rewrite', 'rewrite-farlibs') {
+            Set-Leg 'rewrite'
+            $env:WINSTUB_NEARLIBS = if ($leg -eq 'rewrite-farlibs') { '0' } else { '' }
             foreach ($w in $work) {
               foreach ($ud2 in '', '1') {
                 $env:WINSTUB_FSUD2 = $ud2
                 $tag = "$leg $($w.n) $(if ($ud2) { 'all-ud2' } else { 'normal' })"
                 $t0 = Get-Date
-                $o = & C:\ci\bin\sentryguest.exe -profstats -timeout=900s '-tar=dl/fsroot.tar' '-env=PATH=/usr/bin:/bin,HOME=/tmp' @($w.a) 2>&1 | Out-String
+                $o = & C:\ci\bin\sentryguest.exe -profstats -net -sysmounts -timeout=900s '-tar=dl/fsroot.tar' '-env=PATH=/usr/bin:/bin,HOME=/tmp' @($w.a) 2>&1 | Out-String
                 $s = ((Get-Date) - $t0).TotalSeconds
                 $o | Out-File -Encoding utf8 "out/$($tag -replace ' ', '_').txt"
                 $dbg = 0; foreach ($m in [regex]::Matches($o, 'PROFSTATS key winstub %fs debugger run: (.*?)\s+(\d+)\s+[\d.]+ ms')) { $dbg += [int64]$m.Groups[2].Value }
-                "FSSHARE $tag : debugger runs $dbg, $([math]::Round($s, 1)) s, exit: $(($o -split "`n" | Select-String 'sentryguest: exit|py \d|nv done|netavark' | Select-Object -First 3) -join ' / ')" | Tee-Object -Append out/share.txt
+                "FSSHARE $tag : debugger runs $dbg, $([math]::Round($s, 1)) s, exit: $(($o -split "`n" | Select-String 'sentryguest: exit|py \d|nv done|setup \d|teardown \d|Error' | Select-Object -First 8) -join ' / ')" | Tee-Object -Append out/share.txt
                 $o -split "`n" | Select-String 'PROFSTATS key winstub' | ForEach-Object { "  $($_.Line.Trim())" } | Tee-Object -Append out/share.txt
               }
             }

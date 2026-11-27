@@ -292,6 +292,12 @@ func init() {
 	// Executables load low (0x1000_0000 + up to 256 MiB), within rel32 reach of the
 	// stub's veneers; Linux's 2/3 of the address space is out of reach.
 	arch.PIELoadBase, arch.PIELoadRand = 0x1000_0000, 0x1000_0000
+	// Libraries load between the %fs veneer area and the Windows hole below 2 GiB
+	// (ADR 0023), not 100 TiB above it as in Linux's layout (WINSTUB_NEARLIBS=0).
+	if os.Getenv("WINSTUB_NEARLIBS") != "0" {
+		mm.NearFileMaps = hostarch.AddrRange{Start: hostarch.Addr(stubasm.FSBig + stubasm.FSBigSize), End: holeStart}
+		mm.NearFileMapsRand = 0x1000_0000
+	}
 	// A page fault is a debugger round trip (0.1 to 0.4 ms): fork and execve map
 	// memory up front (WINSTUB_EAGER=0 turns it off, to compare).
 	if os.Getenv("WINSTUB_EAGER") != "0" {

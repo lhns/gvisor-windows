@@ -36,6 +36,21 @@ var EagerForkCopyLimit uint64
 // writable segments already copied (PrefaultImage). Set by the same platforms.
 var EagerExecMap bool
 
+// NearFileMaps, if not empty, is where mappings of files without an address
+// hint (shared libraries, mapped by ld.so) are placed first, top-down from its
+// end less up to NearFileMapsRand bytes (taken from the random part of the
+// layout's TopDownBase, so it changes with every exec and is kept by fork);
+// when it is full they go where Linux puts them. winstub sets it below 2 GiB:
+// there a library's %fs and syscall instructions can jump to the platform's
+// veneers with 5 bytes instead of 7 (docs/adr/0023).
+var (
+	NearFileMaps     hostarch.AddrRange
+	NearFileMapsRand uint64 = 1
+)
+
+// nearFileMapMax keeps large data files out of NearFileMaps.
+const nearFileMapMax = 256 << 20
+
 // prefaultWritableMax bounds the writable mappings PrefaultImage populates (a
 // large bss would be allocated whole), prefaultMax the others (the text of a large
 // binary is copied and patched by winstub in full when mapped).
