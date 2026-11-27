@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"gvisor.dev/gvisor/pkg/abi/linux"
+	"gvisor.dev/gvisor/pkg/cpuid"
 	pkgcontext "gvisor.dev/gvisor/pkg/context"
 	"gvisor.dev/gvisor/pkg/hostarch"
 	"gvisor.dev/gvisor/pkg/sentry/platform"
@@ -230,4 +231,92 @@ func TestFSSpeed(t *testing.T) {
 	fs := run("fs", base+0x10000, build(0x64, 0x48, 0x8b, 0x04, 0x25, 0x28, 0, 0, 0))                 // mov %fs:0x28,%rax
 	t.Logf("FSSPEED rewrite=%v plain %.2f ns/iter, %%fs %.2f ns/iter", h.p.fsRewrite,
 		float64(plain.Nanoseconds())/iters, float64(fs.Nanoseconds())/iters)
+}
+
+// TestAVX512State checks that zmm registers (the low and the high half of the
+// register file) and an opmask register survive a syscall, a fault and an
+// interrupt: it needs AVX-512 on the host and skips without.
+func TestAVX512State(t *testing.T) {
+	if !cpuid.HostFeatureSet().HasFeature(cpuid.X86FeatureAVX512F) {
+		t.Skip("no AVX-512")
+	}
+	h := newHarness(t)
+	mm := h.newMM()
+	a := &asm{base: textBase}
+	start := a.emit(0x62, 0xf1, 0xfe, 0x48, 0x6f, 0x07)                  // vmovdqu64 (%rdi),%zmm0
+	a.emit(0x62, 0xe1, 0xfe, 0x48, 0x6f, 0x47, 0x01)                     // vmovdqu64 64(%rdi),%zmm16
+	a.emit(0xc4, 0xe1, 0xf8, 0x90, 0x8f, 0x80, 0, 0, 0)                  // kmovq 128(%rdi),%k1
+	a.emit(0xb8, 39, 0, 0, 0, 0x0f, 0x05)                                // syscall
+	store := func(off int) uint64 {
+		p := a.emit(0x62, 0xf1, 0xfe, 0x48, 0x7f, 0x86)                  // vmovdqu64 %zmm0,off(%rsi)
+		a.emit(le32(uint32(off))...)
+		a.emit(0x62, 0xe1, 0xfe, 0x48, 0x7f, 0x86)                       // vmovdqu64 %zmm16,off+64(%rsi)
+		a.emit(le32(uint32(off + 64))...)
+		a.emit(0xc4, 0xe1, 0xf8, 0x91, 0x8e)                             // kmovq %k1,off+128(%rsi)
+		a.emit(le32(uint32(off + 128))...)
+		a.emit(0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05)                          // syscall 500
+		return p
+	}
+	store(0)
+	a.emit(0x48, 0x8b, 0x04, 0x25, 0x00, 0x00, 0x80, 0x00) // mov [0x800000],%rax: a fault
+	store(256)
+	spin := a.emit(0xeb, 0xfe)
+	third := store(512)
+	h.mapAt(mm, textBase, h.pages(a.b, 1), rx)
+	pat := make([]byte, 192)
+	for i := range pat {
+		pat[i] = byte(i*7 + 3)
+	}
+	h.mapAt(mm, 0x500000, h.pages(pat, 1), rw)
+	outFR := h.pages(nil, 1)
+	h.mapAt(mm, 0x510000, outFR, rw)
+	out := func(off int) []byte {
+		bs, err := h.mf.MapInternal(outFR, hostarch.Read)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return append([]byte(nil), bs.Head().ToSlice()[off:off+136]...)
+	}
+	check := func(what string, off int) {
+		t.Helper()
+		got := out(off)
+		want := append(append(append([]byte(nil), pat[:64]...), pat[64:128]...), pat[128:136]...)
+		if string(got) != string(want) {
+			t.Fatalf("%s: zmm0, zmm16, k1 = %x, want %x", what, got, want)
+		}
+	}
+	c := h.p.NewContext(pkgcontext.Background())
+	defer c.Release()
+	ac := newAC(start, 0)
+	r := &ac.StateData().Regs
+	r.Rdi, r.Rsi = 0x500000, 0x510000
+	if nr := h.syscall(c, mm, ac); nr != 39 {
+		t.Fatalf("syscall %d", nr)
+	}
+	if nr := h.syscall(c, mm, ac); nr != 500 {
+		t.Fatalf("syscall %d", nr)
+	}
+	check("across a syscall", 0)
+	res := h.sw(c, mm, ac)
+	if res.err != platform.ErrContextSignal {
+		t.Fatalf("want a fault, got %v", res.err)
+	}
+	h.mapAt(mm, 0x800000, h.pages(nil, 1), rw)
+	if nr := h.syscall(c, mm, ac); nr != 500 {
+		t.Fatalf("syscall %d", nr)
+	}
+	check("across a fault", 256)
+	r.Rip = spin
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		c.Interrupt()
+	}()
+	if res := h.sw(c, mm, ac); res.err != platform.ErrContextInterrupt {
+		t.Fatalf("want an interrupt, got %v", res.err)
+	}
+	r.Rip = third
+	if nr := h.syscall(c, mm, ac); nr != 500 {
+		t.Fatalf("syscall %d", nr)
+	}
+	check("across an interrupt", 512)
 }
