@@ -23,7 +23,9 @@ import (
 	"sort"
 	"unsafe"
 
+	"gvisor.dev/gvisor/pkg/hostarch"
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/stubasm"
+	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/x86asm"
 )
 
 // Rewrite mode (ADR 0020): on CPUs without FSGSBASE every %fs instruction of the
@@ -254,4 +256,37 @@ func (as *addressSpace) fsRunInline(t *thread, ctx *ctxBuf, rip uint64, orig []b
 	v.code = nil
 	*ctx.u64(ctxRipOff) = lo
 	return ctx.set(t.hThread)
+}
+
+// fsSplitRun handles the int3 that stands for an %fs instruction split between
+// two pieces of text (see patchText): the whole instruction is read from the
+// guest now and run in the thread's own veneer, as for a ud2 site.
+func (as *addressSpace) fsSplitRun(t *thread, ctx *ctxBuf, a uint64) bool {
+	as.mu.Lock()
+	head := as.fsSplit[a]
+	as.mu.Unlock()
+	if head == nil {
+		return false
+	}
+	*ctx.u64(ctxRipOff) = a // the int3 itself (the exception reports the next byte)
+	next := a + uint64(len(head))
+	rest, ok := as.readStub(next, 16)
+	if !ok {
+		// The piece that holds the rest is not mapped: an instruction fetch fault
+		// there, the Sentry maps it and the thread comes back to the int3.
+		as.park(t, ctx, request{kind: reqFault, sig: 11, code: 1, addr: next, at: hostarch.AccessType{Execute: true}})
+		return true
+	}
+	joined := append(append([]byte(nil), head...), rest...)
+	n := 0
+	func() {
+		defer func() { recover() }()
+		if inst, err := x86asm.Decode(joined, 64); err == nil && inst.Len >= len(head) {
+			n = inst.Len
+		}
+	}()
+	if n == 0 || !as.fsRunInline(t, ctx, a, joined[:n]) {
+		as.park(t, ctx, request{kind: reqFault, sig: 4, code: 1, addr: a})
+	}
+	return true
 }

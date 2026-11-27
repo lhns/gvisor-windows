@@ -1592,3 +1592,41 @@ func TestAddressReuseAfterUnmap(t *testing.T) {
 		t.Fatalf("C: syscall %d, want 500", nr)
 	}
 }
+
+// TestFSInstructionSplitAcrossPieces: an %fs instruction that starts at the end
+// of one piece of text and ends in the next (found by the static glibc start-up
+// code, where the page boundary cuts `mov %al,%fs:0x10`), in both mapping orders.
+func TestFSInstructionSplitAcrossPieces(t *testing.T) {
+	page0 := make([]byte, pageSz)
+	for i := range page0 {
+		page0[i] = 0x90
+	}
+	copy(page0, []byte{0xb8, 0x77, 0, 0, 0}) // mov $0x77,%eax
+	copy(page0[pageSz-3:], []byte{0x64, 0x88, 0x04})
+	page1 := append([]byte{0x25, 0x10, 0, 0, 0}, // ... mov %al,%fs:0x10
+		0x64, 0x0f, 0xb6, 0x3c, 0x25, 0x10, 0, 0, 0, // movzbl %fs:0x10,%edi
+		0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05) // mov $500,%eax; syscall
+	for _, lowFirst := range []bool{true, false} {
+		t.Run(fmt.Sprintf("low first %v", lowFirst), func(t *testing.T) {
+			h := newHarness(t)
+			mm := h.newMM()
+			lo, hi := h.pages(page0, 1), h.pages(page1, 1)
+			if lowFirst {
+				h.mapAt(mm, textBase, lo, rx)
+				h.mapAt(mm, textBase+pageSz, hi, rx)
+			} else {
+				h.mapAt(mm, textBase+pageSz, hi, rx)
+				h.mapAt(mm, textBase, lo, rx)
+			}
+			h.mapAt(mm, tlsBase, h.pages(tlsData(), 1), rw)
+			c := h.p.NewContext(pkgcontext.Background())
+			defer c.Release()
+			ac := newAC(textBase, 0)
+			r := &ac.StateData().Regs
+			r.Fs_base = tlsBase
+			if nr := h.syscall(c, mm, ac); nr != 500 || r.Rdi != 0x77 {
+				t.Fatalf("syscall %d(%#x), want 500(0x77)", nr, r.Rdi)
+			}
+		})
+	}
+}

@@ -558,6 +558,9 @@ func (as *addressSpace) onException(ev *debugEvent, ctx *ctxBuf, seenBP *bool) u
 			as.park(t, ctx, request{kind: reqFault, sig: 4, code: 1, addr: rip})
 		}
 	case excBreakpoint:
+		if as.fsSplitRun(t, ctx, excAddr) {
+			break
+		}
 		as.park(t, ctx, request{kind: reqFault, sig: 5, code: 128, addr: rip})
 	case excSingleStep:
 		as.park(t, ctx, request{kind: reqFault, sig: 5, code: 2, addr: rip})

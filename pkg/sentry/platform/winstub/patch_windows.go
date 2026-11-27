@@ -117,7 +117,7 @@ const (
 	zoneContext   = 8
 )
 
-func (as *addressSpace) patchCode(code []byte, base uint64, from, skip, zone int) (siteStats, *scanResult) {
+func (as *addressSpace) patchCode(code []byte, base uint64, from, skip, zone, stop int) (siteStats, *scanResult) {
 	var st siteStats
 	scan := as.p.scans.scan(code, from, as.p.fsRewrite)
 	st.pairs = scan.pairs
@@ -125,9 +125,12 @@ func (as *addressSpace) patchCode(code []byte, base uint64, from, skip, zone int
 	if skip > 0 {
 		cl.add(0, skip) // context bytes of the range below: decoded, never patched
 	}
+	if stop < len(code) {
+		cl.add(stop, len(code)) // an instruction that continues in the next piece (splitFSAt)
+	}
 	for i := range scan.sites {
 		site := &scan.sites[i]
-		if site.off < skip {
+		if site.off < skip || site.off >= stop {
 			continue
 		}
 		win, tgt := site.win[:site.n], site.tgt[:site.n]
