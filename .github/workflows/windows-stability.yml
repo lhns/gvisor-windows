@@ -65,6 +65,24 @@ jobs:
             "FORKEXEC ${{ matrix.mode }} spares=$sp median=$m s of 100 (runs: $($t -join ' '))"
           }
           Remove-Item Env:\WINSTUB_SPARES
+      - name: Fork+exec time, each speed-up off in turn (docs/results/1r-platform-speed.md)
+        shell: pwsh
+        run: |
+          $sets = [ordered]@{ 'all on' = @{}; 'eager off' = @{WINSTUB_EAGER = '0'}; 'textcache off' = @{WINSTUB_TEXTCACHE = '0'};
+            'recycle off' = @{WINSTUB_RECYCLE = '0'}; 'threadreuse off' = @{WINSTUB_THREADREUSE = '0'};
+            'all off' = @{WINSTUB_EAGER = '0'; WINSTUB_TEXTCACHE = '0'; WINSTUB_RECYCLE = '0'; WINSTUB_THREADREUSE = '0'} }
+          foreach ($name in $sets.Keys) {
+            foreach ($k in $sets[$name].Keys) { Set-Item "Env:$k" $sets[$name][$k] }
+            $t = @()
+            for ($i = 0; $i -lt 7; $i++) {
+              $o = C:\ci\bin\runsctest.exe -timeout 60s -runsc C:\ci\bin\runsc.exe -rootfs C:\ci\work\rootfs -work C:\ci\work\a-$i -only forkexec 2>&1 | Out-String
+              if ($o -match 'RESULT forkexec_wall ([0-9.]+)') { $t += [double]$Matches[1] } else { "no time in run $i of '$name'"; $o }
+              Remove-Item -Recurse -Force C:\ci\work\a-$i -ErrorAction SilentlyContinue
+            }
+            $m = ($t | Sort-Object)[[int]($t.Count / 2)]
+            "FORKEXEC ${{ matrix.mode }} $name median=$m s of 100 (runs: $($t -join ' '))"
+            foreach ($k in $sets[$name].Keys) { Remove-Item "Env:$k" }
+          }
       - name: Fork+exec runs
         shell: pwsh
         run: |

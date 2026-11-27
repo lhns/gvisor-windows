@@ -108,7 +108,7 @@ jobs:
             @{n='fork_exec'; a=@('/bin/exec','forkexec'); out="child: argc=4 a2=a b a3=c X=1 auxv=ok${nl}forkexec: waited=1 exited=1 status=9${nl}forkexec: enoent child status=11${nl}forkexec: sum=6 wait=-1 errno_echild=1${nl}"; code=0},
             @{n='sh_pipes'; a=@('/bin/busybox','sh','-c','echo a | cat; echo $((1+2)); for i in 1 2 3; do echo $i; done | wc -l'); out="a${nl}3${nl}3${nl}"; code=0},
             @{n='sh_pipeline_tools'; a=@('/bin/busybox','sh','/t/pipes.sh'); out="a${nl}X${nl}done${nl}"; code=0},
-            @{n='sh_wait_status'; a=@('/bin/busybox','sh','/t/wait.sh'); out="st=3${nl}Terminated${nl}sig=143${nl}Terminated${nl}bg=143${nl}pipe=2${nl}done${nl}"; code=0},
+            @{n='sh_wait_status'; a=@('/bin/busybox','sh','/t/wait.sh'); out="st=3${nl}Terminated${nl}sig=143${nl}bg=143${nl}pipe=2${nl}done${nl}"; code=0},
             @{n='sig_self'; a=@('/bin/signals','self'); out="self ok${nl}"; code=0},
             @{n='sig_alarm'; a=@('/bin/signals','alarm'); out="alarm ok${nl}"; code=0},
             @{n='sig_segv'; a=@('/bin/signals','segv'); out="segv ok${nl}"; code=0},
@@ -139,6 +139,33 @@ jobs:
               "exit: $LASTEXITCODE" | Tee-Object -Append -FilePath guests-$leg.txt
               if ($LASTEXITCODE -ne 0 -and -not $c.known) { $fail = 1 }
             }
+          }
+          exit $fail
+      - name: vDSO without traps
+        if: always() && (env.ONLY == '' || contains(env.ONLY, 'vdso'))
+        shell: pwsh
+        run: |
+          # clock_gettime, gettimeofday, time and getcpu through the vDSO must not reach
+          # the Sentry as system calls: the Sentry's counters may show only the guest's
+          # own direct calls (test/guests/vdso.c).
+          . tools/windows/ci/leg.ps1
+          $fail = 0
+          foreach ($leg in $env:LEGS -split '[, ]+' | Where-Object { $_ }) {
+            Set-Leg $leg -KeepAvx512
+            $o = & ./sentryguest.exe -profstats -timeout=120s out/vdso 2>&1 | Out-String
+            "===== vdso $leg" | Tee-Object -Append -FilePath vdso.txt
+            $o | Tee-Object -Append -FilePath vdso.txt
+            if ($o -notmatch 'vdso ok' -or $o -notmatch 'direct syscalls: clock_gettime=(\d+) gettimeofday=(\d+) time=(\d+) getcpu=(\d+)') { "FAILED: vdso guest in leg $leg"; $fail = 1; continue }
+            $direct = [ordered]@{clock_gettime=[int]$Matches[1]; gettimeofday=[int]$Matches[2]; time=[int]$Matches[3]; getcpu=[int]$Matches[4]}
+            foreach ($k in $direct.Keys) {
+              $n = 0
+              if ($o -match "PROFSTATS $k +(\d+)") { $n = [int]$Matches[1] }
+              if ($n -gt $direct[$k] + 10) { "FAILED: $k trapped $($n - $direct[$k]) times beyond the guest's $($direct[$k]) direct calls (leg $leg)"; $fail = 1 }
+              else { "VDSO $leg ${k}: $n system calls, $($direct[$k]) of them direct" }
+            }
+            # Any other call that traps shows in the total (start-up makes about 20).
+            $sum = 0; foreach ($v in $direct.Values) { $sum += $v }
+            if ($o -match 'PROFSTATS syscalls: (\d+) calls' -and [int]$Matches[1] -gt $sum + 50) { "FAILED: $($Matches[1]) system calls in all, $sum of them direct (leg $leg)"; $fail = 1 }
           }
           exit $fail
       - name: Podman-shaped stress
@@ -245,4 +272,5 @@ jobs:
             podman.txt
             hang.txt
             diag.txt
+            vdso.txt
           if-no-files-found: ignore

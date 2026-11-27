@@ -604,21 +604,23 @@
   title: Own vDSO for clock calls
   track: platform
   kind: feature
-  state: next
+  state: done
   outcome: unrated
-  evidence: []
+  evidence:
+  - docs/results/1r-platform-speed.md
+  - docs/adr/0022-fork-and-exec-without-faults-patching-or-process-creation.md
   verdict_quote: ''
   headline: ''
   depends_on:
   - platform-stub-controller
   replaced_by: []
   lane: windows-ci
-  start: ''
-  end: ''
+  start: '2026-11-27'
+  end: '2026-11-27'
   folded: []
   overview: false
   plain: Time and CPU queries are answered inside the stub, so they need no trap at all.
-  notes: 'Done when: clock_gettime, gettimeofday and getcpu run without a trap and return correct values.'
+  notes: 'Done: clock_gettime, gettimeofday and time were already trap-free through the Sentry vDSO once calibration was ready; getcpu is now answered in the stub. A guest counts zero traps in all modes.'
 - id: platform-64k-mapping-conflicts
   title: Handle 64 KB mapping conflicts
   track: platform
@@ -2213,24 +2215,27 @@
   title: Reuse stub processes across exec
   track: platform
   kind: feature
-  state: next
+  state: done
   outcome: unrated
   evidence:
   - docs/results/1i-profile.md
+  - docs/results/1r-platform-speed.md
+  - docs/adr/0022-fork-and-exec-without-faults-patching-or-process-creation.md
   verdict_quote: ''
   headline: ''
   depends_on:
   - platform-no-fsgsbase-fallback
   replaced_by: []
   lane: windows-ci
-  start: ''
-  end: ''
+  start: '2026-11-27'
+  end: '2026-11-27'
   folded:
   - 'Background spare stubs gave no gain: process creation is not the dominant fork+exec cost (2026-11-27, commit 1dab61a25)'
   - 'Profile: 100 fork+exec take 2.49 s, 1.33 s with two spare address spaces; 87% of CPU time waits in the debug loop, about 30 access-violation events per exec (2026-11-27, commit a147990f1)'
   overview: false
   plain: Each fork+exec starts two stub processes at about 10 ms each; recycling a stub on release and execve and mapping memory up front would cut process start further.
-  notes: 'Next: profile fork+exec (about 20 ms per iteration native) before building recycling. Done when the 100x loop is 4x faster than 3.47 s.'
+  notes: 'Done: 100 fork+exec take 0.36-0.57 s in all three modes (was 2.07/3.34/3.56 s): eager mapping at fork, exec and brk, a patched-text cache, recycled stub processes and reused stub threads (ADR
+    0022).'
 - outcome: unrated
   evidence:
   - docs/results/5-podman-windows.md

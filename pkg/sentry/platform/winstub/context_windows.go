@@ -47,6 +47,8 @@ type winContext struct {
 	// (first run, FullStateChanged). needPull: the thread's FP state is newer than
 	// ac's (every stop); PullFullState copies it.
 	needRestore bool
+	tgen        uint64 // the generation of t's stub (recycle_windows.go)
+	cpu         int32 // the task's CPU number at the last Switch, for the vDSO's getcpu
 	needPull    bool
 	nreq        int
 
@@ -170,6 +172,13 @@ func (c *winContext) Switch(ctx pkgcontext.Context, mm platform.MemoryManager, a
 		return nil, hostarch.NoAccess, &platform.ContextError{Err: err, Errno: unix.EAGAIN}
 	}
 	c.cur.Store(t)
+	// The getcpu syscall answers the task's CPU (Task.CPU), not the rseq CPU the
+	// cpu argument carries (-1 without rseq).
+	if tc, ok := ctx.(interface{ CPU() int32 }); ok {
+		c.cpu = tc.CPU()
+	} else {
+		c.cpu = max(cpu, 0)
+	}
 	if !c.intr.Enable() {
 		return nil, hostarch.NoAccess, platform.ErrContextInterrupt
 	}
@@ -210,17 +219,17 @@ func (c *winContext) Switch(ctx pkgcontext.Context, mm platform.MemoryManager, a
 // another address space, as after execve) when needed.
 func (c *winContext) bind(as *addressSpace) (*thread, error) {
 	if c.t != nil {
-		if c.t.as == as {
+		if c.t.as == as && c.tgen == as.gen.Load() {
 			return c.t, nil
 		}
-		c.t.as.freeThread(c.t)
+		c.t.as.freeThread(c.t, c.tgen)
 		c.t = nil
 	}
-	t, err := as.allocThread()
+	t, gen, err := as.allocThread()
 	if err != nil {
 		return nil, err
 	}
-	c.t = t
+	c.t, c.tgen = t, gen
 	c.needRestore, c.needPull = true, false
 	return t, nil
 }
@@ -249,6 +258,7 @@ func (c *winContext) resume(t *thread, ac *arch.Context64) error {
 	}
 	*t.u64(stubasm.PgRIP) = rip
 	*t.u64(stubasm.PgFS) = r.Fs_base
+	*t.u32(stubasm.PgCPU) = uint32(c.cpu)
 	*t.u64(stubasm.PgReply) = r.Rax
 	*t.u64(stubasm.PgFlags) = (r.Eflags & 0xCD5) | 0x202
 	*t.u32(stubasm.PgMode) = mode
@@ -370,7 +380,7 @@ func (c *winContext) Preempt() {}
 // PullFullState implements platform.Context.PullFullState: ac always holds the
 // full state.
 func (c *winContext) PullFullState(as platform.AddressSpace, ac *arch.Context64) error {
-	if !c.needPull || c.t == nil {
+	if !c.needPull || c.t == nil || c.tgen != c.t.as.gen.Load() {
 		return nil
 	}
 	copy(ac.FloatingPointData().Slice(), unsafe.Slice((*byte)(unsafe.Add(c.t.page, stubasm.XsaveOff)), c.t.as.p.fpSize))
@@ -393,7 +403,7 @@ func (c *winContext) Release() {
 	}
 	c.cur.Store(nil)
 	if c.t != nil {
-		c.t.as.freeThread(c.t)
+		c.t.as.freeThread(c.t, c.tgen)
 		c.t = nil
 	}
 }

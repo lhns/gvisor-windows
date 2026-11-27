@@ -17,8 +17,10 @@
 package winstub
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
+	"hash/maphash"
 	"sync"
 	"unsafe"
 
@@ -71,35 +73,54 @@ func (c *claims) inFixed(off int) bool {
 }
 
 // scanCache remembers scan results by content: the same library text is mapped
-// again by every process.
+// again by every process. An entry keeps the original bytes and a hit must match
+// them exactly; the hash only finds the candidates. (A cryptographic hash of the
+// whole text cost more than the scan it saved on CPUs without SHA instructions,
+// 13 to 18 ms for a 1.5 MB busybox on the development VM.)
 type scanCache struct {
-	mu sync.Mutex
-	m  map[[32]byte]*scanResult
+	mu    sync.Mutex
+	seed  maphash.Seed
+	m     map[uint64][]*scanEntry
+	bytes int // original bytes kept
 }
+
+type scanEntry struct {
+	code   []byte
+	from   int
+	wantFS bool
+	r      *scanResult
+}
+
+// scanCacheBytes bounds the original bytes the cache keeps; past it, it starts over.
+const scanCacheBytes = 256 << 20
 
 // scan scans code, starting at offset from (1 when the first byte is the second
 // half of a syscall instruction that begins in the previous range).
 func (c *scanCache) scan(code []byte, from int, wantFS bool) *scanResult {
-	h := sha256.New()
-	h.Write(code)
-	h.Write([]byte{byte(from), 0})
-	if wantFS {
-		h.Write([]byte{1})
-	}
-	var key [32]byte
-	h.Sum(key[:0])
 	c.mu.Lock()
-	r := c.m[key]
+	if c.m == nil {
+		c.seed = maphash.MakeSeed()
+		c.m = map[uint64][]*scanEntry{}
+	}
+	seed := c.seed
 	c.mu.Unlock()
-	if r != nil {
-		return r
-	}
-	r = scanText(code, from, wantFS)
+	key := maphash.Bytes(seed, code)
 	c.mu.Lock()
-	if c.m == nil || len(c.m) >= 512 {
-		c.m = map[[32]byte]*scanResult{}
+	for _, e := range c.m[key] {
+		if e.from == from && e.wantFS == wantFS && bytes.Equal(e.code, code) {
+			c.mu.Unlock()
+			return e.r
+		}
 	}
-	c.m[key] = r
+	c.mu.Unlock()
+	r := scanText(code, from, wantFS)
+	e := &scanEntry{code: append([]byte(nil), code...), from: from, wantFS: wantFS, r: r}
+	c.mu.Lock()
+	if c.bytes+len(code) > scanCacheBytes {
+		c.m, c.bytes = map[uint64][]*scanEntry{}, 0
+	}
+	c.m[key] = append(c.m[key], e)
+	c.bytes += len(code)
 	c.mu.Unlock()
 	return r
 }
@@ -139,7 +160,9 @@ const (
 // of a range, see reseam); the sites inside are left alone and no patch overlaps them.
 func (as *addressSpace) patchCode(code []byte, base uint64, from, skip, zone, stop int, keep []rng) (siteStats, *scanResult) {
 	var st siteStats
+	t0 := qpc()
 	scan := as.p.scans.scan(code, from, as.p.fsRewrite)
+	as.lastScanNS = qpc() - t0
 	st.pairs = scan.pairs
 	cl := claims{fixed: keep}
 	if skip > 0 {
@@ -222,13 +245,22 @@ func (as *addressSpace) patchImm(code []byte, base uint64, list []ins, s int, tg
 			return false
 		}
 		entry = stubasm.TrapCode + stubasm.EntrySize*idx
-		e := []byte{0xB8}
-		e = binary.LittleEndian.AppendUint32(e, sysno)
-		e = append(e, 0x48, 0xB9)
-		e = binary.LittleEndian.AppendUint64(e, a+2)
-		e = append(e, 0x49, 0xBB)
-		e = binary.LittleEndian.AppendUint64(e, stubasm.StubCode+stubasm.OffTramp)
-		e = append(e, 0x41, 0xFF, 0xE3)
+		var e []byte
+		if sysno == sysGetcpu && kind == 32 && isVDSOGetcpu(code, pv.off) {
+			// The vDSO's getcpu is a bare syscall: answer it in the stub.
+			e = append(e, 0x48, 0xB9)
+			e = binary.LittleEndian.AppendUint64(e, a+2) // movabs $ret,%rcx
+			e = append(e, 0xE9)                          // jmp rel32 to GetcpuCode
+			e = binary.LittleEndian.AppendUint32(e, uint32(int32(int64(stubasm.StubCode+stubasm.OffGetcpu)-int64(entry+uint64(len(e))+4))))
+		} else {
+			e = []byte{0xB8}
+			e = binary.LittleEndian.AppendUint32(e, sysno)
+			e = append(e, 0x48, 0xB9)
+			e = binary.LittleEndian.AppendUint64(e, a+2)
+			e = append(e, 0x49, 0xBB)
+			e = binary.LittleEndian.AppendUint64(e, stubasm.StubCode+stubasm.OffTramp)
+			e = append(e, 0x41, 0xFF, 0xE3)
+		}
 		as.areaWrite(entry, e)
 		as.areaWrite(stubasm.TrapPtrs+8*idx, binary.LittleEndian.AppendUint64(nil, entry))
 		as.siteCache[a] = siteInfo{sysno, entry}
@@ -247,6 +279,19 @@ func (as *addressSpace) patchImm(code []byte, base uint64, list []ins, s int, tg
 	cl.add(pv.off, x.off+x.n)
 	st.imm++
 	return true
+}
+
+const sysGetcpu = 309
+
+// vdsoGetcpu is the whole getcpu function of the Sentry's vDSO
+// (pkg/sentry/loader/vdsodata): endbr64; mov $309,%eax; syscall; cltq; ret.
+var vdsoGetcpu = []byte{0xF3, 0x0F, 0x1E, 0xFA, 0xB8, 0x35, 0x01, 0x00, 0x00, 0x0F, 0x05, 0x48, 0x98, 0xC3}
+
+// isVDSOGetcpu reports whether the mov at off in code is the one of the vDSO's getcpu.
+// Only that site is answered in the stub: a getcpu syscall elsewhere keeps its
+// system-call semantics (EFAULT for a bad pointer, flags preserved).
+func isVDSOGetcpu(code []byte, off int) bool {
+	return off >= 4 && off-4+len(vdsoGetcpu) <= len(code) && bytes.Equal(code[off-4:off-4+len(vdsoGetcpu)], vdsoGetcpu)
 }
 
 // patchReloc patches a site that is not `mov $imm,%eax; syscall`: the smallest

@@ -33,11 +33,13 @@ flowchart TB
     platform_fast_process_start["✔ Start guest<br/>processes fast"]
     platform_split_syscall_unpatched>"✔ Syscalls split<br/>across mappings"]
     platform_map_files_without_sections>"✔ Map files not in the<br/>memory file"]
+    platform_own_vdso["✔ Own vDSO for clock<br/>calls"]
     platform_busybox_on_windows["✔ Run busybox under<br/>the Sentry"]
     platform_veneer_address_in_child>"✔ Veneer addresses<br/>differ after clone"]
     platform_no_fsgsbase_fallback["✔ Support CPUs without<br/>FSGSBASE"]
     platform_rare_hang_under_exec_load>"✔ Rare hang under<br/>heavy exec load"]
     platform_unsupported_errno>"✔ Unsupported platform<br/>calls return errnos"]
+    platform_recycle_stubs["✔ Reuse stub processes<br/>across exec"]
     platform_avx512_state_lost>"✔ AVX-512 state lost<br/>across stops"]
     platform_avx_on_non_avx_cpu>"✔ glibc runs AVX code<br/>on a non-AVX CPU"]
     platform_fs_veneer_capacity>"⚠ More room for %fs<br/>veneers"]
@@ -48,11 +50,9 @@ flowchart TB
     platform_exception_dispatch_depth[/"✔ Measure exception<br/>stack use"/]
     platform_resume_inside_fs_window>"✔ Thread resumed<br/>inside a patch window"]
     platform_fault_under_fs_jump>"⚠ Fault reported under<br/>a patch jump"]
-    platform_own_vdso["○ Own vDSO for clock<br/>calls"]
     platform_64k_mapping_conflicts["⏸ Handle 64 KB mapping<br/>conflicts"]
     platform_hardware_acceleration["⏸ Use hardware<br/>acceleration when<br/>available"]
     platform_binary_translation_fallback["⏸ Binary translation<br/>as a fallback"]
-    platform_recycle_stubs["○ Reuse stub processes<br/>across exec"]
     platform_elf_alignment_survey ~~~ platform_tls_register
     platform_trap_cost ~~~ platform_restricted_stub
     platform_4k_section_views ~~~ platform_zpoline_hooks
@@ -80,16 +80,17 @@ flowchart TB
     platform_static_guest_from_memory ~~~ platform_fast_process_start
     platform_retire_prototype ~~~ platform_split_syscall_unpatched
     platform_memory_release ~~~ platform_map_files_without_sections
-    platform_fast_process_start ~~~ platform_busybox_on_windows
-    platform_split_syscall_unpatched ~~~ platform_veneer_address_in_child
+    platform_fast_process_start ~~~ platform_own_vdso
+    platform_split_syscall_unpatched ~~~ platform_busybox_on_windows
     platform_map_files_without_sections ~~~ platform_veneer_address_in_child
-    platform_busybox_on_windows ~~~ platform_veneer_address_in_child
-    platform_veneer_address_in_child ~~~ platform_no_fsgsbase_fallback
+    platform_own_vdso ~~~ platform_veneer_address_in_child
+    platform_busybox_on_windows ~~~ platform_no_fsgsbase_fallback
     platform_veneer_address_in_child ~~~ platform_rare_hang_under_exec_load
     platform_veneer_address_in_child ~~~ platform_unsupported_errno
-    platform_no_fsgsbase_fallback ~~~ platform_avx512_state_lost
-    platform_rare_hang_under_exec_load ~~~ platform_avx_on_non_avx_cpu
-    platform_unsupported_errno ~~~ platform_fs_veneer_capacity
+    platform_no_fsgsbase_fallback ~~~ platform_recycle_stubs
+    platform_rare_hang_under_exec_load ~~~ platform_avx512_state_lost
+    platform_unsupported_errno ~~~ platform_avx_on_non_avx_cpu
+    platform_recycle_stubs ~~~ platform_fs_veneer_capacity
     platform_avx512_state_lost ~~~ platform_rewrite_mode_slow_engine
     platform_avx_on_non_avx_cpu ~~~ platform_rewrite_glibc_init_crash
     platform_fs_veneer_capacity ~~~ platform_unrewritten_fs_in_library
@@ -97,11 +98,10 @@ flowchart TB
     platform_rewrite_glibc_init_crash ~~~ platform_exception_dispatch_depth
     platform_unrewritten_fs_in_library ~~~ platform_resume_inside_fs_window
     platform_rewrite_heap_corruption ~~~ platform_fault_under_fs_jump
-    platform_exception_dispatch_depth ~~~ platform_own_vdso
-    platform_resume_inside_fs_window ~~~ platform_64k_mapping_conflicts
-    platform_fault_under_fs_jump ~~~ platform_hardware_acceleration
-    platform_own_vdso ~~~ platform_binary_translation_fallback
-    platform_64k_mapping_conflicts ~~~ platform_recycle_stubs
+    platform_exception_dispatch_depth ~~~ platform_64k_mapping_conflicts
+    platform_resume_inside_fs_window ~~~ platform_hardware_acceleration
+    platform_fault_under_fs_jump ~~~ platform_binary_translation_fallback
+    platform_64k_mapping_conflicts ~~~ platform_binary_translation_fallback
     platform_trap_cost -.-> platform_veh_on_guest_stack_unsafe
     platform_tls_register -.-> platform_veh_on_guest_stack_unsafe
     platform_trap_cost --> platform_exception_stack
@@ -124,11 +124,11 @@ flowchart TB
     platform_fp_state --> platform_static_guest_from_memory
     platform_static_guest_from_memory --> platform_retire_prototype
     platform_static_guest_from_memory --> platform_fast_process_start
-    platform_veneer_address_in_child --> platform_no_fsgsbase_fallback
     platform_stub_controller --> platform_own_vdso
+    platform_veneer_address_in_child --> platform_no_fsgsbase_fallback
+    platform_no_fsgsbase_fallback --> platform_recycle_stubs
     platform_winstub --> platform_hardware_acceleration
     platform_debug_event_cost --> platform_binary_translation_fallback
-    platform_no_fsgsbase_fallback --> platform_recycle_stubs
     linkStyle 49,50 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
@@ -147,10 +147,9 @@ flowchart TB
     class platform_elf_alignment_survey,platform_trap_cost,platform_4k_section_views,platform_exception_stack,platform_veh_on_guest_stack_unsafe,platform_debug_event_cost,platform_faults_per_exec,platform_stub_controller,platform_page_verification,platform_syscall_fast_path,platform_controller_wakeups,platform_winstub,platform_fp_state,platform_static_guest_from_memory,platform_retire_prototype,platform_memory_release,platform_split_syscall_unpatched,platform_map_files_without_sections,platform_busybox_on_windows,platform_veneer_address_in_child,platform_rare_hang_under_exec_load,platform_unsupported_errno,platform_avx512_state_lost,platform_avx_on_non_avx_cpu,platform_rewrite_mode_slow_engine,platform_rewrite_glibc_init_crash,platform_unrewritten_fs_in_library,platform_rewrite_heap_corruption,platform_resume_inside_fs_window succ
     class platform_tls_register,platform_restricted_stub,platform_syscall_site_survey,platform_no_fsgsbase_fallback,platform_exception_dispatch_depth mixed
     class platform_zpoline_hooks dead
-    class platform_fs_base_repair unrated
+    class platform_fs_base_repair,platform_own_vdso,platform_recycle_stubs unrated
     class platform_fast_process_start vsucc
     class platform_fs_veneer_capacity,platform_fault_under_fs_jump finding
-    class platform_own_vdso,platform_recycle_stubs next
     class platform_64k_mapping_conflicts,platform_hardware_acceleration,platform_binary_translation_fallback parked
 ```
 <!-- END GENERATED: track-platform -->
@@ -168,7 +167,7 @@ flowchart TB
 | `platform-stub-controller` | Stub and controller prototype | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | ops-phase0-go-no-go, platform-trap-cost, platform-4k-section-views, platform-tls-register, platform-restricted-stub, platform-exception-stack, platform-debug-event-cost, platform-syscall-site-survey, platform-faults-per-exec |  |  |  | docs/results/1a-stub-prototype.md; docs/adr/0011-stub-process-design.md; docs/adr/0012-eager-patching-and-non-blocking-debug-events.md |
 | `platform-page-verification` | Scan code pages for syscalls | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-stub-controller |  |  |  | docs/results/1a-stub-prototype.md |
 | `platform-syscall-fast-path` | Patch syscall sites into jumps | experiment | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-stub-controller |  |  | 0.00% of executed syscalls on the ud2 path | docs/results/1a-stub-prototype.md |
-| `platform-own-vdso` | Own vDSO for clock calls | feature | windows-ci | next | unrated |  |  | platform-stub-controller |  |  |  |  |
+| `platform-own-vdso` | Own vDSO for clock calls | feature | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 | platform-stub-controller |  |  |  | docs/results/1r-platform-speed.md; docs/adr/0022-fork-and-exec-without-faults-patching-or-process-creation.md |
 | `platform-64k-mapping-conflicts` | Handle 64 KB mapping conflicts | feature | windows-ci | parked | unrated |  |  | sentry-memory-file-sections, platform-elf-alignment-survey |  |  |  |  |
 | `platform-winstub` | Windows platform for the Sentry | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-stub-controller, sentry-memory-file-sections, ops-syscall-test-strategy, platform-controller-wakeups |  |  |  | docs/results/1c-windows-platform.md |
 | `platform-busybox-on-windows` | Run busybox under the Sentry | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-winstub, sentry-timers-and-clocks, sentry-fault-recovery, sentry-host-stdio-and-tty, fs-root-filesystem-source, platform-fs-base-repair, platform-static-guest-from-memory, sentry-dynamic-elf-and-exec, runsc-windows-boot |  |  |  | docs/results/3-runsc-boot.md; docs/results/1f-exec-signals.md |
@@ -193,7 +192,7 @@ flowchart TB
 | `platform-veneer-address-in-child` | Veneer addresses differ after clone | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/results/1h-platform-share.md |
 | `platform-rare-hang-under-exec-load` | Rare hang under heavy exec load | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/1h-platform-share.md; docs/results/1i-profile.md; docs/results/1l-platform-stability.md |
 | `platform-unsupported-errno` | Unsupported platform calls return errnos | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/4-syscall-tests.md |
-| `platform-recycle-stubs` | Reuse stub processes across exec | feature | windows-ci | next | unrated |  |  | platform-no-fsgsbase-fallback |  |  |  | docs/results/1i-profile.md |
+| `platform-recycle-stubs` | Reuse stub processes across exec | feature | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 | platform-no-fsgsbase-fallback |  |  |  | docs/results/1i-profile.md; docs/results/1r-platform-speed.md; docs/adr/0022-fork-and-exec-without-faults-patching-or-process-creation.md |
 | `platform-avx512-state-lost` | AVX-512 state lost across stops | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/results/1m-platform-repair.md |
 | `platform-avx-on-non-avx-cpu` | glibc runs AVX code on a non-AVX CPU | defect | windows-local | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/1j-no-fsgsbase.md; docs/results/1k-platform-next.md |
 | `platform-fs-veneer-capacity` | More room for %fs veneers | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/1j-no-fsgsbase.md |
@@ -217,7 +216,7 @@ flowchart TB
 | `platform-stub-controller` | Stub and controller prototype | PASS. A suspended PE stub, a Go controller that builds the address space from placeholders and 4 KB section views, eager `syscall` patching with a shared-memory trampoline and debugger-only fault handling run static glibc (non-PIE and PIE), fork+wait, threads and a static Go binary on a |  | The Sentry debugs a tiny Windows stub process that runs a static Linux program; patched syscalls arrive over shared memory and faults as debug events. | Done when: a static x86-64 binary writes, forks and exits correctly under the controller, without the Sentry; per-syscall cost recorded. First number: cost of creating a stub process and mapping its memory. |  |  |  |  |
 | `platform-page-verification` | Scan code pages for syscalls | generated code is rescanned under W^X (a JIT guest gets the Linux results with no NT-kernel syscall) |  | Before guest code may run, each page is scanned for syscall instructions; patchable sites become jumps into the stub trampoline, the rest are made to fault into the debugger. | Done when: W^X holds (writes to executable pages drop execute permission and pages are re-scanned before running again), anonymous JIT memory is scanned on mmap and mprotect with PROT_EXEC, and a JIT test guest never reaches the NT kernel. Eager scanning with a real decoder already works in the prototype. |  |  |  |  |
 | `platform-syscall-fast-path` | Patch syscall sites into jumps | Every syscall site of the glibc, fork and Go guests is patched (0.00% of executed syscalls on the ud2 path) | 0.00% of executed syscalls on the ud2 path | Syscall sites are patched like gVisor's usertrap into a jump through a table at 0x60000, so syscalls never raise an exception. | Done when: xor %eax,%eax and register-number sites (Go Syscall6, musl) are patched via a 5-byte relocating jump, and static glibc has under 1% of executed syscalls on the ud2 path (prototype: 38 of 135 glibc sites are ud2 at 60 us each). |  |  |  |  |
-| `platform-own-vdso` | Own vDSO for clock calls |  |  | Time and CPU queries are answered inside the stub, so they need no trap at all. | Done when: clock_gettime, gettimeofday and getcpu run without a trap and return correct values. |  |  |  |  |
+| `platform-own-vdso` | Own vDSO for clock calls |  |  | Time and CPU queries are answered inside the stub, so they need no trap at all. | Done: clock_gettime, gettimeofday and time were already trap-free through the Sentry vDSO once calibration was ready; getcpu is now answered in the stub. A guest counts zero traps in all modes. |  |  |  |  |
 | `platform-64k-mapping-conflicts` | Handle 64 KB mapping conflicts |  |  | When Linux puts two file pieces inside one 64 KB Windows window, the Sentry copies them into one fresh range instead. | Parked: the ELF survey shows non-64K-aligned segments in 73-82% of files, but S2 showed 4 KB section views work with placeholders on Windows 10.0.26300, so no conflict path is needed there. Done when: needed only on Windows builds without 4 KB placeholder views. |  |  |  |  |
 | `platform-winstub` | Windows platform for the Sentry | The Sentry's platform interface runs on stub processes on a hosted Windows runner |  | gVisor's platform interface implemented for Windows: address spaces, context switches and syscall delivery through stub processes. | Done when: pkg/sentry/platform/winstub passes the platform's own tests on Windows. |  |  |  |  |
 | `platform-busybox-on-windows` | Run busybox under the Sentry | runs a glibc guest and busybox from a Windows-folder rootfs with stdio, exit codes, stdin, a windows-nat network, a published port |  | First end-to-end milestone: gVisor's kernel runs an unmodified busybox shell on Windows. | Done when: busybox sh runs a script with fork, exec, pipes and mmap under the Sentry on Windows as a standard user. |  |  |  |  |
@@ -242,7 +241,7 @@ flowchart TB
 | `platform-veneer-address-in-child` | Veneer addresses differ after clone |  |  | A syscall through a relocated veneer returns into the veneer; after clone into a new address space the veneers sit elsewhere, so the child resumes on a zero page and crashes. | Fixed: patch windows end at the syscall where possible, other veneers get a platform-wide address per site; clonesys cases are required. |  |  |  |  |
 | `platform-rare-hang-under-exec-load` | Rare hang under heavy exec load |  |  | A guest that forks many children hangs now and then: about 1 in 50 gopodman runs, and 9 in 48 fork+exec loops through runsc.exe with the exclusive root cache (2 in 48 with the shared cache); the shell waits in wait4 with no child task. Syscall-test runs show the same root: a stub process that never finishes starting (one thread in a kernel wait), and newAS/Release wait forever on it. The Podman engine also hangs in vforkStop (2 of 8 runs): the vfork child never gets its new address space. | Fixed: debug-event and context buffers lived on the Go stack and were handed to Windows as raw addresses; a moved stack made WaitForDebugEvent write into dead memory and the wrong event got continued, freezing whole stubs. Heap buffers: 300/300 fork+exec in all three modes. |  |  |  |  |
 | `platform-unsupported-errno` | Unsupported platform calls return errnos |  |  | arch_prctl(ARCH_SET_GS) and ptrace preparation return a raw error from the platform instead of an errno, so the Sentry panics with "Unknown syscall 158". | Fixed when: arch_prctl_test fails cleanly (EPERM or ENOTSUP) instead of crashing the Sentry. |  |  |  |  |
-| `platform-recycle-stubs` | Reuse stub processes across exec |  |  | Each fork+exec starts two stub processes at about 10 ms each; recycling a stub on release and execve and mapping memory up front would cut process start further. | Next: profile fork+exec (about 20 ms per iteration native) before building recycling. Done when the 100x loop is 4x faster than 3.47 s. |  |  |  |  |
+| `platform-recycle-stubs` | Reuse stub processes across exec |  |  | Each fork+exec starts two stub processes at about 10 ms each; recycling a stub on release and execve and mapping memory up front would cut process start further. | Done: 100 fork+exec take 0.36-0.57 s in all three modes (was 2.07/3.34/3.56 s): eager mapping at fork, exec and brk, a patched-text cache, recycled stub processes and reused stub threads (ADR 0022). |  |  |  |  |
 | `platform-avx512-state-lost` | AVX-512 state lost across stops |  |  | Podman's Go GC crashed at 0xfffffffffffffff8; a likely cause was found: a straddling instruction at a text-piece start swallowed Go's mov %fs:-8 load, now fixed. AVX-512 stays hidden until repeated acceptance runs are clean. | Fixed: not AVX-512 state but the native %fs repair giving up after 20 repairs in 5 ms; the debugger now decides from the fault address whether a base was lost. A Go reproducer died 12/12 with the old rule and passes 12/12 now. |  |  |  |  |
 | `platform-avx-on-non-avx-cpu` | glibc runs AVX code on a non-AVX CPU |  |  | On the dev VM a static glibc hello dies with SIGILL on vmovd (AVX) in start-up code, although the CPU has no AVX; busybox runs fine. | Not a platform bug: the runner's static glibc runs AVX in init_cpu_features; guests are now built in debian:bookworm. Found on the way: text pieces starting inside an instruction were decoded from garbage, now decoded with the tail of the piece below. |  |  |  |  |
 | `platform-fs-veneer-capacity` | More room for %fs veneers |  |  | python3 with libpython and libc needs about 8500 %fs veneers against room for about 7000, and 24% of far %fs sites in Rust PIE binaries such as netavark fall back to the 100 us debugger path. | Fixed when: python3 and netavark run in rewrite mode with under 1% of %fs executions on the debugger path. |  |  |  |  |

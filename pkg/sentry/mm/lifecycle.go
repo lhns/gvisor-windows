@@ -234,9 +234,35 @@ func (mm *MemoryManager) Fork(ctx context.Context) (*MemoryManager, error) {
 		}
 	}()
 	memCgID := pgalloc.MemoryCgroupIDFromContext(ctx)
+	// gvisor-windows: copy small private memory for the child now (EagerForkCopyLimit).
+	copyAll := false
+	if EagerForkCopyLimit != 0 && !dontforks && !mm.hasPinned {
+		var n uint64
+		for pseg := mm.pmas.FirstSegment(); pseg.Ok() && n <= EagerForkCopyLimit; pseg = pseg.NextSegment() {
+			if pseg.ValuePtr().private {
+				n += uint64(pseg.Range().Length())
+			}
+		}
+		copyAll = n <= EagerForkCopyLimit
+	}
 	for srcpseg := mm.pmas.FirstSegment(); srcpseg.Ok(); srcpseg = srcpseg.NextSegment() {
 		pma := srcpseg.ValuePtr()
 		if !pma.private {
+			if copyAll {
+				// The child would translate it again at its first touch (text
+				// and read-only data): share the translation instead.
+				pma.file.IncRef(srcpseg.fileRange(), memCgID)
+				mm2.addRSSLocked(srcpseg.Range())
+				dstpgap = mm2.pmas.Insert(dstpgap, srcpseg.Range(), *pma).NextGap()
+			}
+			continue
+		}
+		if copyAll {
+			var err error
+			if dstpgap, err = mm.forkCopyPMALocked(mm2, srcpseg, dstpgap, memCgID); err != nil {
+				droppedIDs = mm2.abortForkLocked(ctx, droppedIDs)
+				return nil, err
+			}
 			continue
 		}
 
@@ -362,6 +388,14 @@ func (mm *MemoryManager) Fork(ctx context.Context) (*MemoryManager, error) {
 		mm2.invalidateLocked(invArgs.ar, invArgs.opts.InvalidatePrivate, true)
 	}
 	mm2.capturedInvalidations = nil
+
+	// gvisor-windows: the child's address space gets the copied pmas now, rather
+	// than one fault per pma (see EagerForkCopyLimit).
+	if EagerForkCopyLimit != 0 {
+		if pseg := mm2.pmas.FirstSegment(); pseg.Ok() {
+			mm2.mapASLocked(ctx, pseg, mm2.applicationAddrRange(), memmap.PlatformEffectDefault) // +checklocksignore
+		}
+	}
 
 	if mm2.executable != nil {
 		mm2.executable.IncRef()

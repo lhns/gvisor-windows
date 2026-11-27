@@ -27,6 +27,7 @@ gantt
     Stub and controller prototype :platform_stub_controller, 2026-11-26, 2026-11-26
     Scan code pages for syscalls :platform_page_verification, 2026-11-26, 2026-11-26
     Patch syscall sites into jumps :platform_syscall_fast_path, 2026-11-26, 2026-11-26
+    Own vDSO for clock calls :platform_own_vdso, 2026-11-27, 2026-11-27
     Windows platform for the Sentry :platform_winstub, 2026-11-26, 2026-11-26
     Run busybox under the Sentry :platform_busybox_on_windows, 2026-11-26, 2026-11-26
     Hook syscalls like zpoline :crit, platform_zpoline_hooks, 2026-11-26, 2026-11-26
@@ -48,6 +49,7 @@ gantt
     Veneer addresses differ after clone :platform_veneer_address_in_child, 2026-11-27, 2026-11-27
     Rare hang under heavy exec load :platform_rare_hang_under_exec_load, 2026-11-27, 2026-11-27
     Unsupported platform calls return errnos :platform_unsupported_errno, 2026-11-27, 2026-11-27
+    Reuse stub processes across exec :platform_recycle_stubs, 2026-11-27, 2026-11-27
     AVX-512 state lost across stops :platform_avx512_state_lost, 2026-11-27, 2026-11-27
     glibc runs AVX code on a non-AVX CPU :platform_avx_on_non_avx_cpu, 2026-11-27, 2026-11-27
     More room for %fs veneers :platform_fs_veneer_capacity, 2026-11-27, 2026-11-27
@@ -148,5 +150,5 @@ gantt
     Build once, run suites on demand :ops_ci_build_once, 2026-11-27, 2026-11-27
 ```
 
-Not shown (no `start`): `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-hardware-acceleration`, `platform-binary-translation-fallback`, `platform-recycle-stubs`, `sentry-event-loop-iocp`, `ops-run-on-a-work-machine`
+Not shown (no `start`): `platform-64k-mapping-conflicts`, `platform-hardware-acceleration`, `platform-binary-translation-fallback`, `sentry-event-loop-iocp`, `ops-run-on-a-work-machine`
 <!-- END GENERATED: timeline -->

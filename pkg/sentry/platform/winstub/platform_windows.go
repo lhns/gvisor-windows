@@ -28,6 +28,7 @@ import (
 	"gvisor.dev/gvisor/pkg/cpuid"
 	"gvisor.dev/gvisor/pkg/hostarch"
 	"gvisor.dev/gvisor/pkg/sentry/arch"
+	"gvisor.dev/gvisor/pkg/sentry/mm"
 	"gvisor.dev/gvisor/pkg/sentry/platform"
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/stubasm"
 )
@@ -55,6 +56,7 @@ type Platform struct {
 	platform.NoCPUNumbers
 
 	scans         scanCache
+	texts         textCache
 	veneers       veneerRegistry
 	active        atomic.Int32 // contexts inside Switch
 	tokens        atomic.Int32 // spinning tokens held (policyTokens)
@@ -77,6 +79,9 @@ type Platform struct {
 	sparing  bool // a goroutine is starting spares
 	closed   bool
 	nSpares  int
+	// Emptied stubs of released address spaces (recycle_windows.go).
+	recycled               []*addressSpace
+	nRecycled, nRecycleFail atomic.Uint64
 	tripwire bool // the stubs register an instrumentation callback that catches unpatched syscalls (WINSTUB_TRIPWIRE=1)
 }
 
@@ -164,11 +169,11 @@ func New(opts platform.Options) (*Platform, error) {
 func (p *Platform) Close() {
 	p.spareMu.Lock()
 	p.closed = true
-	spares := p.spares
-	p.spares = nil
+	spares := append(p.spares, p.recycled...)
+	p.spares, p.recycled = nil, nil
 	p.spareMu.Unlock()
 	for _, as := range spares {
-		as.Release()
+		as.kill()
 	}
 	os.Remove(p.stubPath)
 }
@@ -243,6 +248,9 @@ func (*Platform) MaxUserAddress() hostarch.Addr { return hostarch.Addr(stubasm.G
 // 20 ms to start. opts.DisableSyscallPatching is ignored: an unpatched syscall
 // would reach the Windows kernel.
 func (p *Platform) NewAddressSpace(opts platform.AddressSpaceOptions) (platform.AddressSpace, error) {
+	if as := p.takeRecycled(); as != nil {
+		return as, nil
+	}
 	if as := p.takeSpare(); as != nil {
 		return as, nil
 	}
@@ -284,4 +292,10 @@ func init() {
 	// Executables load low (0x1000_0000 + up to 256 MiB), within rel32 reach of the
 	// stub's veneers; Linux's 2/3 of the address space is out of reach.
 	arch.PIELoadBase, arch.PIELoadRand = 0x1000_0000, 0x1000_0000
+	// A page fault is a debugger round trip (0.1 to 0.4 ms): fork and execve map
+	// memory up front (WINSTUB_EAGER=0 turns it off, to compare).
+	if os.Getenv("WINSTUB_EAGER") != "0" {
+		mm.EagerForkCopyLimit = 8 << 20
+		mm.EagerExecMap = true
+	}
 }

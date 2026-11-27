@@ -11,6 +11,7 @@ gcc -static -no-pie -O1 -fstack-protector-all -o $O/hello $G/hello.c
 gcc -static -no-pie -O1 -o $O/unixsock $G/unixsock.c
 gcc -static -no-pie -O1 -o $O/cfr $G/cfr.c
 gcc -static -no-pie -O1 -pthread -o $O/clocks $G/clocks.c
+gcc -static -no-pie -O1 -o $O/vdso $G/vdso.c
 [ "$2" = all ] || exit 0
 gcc -static -no-pie -O1 -fstack-protector-all -o $O/hello_glibc $G/hello.c
 gcc -static-pie -O1 -fstack-protector-all -o $O/hello_glibc_pie $G/hello.c

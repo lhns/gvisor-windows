@@ -1,6 +1,6 @@
 # 0011. Stub process design
 
-- Status: Accepted, partly superseded by ADR 0012 (patching, fault servicing)
+- Status: Accepted, partly superseded by ADR 0012 (patching, fault servicing) and ADR 0022 (one stub process per address space)
 - Date: 2026-11-26
 - Builds on: ADR 0010
 

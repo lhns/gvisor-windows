@@ -178,7 +178,6 @@ flowchart TB
 |---|---|---|
 | Run a container with runsc | ✔ done · successful | The main goal: gVisor's runtime runs an OCI container on Windows for a standard user, with no admin, VM, WSL or Hyper-V. |
 | Set the TLS register | ✔ done · mixed ⚠ | Check whether a normal Windows program can set the register Linux programs use for thread-local data; without it native execution fails. |
-| Own vDSO for clock calls | ○ next | Time and CPU queries are answered inside the stub, so they need no trap at all. |
 | Handle 64 KB mapping conflicts | ⏸ parked | When Linux puts two file pieces inside one 64 KB Windows window, the Sentry copies them into one fresh range instead. |
 | Windows platform for the Sentry | ✔ done · successful | gVisor's platform interface implemented for Windows: address spaces, context switches and syscall delivery through stub processes. |
 | Run busybox under the Sentry | ✔ done · successful | First end-to-end milestone: gVisor's kernel runs an unmodified busybox shell on Windows. |
@@ -187,7 +186,6 @@ flowchart TB
 | Exceptions overwrite guest stacks | ✔ fixed | Windows writes about 3 KB of exception data below the faulting thread stack pointer, so in-process handlers can corrupt Linux code; faults must go to the Sentry as debugger instead. |
 | Binary translation as a fallback | ⏸ parked | Translate guest code (as the owner's v3compat does with DynamoRIO on Linux) only if debugger faults or unpatchable syscalls prove too slow, or to support CPUs without FSGSBASE. |
 | Start guest processes fast | ✔ done · very-successful | A guest process takes 280-560 ms to start through the Sentry, against 18 ms for a bare stub; profile the gap and keep a pool of ready stubs. |
-| Reuse stub processes across exec | ○ next | Each fork+exec starts two stub processes at about 10 ms each; recycling a stub on release and execve and mapping memory up front would cut process start further. |
 | More room for %fs veneers | ⚠ open | python3 with libpython and libc needs about 8500 %fs veneers against room for about 7000, and 24% of far %fs sites in Rust PIE binaries such as netavark fall back to the 100 us debugger path. |
 | Fault reported under a patch jump | ⚠ open | A fault in an instruction displaced into a veneer can still be reported at an address under the jump; a signal handler returning there with ret would run the jump bytes. No case is known. |
 | Event waiting on IOCP | ⏸ parked | Waiting for many host events at once (epoll on Linux) moves to Windows completion ports. |
@@ -211,8 +209,6 @@ flowchart TB
 <!-- BEGIN GENERATED: ready-now -->
 **windows-ci**
 
-- `platform-own-vdso`: Own vDSO for clock calls
-- `platform-recycle-stubs`: Reuse stub processes across exec
 - `platform-fs-veneer-capacity`: More room for %fs veneers
 - `sentry-waitgroup-panic`: One-off negative WaitGroup panic
 - `platform-fault-under-fs-jump`: Fault reported under a patch jump
@@ -247,7 +243,7 @@ Generated on 2026-11-27.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 117 done, 7 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 119 done, 7 abandoned</summary>
 
 - `fs-attribute-cache`: Faster stat walks on host folders (✔ done · mixed). A git-status-like walk of 20000 files takes 1.2-2.4 s through the host folder; an attribute cache fed by the change watcher would bring stat near native.
   - Cold stat walk on a fresh mount is still about 4x native, 99-105 us per file (2026-11-26)
@@ -375,9 +371,13 @@ Generated on 2026-11-27.
   - Dev VM lacks FSGSBASE, XSAVE, OSXSAVE and AVX; runsc.exe refuses to start (2026-11-27)
   - Static glibc hello still dies with SIGILL on an AVX instruction on the dev VM (2026-11-27)
   - About 1.4 ns more per %fs access in rewrite mode (2026-11-27)
+- `platform-own-vdso`: Own vDSO for clock calls (✔ done · unrated). Time and CPU queries are answered inside the stub, so they need no trap at all.
 - `platform-rare-hang-under-exec-load`: Rare hang under heavy exec load (✔ fixed). A guest that forks many children hangs now and then: about 1 in 50 gopodman runs, and 9 in 48 fork+exec loops through runsc.exe with the exclusive root cache (2 in 48 with the shared cache); the shell waits in wait4 with no child task. Syscall-test runs show the same root: a stub process that never finishes starting (one thread in a kernel wait), and newAS/Release wait forever on it. The Podman engine also hangs in vforkStop (2 of 8 runs): the vfork child never gets its new address space.
   - Debug loop no longer waits forever after TerminateProcess; unverified because CI did not reproduce the hang (2026-11-27)
   - Bounded anchor waits, thread restart and stub abandonment: 98 of 100 pass with the exclusive cache, 16 of 16 shared (2026-11-27)
+- `platform-recycle-stubs`: Reuse stub processes across exec (✔ done · unrated). Each fork+exec starts two stub processes at about 10 ms each; recycling a stub on release and execve and mapping memory up front would cut process start further.
+  - Background spare stubs gave no gain: process creation is not the dominant fork+exec cost (2026-11-27)
+  - Profile: 100 fork+exec take 2.49 s, 1.33 s with two spare address spaces; 87% of CPU time waits in the debug loop, about 30 access-violation events per exec (2026-11-27)
 - `platform-resume-inside-fs-window`: Thread resumed inside a patch window (✔ fixed). In rewrite mode the platform can move a thread out of a veneer to an address inside the patch window; a Go signal handler then returns there and runs nop filler (one engine crash in 16 rewrite runs).
 - `platform-rewrite-glibc-init-crash`: Static glibc crashes at start in rewrite mode (✔ fixed). The static glibc fsstress guest dies with SIGSEGV in libc init right after set_tid_address in rewrite mode, every run; native mode runs it.
 - `platform-rewrite-heap-corruption`: glibc heap errors in rewrite mode (✔ fixed). In rewrite mode, aptrename dies with free(): invalid size and apt inside builds with segfaults or double free; native mode runs them, so a %fs veneer likely computes or clobbers something wrong.
@@ -426,7 +426,7 @@ Generated on 2026-11-27.
 Each track has its own page with its tree, node table and per-node details.
 
 - [runsc - runsc](roadmap/tracks/runsc.md): 6 nodes (6 done)
-- [platform - platform](roadmap/tracks/platform.md): 44 nodes (36 done, 4 next, 3 parked, 1 abandoned)
+- [platform - platform](roadmap/tracks/platform.md): 44 nodes (38 done, 2 next, 3 parked, 1 abandoned)
 - [sentry - sentry](roadmap/tracks/sentry.md): 15 nodes (13 done, 1 next, 1 parked)
 - [fs - files](roadmap/tracks/fs.md): 23 nodes (23 done)
 - [net - network](roadmap/tracks/net.md): 4 nodes (4 done)

@@ -72,6 +72,11 @@ var (
 type privSection struct {
 	h    uintptr
 	refs int
+	size uint64
+	id   uint64 // (privIDs)
+	// shared: the text cache maps this section into other address spaces too; it
+	// is copied before it is patched in place (ownPriv).
+	shared bool
 }
 
 // view is one mapped range of the stub's address space. Its backing is a section
@@ -153,11 +158,24 @@ type addressSpace struct {
 	freeSlots                            []int
 
 	holesDone atomic.Bool
+
+	// gen counts the owners of the stub process (recycle_windows.go); relMu
+	// serializes emptying it with freeThread.
+	gen   atomic.Uint64
+	relMu sync.Mutex
+
+	lastScanNS int64 // trace: time of the last scan lookup
+
+	// hist is the history of text operations of this address space, histOK false
+	// once it is not tracked (textcache_windows.go).
+	hist   [32]byte
+	histOK bool
 }
 
 func newAddressSpace(p *Platform) *addressSpace {
 	return &addressSpace{
 		p: p, loopDone: make(chan struct{}), started: make(chan error, 1),
+		histOK: true,
 		vcur: stubasm.Veneers, siteCache: map[uint64]siteInfo{}, restartAt: map[uint64]uint64{},
 		ud2Sites: map[uint64]bool{}, fcur: stubasm.FSVeneers, ftop: stubasm.VeneersShared, fsCache: map[fsKey]uint64{}, fsUD2: map[uint64][]byte{}, fsSplit: map[uint64][]byte{}, fsWhy: map[uint64]string{}, fsHits: map[uint64]uint32{}, tails: map[uint64][]byte{}, tailExact: map[uint64]bool{}, heads: map[uint64][]byte{}, byTid: map[uint32]*thread{}, edges: map[uint64]edge{},
 	}
@@ -300,8 +318,9 @@ func (as *addressSpace) removeRange(lo, hi uint64) error {
 	if i == j {
 		return nil
 	}
-	as.purgeSites(lo, hi)
+	changed := as.purgeSites(lo, hi)
 	for k, e := range as.edges {
+		o := e
 		if k > lo && k <= hi {
 			e.tail0f = false
 		}
@@ -309,8 +328,15 @@ func (as *addressSpace) removeRange(lo, hi uint64) error {
 			e.head05 = false
 		}
 		as.edges[k] = e
+		changed = changed || e != o
 	}
 	olds := append([]*view(nil), as.views[i:j]...)
+	for _, v := range olds {
+		changed = changed || v.isText()
+	}
+	if changed {
+		as.histMix('u', lo, hi, 0)
+	}
 	// Where a private text view is cut, the new ends may form a split syscall
 	// with a range mapped there later: remember what the surviving pieces end
 	// and begin with (reading the text before it is unmapped).
@@ -388,15 +414,22 @@ func (as *addressSpace) unrefPriv(p *privSection) {
 	}
 	p.refs--
 	if p.refs == 0 {
-		pCloseHandle.Call(p.h)
-		for i, q := range as.privs {
-			if q == p {
-				as.privs = append(as.privs[:i], as.privs[i+1:]...)
-				break
-			}
+		as.closePriv(p)
+	}
+}
+
+func (as *addressSpace) closePriv(p *privSection) {
+	pCloseHandle.Call(p.h)
+	for i, q := range as.privs {
+		if q == p {
+			as.privs = append(as.privs[:i], as.privs[i+1:]...)
+			break
 		}
 	}
 }
+
+// isText reports whether v is patched text (a private executable copy).
+func (v *view) isText() bool { return v.priv != nil && v.prot&protX != 0 && !v.wx }
 
 // newPrivate creates a private section holding content.
 func (as *addressSpace) newPrivate(content []byte) (*privSection, error) {
@@ -412,7 +445,7 @@ func (as *addressSpace) newPrivate(content []byte) (*privSection, error) {
 	}
 	copy(unsafe.Slice((*byte)(ptr(b)), n), content)
 	pUnmapViewOfFile.Call(b)
-	p := &privSection{h: h, refs: 1}
+	p := &privSection{h: h, refs: 1, size: n, id: privIDs.Add(1)}
 	as.privs = append(as.privs, p)
 	return p, nil
 }
@@ -440,6 +473,10 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 	}
 	sf, isSec := f.(SectionFile)
 	lo, hi := uint64(addr), uint64(addr)+fr.Length()
+	if traceOn {
+		t0 := qpc()
+		defer func() { Trace("MapFile %#x-%#x %v sec %v %T %.3fms", lo, hi, at, isSec, f, float64(qpc()-t0)/1e6) }()
+	}
 	if lo < stubasm.GuestMin || hi > stubasm.GuestMax || hi < lo {
 		return errOutOfRange
 	}
@@ -472,14 +509,21 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 		srs = sf.Sections(fr)
 	}
 
-	var content []byte
-	if isText || !isSec {
-		content = make([]byte, fr.Length())
+	read := func() ([]byte, error) {
+		content := make([]byte, fr.Length())
 		bs, err := f.MapInternal(fr, hostarch.Read)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if _, err := safemem.CopySeq(safemem.BlockSeqOf(safemem.BlockFromSafeSlice(content)), bs); err != nil {
+			return nil, err
+		}
+		return content, nil
+	}
+	var content []byte
+	if !isSec && !isText {
+		var err error
+		if content, err = read(); err != nil {
 			return err
 		}
 	}
@@ -501,8 +545,39 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 		}
 		return nil
 	}
-	if content != nil {
+	if isText {
+		// The same bytes patched after the same history before: take the result.
+		t0 := qpc()
+		e := as.textLookup(lo, hi, f, fr)
+		if e != nil {
+			defer as.p.texts.done(e)
+			as.p.texts.mu.Lock()
+			snap := e.after
+			as.p.texts.mu.Unlock()
+			if snap != nil {
+				err := as.applySnap(snap, e.histAfter)
+				as.p.texts.hits.Add(1)
+				if traceOn {
+					Trace("text %#x-%#x: cached patch %.3fms (err %v)", lo, hi, float64(qpc()-t0)/1e6, err)
+				}
+				return err
+			}
+		}
+		var err error
+		if content, err = read(); err != nil {
+			return err
+		}
+		if e != nil && !bytes.Equal(content, e.orig) {
+			e = nil // the file changed since the lookup: these are other bytes
+		}
+		var orig []byte
+		before := as.hist
+		if e == nil && textCacheOn && as.histOK {
+			orig = append([]byte(nil), content...)
+		}
+		t1 := qpc()
 		st := as.patchText(content, lo, hi)
+		t2 := qpc()
 		debugf("text %#x-%#x: %+v (fs veneers: %d of %d bytes)", lo, hi, st, as.fcur-stubasm.FSVeneers, stubasm.FSVeneersSize)
 		ps, err := as.newPrivate(content)
 		if err != nil {
@@ -512,6 +587,10 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 		if err := as.mapView(v); err != nil {
 			as.unrefPriv(ps)
 			return err
+		}
+		as.textStore(lo, hi, orig, before, e)
+		if traceOn {
+			Trace("text %#x-%#x: patch %.3fms (scan %.3fms) section and cache %.3fms %+v", lo, hi, float64(t2-t1)/1e6, float64(as.lastScanNS)/1e6, float64(qpc()-t2)/1e6, st)
 		}
 		return nil
 	}
@@ -579,8 +658,14 @@ func (as *addressSpace) UserModifiedGS(ctx context.Context, mm platform.MemoryMa
 	return linuxerr.EPERM
 }
 
-// Release implements platform.AddressSpace.Release.
+// Release implements platform.AddressSpace.Release: the stub is kept for the next
+// address space if it can be emptied, else terminated.
 func (as *addressSpace) Release() {
+	as.p.release(as)
+}
+
+// kill terminates the stub process.
+func (as *addressSpace) kill() {
 	if as.released.Swap(true) {
 		return
 	}
@@ -692,6 +777,7 @@ const wxWindow = 1 << 20
 func (as *addressSpace) wxExec(a uint64) bool {
 	as.mu.Lock()
 	defer as.mu.Unlock()
+	as.histOK = false
 	v := as.findView(a)
 	if v == nil || !v.wx || v.wxPriv {
 		return false
@@ -984,6 +1070,10 @@ func (as *addressSpace) fixHead(a uint64) bool {
 	orig := append([]byte(nil), buf...)
 	as.patchCode(buf, v.lo, 1, 0, 0, len(buf), nil)
 	buf[0] = 0x0B
+	if err := as.ownPriv(v); err != nil {
+		debugf("fixHead: %v", err)
+		return false
+	}
 	off := v.off
 	base := off &^ 0xFFFF
 	n := off - base + uint64(len(buf))
@@ -1004,6 +1094,9 @@ func (as *addressSpace) fixHead(a uint64) bool {
 
 // writeText overwrites text that is mapped at addr in the private view v.
 func (as *addressSpace) writeText(v *view, addr uint64, b []byte) error {
+	if err := as.ownPriv(v); err != nil {
+		return err
+	}
 	off := v.off + (addr - v.lo)
 	base := off &^ 0xFFFF
 	m, err := call(pMapViewOfFile, v.priv.h, fileMapWrite, uintptr(base>>32), uintptr(base&0xFFFFFFFF), uintptr(off-base+uint64(len(b))))
@@ -1013,6 +1106,17 @@ func (as *addressSpace) writeText(v *view, addr uint64, b []byte) error {
 	copy(unsafe.Slice((*byte)(ptr(m+uintptr(off-base))), len(b)), b)
 	pUnmapViewOfFile.Call(m)
 	return nil
+}
+
+// viewDesc describes the view at a for the trace.
+func (as *addressSpace) viewDesc(a uint64) string {
+	as.mu.Lock()
+	defer as.mu.Unlock()
+	v := as.findView(a)
+	if v == nil {
+		return "unmapped"
+	}
+	return fmt.Sprintf("view %#x-%#x prot %d priv %v wx %v/%v", v.lo, v.hi, v.prot, v.priv != nil, v.wx, v.wxPriv)
 }
 
 // mapped reports whether a lies in a view (to tell SEGV_ACCERR from SEGV_MAPERR).
@@ -1044,7 +1148,8 @@ func (as *addressSpace) isUD2Site(a uint64) bool {
 // unpatched sites, and the saved last bytes of the pieces ending there. They would
 // redirect or mis-decode whatever is mapped there next. (The slot and veneer
 // caches stay: they are keyed by the content.)
-func (as *addressSpace) purgeSites(lo, hi uint64) {
+func (as *addressSpace) purgeSites(lo, hi uint64) bool {
+	n := len(as.restartAt) + len(as.ud2Sites) + len(as.fsUD2) + len(as.fsSplit) + len(as.tails) + len(as.heads)
 	for k := range as.restartAt {
 		if k >= lo && k < hi {
 			delete(as.restartAt, k)
@@ -1078,4 +1183,5 @@ func (as *addressSpace) purgeSites(lo, hi uint64) {
 			delete(as.heads, k)
 		}
 	}
+	return n != len(as.restartAt)+len(as.ud2Sites)+len(as.fsUD2)+len(as.fsSplit)+len(as.tails)+len(as.heads)
 }

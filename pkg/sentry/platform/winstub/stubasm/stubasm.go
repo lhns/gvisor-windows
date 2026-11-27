@@ -67,6 +67,7 @@ const (
 	OffTrampPark uint64 = 0xC00
 	OffICB       uint64 = 0x1000 // tripwire: the instrumentation callback
 	OffICBInit   uint64 = 0x1400 // and the anchor's first code that registers it
+	OffGetcpu    uint64 = 0x1800 // the vDSO's getcpu without a trap (GetcpuCode)
 
 	Veneers     uint64 = 0x120000 // displaced instructions of relocated syscall sites
 	VeneersSize uint64 = 0x70000
@@ -115,6 +116,7 @@ const (
 	PgRIP       = 0x18 // resume address
 	PgScratch   = 0x20
 	PgRetRIP    = 0x28  // %fs repair trampoline return address
+	PgCPU       = 0x30  // uint32: the task's CPU number, written by the Sentry on every resume (getcpu)
 	PgStkTop    = 0x38  // 16-byte aligned top of the stub stack
 	PgSpins     = 0x40  // pause iterations before the stub sleeps on the reply event
 	PgCtlSlp    = 0x50  // uint32: the controller thread sleeps on the request event
@@ -208,7 +210,27 @@ func image() []byte {
 		}
 		copy(img[r.off:], code)
 	}
+	copy(img[OffGetcpu:], GetcpuCode())
 	return img
+}
+
+// GetcpuCode is getcpu(cpu, node, cache) for the vDSO: it stores the CPU number
+// the Sentry left in the thread page (PgCPU) and node 0 through the pointers that
+// are not null, returns 0 in rax and continues at rcx (rcx and r11 are lost, as
+// in a syscall; the flags too, which the vDSO's caller does not keep).
+func GetcpuCode() []byte {
+	return []byte{
+		0x65, 0x4C, 0x8B, 0x1C, 0x25, 0x28, 0, 0, 0, // mov %gs:0x28,%r11 (the thread page)
+		0x41, 0x8B, 0x43, PgCPU, // mov PgCPU(%r11),%eax
+		0x48, 0x85, 0xFF, // test %rdi,%rdi
+		0x74, 0x02, // jz +2
+		0x89, 0x07, // mov %eax,(%rdi)
+		0x48, 0x85, 0xF6, // test %rsi,%rsi
+		0x74, 0x06, // jz +6
+		0xC7, 0x06, 0, 0, 0, 0, // movl $0,(%rsi)
+		0x31, 0xC0, // xor %eax,%eax
+		0xFF, 0xE1, // jmp *%rcx
+	}
 }
 
 // RepairCode returns the %fs repair trampoline for the thread page at pg: it
