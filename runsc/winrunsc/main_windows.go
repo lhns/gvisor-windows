@@ -241,7 +241,7 @@ func newInstance(id, bundle string, terminal bool) (*instance, int) {
 		if err != nil {
 			return nil, fatalf("opening the debug log: %v", err)
 		}
-		defer f.Close()
+		in.logFile = f // closed by the caller (closeLog), not when newInstance returns
 		log.SetTarget(log.GoogleEmitter{Writer: &log.Writer{Next: &reportingWriter{w: f}}})
 	}
 	log.Infof("runsc %s %s, %d CPUs, args %v", version.Version(), runtime.Version(), runtime.NumCPU(), os.Args)
