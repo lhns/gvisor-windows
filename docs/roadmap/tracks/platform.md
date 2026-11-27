@@ -33,6 +33,7 @@ flowchart TB
     platform_fast_process_start["✔ Start guest<br/>processes fast"]
     platform_split_syscall_unpatched>"✔ Syscalls split<br/>across mappings"]
     platform_map_files_without_sections>"✔ Map files not in the<br/>memory file"]
+    platform_busybox_on_windows["✔ Run busybox under<br/>the Sentry"]
     platform_veneer_address_in_child>"✔ Veneer addresses<br/>differ after clone"]
     platform_no_fsgsbase_fallback["✔ Support CPUs without<br/>FSGSBASE"]
     platform_rare_hang_under_exec_load>"✔ Rare hang under<br/>heavy exec load"]
@@ -49,7 +50,6 @@ flowchart TB
     platform_fault_under_fs_jump>"⚠ Fault reported under<br/>a patch jump"]
     platform_own_vdso["○ Own vDSO for clock<br/>calls"]
     platform_64k_mapping_conflicts["⏸ Handle 64 KB mapping<br/>conflicts"]
-    platform_busybox_on_windows["✔ Run busybox under<br/>the Sentry"]
     platform_hardware_acceleration["⏸ Use hardware<br/>acceleration when<br/>available"]
     platform_binary_translation_fallback["⏸ Binary translation<br/>as a fallback"]
     platform_recycle_stubs["○ Reuse stub processes<br/>across exec"]
@@ -80,9 +80,12 @@ flowchart TB
     platform_static_guest_from_memory ~~~ platform_fast_process_start
     platform_retire_prototype ~~~ platform_split_syscall_unpatched
     platform_memory_release ~~~ platform_map_files_without_sections
-    platform_fast_process_start ~~~ platform_veneer_address_in_child
-    platform_split_syscall_unpatched ~~~ platform_no_fsgsbase_fallback
-    platform_map_files_without_sections ~~~ platform_rare_hang_under_exec_load
+    platform_fast_process_start ~~~ platform_busybox_on_windows
+    platform_split_syscall_unpatched ~~~ platform_veneer_address_in_child
+    platform_map_files_without_sections ~~~ platform_veneer_address_in_child
+    platform_busybox_on_windows ~~~ platform_veneer_address_in_child
+    platform_veneer_address_in_child ~~~ platform_no_fsgsbase_fallback
+    platform_veneer_address_in_child ~~~ platform_rare_hang_under_exec_load
     platform_veneer_address_in_child ~~~ platform_unsupported_errno
     platform_no_fsgsbase_fallback ~~~ platform_avx512_state_lost
     platform_rare_hang_under_exec_load ~~~ platform_avx_on_non_avx_cpu
@@ -96,12 +99,9 @@ flowchart TB
     platform_rewrite_heap_corruption ~~~ platform_fault_under_fs_jump
     platform_exception_dispatch_depth ~~~ platform_own_vdso
     platform_resume_inside_fs_window ~~~ platform_64k_mapping_conflicts
-    platform_fault_under_fs_jump ~~~ platform_busybox_on_windows
-    platform_own_vdso ~~~ platform_hardware_acceleration
-    platform_64k_mapping_conflicts ~~~ platform_binary_translation_fallback
-    platform_busybox_on_windows ~~~ platform_recycle_stubs
-    platform_hardware_acceleration ~~~ platform_recycle_stubs
-    platform_binary_translation_fallback ~~~ platform_recycle_stubs
+    platform_fault_under_fs_jump ~~~ platform_hardware_acceleration
+    platform_own_vdso ~~~ platform_binary_translation_fallback
+    platform_64k_mapping_conflicts ~~~ platform_recycle_stubs
     platform_trap_cost -.-> platform_veh_on_guest_stack_unsafe
     platform_tls_register -.-> platform_veh_on_guest_stack_unsafe
     platform_trap_cost --> platform_exception_stack
@@ -144,7 +144,7 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class platform_elf_alignment_survey,platform_trap_cost,platform_4k_section_views,platform_exception_stack,platform_veh_on_guest_stack_unsafe,platform_debug_event_cost,platform_faults_per_exec,platform_stub_controller,platform_page_verification,platform_syscall_fast_path,platform_controller_wakeups,platform_winstub,platform_fp_state,platform_static_guest_from_memory,platform_retire_prototype,platform_memory_release,platform_split_syscall_unpatched,platform_map_files_without_sections,platform_veneer_address_in_child,platform_rare_hang_under_exec_load,platform_unsupported_errno,platform_avx512_state_lost,platform_avx_on_non_avx_cpu,platform_rewrite_mode_slow_engine,platform_rewrite_glibc_init_crash,platform_unrewritten_fs_in_library,platform_rewrite_heap_corruption,platform_resume_inside_fs_window,platform_busybox_on_windows succ
+    class platform_elf_alignment_survey,platform_trap_cost,platform_4k_section_views,platform_exception_stack,platform_veh_on_guest_stack_unsafe,platform_debug_event_cost,platform_faults_per_exec,platform_stub_controller,platform_page_verification,platform_syscall_fast_path,platform_controller_wakeups,platform_winstub,platform_fp_state,platform_static_guest_from_memory,platform_retire_prototype,platform_memory_release,platform_split_syscall_unpatched,platform_map_files_without_sections,platform_busybox_on_windows,platform_veneer_address_in_child,platform_rare_hang_under_exec_load,platform_unsupported_errno,platform_avx512_state_lost,platform_avx_on_non_avx_cpu,platform_rewrite_mode_slow_engine,platform_rewrite_glibc_init_crash,platform_unrewritten_fs_in_library,platform_rewrite_heap_corruption,platform_resume_inside_fs_window succ
     class platform_tls_register,platform_restricted_stub,platform_syscall_site_survey,platform_no_fsgsbase_fallback,platform_exception_dispatch_depth mixed
     class platform_zpoline_hooks dead
     class platform_fs_base_repair unrated

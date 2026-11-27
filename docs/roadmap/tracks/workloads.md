@@ -18,6 +18,8 @@ flowchart TB
     workloads_gvisor_cgroupfs_readonly>"✔ Cgroup filesystem<br/>mounted read-only"]
     workloads_podman_api_named_pipe["✔ Podman API on a<br/>named pipe"]
     workloads_overlay_userxattr>"✔ Overlay mounts with<br/>userxattr rejected"]
+    workloads_podman_probe[/"✔ Probe Podman inside<br/>the sandbox"/]
+    workloads_podman_harness["✔ Serve Podman to<br/>Windows clients"]
     workloads_end_to_end_speed[/"✔ Measure end-to-end<br/>speed on Windows"/]
     workloads_conmon_sync_pipe>"✔ conmon sees no data<br/>on its sync pipe"]
     workloads_conmon_attach_second_cause>"✔ Second attach-socket<br/>failure"]
@@ -28,8 +30,6 @@ flowchart TB
     workloads_podman_on_windows[/"✔ Podman passes on<br/>Windows"/]
     workloads_dev_null_eacces>"✔ Rare permission<br/>error opening the null<br/>device"]
     workloads_podman_without_fsgsbase["✔ Podman on CPUs<br/>without FSGSBASE"]
-    workloads_podman_probe[/"✔ Probe Podman inside<br/>the sandbox"/]
-    workloads_podman_harness["✔ Serve Podman to<br/>Windows clients"]
     workloads_acceptance_test ~~~ workloads_podman_on_gvisor_linux
     workloads_acceptance_test ~~~ workloads_acceptance_test_windows
     workloads_acceptance_test ~~~ workloads_gvisor_bridge_netlink
@@ -38,24 +38,25 @@ flowchart TB
     workloads_gvisor_bridge_netlink ~~~ workloads_gvisor_cgroupfs_readonly
     workloads_gvisor_port_publishing ~~~ workloads_podman_api_named_pipe
     workloads_strict_bar_linux ~~~ workloads_overlay_userxattr
-    workloads_gvisor_cgroupfs_readonly ~~~ workloads_end_to_end_speed
-    workloads_podman_api_named_pipe ~~~ workloads_conmon_sync_pipe
-    workloads_overlay_userxattr ~~~ workloads_conmon_attach_second_cause
+    workloads_gvisor_cgroupfs_readonly ~~~ workloads_podman_probe
+    workloads_podman_api_named_pipe ~~~ workloads_podman_harness
+    workloads_overlay_userxattr ~~~ workloads_end_to_end_speed
+    workloads_podman_probe ~~~ workloads_conmon_sync_pipe
+    workloads_podman_harness ~~~ workloads_conmon_attach_second_cause
     workloads_end_to_end_speed ~~~ workloads_tty_through_windows_client
     workloads_conmon_sync_pipe ~~~ workloads_isolation_flake
     workloads_conmon_attach_second_cause ~~~ workloads_volume_lost_on_restart
     workloads_tty_through_windows_client ~~~ workloads_buildah_thinks_rootless
-    workloads_isolation_flake ~~~ workloads_podman_on_windows
-    workloads_volume_lost_on_restart ~~~ workloads_dev_null_eacces
+    workloads_isolation_flake ~~~ workloads_buildah_thinks_rootless
+    workloads_volume_lost_on_restart ~~~ workloads_podman_on_windows
     workloads_buildah_thinks_rootless ~~~ workloads_dev_null_eacces
     workloads_podman_on_windows ~~~ workloads_podman_without_fsgsbase
-    workloads_dev_null_eacces ~~~ workloads_podman_probe
-    workloads_podman_without_fsgsbase ~~~ workloads_podman_harness
-    workloads_podman_probe ~~~ workloads_podman_harness
+    workloads_dev_null_eacces ~~~ workloads_podman_without_fsgsbase
     workloads_acceptance_test --> workloads_podman_on_gvisor_linux
     workloads_podman_on_gvisor_linux -.-> workloads_gvisor_port_publishing
     workloads_acceptance_test --> workloads_acceptance_test_windows
     workloads_podman_on_gvisor_linux --> workloads_strict_bar_linux
+    workloads_podman_probe --> workloads_podman_harness
     workloads_acceptance_test_windows --> workloads_podman_on_windows
     workloads_gvisor_cgroupfs_readonly --> workloads_podman_on_windows
     workloads_podman_api_named_pipe --> workloads_podman_on_windows
@@ -67,7 +68,6 @@ flowchart TB
     workloads_volume_lost_on_restart --> workloads_podman_on_windows
     workloads_buildah_thinks_rootless --> workloads_podman_on_windows
     workloads_podman_on_windows --> workloads_podman_without_fsgsbase
-    workloads_podman_probe --> workloads_podman_harness
     linkStyle 23 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111

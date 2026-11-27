@@ -765,9 +765,10 @@
   title: Timers and clocks on Windows
   track: sentry
   kind: feature
-  state: next
+  state: done
   outcome: unrated
-  evidence: []
+  evidence:
+  - docs/results/3d-clocks-upstream.md
   verdict_quote: ''
   headline: ''
   depends_on:
@@ -775,12 +776,12 @@
   - ops-syscall-test-strategy
   replaced_by: []
   lane: windows-ci
-  start: ''
-  end: ''
+  start: '2026-11-27'
+  end: '2026-11-27'
   folded: []
   overview: false
   plain: The Sentry's clocks and timers run on Windows' high-resolution timers.
-  notes: 'Done when: sleep, timerfd and clock tests pass inside a guest on Windows.'
+  notes: A clocks guest (sleep, clocks, timerfd, POSIX timers, itimers, timeouts) passes in all three legs; no Sentry change needed. One epoll timeout overshoot of 212 ms seen once in 12 leg runs.
 - id: fs-windows-directfs
   title: Open Windows files directly
   track: fs
@@ -1076,20 +1077,21 @@
   title: Merge upstream gVisor regularly
   track: ops
   kind: tooling
-  state: next
+  state: done
   outcome: unrated
-  evidence: []
+  evidence:
+  - docs/results/3d-clocks-upstream.md
   verdict_quote: ''
   headline: ''
   depends_on: []
   replaced_by: []
   lane: linux-ci
-  start: ''
-  end: ''
+  start: '2026-11-27'
+  end: '2026-11-27'
   folded: []
   overview: false
   plain: Regularly take in upstream gVisor's Go branch so the port does not drift.
-  notes: 'Done when: a scheduled workflow merges upstream/go into windows or opens an issue on conflict.'
+  notes: Weekly workflow merges google/gvisor go into an upstream-merge-<date> branch, builds both GOOS, and opens or updates one issue on conflict or build failure; dry run merged 4 commits cleanly.
 - id: ops-portable-packaging
   title: Portable zip, no installer
   track: ops

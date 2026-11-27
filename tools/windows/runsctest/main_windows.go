@@ -105,6 +105,7 @@ func main() {
 		{"ovlsub", testOvlSub},
 		{"ovlopaque", testOvlOpaque},
 		{"cfr", testCfr},
+		{"clocks", testClocks},
 		{"debian", testDebian},
 		{"gogc", testGoGC},
 		{"bench", testBench},
@@ -876,6 +877,30 @@ func testCfr() error {
 		}
 	}
 	return nil
+}
+
+// testClocks runs test/guests/clocks: sleeps, clocks, timerfd, POSIX and interval timers and
+// poll/select/epoll timeouts, each within a generous tolerance. The guest names every failed check.
+func testClocks() error {
+	r, err := runsc("clocks", []string{"/bin/clocks"}, nil)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("clocks: exit %d\n%s%s\n", r.code, r.stdout, r.stderr)
+	if r.code != 0 || !strings.Contains(r.stdout, "clocks ok") {
+		return fmt.Errorf("clocks: exit %d, failures %q", r.code, failedLines(r.stdout))
+	}
+	return nil
+}
+
+func failedLines(out string) string {
+	var f []string
+	for _, l := range strings.Split(out, "\n") {
+		if strings.HasPrefix(l, "FAIL") {
+			f = append(f, l)
+		}
+	}
+	return strings.Join(f, "; ")
 }
 
 // testDebian runs Debian 12's dynamic loader and echo from the root folder (a lower layer of the

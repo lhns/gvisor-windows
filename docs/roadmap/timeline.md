@@ -62,6 +62,7 @@ gantt
     Recover faults in Go :sentry_go_fault_recovery, 2026-11-26, 2026-11-26
     Sentry builds for Windows :sentry_windows_build, 2026-11-26, 2026-11-26
     Guest memory on Windows sections :sentry_memory_file_sections, 2026-11-26, 2026-11-26
+    Timers and clocks on Windows :sentry_timers_and_clocks, 2026-11-27, 2026-11-27
     Port fault recovery to Windows :sentry_fault_recovery, 2026-11-26, 2026-11-26
     Guest terminal and stdio :sentry_host_stdio_and_tty, 2026-11-26, 2026-11-26
     Guest threads and signals :sentry_threads_and_signals, 2026-11-26, 2026-11-26
@@ -142,9 +143,10 @@ gantt
     Windows CI as a standard user :ops_windows_ci_standard_user, 2026-11-26, 2026-11-26
     Choose how to run gVisor's tests :ops_syscall_test_strategy, 2026-11-26, 2026-11-26
     gVisor syscall tests on Windows :ops_syscall_tests_on_windows, 2026-11-26, 2026-11-27
+    Merge upstream gVisor regularly :ops_upstream_merges, 2026-11-27, 2026-11-27
     Portable zip, no installer :ops_portable_packaging, 2026-11-27, 2026-11-27
     Build once, run suites on demand :ops_ci_build_once, 2026-11-27, 2026-11-27
 ```
 
-Not shown (no `start`): `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-hardware-acceleration`, `platform-binary-translation-fallback`, `platform-recycle-stubs`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `ops-upstream-merges`, `ops-run-on-a-work-machine`
+Not shown (no `start`): `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-hardware-acceleration`, `platform-binary-translation-fallback`, `platform-recycle-stubs`, `sentry-event-loop-iocp`, `ops-run-on-a-work-machine`
 <!-- END GENERATED: timeline -->

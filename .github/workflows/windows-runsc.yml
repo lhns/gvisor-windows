@@ -92,7 +92,7 @@ jobs:
           # busybox applets are copies: the Windows folder has no Linux symlinks.
           $r = 'C:\ci\work\rootfs'
           foreach ($d in 'bin','etc','proc','dev','tmp','www') { New-Item -ItemType Directory -Force "$r\$d" | Out-Null }
-          Copy-Item guests\hello "$r\bin\hello"; Copy-Item guests\unixsock "$r\bin\unixsock"; Copy-Item guests\cfr "$r\bin\cfr"; New-Item -ItemType Directory -Force "$r\dbin" | Out-Null; Copy-Item guests\dbin\* "$r\dbin"
+          Copy-Item guests\hello "$r\bin\hello"; Copy-Item guests\unixsock "$r\bin\unixsock"; Copy-Item guests\cfr "$r\bin\cfr"; Copy-Item guests\clocks "$r\bin\clocks"; New-Item -ItemType Directory -Force "$r\dbin" | Out-Null; Copy-Item guests\dbin\* "$r\dbin"
           foreach ($a in 'busybox','sh','ls','cat','wget','httpd','sleep','stty','tty','true','chmod','ln','chown','touch','tar','head','sha256sum','gzip','awk','cut','mkdir','rm') { Copy-Item guests\busybox "$r\bin\$a" }
           Copy-Item guests\rootfs.erofs C:\ci\work\rootfs.erofs
           Copy-Item guests\bench.sh "$r\bench.sh"; Copy-Item guests\small.tar "$r\small.tar"

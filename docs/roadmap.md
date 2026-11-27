@@ -114,10 +114,10 @@ flowchart TB
         platform_static_guest_from_memory["platform · ✔ Run a<br/>static guest from<br/>memory"]
         platform_fast_process_start["platform · ✔ Start<br/>guest processes fast"]
         runsc_container_on_windows["runsc · ✔ Run a<br/>container with runsc"]
+        platform_busybox_on_windows["platform · ✔ Run<br/>busybox under the<br/>Sentry"]
         sentry_profile_small_file_path[/"sentry · ✔ Profile the<br/>slow file and exec<br/>path"/]
         workloads_podman_on_windows[/"workloads · ✔ Podman<br/>passes on Windows"/]
         workloads_podman_without_fsgsbase["workloads · ✔ Podman<br/>on CPUs without<br/>FSGSBASE"]
-        platform_busybox_on_windows["platform · ✔ Run<br/>busybox under the<br/>Sentry"]
     end
     research_gvisor_base ~~~ workloads_podman_on_gvisor_linux
     ops_name_and_fork ~~~ platform_tls_register
@@ -133,12 +133,12 @@ flowchart TB
     platform_winstub ~~~ platform_static_guest_from_memory
     platform_static_guest_from_memory ~~~ platform_fast_process_start
     platform_static_guest_from_memory ~~~ runsc_container_on_windows
-    platform_static_guest_from_memory ~~~ sentry_profile_small_file_path
-    platform_fast_process_start ~~~ workloads_podman_on_windows
+    platform_static_guest_from_memory ~~~ platform_busybox_on_windows
+    platform_fast_process_start ~~~ sentry_profile_small_file_path
     runsc_container_on_windows ~~~ workloads_podman_on_windows
-    sentry_profile_small_file_path ~~~ workloads_podman_on_windows
+    platform_busybox_on_windows ~~~ workloads_podman_on_windows
+    sentry_profile_small_file_path ~~~ workloads_podman_without_fsgsbase
     workloads_podman_on_windows ~~~ workloads_podman_without_fsgsbase
-    workloads_podman_on_windows ~~~ platform_busybox_on_windows
     research_gvisor_base --> platform_tls_register
     platform_tls_register -.-> platform_veh_on_guest_stack_unsafe
     platform_tls_register --> ops_phase0_go_no_go
@@ -191,7 +191,6 @@ flowchart TB
 | More room for %fs veneers | ⚠ open | python3 with libpython and libc needs about 8500 %fs veneers against room for about 7000, and 24% of far %fs sites in Rust PIE binaries such as netavark fall back to the 100 us debugger path. |
 | Fault reported under a patch jump | ⚠ open | A fault in an instruction displaced into a veneer can still be reported at an address under the jump; a signal handler returning there with ret would run the jump bytes. No case is known. |
 | Event waiting on IOCP | ⏸ parked | Waiting for many host events at once (epoll on Linux) moves to Windows completion ports. |
-| Timers and clocks on Windows | ○ next | The Sentry's clocks and timers run on Windows' high-resolution timers. |
 | Profile the slow file and exec path | ✔ done · mixed | Creating a file on tmpfs costs about 1 ms and a fork+exec 32 ms on Windows; find where the time goes (syscall round trips, page faults, debug events, Sentry work) and fix the top causes. |
 | One-off negative WaitGroup panic | ⚠ open | A "negative WaitGroup counter" panic seen once in safecopy tests is not explained by stack overrun and did not recur in 1600 runs. |
 | Compatibility layer, not security boundary | ✔ done · n/a | The sandbox may open the user's files directly with the user's rights; it isolates containers from each other, not from the user. |
@@ -204,21 +203,15 @@ flowchart TB
 | Pick gVisor as the base | ✔ done · unrated | Of all ways to run Linux code on Windows without admin, gVisor's user-space Linux kernel is the only one that already runs containers. |
 | Name it gvisor-windows | ✔ done · n/a | The project is an unofficial fork of gVisor's Go branch called gvisor-windows. |
 | Go or no-go after Phase 0 | ✔ done · n/a | Go: the owner asked for the full project; ADR 0004 lists the conditions. |
-| Merge upstream gVisor regularly | ○ next | Regularly take in upstream gVisor's Go branch so the port does not drift. |
 | Try it on a real work machine | ○ next | All evidence comes from GitHub hosted Windows images; the owner runs runsc.exe once on a work machine to check FSGSBASE and whether security software tolerates the generated stub being debugged. |
 <!-- END GENERATED: plain-words -->
 
 ## Ready now
 
 <!-- BEGIN GENERATED: ready-now -->
-**linux-ci**
-
-- `ops-upstream-merges`: Merge upstream gVisor regularly
-
 **windows-ci**
 
 - `platform-own-vdso`: Own vDSO for clock calls
-- `sentry-timers-and-clocks`: Timers and clocks on Windows
 - `platform-recycle-stubs`: Reuse stub processes across exec
 - `platform-fs-veneer-capacity`: More room for %fs veneers
 - `sentry-waitgroup-panic`: One-off negative WaitGroup panic
@@ -254,7 +247,7 @@ Generated on 2026-11-27.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 115 done, 7 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 117 done, 7 abandoned</summary>
 
 - `fs-attribute-cache`: Faster stat walks on host folders (✔ done · mixed). A git-status-like walk of 20000 files takes 1.2-2.4 s through the host folder; an attribute cache fed by the change watcher would bring stat near native.
   - Cold stat walk on a fresh mount is still about 4x native, 99-105 us per file (2026-11-26)
@@ -374,6 +367,7 @@ Generated on 2026-11-27.
   - CI uploads a runsc-windows package (runsc.exe, hello bundle, README) on each push to windows (2026-11-27)
 - `ops-syscall-tests-on-windows`: gVisor syscall tests on Windows (✔ done · mixed). gVisor's own syscall test suite runs against the Windows port to show which Linux calls work.
   - Linux runsc 81.5%, Windows with network 77.3% of 14620 cases (2026-11-27)
+- `ops-upstream-merges`: Merge upstream gVisor regularly (✔ done · unrated). Regularly take in upstream gVisor's Go branch so the port does not drift.
 - `platform-avx-on-non-avx-cpu`: glibc runs AVX code on a non-AVX CPU (✔ fixed). On the dev VM a static glibc hello dies with SIGILL on vmovd (AVX) in start-up code, although the CPU has no AVX; busybox runs fine.
 - `platform-avx512-state-lost`: AVX-512 state lost across stops (✔ fixed). Podman's Go GC crashed at 0xfffffffffffffff8; a likely cause was found: a straddling instruction at a text-piece start swallowed Go's mov %fs:-8 load, now fixed. AVX-512 stays hidden until repeated acceptance runs are clean.
 - `platform-exception-dispatch-depth`: Measure exception stack use (✔ done · mixed). How far below the stack pointer Windows writes when it delivers an exception on AVX-512 CPUs, against what Go reserves; safecopy keeps its stack headroom helper.
@@ -399,6 +393,7 @@ Generated on 2026-11-27.
 - `sentry-pasta-in-sandbox`: pasta networking inside the sandbox (✔ fixed). buildah RUN uses pasta, which fails: /proc/sys/net/ipv4/ip_local_port_range is missing and switching into the namespace returns EPERM.
 - `sentry-profile-small-file-path`: Profile the slow file and exec path (✔ done · mixed). Creating a file on tmpfs costs about 1 ms and a fork+exec 32 ms on Windows; find where the time goes (syscall round trips, page faults, debug events, Sentry work) and fix the top causes.
   - Fork+exec only 1.7-2.1x faster with a pool of ready address spaces; stub creation is the floor (2026-11-27)
+- `sentry-timers-and-clocks`: Timers and clocks on Windows (✔ done · unrated). The Sentry's clocks and timers run on Windows' high-resolution timers.
 - `workloads-buildah-thinks-rootless`: buildah picks rootless isolation (✔ fixed). Without BUILDAH_ISOLATION=oci every build fails in pasta, because buildah resolves the default isolation to rootless inside the sandbox, although euid, uid_map and capabilities all look rootful.
 - `workloads-conmon-attach-second-cause`: Second attach-socket failure (✔ fixed). Even with container directories on a tmpfs, Podman's connect to conmon's attach socket is refused; a second cause is not isolated.
 - `workloads-conmon-sync-pipe`: conmon sees no data on its sync pipe (✔ fixed). Every podman run fails with "conmon bytes \"\": found \x00": conmon reads nothing from its sync pipe while creating the first container inside the sandbox on Windows.
@@ -432,10 +427,10 @@ Each track has its own page with its tree, node table and per-node details.
 
 - [runsc - runsc](roadmap/tracks/runsc.md): 6 nodes (6 done)
 - [platform - platform](roadmap/tracks/platform.md): 44 nodes (36 done, 4 next, 3 parked, 1 abandoned)
-- [sentry - sentry](roadmap/tracks/sentry.md): 15 nodes (12 done, 2 next, 1 parked)
+- [sentry - sentry](roadmap/tracks/sentry.md): 15 nodes (13 done, 1 next, 1 parked)
 - [fs - files](roadmap/tracks/fs.md): 23 nodes (23 done)
 - [net - network](roadmap/tracks/net.md): 4 nodes (4 done)
 - [workloads - workloads](roadmap/tracks/workloads.md): 22 nodes (22 done)
 - [research - research](roadmap/tracks/research.md): 8 nodes (2 done, 6 abandoned)
-- [ops - operations](roadmap/tracks/ops.md): 12 nodes (10 done, 2 next)
+- [ops - operations](roadmap/tracks/ops.md): 12 nodes (11 done, 1 next)
 <!-- END GENERATED: tracks -->
