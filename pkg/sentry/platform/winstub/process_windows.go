@@ -483,6 +483,7 @@ func (as *addressSpace) onException(ev *debugEvent, ctx *ctxBuf, seenBP *bool) u
 				return dbgContinue
 			}
 		}
+		debugf("guest fault: addr %#x kind %d rip %#x (thread %d)", addr, kind, rip, t.idx)
 		at := hostarch.AccessType{Read: true}
 		switch kind {
 		case 1:

@@ -169,7 +169,7 @@ jobs:
         shell: pwsh
         run: |
           $o = & ./sentryguest.exe "-tar=out/rootfs.tar" "-timeout=60s" /bin/dlopen_glibc 2>&1 | Out-String
-          $o -split "`n" | Where-Object { $_ -match 'fs|ud2|SIGSEGV|fault|signal|text 0x|unsupported' } | Select-Object -First 300 | Tee-Object -Append -FilePath diag.txt
+          $o -split "`n" | Where-Object { $_ -match 'fault|signal|unsupported|exception|illegal|unexpected' -and $_ -notmatch 'ud2 site' } | Select-Object -Last 150 | Tee-Object -Append -FilePath diag.txt
       - name: Timing
         continue-on-error: true
         shell: pwsh
