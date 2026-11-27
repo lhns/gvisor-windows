@@ -108,6 +108,13 @@ func decodeRangeSafe(code []byte, from, end int, list []ins) (res []ins, at int,
 	for off < end {
 		inst, err := x86asm.Decode(code[off:], 64)
 		if err != nil || inst.Len == 0 {
+			// The decoder knows no BMI/VEX instruction of this kind, but an %fs
+			// access needs a patch whatever it is.
+			if n := fsVexLen(code[off:min(len(code), off+16)]); n > 0 {
+				list = append(list, ins{off: off, n: n, cls: clsFS})
+				off += n
+				continue
+			}
 			off++
 			continue
 		}
@@ -387,6 +394,36 @@ loop:
 	i += dispLen
 	r.tail = b[i:]
 	return r, true
+}
+
+// fsVexLen returns the length of the %fs-prefixed VEX instruction at the start
+// of b, or 0 if there is none (or it cannot be rewritten).
+func fsVexLen(b []byte) int {
+	if len(b) < 8 || b[0] != 0x64 || (b[1] != 0xC4 && b[1] != 0xC5) {
+		return 0
+	}
+	r, ok := parseFS(b)
+	if !ok || len(r.vex) == 0 {
+		return 0
+	}
+	n := len(b) - len(r.tail)
+	m := 1
+	if len(r.vex) == 3 {
+		m = int(r.vex[1] & 0x1F)
+	}
+	switch {
+	case m == 3:
+		n++
+	case m == 1:
+		switch r.opc[0] {
+		case 0x70, 0x71, 0x72, 0x73, 0xC2, 0xC4, 0xC5, 0xC6:
+			n++
+		}
+	}
+	if n > len(b) {
+		return 0
+	}
+	return n
 }
 
 func regNum(r x86asm.Reg) int {

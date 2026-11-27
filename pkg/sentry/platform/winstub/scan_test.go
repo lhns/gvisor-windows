@@ -159,13 +159,14 @@ func TestScanFS(t *testing.T) {
 		0x90, 0xeb, 0x00, 0x64, 0x8b, 0x01, 0xeb, 0x00, // 3 bytes between jumps: none
 		0x48, 0x8b, 0x0d, 0x10, 0, 0, 0, 0x64, 0x8b, 0x01, // mov x(%rip),%rcx; mov %fs:(%rcx),%eax: window with a rip load
 		0x64, 0x48, 0xa5, // movs: unsupported
+		0x64, 0xc4, 0xe2, 0xfb, 0xf7, 0x04, 0x25, 0x98, 0x06, 0, 0, // a BMI2 op the decoder does not know
 	}
 	rep := ScanFS(code)
-	if rep.Total != 5 || rep.Unsupp != 1 {
-		t.Fatalf("report %+v: want 5 instructions, 1 unsupported", rep)
+	if rep.Total != 6 || rep.Unsupp != 1 {
+		t.Fatalf("report %+v: want 6 instructions, 1 unsupported", rep)
 	}
 	// the lone 3-byte one has neighbours that are not copyable: none
-	want := FSClassCount{Direct: 1, Window: 2, None: 1}
+	want := FSClassCount{Direct: 2, Window: 2, None: 1}
 	if rep.Near != want || rep.Far != want {
 		t.Errorf("near %+v, far %+v, want both %+v", rep.Near, rep.Far, want)
 	}
