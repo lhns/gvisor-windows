@@ -168,11 +168,16 @@ func (*Platform) MaxUserAddress() hostarch.Addr { return hostarch.Addr(stubasm.G
 // 20 ms to start. opts.DisableSyscallPatching is ignored: an unpatched syscall
 // would reach the Windows kernel.
 func (p *Platform) NewAddressSpace(opts platform.AddressSpaceOptions) (platform.AddressSpace, error) {
-	as, err := p.newAS()
-	if err != nil {
-		return nil, err
+	// A stub that does not come up (a rare loader stall) is tried again.
+	var err error
+	for try := 0; try < 3; try++ {
+		var as *addressSpace
+		if as, err = p.newAS(); err == nil {
+			return as, nil
+		}
+		debugf("NewAddressSpace attempt %d: %v", try+1, err)
 	}
-	return as, nil
+	return nil, err
 }
 
 // NewContext implements platform.Platform.

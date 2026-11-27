@@ -372,7 +372,7 @@ func (as *addressSpace) debugLoop() {
 		// exiting task stuck in Release waiting for this goroutine, which sat in an
 		// unbounded WaitForDebugEvent).
 		if r, _, e := pWaitDebugEvent.Call(ev.base(), 100); r == 0 {
-			if en, ok := e.(syscall.Errno); ok && en == 121 { // ERROR_SEM_TIMEOUT
+			if en, ok := e.(syscall.Errno); ok && (en == 121 || en == 0 || en == 258 || en == 1460) { // a timeout (ERROR_SEM_TIMEOUT)
 				if as.released.Load() {
 					as.markDead()
 					return
@@ -383,6 +383,7 @@ func (as *addressSpace) debugLoop() {
 				}
 				continue
 			}
+			debugf("WaitForDebugEvent: %v", e)
 			as.markDead()
 			return
 		}
