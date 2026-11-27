@@ -83,7 +83,7 @@ flowchart TB
     class lg_k5 decided
 ```
 
-Owner calls are the purple shape. A decided owner call is drawn in the overview only, never in the track trees; an open one is listed under *Waiting on the owner*. The prefix on an overview box is its track. A prerequisite implied by a longer chain is not drawn; the node tables keep every edge.
+Owner calls are the purple shape. A decided owner call is drawn; an open one is not, and is listed under *Waiting on the owner*. The prefix on an overview box is its track. A prerequisite implied by a longer chain is not drawn; the node tables keep every edge.
 <!-- END GENERATED: legend -->
 
 ## Ratings
@@ -191,6 +191,7 @@ flowchart TB
 | Event waiting on IOCP | ⏸ parked | Waiting for many host events at once (epoll on Linux) moves to Windows completion ports. |
 | Profile the slow file and exec path | ✔ done · mixed | Creating a file on tmpfs costs about 1 ms and a fork+exec 32 ms on Windows; find where the time goes (syscall round trips, page faults, debug events, Sentry work) and fix the top causes. |
 | One-off negative WaitGroup panic | ⚠ open | A "negative WaitGroup counter" panic seen once in safecopy tests is not explained by stack overrun and did not recur in 1600 runs. |
+| Rare long epoll timeout overshoot | ⚠ open | A 30 ms timer signal meant to interrupt epoll_wait took 212 ms once in about 12 leg runs (rewrite-fxsave); the clocks test now retries, so CI would hide a repeat. |
 | Compatibility layer, not security boundary | ✔ done · n/a | The sandbox may open the user's files directly with the user's rights; it isolates containers from each other, not from the user. |
 | Open Windows files directly | ✔ done · successful | The Sentry opens NTFS files itself for bind mounts, with its own caches, instead of going through a file protocol. |
 | Netstack to Windows sockets | ✔ done · successful | gVisor's own TCP/IP stack sends guest traffic out through ordinary Windows sockets, like a user-space NAT. |
@@ -202,6 +203,7 @@ flowchart TB
 | Name it gvisor-windows | ✔ done · n/a | The project is an unofficial fork of gVisor's Go branch called gvisor-windows. |
 | Go or no-go after Phase 0 | ✔ done · n/a | Go: the owner asked for the full project; ADR 0004 lists the conditions. |
 | Try it on a real work machine | ○ next | All evidence comes from GitHub hosted Windows images; the owner runs runsc.exe once on a work machine to check FSGSBASE and whether security software tolerates the generated stub being debugged. |
+| Podman on the development VM | ○ next | Podman has passed in rewrite-fxsave mode only on CI runners that force it; on the development VM (no FSGSBASE, XSAVE or AVX) only runsc bundles ran, because the engine opens a network listener. |
 <!-- END GENERATED: plain-words -->
 
 ## Ready now
@@ -212,6 +214,7 @@ flowchart TB
 - `platform-fs-veneer-capacity`: More room for %fs veneers
 - `sentry-waitgroup-panic`: One-off negative WaitGroup panic
 - `platform-fault-under-fs-jump`: Fault reported under a patch jump
+- `sentry-epoll-timeout-overshoot`: Rare long epoll timeout overshoot
 <!-- END GENERATED: ready-now -->
 
 ## Running
@@ -230,6 +233,7 @@ _None._
 
 <!-- BEGIN GENERATED: waiting-on-owner -->
 - `ops-run-on-a-work-machine`: Try it on a real work machine
+- `ops-podman-on-the-dev-vm`: Podman on the development VM
 <!-- END GENERATED: waiting-on-owner -->
 
 ## Timeline
@@ -427,10 +431,10 @@ Each track has its own page with its tree, node table and per-node details.
 
 - [runsc - runsc](roadmap/tracks/runsc.md): 6 nodes (6 done)
 - [platform - platform](roadmap/tracks/platform.md): 44 nodes (38 done, 2 next, 3 parked, 1 abandoned)
-- [sentry - sentry](roadmap/tracks/sentry.md): 15 nodes (13 done, 1 next, 1 parked)
+- [sentry - sentry](roadmap/tracks/sentry.md): 16 nodes (13 done, 2 next, 1 parked)
 - [fs - files](roadmap/tracks/fs.md): 23 nodes (23 done)
 - [net - network](roadmap/tracks/net.md): 4 nodes (4 done)
 - [workloads - workloads](roadmap/tracks/workloads.md): 22 nodes (22 done)
 - [research - research](roadmap/tracks/research.md): 8 nodes (2 done, 6 abandoned)
-- [ops - operations](roadmap/tracks/ops.md): 12 nodes (11 done, 1 next)
+- [ops - operations](roadmap/tracks/ops.md): 13 nodes (11 done, 2 next)
 <!-- END GENERATED: tracks -->

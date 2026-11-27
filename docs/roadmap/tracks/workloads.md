@@ -14,6 +14,7 @@ flowchart TB
     workloads_acceptance_test_windows["✔ Acceptance test for<br/>Windows"]
     workloads_gvisor_bridge_netlink>"✔ Bridge networking<br/>fails in gVisor"]
     workloads_gvisor_port_publishing>"✔ Port publishing<br/>untested in gVisor"]
+    workloads_bar_host_network{{"✔ Does host networking<br/>meet the bar"}}
     workloads_strict_bar_linux[/"✔ Strict bar on stock<br/>gVisor"/]
     workloads_gvisor_cgroupfs_readonly>"✔ Cgroup filesystem<br/>mounted read-only"]
     workloads_podman_api_named_pipe["✔ Podman API on a<br/>named pipe"]
@@ -34,13 +35,16 @@ flowchart TB
     workloads_acceptance_test ~~~ workloads_acceptance_test_windows
     workloads_acceptance_test ~~~ workloads_gvisor_bridge_netlink
     workloads_podman_on_gvisor_linux ~~~ workloads_gvisor_port_publishing
-    workloads_acceptance_test_windows ~~~ workloads_strict_bar_linux
-    workloads_gvisor_bridge_netlink ~~~ workloads_gvisor_cgroupfs_readonly
-    workloads_gvisor_port_publishing ~~~ workloads_podman_api_named_pipe
+    workloads_acceptance_test_windows ~~~ workloads_bar_host_network
+    workloads_gvisor_bridge_netlink ~~~ workloads_strict_bar_linux
+    workloads_gvisor_port_publishing ~~~ workloads_gvisor_cgroupfs_readonly
+    workloads_bar_host_network ~~~ workloads_podman_api_named_pipe
     workloads_strict_bar_linux ~~~ workloads_overlay_userxattr
     workloads_gvisor_cgroupfs_readonly ~~~ workloads_podman_probe
-    workloads_podman_api_named_pipe ~~~ workloads_podman_harness
-    workloads_overlay_userxattr ~~~ workloads_end_to_end_speed
+    workloads_podman_api_named_pipe ~~~ workloads_podman_probe
+    workloads_overlay_userxattr ~~~ workloads_podman_probe
+    workloads_podman_probe ~~~ workloads_podman_harness
+    workloads_podman_probe ~~~ workloads_end_to_end_speed
     workloads_podman_probe ~~~ workloads_conmon_sync_pipe
     workloads_podman_harness ~~~ workloads_conmon_attach_second_cause
     workloads_end_to_end_speed ~~~ workloads_tty_through_windows_client
@@ -68,7 +72,7 @@ flowchart TB
     workloads_volume_lost_on_restart --> workloads_podman_on_windows
     workloads_buildah_thinks_rootless --> workloads_podman_on_windows
     workloads_podman_on_windows --> workloads_podman_without_fsgsbase
-    linkStyle 23 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    linkStyle 26 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -86,6 +90,7 @@ flowchart TB
     class workloads_acceptance_test,workloads_acceptance_test_windows,workloads_podman_api_named_pipe,workloads_podman_probe,workloads_podman_harness unrated
     class workloads_podman_on_gvisor_linux,workloads_strict_bar_linux,workloads_end_to_end_speed mixed
     class workloads_gvisor_bridge_netlink,workloads_gvisor_port_publishing,workloads_gvisor_cgroupfs_readonly,workloads_overlay_userxattr,workloads_conmon_sync_pipe,workloads_conmon_attach_second_cause,workloads_tty_through_windows_client,workloads_isolation_flake,workloads_volume_lost_on_restart,workloads_buildah_thinks_rootless,workloads_podman_on_windows,workloads_dev_null_eacces,workloads_podman_without_fsgsbase succ
+    class workloads_bar_host_network decided
 ```
 <!-- END GENERATED: track-workloads -->
 

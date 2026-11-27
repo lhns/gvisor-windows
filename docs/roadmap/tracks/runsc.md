@@ -10,15 +10,19 @@ Scope: gVisor's runtime on Windows hosts: commands, sandbox lifecycle, OCI bundl
 ```mermaid
 flowchart TB
     runsc_measure_cli[/"✔ Measure runsc's<br/>command side"/]
+    runsc_windows_commands{{"✔ Choose runsc<br/>commands for Windows"}}
     runsc_windows_boot["✔ Boot runsc on<br/>Windows"]
     runsc_container_on_windows["✔ Run a container with<br/>runsc"]
     runsc_windows_lifecycle_commands["✔ Container lifecycle<br/>commands on Windows"]
     runsc_sandbox_lifecycle["✔ Start and stop<br/>sandboxes on Windows"]
-    runsc_measure_cli ~~~ runsc_windows_boot
+    runsc_measure_cli ~~~ runsc_windows_commands
+    runsc_windows_commands ~~~ runsc_windows_boot
     runsc_windows_boot ~~~ runsc_container_on_windows
     runsc_windows_boot ~~~ runsc_windows_lifecycle_commands
     runsc_container_on_windows ~~~ runsc_sandbox_lifecycle
     runsc_windows_lifecycle_commands ~~~ runsc_sandbox_lifecycle
+    runsc_measure_cli --> runsc_windows_commands
+    runsc_windows_commands --> runsc_windows_boot
     runsc_windows_boot --> runsc_container_on_windows
     runsc_windows_boot --> runsc_windows_lifecycle_commands
     runsc_windows_lifecycle_commands --> runsc_sandbox_lifecycle
@@ -37,6 +41,7 @@ flowchart TB
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class runsc_measure_cli,runsc_windows_boot,runsc_container_on_windows,runsc_windows_lifecycle_commands,runsc_sandbox_lifecycle succ
+    class runsc_windows_commands decided
 ```
 <!-- END GENERATED: track-runsc -->
 

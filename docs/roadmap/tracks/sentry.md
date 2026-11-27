@@ -23,8 +23,9 @@ flowchart TB
     sentry_fchmod_std_stream>"✔ fchmod on a standard<br/>stream fails"]
     sentry_pasta_in_sandbox>"✔ pasta networking<br/>inside the sandbox"]
     sentry_waitgroup_panic>"⚠ One-off negative<br/>WaitGroup panic"]
+    sentry_epoll_timeout_overshoot>"⚠ Rare long epoll<br/>timeout overshoot"]
     sentry_event_loop_iocp["⏸ Event waiting on<br/>IOCP"]
-    sentry_go_fault_recovery ~~~ sentry_unix_shim
+    sentry_go_fault_recovery ~~~ sentry_windows_build
     sentry_unix_shim ~~~ sentry_windows_build
     sentry_windows_build ~~~ sentry_memory_file_sections
     sentry_windows_build ~~~ sentry_fault_recovery
@@ -37,8 +38,10 @@ flowchart TB
     sentry_timers_and_clocks ~~~ sentry_fchmod_std_stream
     sentry_profile_small_file_path ~~~ sentry_pasta_in_sandbox
     sentry_netpoll_failure ~~~ sentry_waitgroup_panic
-    sentry_fchmod_std_stream ~~~ sentry_event_loop_iocp
-    sentry_go_fault_recovery --> sentry_unix_shim
+    sentry_fchmod_std_stream ~~~ sentry_epoll_timeout_overshoot
+    sentry_pasta_in_sandbox ~~~ sentry_event_loop_iocp
+    sentry_waitgroup_panic ~~~ sentry_event_loop_iocp
+    sentry_epoll_timeout_overshoot ~~~ sentry_event_loop_iocp
     sentry_unix_shim --> sentry_windows_build
     sentry_windows_build --> sentry_memory_file_sections
     sentry_windows_build --> sentry_fault_recovery
@@ -62,7 +65,7 @@ flowchart TB
     class sentry_go_fault_recovery,sentry_unix_shim,sentry_fault_recovery,sentry_host_stdio_and_tty,sentry_threads_and_signals,sentry_dynamic_elf_and_exec,sentry_netpoll_failure,sentry_fchmod_std_stream,sentry_pasta_in_sandbox succ
     class sentry_windows_build,sentry_memory_file_sections,sentry_timers_and_clocks unrated
     class sentry_profile_small_file_path mixed
-    class sentry_waitgroup_panic finding
+    class sentry_waitgroup_panic,sentry_epoll_timeout_overshoot finding
     class sentry_event_loop_iocp parked
 ```
 <!-- END GENERATED: track-sentry -->
@@ -87,6 +90,7 @@ flowchart TB
 | `sentry-fchmod-std-stream` | fchmod on a standard stream fails | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
 | `sentry-pasta-in-sandbox` | pasta networking inside the sandbox | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
 | `sentry-waitgroup-panic` | One-off negative WaitGroup panic | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/0b-windows.md |
+| `sentry-epoll-timeout-overshoot` | Rare long epoll timeout overshoot | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/3d-clocks-upstream.md |
 
 ### Details per node
 
@@ -106,7 +110,8 @@ flowchart TB
 | `sentry-netpoll-failure` | Sentry stalls after many socket tests |  |  | After a few hundred socket test cases in one kernel the Sentry dies with "fatal error: runtime: netpoll failed" or stalls; about 1,700 syscall-test cases fail only because of this. | Cause found: not a handle leak or the netpoller; a stub process that never starts (about 1 per 100-1500 guest processes) leaves the Sentry waiting forever in newAS/Release. Moved to the platform hang defect. |  |  |  |  |
 | `sentry-fchmod-std-stream` | fchmod on a standard stream fails |  |  | conmon logs "Failed to chmod stderr" and container logs are lost, so the compose check cannot read them. | Fixed: pipefs refused every mode change with EPERM; it now keeps the mode like Linux. fchmod test required in windows-runsc. |  |  |  |  |
 | `sentry-pasta-in-sandbox` | pasta networking inside the sandbox |  |  | buildah RUN uses pasta, which fails: /proc/sys/net/ipv4/ip_local_port_range is missing and switching into the namespace returns EPERM. | ip_local_port_range now printed with a tab; the setns EPERM is pasta dropping its capabilities, not a Sentry bug. Builds use BUILDAH_ISOLATION=oci. |  |  |  |  |
-| `sentry-waitgroup-panic` | One-off negative WaitGroup panic |  |  | A "negative WaitGroup counter" panic seen once in safecopy tests is not explained by stack overrun and did not recur in 1600 runs. | Fixed when: the cause is found, or it does not recur in a month of nightly runs. |  |  |  |  |
+| `sentry-waitgroup-panic` | One-off negative WaitGroup panic |  |  | A "negative WaitGroup counter" panic seen once in safecopy tests is not explained by stack overrun and did not recur in 1600 runs. | Fixed when: the cause is found, or it does not recur for a month; pkg/safecopy tests run on every push to windows (windows-sentry in ci.yml). |  |  |  |  |
+| `sentry-epoll-timeout-overshoot` | Rare long epoll timeout overshoot |  |  | A 30 ms timer signal meant to interrupt epoll_wait took 212 ms once in about 12 leg runs (rewrite-fxsave); the clocks test now retries, so CI would hide a repeat. | Fixed when: the cause is known (runner stall or Sentry delay, e.g. interrupt retry waits in rewrite mode) and the check passes without retries in 30 runs. |  |  |  |  |
 
 ### Folded items per node
 
