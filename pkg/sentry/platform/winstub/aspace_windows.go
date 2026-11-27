@@ -726,7 +726,13 @@ func (as *addressSpace) patchText(content []byte, lo, hi uint64) siteStats {
 	if len(pre) > 0 {
 		buf, bufBase = append(append([]byte(nil), pre...), content...), lo-uint64(len(pre))
 	}
-	st, scan := as.patchCode(buf, bufBase, from, len(pre))
+	zone := 0 // a range that begins a mapping begins at an instruction
+	if len(pre) > 0 {
+		zone = zoneContext
+	} else if from == 0 && as.findView(lo-1) != nil {
+		zone = zoneNoContext // text is mapped just below, but not seen: the instruction boundary is unknown
+	}
+	st, scan := as.patchCode(buf, bufBase, from, len(pre), zone)
 	if len(pre) > 0 {
 		copy(content, buf[len(pre):])
 	}
@@ -769,7 +775,7 @@ func (as *addressSpace) fixHead(a uint64) bool {
 		return false
 	}
 	orig := append([]byte(nil), buf...)
-	as.patchCode(buf, v.lo, 1, 0)
+	as.patchCode(buf, v.lo, 1, 0, 0)
 	buf[0] = 0x0B
 	off := v.off
 	base := off &^ 0xFFFF

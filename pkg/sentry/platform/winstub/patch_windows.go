@@ -109,10 +109,15 @@ func (as *addressSpace) areaWrite(addr uint64, b []byte) {
 //
 // Bookkeeping for restarts and ud2 sites goes to as.restartAt and as.ud2Sites.
 // The caller holds as.mu.
-// unsureBytes: see patchCode.
-const unsureBytes = 48
+// The sites in the first zone bytes after the context get only the safe patch:
+// zoneNoContext when nothing is known about the bytes below, zoneContext when the
+// decoder started in the original tail of the range below.
+const (
+	zoneNoContext = 48
+	zoneContext   = 8
+)
 
-func (as *addressSpace) patchCode(code []byte, base uint64, from, skip int) (siteStats, *scanResult) {
+func (as *addressSpace) patchCode(code []byte, base uint64, from, skip, zone int) (siteStats, *scanResult) {
 	var st siteStats
 	scan := as.p.scans.scan(code, from, as.p.fsRewrite)
 	st.pairs = scan.pairs
@@ -129,7 +134,7 @@ func (as *addressSpace) patchCode(code []byte, base uint64, from, skip int) (sit
 		// A range may begin in the middle of an instruction (the text is mapped
 		// in pieces); the decoder needs a few instructions to find the real
 		// boundaries, so the sites there only get the safe patch (ud2).
-		unsure := site.off < unsureBytes && skip == 0 || site.off < skip+8
+		unsure := site.off < skip+zone
 		if site.fs {
 			as.patchFS(code, base, site, &cl, &st, unsure)
 			continue
