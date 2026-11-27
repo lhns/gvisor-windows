@@ -47,9 +47,9 @@ flowchart TB
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class ops_name_and_fork,ops_linux_tests_on_actions,ops_borrow_code,ops_podman_only_the_bar,ops_phase0_go_no_go,ops_syscall_test_strategy decided
-    class ops_windows_ci_standard_user succ
+    class ops_windows_ci_standard_user,ops_upstream_merges succ
     class ops_syscall_tests_on_windows mixed
-    class ops_upstream_merges,ops_portable_packaging,ops_ci_build_once unrated
+    class ops_portable_packaging,ops_ci_build_once unrated
 ```
 <!-- END GENERATED: track-ops -->
 
@@ -66,7 +66,7 @@ flowchart TB
 | `ops-windows-ci-standard-user` | Windows CI as a standard user | tooling | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | ops-phase0-go-no-go |  |  |  | docs/results/2-windows-network.md |
 | `ops-syscall-test-strategy` | Choose how to run gVisor's tests | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0009-running-gvisors-tests.md |
 | `ops-syscall-tests-on-windows` | gVisor syscall tests on Windows | feature | windows-ci | done | mixed | 2026-11-26 | 2026-11-27 | ops-syscall-test-strategy, platform-static-guest-from-memory |  |  | 83.6% | docs/results/4-syscall-tests.md |
-| `ops-upstream-merges` | Merge upstream gVisor regularly | tooling | linux-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/3d-clocks-upstream.md |
+| `ops-upstream-merges` | Merge upstream gVisor regularly | tooling | linux-ci | done | successful | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/3d-clocks-upstream.md |
 | `ops-portable-packaging` | Portable zip, no installer | feature | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 | runsc-container-on-windows |  |  |  | tools/windows/podman/README-release.md; tools/windows/ci/release-test.ps1 |
 | `ops-run-on-a-work-machine` | Try it on a real work machine | owner-decision | owner | next | n/a |  |  |  |  |  |  |  |
 | `ops-ci-build-once` | Build once, run suites on demand | tooling | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/6-ci.md |
@@ -84,7 +84,7 @@ flowchart TB
 | `ops-windows-ci-standard-user` | Windows CI as a standard user | a standard user on stock windows-latest can resolve DNS, fetch https://github.com and publish a guest port on 127.0.0.1 through a netstack NAT with no admin rights, and CI proves the account really was unprivileged. |  | CI on windows-latest creates a standard user and runs every Windows test as that user. | Done when: a workflow runs a test as a freshly created non-admin user and fails if anything needs elevation. |  |  |  |  |
 | `ops-syscall-test-strategy` | Choose how to run gVisor's tests |  |  | The Go branch ships no tests; decide whether gVisor's unit and syscall tests run from a master checkout with Bazel or get ported. | Done when: an ADR records the choice. |  |  |  |  |
 | `ops-syscall-tests-on-windows` | gVisor syscall tests on Windows | 83.6% of the cases that pass on Linux pass (11298 of 14620, 138 of 256 binaries complete) | 83.6% | gVisor's own syscall test suite runs against the Windows port to show which Linux calls work. | Done when: the suite runs in CI on Windows and its pass rate is published. |  |  |  |  |
-| `ops-upstream-merges` | Merge upstream gVisor regularly |  |  | Regularly take in upstream gVisor's Go branch so the port does not drift. | Weekly workflow merges google/gvisor go into an upstream-merge-<date> branch, builds both GOOS, and opens or updates one issue on conflict or build failure; dry run merged 4 commits cleanly. |  |  |  |  |
+| `ops-upstream-merges` | Merge upstream gVisor regularly | a weekly workflow now merges `google/gvisor` `go` into a branch from `windows`, builds it and opens an issue when that fails |  | Regularly take in upstream gVisor's Go branch so the port does not drift. | Weekly workflow merges google/gvisor go into an upstream-merge-<date> branch, builds both GOOS, and opens or updates one issue on conflict or build failure; dry run merged 4 commits cleanly. |  |  |  |  |
 | `ops-portable-packaging` | Portable zip, no installer |  |  | Ship runsc for Windows as a zip or per-user installer that needs no admin. | CI builds gvisor-windows-<sha>.zip (runsc.exe, Podman engine image, podman-engine.ps1 start/stop/status, README); release-test extracts it into a fresh standard user profile and runs hello, the engine, podman version and podman run (run 46044621936). Publishing a GitHub Release is the owner's call. |  |  |  |  |
 | `ops-run-on-a-work-machine` | Try it on a real work machine |  |  | All evidence comes from GitHub hosted Windows images; the owner runs runsc.exe once on a work machine to check FSGSBASE and whether security software tolerates the generated stub being debugged. | Ready: download the gvisor-windows-zip artifact of the latest ci run on windows and follow its README. Done when: the owner reports the result of one run. |  |  |  |  |
 | `ops-ci-build-once` | Build once, run suites on demand |  |  | One ci.yml builds runsc.exe and the test binaries once and calls every Windows suite; worker branches start no runs and dispatch only what they need; heavy repeats run nightly. About 62 to 40 job-minutes per push. | Next lever: merge the 16 small Linux acceptance jobs. Also uploads a runsc-windows package (runsc.exe, hello bundle, README) for trying it on a work machine. |  |  |  |  |

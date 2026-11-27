@@ -605,11 +605,11 @@
   track: platform
   kind: feature
   state: done
-  outcome: unrated
+  outcome: successful
   evidence:
   - docs/results/1r-platform-speed.md
   - docs/adr/0022-fork-and-exec-without-faults-patching-or-process-creation.md
-  verdict_quote: ''
+  verdict_quote: '`clock_gettime`, `gettimeofday` and `time` already ran in the vDSO without a trap, and `getcpu` now does too'
   headline: ''
   depends_on:
   - platform-stub-controller
@@ -768,10 +768,11 @@
   track: sentry
   kind: feature
   state: done
-  outcome: unrated
+  outcome: successful
   evidence:
   - docs/results/3d-clocks-upstream.md
-  verdict_quote: ''
+  verdict_quote: sleeps, clocks, timerfd, POSIX and interval timers and poll/select/epoll timeouts already behave correctly in a guest on Windows in all three legs (every wait within 1 ms of the requested
+    time, no Sentry change needed)
   headline: ''
   depends_on:
   - sentry-windows-build
@@ -1080,10 +1081,10 @@
   track: ops
   kind: tooling
   state: done
-  outcome: unrated
+  outcome: successful
   evidence:
   - docs/results/3d-clocks-upstream.md
-  verdict_quote: ''
+  verdict_quote: a weekly workflow now merges `google/gvisor` `go` into a branch from `windows`, builds it and opens an issue when that fails
   headline: ''
   depends_on: []
   replaced_by: []
@@ -2216,12 +2217,12 @@
   track: platform
   kind: feature
   state: done
-  outcome: unrated
+  outcome: very-successful
   evidence:
   - docs/results/1i-profile.md
   - docs/results/1r-platform-speed.md
   - docs/adr/0022-fork-and-exec-without-faults-patching-or-process-creation.md
-  verdict_quote: ''
+  verdict_quote: the 100x fork+exec loop through `runsc.exe` went from 2.0 to 3.6 s to 0.4 to 0.6 s in all three legs, past the 0.87 s target (4x faster than 3.47 s)
   headline: ''
   depends_on:
   - platform-no-fsgsbase-fallback
