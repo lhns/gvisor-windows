@@ -76,19 +76,22 @@ On 29621d134 (windows merged in at bc1d28677):
 | windows-platform, all legs (with TestFSFaultUnderJump) | green, run 46067943986 |
 | windows-sentry-guests, all legs | green, run 46067970558 |
 | windows-runsc, all legs | green, run 46067974837 |
-| fs-flakes, all legs | FILLFF |
+| fs-flakes, all legs | green, run 46068003609 |
 | podman-windows modes=native,rewrite,rewrite-fxsave runs=4 | all 10 steps in all 12 runs, run 46067979033 |
 | windows-profile fs-share (fails at 1% or more) | green, at most 0.057%, run 46067983533 |
 | windows-stability, 300 runs per leg | 300 of 300 in every leg, run 46067939850 |
 
-Fork+exec (`windows-stability`, median of 7, without / with 2 spare stubs, seconds); the runners differ by up to 50% between runs (rewrite-fxsave "all off" 2.2 to 2.9 s), so three runs:
+Fork+exec (`windows-stability`, median of 7, without / with 2 spare stubs, seconds); the runners differ by up to 50% between runs (rewrite-fxsave "all off" 2.2 to 2.9 s), so several runs:
 
 | run | native | rewrite | rewrite-fxsave |
 |--|--|--|--|
 | 1r final (46058080724) | 0.44 / 0.36 | 0.57 / 0.58 | 0.57 / 0.56 |
 | 46067939850 | 0.34 / 0.35 | 0.45 / 0.46 | 0.67 / 0.65 |
 | 46068772504 | 0.35 / 0.36 | 0.46 / 0.46 | 0.55 / 0.51 |
+| 46070294722 (705b2d321, same product code) | 0.57 / 0.46 | 0.47 / 0.47 | 0.58 / 0.57 |
 | ab083bfb0 (effects in the sweep), 46065397940 | 0.56 / 0.46 | 0.40 / 0.36 | 0.46 / 0.46 |
+
+Within the runner noise of 1r's own runs (its "same code, another runner" row: native 0.58 / 0.63): rewrite is at or under 1r in every run, native and rewrite-fxsave above it in one run each and under it in others. Nothing in this branch runs on the fork+exec path except the `%fs` planning at patch time (a scan of a text is cached, a patched text too).
 
 ## Open
 
