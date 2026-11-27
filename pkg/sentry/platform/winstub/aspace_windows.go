@@ -549,7 +549,16 @@ func (as *addressSpace) Release() {
 	unregisterAS(as)
 	as.markDead()
 	pTerminateProcess.Call(as.h, 0)
-	<-as.loopDone
+	// The debugger goroutine ends within a poll interval of the release. If it
+	// does not (a stub stuck in the kernel that cannot be terminated, or a debug
+	// event that is never delivered), the address space is abandoned: the process,
+	// the goroutine and the handles leak rather than block the task that exits.
+	select {
+	case <-as.loopDone:
+	case <-time.After(10 * time.Second):
+		debugf("abandoning stub process %d: its debugger loop did not end", as.wpid)
+		return
+	}
 	Trace("as: process gone")
 	as.mu.Lock()
 	defer as.mu.Unlock()
