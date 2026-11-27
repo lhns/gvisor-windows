@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Continue'
 if ($FsMode -eq 'native') { $env:WINSTUB_FSMODE = 'native' }
 if ($FsMode -eq 'native-replace') { $env:WINSTUB_FSMODE = 'native'; $env:WINSTUB_REPLACE_STALLED = '1' }
 # Native filesystem mode with the overlay storage driver (kernel overlay in the Sentry on the host-folder storage).
-if ($FsMode -eq 'native-overlay') { $env:WINSTUB_FSMODE = 'native'; $StorageDriver = 'overlay' }
+if ($FsMode -eq 'native-overlay') { $env:WINSTUB_FSMODE = 'native'; $StorageDriver = 'overlay'; $env:ENGINE_NO_FUSE_OVERLAYFS = '1' }
 # Step 5 diagnostics (docs/results/2r-step5-overlay.md): native mode plus a probe in the build (state of /dev/null and the mounts when apt fails);
 # native-diag adds the runsc strace of the file system calls of the whole sandbox (large logs).
 if ($FsMode -eq 'native-probe' -or $FsMode -eq 'native-diag') { $env:WINSTUB_FSMODE = 'native'; $env:ACC_STEP5_PROBE = '1' }
