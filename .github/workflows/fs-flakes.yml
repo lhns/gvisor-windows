@@ -85,9 +85,9 @@ jobs:
         shell: pwsh
         run: |
           & tools/windows/ci/run-as-standard-user.ps1 `
-            -Program C:\ciinunsctest.exe `
-            -Arguments @('-fsmode', $env:WINSTUB_FSMODE, '-runsc','C:\ciinunsc.exe','-rootfs','C:\ci\workootfs','-work','C:\ci\work\std-opq','-only','ovlopaque','-timeout','300s') `
-            -GrantPath C:\ciin -WritablePath C:\ci\work -TimeoutSeconds 600
+            -Program C:\ci\bin\runsctest.exe `
+            -Arguments @('-fsmode', $env:WINSTUB_FSMODE, '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-opq','-only','ovlopaque','-timeout','300s') `
+            -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 600
           if ($LASTEXITCODE -ne 0) { exit 1 }
       - name: Unprivileged /dev/null and dpkg's symlink pattern as a standard user
         shell: pwsh
