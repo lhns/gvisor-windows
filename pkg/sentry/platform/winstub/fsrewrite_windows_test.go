@@ -216,7 +216,7 @@ func TestFSInterrupt(t *testing.T) {
 		} else {
 			want += (r.Rcx - 1) / 2 * r.Rcx
 		}
-		if r.Rip == jmp { // (the inc has happened too)
+		if r.Rip >= win && r.Rip < jmp { // (past the add, not yet past the inc)
 			want += r.Rcx
 		}
 		if got := binary.LittleEndian.Uint64(tls.Head().ToSlice()[0x40:]); got != want {
