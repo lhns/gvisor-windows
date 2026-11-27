@@ -3,6 +3,7 @@ param([Parameter(Mandatory)][string]$Root, [string]$StorageDriver = 'vfs', [stri
 $ErrorActionPreference = 'Continue'
 # Engine settings of the platform under test (ADR 0020): rewrite mode also keeps AVX-512 visible.
 if ($FsMode -eq 'native') { $env:WINSTUB_FSMODE = 'native' }
+if ($FsMode -eq 'native-replace') { $env:WINSTUB_FSMODE = 'native'; $env:WINSTUB_REPLACE_STALLED = '1' }
 if ($FsMode -eq 'goavx512off') { $env:ENGINE_GODEBUG = 'cpu.avx512=off' }
 if ($FsMode -eq 'rewrite') { $env:WINSTUB_FSMODE = 'rewrite'; $env:WINSTUB_KEEP_AVX512 = '1' }
 # State of the platform (goroutines, stub threads, debug-event counts) 20 s after the start, while the engine is still coming up.

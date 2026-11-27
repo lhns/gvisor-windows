@@ -16,6 +16,7 @@ jobs:
     env:
       WINSTUB_FSMODE: ${{ matrix.mode == 'native' && 'native' || 'rewrite' }}
       WINSTUB_FPMODE: ${{ matrix.mode == 'rewrite-fxsave' && 'fxsave' || '' }}
+      WINSTUB_TRIPWIRE: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -32,7 +33,7 @@ jobs:
         env: {WINSTUB_DEBUG: "1"}
         run: |
           $fail = 0
-          foreach ($t in 'TestSyscallsFaultsInterrupt','TestExecuteFault','TestUnmapAndRemap','TestNewThreadsAndSpeed','TestForkedAddressSpace','TestWriteExecute','TestFPState','TestSyscallLatency','TestStubStart','TestStubStartExperiment','TestDecodeAllMatchesSerial','TestSplitSyscall','TestInterruptStorm','TestMapNonSectionFile','TestMemoryRelease','TestSplitSyscallAfterUnmap','TestSplitSyscallWX','TestOversubscribed','TestShareReadOnlySection','TestManyThreads','TestVeneerSurvivesNewAddressSpace','TestFSVeneerEncoding','TestScanFS','TestFSVeneerVEX','TestFSInstructions','TestFSInterrupt','TestFSSpeed','TestAVX512State','TestFSInstructionAfterSplit') {
+          foreach ($t in 'TestSyscallsFaultsInterrupt','TestExecuteFault','TestUnmapAndRemap','TestNewThreadsAndSpeed','TestForkedAddressSpace','TestWriteExecute','TestFPState','TestSyscallLatency','TestStubStart','TestStubStartExperiment','TestDecodeAllMatchesSerial','TestSplitSyscall','TestInterruptStorm','TestMapNonSectionFile','TestMemoryRelease','TestSplitSyscallAfterUnmap','TestSplitSyscallWX','TestOversubscribed','TestShareReadOnlySection','TestManyThreads','TestVeneerSurvivesNewAddressSpace','TestFSVeneerEncoding','TestScanFS','TestFSVeneerVEX','TestFSInstructions','TestFSInterrupt','TestFSSpeed','TestAVX512State','TestFSInstructionAfterSplit','TestTripwire','TestSeamRedecode','TestEntryAfterPadding') {
             "===== $t" | Tee-Object -Append -FilePath ../../../../tests.txt
             $a = @(("-test.run=^" + $t + [char]36), "-test.v=true", "-test.timeout=3m"); & ../../../../winstub.test.exe @a 2>&1 | Tee-Object -Append -FilePath ../../../../tests.txt
             "exit: $LASTEXITCODE" | Tee-Object -Append -FilePath ../../../../tests.txt

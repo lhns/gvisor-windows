@@ -133,20 +133,23 @@ type addressSpace struct {
 	fsWhy     map[uint64]string // why a %fs instruction stayed ud2, and how often the debugger ran it (diagnostics)
 	fsHits    map[uint64]uint32
 	tails     map[uint64][]byte // original last bytes of the text ranges mapped, by end address
+	tailExact map[uint64]bool   // the tail starts on an instruction boundary the decoder found
+	heads     map[uint64][]byte // original first bytes of text mapped with nothing below it, by start address (reseam)
 	privs     []*privSection
 	edges     map[uint64]edge
 
 	createMu  sync.Mutex // serializes thread creation
 	lastEvent atomic.Value
 	// diagnostics: threads ended with TerminateThread instead of by themselves
-	nTermFallback atomic.Uint32
+	nTermFallback   atomic.Uint32
 	nThreadReplaced atomic.Uint32
 	// debug-event counts: events handled, %fs instructions run by the debugger, stops moved out of a veneer
-	nEvents, nFSInline, nFSFix atomic.Uint64
-	tmu       sync.Mutex
-	byTid     map[uint32]*thread
-	slots     [stubasm.MaxThreads]*thread
-	freeSlots []int
+	nEvents, nFSInline, nFSFix           atomic.Uint64
+	nFSRepair, nFSGenuine, nFSRepairFail atomic.Uint64 // %fs bases restored by the repair routine, faults it reported
+	tmu                                  sync.Mutex
+	byTid                                map[uint32]*thread
+	slots                                [stubasm.MaxThreads]*thread
+	freeSlots                            []int
 
 	holesDone atomic.Bool
 }
@@ -155,7 +158,7 @@ func newAddressSpace(p *Platform) *addressSpace {
 	return &addressSpace{
 		p: p, loopDone: make(chan struct{}), started: make(chan error, 1),
 		vcur: stubasm.Veneers, siteCache: map[uint64]siteInfo{}, restartAt: map[uint64]uint64{},
-		ud2Sites: map[uint64]bool{}, fcur: stubasm.FSVeneers, ftop: stubasm.VeneersShared, fsCache: map[fsKey]uint64{}, fsUD2: map[uint64][]byte{}, fsSplit: map[uint64][]byte{}, fsWhy: map[uint64]string{}, fsHits: map[uint64]uint32{}, tails: map[uint64][]byte{}, byTid: map[uint32]*thread{}, edges: map[uint64]edge{},
+		ud2Sites: map[uint64]bool{}, fcur: stubasm.FSVeneers, ftop: stubasm.VeneersShared, fsCache: map[fsKey]uint64{}, fsUD2: map[uint64][]byte{}, fsSplit: map[uint64][]byte{}, fsWhy: map[uint64]string{}, fsHits: map[uint64]uint32{}, tails: map[uint64][]byte{}, tailExact: map[uint64]bool{}, heads: map[uint64][]byte{}, byTid: map[uint32]*thread{}, edges: map[uint64]edge{},
 	}
 }
 
@@ -727,27 +730,41 @@ func (as *addressSpace) wxWrite(a uint64) bool {
 // one range, 0x05 starts the next. Whichever range is mapped second turns the
 // 0x05 into 0x0b (ud2, the debugger path) so that the pair is never executable.
 // The caller holds as.mu.
+//
+// Text arrives in pieces, in any order, and a piece may begin in the middle of an
+// instruction. The decoder needs the real instruction boundaries at the start, so:
+//   - a piece mapped above one that is already there starts decoding in the bytes
+//     the lower piece ended with (as.tails, at a real boundary when the lower piece
+//     was decoded); only sites in the first bytes may still be unsure (zoneContext);
+//   - a piece mapped with nothing below it is decoded from its first byte, and the
+//     start of the original is kept (as.heads); when the piece below arrives,
+//     reseam decodes the seam again and repatches what the guess got wrong.
 func (as *addressSpace) patchText(content []byte, lo, hi uint64) siteStats {
 	head := content[0] == 0x05
 	from := 0
 	if head && as.edges[lo].tail0f {
 		from = 1 // the 0x05 belongs to a syscall that starts in the range below
 	}
-	// The decoder needs a real instruction boundary to start from: the original
-	// last bytes of the range mapped just below are decoded first (the text is
-	// mapped in pieces, and a piece may begin in the middle of an instruction).
 	var pre []byte
+	exact := false
 	if from == 0 {
-		pre = as.tails[lo]
+		pre, exact = as.tails[lo], as.tailExact[lo]
 	}
-	tail := append([]byte(nil), content[max(0, len(content)-16):]...)
+	tailRaw := append([]byte(nil), content[max(0, len(content)-tailKeep):]...)
+	if len(pre) == 0 && from == 0 {
+		as.heads[lo] = append([]byte(nil), content[:min(len(content), headKeep)]...)
+	} else {
+		delete(as.heads, lo)
+	}
 	buf, bufBase := content, lo
 	if len(pre) > 0 {
 		buf, bufBase = append(append([]byte(nil), pre...), content...), lo-uint64(len(pre))
 	}
 	zone := 0
 	if len(pre) > 0 {
-		zone = zoneContext
+		if !exact {
+			zone = zoneContext
+		}
 	} else if from == 0 {
 		zone = zoneNoContext // the range may begin inside an instruction (the piece below may be mapped later)
 	}
@@ -764,7 +781,7 @@ func (as *addressSpace) patchText(content []byte, lo, hi uint64) siteStats {
 	if stop < len(buf) {
 		splitBytes = append([]byte(nil), buf[stop:]...)
 	}
-	st, scan := as.patchCode(buf, bufBase, from, len(pre), zone, stop)
+	st, scan := as.patchCode(buf, bufBase, from, len(pre), zone, stop, nil)
 	if splitBytes != nil {
 		buf[stop] = 0xCC
 		as.fsSplit[bufBase+uint64(stop)] = splitBytes
@@ -773,7 +790,16 @@ func (as *addressSpace) patchText(content []byte, lo, hi uint64) siteStats {
 	if len(pre) > 0 {
 		copy(content, buf[len(pre):])
 	}
-	as.tails[hi] = tail
+	// The bytes the next piece decodes from: from the last instruction boundary at
+	// least 16 bytes before the end if the decoder knows one, else the last bytes.
+	tail, tailOK := tailRaw, false
+	for _, b := range scan.tailB { // (descending)
+		if c := b - len(pre) - (len(content) - len(tailRaw)); c >= 0 && len(tailRaw)-c >= 16 {
+			tail, tailOK = tailRaw[c:], true
+			break
+		}
+	}
+	as.tails[hi], as.tailExact[hi] = tail, tailOK
 	debugf("edges at %#x: head05 %v from %d tail0f %v", lo, head, from, scan.tail0f)
 	lowE, highE := as.edges[lo], as.edges[hi]
 	if head && lowE.tail0f {
@@ -783,6 +809,14 @@ func (as *addressSpace) patchText(content []byte, lo, hi uint64) siteStats {
 	lowE.head05 = head
 	highE.tail0f = scan.tail0f
 	as.edges[lo], as.edges[hi] = lowE, highE
+	// The piece above was mapped first: decode the seam again. (Text that was cut by an
+	// unmap has no kept start; a syscall across such a seam is handled by fixHead.)
+	if h := as.heads[hi]; h != nil {
+		if as.reseam(hi, h, tail, tailOK, scan.tail0f && highE.head05) {
+			highE.head05 = false
+			as.edges[hi] = highE
+		}
+	}
 	if scan.tail0f && highE.head05 {
 		if as.fixHead(hi) {
 			as.ud2Sites[hi-1] = true
@@ -793,9 +827,121 @@ func (as *addressSpace) patchText(content []byte, lo, hi uint64) siteStats {
 	return st
 }
 
+const (
+	headKeep = 576 // bytes of a piece's original start kept for reseam
+	tailKeep = 128 // bytes of a piece's original end kept for the piece above
+)
+
 // edge records, for an address where two ranges meet, what the range ending
 // there ends with (tail0f) and the range starting there begins with (head05).
 type edge struct{ tail0f, head05 bool }
+
+// reseam repatches the start of the piece mapped at lo, which was patched before the
+// piece below it (ending in tail) was known, so decoded from a guess at where its
+// first instruction begins. It decodes the seam again with the real bytes below, finds
+// where the guessed instruction boundaries (orig decoded from its first byte, as
+// patchText did) stop differing from the real ones, puts the original bytes back over
+// every patch that touches the part before that point, and patches that part again
+// from the real decoding. straddle: a syscall begins in the last byte below (0x0f) and
+// ends in the first byte of the piece (0x05); that byte becomes 0x0b. It reports
+// whether that byte was handled. The caller holds as.mu.
+func (as *addressSpace) reseam(lo uint64, orig, tail []byte, exact, straddle bool) bool {
+	delete(as.heads, lo)
+	n := len(orig)
+	// The real boundaries and the guessed ones, as offsets in the piece.
+	real := map[int]bool{}
+	pb := append(append([]byte(nil), tail...), orig...)
+	for _, x := range decodeRange(pb, 0, len(pb), nil) {
+		if x.off >= len(tail) {
+			real[x.off-len(tail)] = true
+		}
+	}
+	guess := map[int]bool{}
+	for _, x := range decodeRange(orig, 0, n, nil) {
+		guess[x.off] = true
+	}
+	last := -1 // the last offset where the two disagree
+	for p := 0; p < n-32; p++ {
+		if real[p] != guess[p] {
+			last = p
+		}
+	}
+	if last < 0 {
+		return false // the same instructions: nothing was wrong
+	}
+	end := -1 // the first boundary after the last disagreement
+	for p := last + 1; p < n-32; p++ {
+		if guess[p] {
+			end = p
+			break
+		}
+	}
+	if end < 0 {
+		debugf("reseam %#x: the decodings never agree in %d bytes", lo, n)
+		return false
+	}
+	v := as.findView(lo)
+	if v == nil || v.priv == nil || v.hi < lo+uint64(n) {
+		debugf("reseam %#x: the piece is not in one private view", lo)
+		return false
+	}
+	cur, ok := as.readStub(lo, n)
+	if !ok {
+		return false
+	}
+	// Patches are the bytes that differ from the original: runs of them. Every run
+	// that touches [0,end) goes back to the original in full, and everything up to its
+	// end is patched again.
+	type run struct{ lo, hi int }
+	var runs []run
+	for i := 0; i < n; i++ {
+		if cur[i] != orig[i] {
+			j := i
+			for j < n && cur[j] != orig[j] {
+				j++
+			}
+			runs = append(runs, run{i, j})
+			i = j
+		}
+	}
+	for changed := true; changed; {
+		changed = false
+		for _, r := range runs {
+			if r.lo < end && r.hi > end {
+				end, changed = r.hi, true
+			}
+		}
+	}
+	if end+64 > n {
+		debugf("reseam %#x: the repatched part (%d bytes) reaches the end of the kept bytes", lo, end)
+		return false
+	}
+	var keep []rng
+	for _, r := range runs {
+		if r.lo >= end {
+			keep = append(keep, rng{uint64(len(tail) + r.lo), uint64(len(tail) + r.hi)})
+		}
+	}
+	as.purgeSites(lo, lo+uint64(end))
+	buf := append(append([]byte(nil), tail...), orig...)
+	zone := 0
+	if !exact {
+		zone = zoneContext
+	}
+	rst, _ := as.patchCode(buf, lo-uint64(len(tail)), 0, len(tail), zone, len(tail)+end, keep)
+	debugf("reseam %#x: tail % x | head % x | patched %+v exact %v", lo, tail[max(0, len(tail)-16):], orig[:24], rst, exact)
+	fix := append([]byte(nil), buf[len(tail):len(tail)+end]...)
+	if straddle {
+		fix[0] = 0x0B
+		as.ud2Sites[lo-1] = true
+	}
+	if err := as.writeText(v, lo, fix); err != nil {
+		debugf("reseam %#x: %v", lo, err)
+		return straddle
+	}
+	debugf("reseam %#x: the first %d bytes were decoded wrongly (disagreement up to %d); patched again", lo, end, last)
+	return straddle
+}
 
 // fixHead handles the range mapped at a whose first byte (0x05) completes a
 // syscall instruction that starts in the range below, which was mapped later:
@@ -812,7 +958,7 @@ func (as *addressSpace) fixHead(a uint64) bool {
 		return false
 	}
 	orig := append([]byte(nil), buf...)
-	as.patchCode(buf, v.lo, 1, 0, 0, len(buf))
+	as.patchCode(buf, v.lo, 1, 0, 0, len(buf), nil)
 	buf[0] = 0x0B
 	off := v.off
 	base := off &^ 0xFFFF
@@ -830,6 +976,19 @@ func (as *addressSpace) fixHead(a uint64) bool {
 	}
 	pUnmapViewOfFile.Call(m)
 	return true
+}
+
+// writeText overwrites text that is mapped at addr in the private view v.
+func (as *addressSpace) writeText(v *view, addr uint64, b []byte) error {
+	off := v.off + (addr - v.lo)
+	base := off &^ 0xFFFF
+	m, err := call(pMapViewOfFile, v.priv.h, fileMapWrite, uintptr(base>>32), uintptr(base&0xFFFFFFFF), uintptr(off-base+uint64(len(b))))
+	if err != nil {
+		return err
+	}
+	copy(unsafe.Slice((*byte)(ptr(m+uintptr(off-base))), len(b)), b)
+	pUnmapViewOfFile.Call(m)
+	return nil
 }
 
 // mapped reports whether a lies in a view (to tell SEGV_ACCERR from SEGV_MAPERR).
@@ -887,6 +1046,12 @@ func (as *addressSpace) purgeSites(lo, hi uint64) {
 	for k := range as.tails {
 		if k > lo && k <= hi {
 			delete(as.tails, k)
+			delete(as.tailExact, k)
+		}
+	}
+	for k := range as.heads {
+		if k >= lo && k < hi {
+			delete(as.heads, k)
 		}
 	}
 }

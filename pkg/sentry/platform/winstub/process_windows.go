@@ -18,6 +18,7 @@ package winstub
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"runtime"
 	"strconv"
@@ -93,9 +94,10 @@ type thread struct {
 	teb uint64
 	dyn *fsVenInfo
 
-	lastRepairRIP uint64
-	lastRepair    time.Time
-	repairN       int
+	lastRepairRIP  uint64
+	lastRepairAddr uint64
+	repairN        int
+	repairSince    time.Time
 }
 
 func (t *thread) u64(off int) *uint64 { return (*uint64)(unsafe.Add(t.page, off)) }
@@ -120,6 +122,7 @@ func (as *addressSpace) slot(idx int) *thread {
 	*t.u64(stubasm.PgNtSet) = as.p.ntSet
 	*t.u64(stubasm.PgNtWait) = as.p.ntWait
 	*t.u64(stubasm.PgNtTerm) = as.p.ntTerm
+	*t.u64(stubasm.PgNtSetInfo) = as.p.ntSetInfo
 	*t.u64(stubasm.PgHReq) = uint64(dupInto(as.h, t.evReq))
 	*t.u64(stubasm.PgHReply) = uint64(dupInto(as.h, t.evReply))
 	*t.u64(stubasm.PgStkTop) = addr + stubasm.ThreadRegion - 0x100
@@ -180,7 +183,7 @@ func (as *addressSpace) freeThread(t *thread) {
 			}
 		} else {
 			as.nTermFallback.Add(1)
-		pTerminateThread.Call(h, 0)
+			pTerminateThread.Call(h, 0)
 		}
 		// TerminateThread is asynchronous. Until the thread is gone it may still
 		// be waiting on the slot's reply event, and would take the wake-up meant
@@ -202,26 +205,43 @@ func (as *addressSpace) freeThread(t *thread) {
 	}
 }
 
+// replaceStalled re-enables the old rule that ends and recreates a thread that has not
+// run after three seconds (WINSTUB_REPLACE_STALLED=1). It was a workaround for the
+// hang whose cause was a Go stack that moved under a debug-event buffer
+// (docs/results/1l-platform-stability.md); ending a thread that is inside ntdll's
+// start-up can leave the loader lock held, so it is off by default and a thread that
+// does not start in 15 s is an error (docs/results/1m-platform-repair.md).
+var replaceStalled = envInt("WINSTUB_REPLACE_STALLED", 0) != 0
+
 // startThread creates the Windows thread of t; it begins at the page's registers.
 func (as *addressSpace) startThread(t *thread) error {
 	// One thread is created at a time, and the next only after this one runs the
 	// stub's entry code: several threads starting at once in a process under a
-	// debugger sometimes never get past their start. A thread that still has not
-	// run after three seconds is replaced (it sits in ntdll's start-up, before any
-	// stub code, so ending it leaves nothing behind that matters).
+	// debugger sometimes never get past their start.
 	as.createMu.Lock()
 	defer as.createMu.Unlock()
+	wait, tries := 15000, 0
+	if replaceStalled {
+		wait, tries = 3000, 3
+	}
 	for try := 0; ; try++ {
 		if err := as.createThread(t); err != nil {
 			return err
 		}
-		for i := 0; i < 3000 && atomic.LoadUint32(t.u32(stubasm.PgRunning)) == 0; i++ {
+		for i := 0; i < wait && atomic.LoadUint32(t.u32(stubasm.PgRunning)) == 0; i++ {
 			if as.dead.Load() {
 				return nil
 			}
 			time.Sleep(time.Millisecond)
 		}
-		if atomic.LoadUint32(t.u32(stubasm.PgRunning)) != 0 || try >= 3 {
+		if atomic.LoadUint32(t.u32(stubasm.PgRunning)) != 0 {
+			return nil
+		}
+		if try >= tries {
+			if !replaceStalled {
+				as.nThreadReplaced.Add(1) // (counted in the dump: a thread that never started)
+				return fmt.Errorf("winstub: thread %d (tid %d) did not start in %d s", t.idx, t.tid, wait/1000)
+			}
 			return nil
 		}
 		debugf("thread %d (tid %d) never started; replacing it", t.idx, t.tid)
@@ -284,6 +304,11 @@ func (p *Platform) newAS() (*addressSpace, error) {
 		time.Sleep(200 * time.Microsecond)
 	}
 	Trace("as: anchor parked")
+	if as.p.tripwire {
+		if st := uint32(*anchor.u64(stubasm.PgICBStat)); st != 0 {
+			log.Printf("winstub: the instrumentation callback could not be registered: NtSetInformationProcess = %#x", st)
+		}
+	}
 	return as, nil
 }
 
@@ -380,6 +405,12 @@ func (as *addressSpace) start() error {
 	t := as.slot(0)
 	*t.reg(4) = t.addr + stubasm.ThreadRegion - 0x100 // rsp
 	*t.u64(stubasm.PgRIP) = stubasm.StubCode + stubasm.OffTrampWait
+	if as.p.tripwire {
+		// The anchor registers the callback before it parks (NtSetInformationProcess
+		// on its own process: no privilege needed, checked as a standard user).
+		*t.u64(stubasm.PgICBInfo + 8) = stubasm.StubCode + stubasm.OffICB
+		*t.u64(stubasm.PgRIP) = stubasm.StubCode + stubasm.OffICBInit
+	}
 	*t.u32(0) = 1
 	t.hThread, t.tid, t.started = as.hMain, pi.ThreadId, true
 	as.byTid[pi.ThreadId] = t
@@ -545,8 +576,16 @@ func (as *addressSpace) onException(ev *debugEvent, ctx *ctxBuf, seenBP *bool) u
 			return dbgContinue
 		}
 		if !as.p.fsRewrite && (addr < 0x10000 || addr >= 0xFFFF800000000000) && *t.u64(stubasm.PgFS) != 0 {
-			if as.repairFS(t, ctx, rip) {
+			if as.repairFS(t, ctx, rip, addr) {
 				return dbgContinue
+			}
+		}
+		if as.p.fsRewrite {
+			// The %fs base is always zero in this mode: an %fs instruction that runs
+			// natively is one the patcher missed (the %fs tripwire).
+			if b, ok := as.readStub(rip, 16); ok && hasFSPrefix(b) {
+				ctxb, _ := as.readStub(rip-16, 48)
+				log.Printf("winstub: FS TRIPWIRE: an %%fs instruction at %#x ran unrewritten (fault address %#x, thread %d): % x", rip, addr, t.idx, ctxb)
 			}
 		}
 		if debugEnabled {
@@ -568,6 +607,10 @@ func (as *addressSpace) onException(ev *debugEvent, ctx *ctxBuf, seenBP *bool) u
 	case excIllegalInstr:
 		b, ok := as.readStub(rip, 2)
 		isUD2 := ok && b[0] == 0x0F && b[1] == 0x0B
+		if isUD2 && rip >= stubasm.StubCode+stubasm.OffICB && rip < stubasm.StubCode+stubasm.OffICB+0x100 {
+			as.tripped(t)
+			break
+		}
 		if isUD2 && as.isUD2Site(rip) {
 			// A rewritten syscall that could not be patched: make it a request.
 			as.parkAs(t, ctx, request{kind: reqSyscall}, rip+2)
@@ -600,6 +643,19 @@ func (as *addressSpace) onException(ev *debugEvent, ctx *ctxBuf, seenBP *bool) u
 	return dbgContinue
 }
 
+// tripped reports a thread that the instrumentation callback caught returning from
+// the kernel into guest code that follows a syscall instruction: a syscall that was
+// never patched ran on Windows. The address space is ended, loudly.
+func (as *addressSpace) tripped(t *thread) {
+	addr := *t.u64(stubasm.PgICBTrip)
+	log.Printf("winstub: TRIPWIRE: the kernel returned to %#x in guest text, after a syscall instruction that was not patched (thread %d, stub pid %d)", addr, t.idx, as.wpid)
+	if b, ok := as.readStub(addr-32, 48); ok {
+		log.Printf("winstub: TRIPWIRE: bytes at %#x-32: % x", addr, b)
+	}
+	as.markDead()
+	pTerminateProcess.Call(as.h, 1)
+}
+
 func (as *addressSpace) readStub(a uint64, n int) ([]byte, bool) {
 	b := make([]byte, n)
 	var got uintptr
@@ -610,28 +666,76 @@ func (as *addressSpace) readStub(a uint64, n int) ([]byte, bool) {
 }
 
 // repairFS handles an access violation that looks like a lost %fs base: the CPU
-// loses the base when Windows deschedules the thread. The thread continues in
-// its repair routine, which reloads the base and returns to the instruction.
-func (as *addressSpace) repairFS(t *thread, ctx *ctxBuf, rip uint64) bool {
-	now := time.Now()
-	// The base is lost whenever Windows deschedules the thread, and every debug
-	// event of the process stops all its threads, so under a storm of events (a
-	// Go collector with workers on all CPUs) one instruction can be repaired many
-	// times in a row. Only a long run of repairs of the same instruction in quick
-	// succession means a genuine fault at a low address (it costs a fraction of a
-	// second to report one).
-	if rip == t.lastRepairRIP && now.Sub(t.lastRepair) < 20*time.Millisecond {
-		t.repairN++
-	} else {
-		t.repairN = 0
-	}
-	t.lastRepairRIP, t.lastRepair = rip, now
-	if t.repairN >= 2000 {
+// loses the base when Windows deschedules the thread, and a debug event of any thread
+// can drop the bases of the others. The thread continues in its repair routine, which
+// reloads the base and returns to the instruction.
+//
+// Whether the base was lost is read off the fault itself: the address of an access
+// without a base is the bare operand (displacement plus registers), with the right base
+// it is that plus the base. An instruction without an %fs prefix, or a fault at the
+// address the right base would give, is the guest's own and is reported. A tight loop
+// can lose its base at the same instruction any number of times, so repairs are never
+// counted against a thread unless the instruction cannot be decoded (then 100000 in a
+// row end it).
+func (as *addressSpace) repairFS(t *thread, ctx *ctxBuf, rip, addr uint64) bool {
+	lost, decided := as.fsBaseLost(ctx, rip, addr, *t.u64(stubasm.PgFS))
+	if decided && !lost {
+		as.nFSGenuine.Add(1)
 		return false
 	}
+	if !decided {
+		if rip == t.lastRepairRIP && addr == t.lastRepairAddr {
+			if t.repairN++; t.repairN >= 100000 {
+				t.repairN = 0
+				as.nFSGenuine.Add(1)
+				return false
+			}
+		} else {
+			t.lastRepairRIP, t.lastRepairAddr, t.repairN = rip, addr, 0
+		}
+	}
+	as.nFSRepair.Add(1)
 	*t.u64(stubasm.PgRetRIP) = rip
 	*ctx.u64(ctxRipOff) = t.addr + stubasm.PgRepair
-	return ctx.set(t.hThread)
+	for try := 0; try < 3; try++ {
+		if ctx.set(t.hThread) {
+			return true
+		}
+	}
+	// The thread continues at the faulting instruction and faults again: another try.
+	as.nFSRepairFail.Add(1)
+	return true
+}
+
+// fsBaseLost tells whether the access violation at addr, in the instruction at rip,
+// is an %fs access that ran with a zero base (lost) or with the right one (fsBase);
+// decided is false if the instruction cannot be taken apart or the address fits neither.
+func (as *addressSpace) fsBaseLost(ctx *ctxBuf, rip, addr, fsBase uint64) (lost, decided bool) {
+	b, ok := as.readStub(rip, 16)
+	if !ok {
+		return false, false
+	}
+	if !hasFSPrefix(b) {
+		return false, true
+	}
+	r, ok := parseFS(b)
+	if !ok {
+		return false, false
+	}
+	x := uint64(int64(r.disp))
+	if r.base >= 0 {
+		x += *ctx.u64(ctxRegsOff + uintptr(8*r.base))
+	}
+	if r.index >= 0 {
+		x += *ctx.u64(ctxRegsOff + uintptr(8*r.index)) << r.scale
+	}
+	switch addr {
+	case x:
+		return true, true
+	case x + fsBase:
+		return false, true
+	}
+	return false, false
 }
 
 // park saves the context of t (stopped at a debug event, or suspended) into its
