@@ -483,7 +483,10 @@ func (as *addressSpace) onException(ev *debugEvent, ctx *ctxBuf, seenBP *bool) u
 				return dbgContinue
 			}
 		}
-		debugf("guest fault: addr %#x kind %d rip %#x (thread %d)", addr, kind, rip, t.idx)
+		if debugEnabled {
+			b, _ := as.readStub(rip-24, 48)
+			debugf("guest fault: addr %#x kind %d rip %#x (thread %d) code[-24:+24] % x regs % x", addr, kind, rip, t.idx, b, unsafe.Slice((*byte)(unsafe.Pointer(ctx.u64(ctxRegsOff))), 128))
+		}
 		at := hostarch.AccessType{Read: true}
 		switch kind {
 		case 1:
