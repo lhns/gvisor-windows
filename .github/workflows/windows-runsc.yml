@@ -110,14 +110,13 @@ jobs:
             -Program C:\ci\bin\runsctest.exe `
             -Arguments ($wargs + @('-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-hostfs','-only','hostfs,forward,sockfs,fchmod,strace,cfr,restart')) `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 300
-      - name: debian loader from the root folder (known platform gap)
+      - name: debian loader from the root folder
         shell: pwsh
-        continue-on-error: true
         run: |
           $wargs = @('-fsmode', $env:WINSTUB_FSMODE); if ($env:WINSTUB_FPMODE) { $wargs += '-fpmode', $env:WINSTUB_FPMODE }
           & tools/windows/ci/run-as-standard-user.ps1 `
             -Program C:\ci\bin\runsctest.exe `
-            -Arguments ($wargs + @('-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-debian','-winstub-debug','-only','debian')) `
+            -Arguments ($wargs + @('-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-debian','-only','debian')) `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 300
       - name: Case sensitivity as a standard user (known gap, Windows denies the flag, see docs/results/5-podman-windows.md)
         shell: pwsh
