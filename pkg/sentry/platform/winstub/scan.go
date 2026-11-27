@@ -226,7 +226,6 @@ func decodeAll(code []byte) []ins {
 
 // classify sets the class of a decoded instruction (b holds its bytes).
 func classify(in x86asm.Inst, b []byte, x *ins) {
-	defer effects(in, x)
 	if fsMemOp(in) {
 		x.cls = clsFSBad
 		if rewritableFS(in, b) {
@@ -346,6 +345,24 @@ func effects(in x86asm.Inst, x *ins) {
 		x.precise = false
 	}
 	x.rd, x.wr = rd, wr
+}
+
+// siteEffects fills in effects for the instructions around an %fs site (decoded
+// again: doing it for every instruction of a text slows the sweep down). Those
+// the decoder does not know, or reads with another length, keep none.
+func siteEffects(code []byte, win []ins) {
+	for k := range win {
+		x := &win[k]
+		if x.op == 0 || x.off < 0 || x.off+x.n > len(code) {
+			continue
+		}
+		func() {
+			defer func() { recover() }()
+			if in, err := x86asm.Decode(code[x.off:x.off+x.n], 64); err == nil && in.Len == x.n && in.Op == x.op {
+				effects(in, x)
+			}
+		}()
+	}
 }
 
 // rollsBack reports whether a thread stopped at list[k] (k > a) of the window
@@ -1103,6 +1120,9 @@ func scanText(code []byte, from int, wantFS bool) *scanResult {
 		for k := lo; k <= hi; k++ {
 			site.win[k-lo] = list[k]
 			site.tgt[k-lo] = list[k].off < len(code) && isTgt[list[k].off/64]&(1<<(list[k].off%64)) != 0
+		}
+		if site.fs {
+			siteEffects(code, site.win[:site.n])
 		}
 		r.sites = append(r.sites, site)
 	}
