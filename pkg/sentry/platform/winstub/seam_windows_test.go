@@ -244,6 +244,32 @@ func TestFSSeamBinary(t *testing.T) {
 	}
 	truth := scanText(code, 0, true)
 	pages := (len(code) + pageSz - 1) / pageSz
+	// the patches as one piece makes them: the runs of changed bytes
+	changed := func(got []byte) map[int]int {
+		m := map[int]int{}
+		for i := 0; i < len(code); i++ {
+			if got[i] != code[i] {
+				j := i
+				for j < len(code) && got[j] != code[j] {
+					j++
+				}
+				m[i] = j
+				i = j
+			}
+		}
+		return m
+	}
+	var ref map[int]int
+	{
+		h := newHarness(t)
+		mm := h.newMM()
+		h.mapAt(mm, vaddr, h.pages(code, pages), rx)
+		g, ok := mm.as.(*addressSpace).readStub(vaddr, len(code))
+		if !ok {
+			t.Fatal("cannot read the patched text")
+		}
+		ref = changed(g)
+	}
 	for trial := 0; trial < 12; trial++ {
 		rnd := rand.New(rand.NewSource(int64(trial)))
 		// cut points: pieces of 1 to 40 pages
@@ -297,6 +323,38 @@ func TestFSSeamBinary(t *testing.T) {
 				if len(first) < 8 {
 					first = append(first, fmt.Sprintf("%s site %#x (page offset %#x): % x", kind, vaddr+uint64(s.off), s.off%pageSz, code[s.off:s.off+x.n]))
 				}
+			}
+		}
+		// Every other patch must be one the single piece makes too (a piece begins with a few
+		// bytes of guessed decoding: ud2 sites there, and their neighbours)
+		near := func(off int) bool {
+			for _, p := range ps {
+				if o := p.lo * pageSz; off >= o && off < o+96 {
+					return true
+				}
+			}
+			return false
+		}
+		gc := changed(got)
+		var odd []string
+		for a, b := range gc {
+			if rb, ok := ref[a]; ok && rb == b {
+				continue
+			}
+			if near(a) {
+				continue
+			}
+			if len(odd) < 8 {
+				odd = append(odd, fmt.Sprintf("changed %#x-%#x (offset in the page %#x): was % x, now % x", vaddr+uint64(a), vaddr+uint64(b), a%pageSz, code[a:b], got[a:b]))
+			}
+		}
+		if len(odd) > 0 {
+			t.Errorf("trial %d (%d pieces): patches that the whole text does not get%s", trial, len(ps), joinLines(append([]string{""}, odd...)))
+		}
+		for a, b := range ref {
+			if _, ok := gc[a]; !ok && !near(a) && len(missed) == 0 {
+				t.Errorf("trial %d: the whole text has a patch at %#x-%#x that the pieces do not", trial, vaddr+uint64(a), vaddr+uint64(b))
+				break
 			}
 		}
 		if len(missed) > 0 {
