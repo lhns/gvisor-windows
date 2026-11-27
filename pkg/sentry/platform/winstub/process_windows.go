@@ -92,6 +92,7 @@ type thread struct {
 	// idle: the Windows thread of a freed slot still runs, waiting for a reply;
 	// allocThread hands it out again (threadReuse).
 	idle bool
+	lost bool // its thread was ended in a hurry: the slot is not used again
 
 	// teb: address of the stub thread's TEB (rewrite mode, read lazily); dyn: the
 	// veneer the debugger set up for it, if any.
@@ -148,18 +149,22 @@ func (as *addressSpace) allocThread() (*thread, uint64, error) {
 	if as.dead.Load() {
 		return nil, 0, errDead
 	}
-	var idx int
-	if n := len(as.freeSlots); n > 0 {
-		idx, as.freeSlots = as.freeSlots[n-1], as.freeSlots[:n-1]
-	} else {
-		for idx = 1; idx < len(as.slots) && as.slots[idx] != nil; idx++ {
+	var t *thread
+	for t == nil {
+		var idx int
+		if n := len(as.freeSlots); n > 0 {
+			idx, as.freeSlots = as.freeSlots[n-1], as.freeSlots[:n-1]
+		} else {
+			for idx = 1; idx < len(as.slots) && as.slots[idx] != nil; idx++ {
+			}
+			if idx == len(as.slots) {
+				return nil, 0, fmt.Errorf("winstub: more than %d threads in one address space", len(as.slots)-1)
+			}
 		}
-		if idx == len(as.slots) {
-			return nil, 0, fmt.Errorf("winstub: more than %d threads in one address space", len(as.slots)-1)
+		t = as.slot(idx)
+		if !t.idle {
+			break
 		}
-	}
-	t := as.slot(idx)
-	if t.idle {
 		t.idle = false
 		if t.started && t.hThread != 0 && t.state() == 1 {
 			// Its first reply restores the whole context (resume), wherever the
@@ -169,7 +174,12 @@ func (as *addressSpace) allocThread() (*thread, uint64, error) {
 			pResetEvent.Call(t.evReq)
 			return t, as.gen.Load(), nil
 		}
-		as.dropThreadLocked(t)
+		// (Cannot happen: nothing answers an idle thread.) It is ended and its slot
+		// is not used again: until it is gone it could take the next wake-up.
+		t.lost = true
+		as.nTermFallback.Add(1)
+		pTerminateThread.Call(t.hThread, 0)
+		t = nil
 	}
 	t.started, t.parked, t.lastKind = false, false, reqSyscall
 	t.req = request{}
@@ -238,19 +248,6 @@ func (as *addressSpace) freeThread(t *thread, gen uint64) {
 
 // threadReuse keeps the Windows threads of freed slots (WINSTUB_THREADREUSE=0 turns it off).
 var threadReuse = os.Getenv("WINSTUB_THREADREUSE") != "0"
-
-// dropThreadLocked ends an idle thread that cannot be handed out again (it was not
-// waiting for a reply). The caller holds tmu.
-func (as *addressSpace) dropThreadLocked(t *thread) {
-	if t.hThread != 0 {
-		as.nTermFallback.Add(1)
-		pTerminateThread.Call(t.hThread, 0)
-		pCloseHandle.Call(t.hThread)
-		t.hThread = 0
-	}
-	delete(as.byTid, t.tid)
-	t.started = false
-}
 
 // replaceStalled re-enables the old rule that ends and recreates a thread that has not
 // run after three seconds (WINSTUB_REPLACE_STALLED=1). It was a workaround for the

@@ -120,7 +120,7 @@ func (as *addressSpace) reset() string {
 	}
 	as.freeSlots = as.freeSlots[:0]
 	for i := len(as.slots) - 1; i >= 1; i-- {
-		if as.slots[i] != nil {
+		if as.slots[i] != nil && !as.slots[i].lost {
 			as.freeSlots = append(as.freeSlots, i)
 		}
 	}
