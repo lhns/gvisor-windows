@@ -197,6 +197,13 @@ func (d *Dentry) isMounted() bool {
 	return d.mounts.Load() != 0
 }
 
+// IsMounted returns true if a mount is on d. gvisor-windows: a filesystem
+// that invalidates dentries on its own must keep the dentries mounts sit on,
+// since InvalidateDentry unmounts them.
+func (d *Dentry) IsMounted() bool {
+	return d.isMounted()
+}
+
 // InotifyWithParent notifies all watches on the targets represented by d and
 // its parent of events.
 func (d *Dentry) InotifyWithParent(ctx context.Context, events, cookie uint32, et EventType) {

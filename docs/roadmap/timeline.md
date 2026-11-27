@@ -54,6 +54,7 @@ gantt
     Podman engine stalls in rewrite mode :platform_rewrite_mode_slow_engine, 2026-11-27, 2026-11-27
     Static glibc crashes at start in rewrit… :platform_rewrite_glibc_init_crash, 2026-11-27, 2026-11-27
     Unrewritten %fs site in a library :platform_unrewritten_fs_in_library, 2026-11-27, 2026-11-27
+    glibc heap errors in rewrite mode :platform_rewrite_heap_corruption, 2026-11-27, 2026-11-27
     section sentry - sentry
     Recover faults in Go :sentry_go_fault_recovery, 2026-11-26, 2026-11-26
     Sentry builds for Windows :sentry_windows_build, 2026-11-26, 2026-11-26

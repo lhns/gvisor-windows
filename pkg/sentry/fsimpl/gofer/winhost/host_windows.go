@@ -3,7 +3,6 @@
 package winhost
 
 import (
-	"gvisor.dev/gvisor/pkg/log"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -11,6 +10,7 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/unix"
+	"gvisor.dev/gvisor/pkg/log"
 	"golang.org/x/sys/windows"
 )
 
@@ -55,8 +55,9 @@ type FS struct {
 }
 
 type pin struct {
-	h    windows.Handle
-	refs int
+	h      windows.Handle
+	refs   int
+	byName bool
 }
 
 // Attr is what stat reports.
@@ -184,6 +185,37 @@ func (fs *FS) Pin(id ID) error {
 	}
 	fs.pins[id] = &pin{h: h, refs: 1}
 	return nil
+}
+
+// pinByName makes the pin of id hold a handle opened by name instead of by
+// file ID. A handle opened by ID makes Windows refuse to replace the file by
+// rename (access denied whatever the access and sharing: TestRenameReplaceProbe),
+// so every c/storage rewrite of layers.json, which the guest had open, fell
+// back to delete + rename (a window in which the file is missing; a stop in
+// it left the store without layers). A handle opened by name allows the
+// replace but blocks renaming the directories above the file, so the pin is
+// switched only when the file is about to be replaced.
+func (fs *FS) pinByName(id ID) {
+	fs.pinMu.Lock()
+	defer fs.pinMu.Unlock()
+	p, ok := fs.pins[id]
+	if !ok || p.byName {
+		return
+	}
+	path, err := handlePath(p.h)
+	if err != nil {
+		return
+	}
+	nh, err := ntOpen(0, path, fileReadData|fileWriteData|fileReadAttributes|fileWriteAttributes|fileReadEA|fileWriteEA|deleteAccess, shareAll, windows.FILE_OPEN, windows.FILE_NON_DIRECTORY_FILE|windows.FILE_OPEN_REPARSE_POINT, 0)
+	if err != nil {
+		return
+	}
+	if a, aerr := fs.attrOf(nh); aerr != nil || a.ID != id {
+		windows.CloseHandle(nh)
+		return
+	}
+	windows.CloseHandle(p.h)
+	p.h, p.byName = nh, true
 }
 
 // Unpin releases a Pin.
@@ -619,8 +651,10 @@ func setDisposition(h windows.Handle) error {
 	if err == unix.EACCES {
 		flags |= dispositionIgnoreReadOnly
 		err = setInfo(h, classDispositionEx, unsafe.Pointer(&flags), 4)
+		log.Infof("winhost: unlink: the delete needed the ignore-read-only flag: %v", err)
 	}
 	if err == unix.EINVAL || err == unix.EOPNOTSUPP {
+		log.Warningf("winhost: unlink: POSIX delete refused (%v), using delete-on-close: the name stays until every handle is closed", err)
 		// Older Windows: classic delete-on-close.
 		d := uint32(1)
 		return setInfo(h, 4 /* FileDispositionInfo */, unsafe.Pointer(&d), 1)
@@ -715,6 +749,9 @@ func (fs *FS) Rename(oldDir ID, oldName string, newDir ID, newName string, flags
 		}
 		dstDir := ta.Mode&SIFMT == SIFDIR
 		targetFile = !dstDir
+		if targetFile && flags&RenameNoReplace == 0 {
+			fs.pinByName(ta.ID)
+		}
 		switch {
 		case srcDir && !dstDir:
 			return unix.ENOTDIR
@@ -734,63 +771,110 @@ func (fs *FS) Rename(oldDir ID, oldName string, newDir ID, newName string, flags
 	}
 	full := np + `\` + EscapeName(newName)
 	err = renameHandle(sh, full, flags&RenameNoReplace == 0)
+	if err == unix.EINVAL {
+		// The absolute NT path was refused (ERROR_INVALID_NAME seen for long names):
+		// name it relative to the target directory instead.
+		e2 := renameRelative(sh, nh, EscapeName(newName), flags&RenameNoReplace == 0)
+		if e2 == nil {
+			log.Infof("winhost: rename to %q (%d chars) was refused; relative to the directory: %v", full, len(full), e2)
+			err = e2
+		}
+	}
 	if targetFile && (err == unix.EACCES || err == unix.EBUSY) {
 		// A target that is held open or has an unusual state may refuse to be
 		// replaced: delete it first (POSIX delete works while it is held) and
 		// rename into the free name. Not atomic.
+		log.Infof("winhost: rename %q -> %q: replacing refused (%v), deleting the target first (not atomic)", oldName, newName, err)
 		if uerr := fs.Unlink(newDir, newName, false); uerr == nil {
 			err = renameHandle(sh, full, false)
+		} else {
+			log.Warningf("winhost: rename %q -> %q: deleting the target failed: %v", oldName, newName, uerr)
 		}
+	}
+	return err
+}
+
+// NT information classes of a rename (FILE_INFORMATION_CLASS).
+const (
+	ntClassRename   = 10 // FileRenameInformation
+	ntClassRenameEx = 65 // FileRenameInformationEx
+)
+
+// ntRename renames the open file h with NtSetInformationFile, which takes
+// the NT path as it is (SetFileInformationByHandle converts it first and
+// refuses some names with ERROR_INVALID_NAME). flags are FILE_RENAME_*; for
+// the classic class only the replace bit counts. A root handle makes name
+// relative to that directory.
+func ntRename(h windows.Handle, class, flags uint32, root windows.Handle, name string) error {
+	w := utf16.Encode([]rune(name))
+	// FILE_RENAME_INFORMATION(_EX): Flags/ReplaceIfExists u32 (+pad),
+	// RootDirectory HANDLE, FileNameLength u32, FileName.
+	const hdr = 20
+	size := hdr + len(w)*2
+	buf := make([]uint64, (size+7)/8)
+	b := unsafe.Slice((*byte)(unsafe.Pointer(&buf[0])), len(buf)*8)
+	if class == ntClassRename {
+		flags &= renameReplace
+	}
+	*(*uint32)(unsafe.Pointer(&b[0])) = flags
+	*(*uintptr)(unsafe.Pointer(&b[8])) = uintptr(root)
+	*(*uint32)(unsafe.Pointer(&b[16])) = uint32(len(w) * 2)
+	for i, c := range w {
+		*(*uint16)(unsafe.Pointer(&b[hdr+2*i])) = c
+	}
+	var iosb windows.IO_STATUS_BLOCK
+	raw := windows.NtSetInformationFile(h, &iosb, &b[0], uint32(size), class)
+	err := toErrno(raw)
+	if err == unix.EACCES || err == unix.EBUSY || err == unix.EINVAL {
+		log.Infof("winhost: rename class %d flags %#x root %v to %q: %v (%v)", class, flags, root != 0, name, raw, err)
 	}
 	return err
 }
 
 // renameHandle renames an open file to the NT path full.
 func renameHandle(h windows.Handle, full string, replace bool) error {
-	name := utf16.Encode([]rune(full))
-	// FILE_RENAME_INFO(_EX): Flags u32 (+pad), RootDirectory HANDLE,
-	// FileNameLength u32, FileName.
-	const hdr = 20
-	size := hdr + len(name)*2
-	buf := make([]uint64, (size+7)/8)
-	b := unsafe.Slice((*byte)(unsafe.Pointer(&buf[0])), len(buf)*8)
+	return renameWith(h, 0, full, replace)
+}
+
+// renameRelative renames h to name inside the directory handle dir.
+func renameRelative(h, dir windows.Handle, name string, replace bool) error {
+	return renameWith(h, dir, name, replace)
+}
+
+func renameWith(h, root windows.Handle, name string, replace bool) error {
 	flags := uint32(0)
 	if replace {
 		flags = renameReplace | renamePosix
 	}
-	*(*uint32)(unsafe.Pointer(&b[0])) = flags
-	*(*uint32)(unsafe.Pointer(&b[16])) = uint32(len(name) * 2)
-	for i, c := range name {
-		*(*uint16)(unsafe.Pointer(&b[hdr+2*i])) = c
-	}
-	raw := windows.SetFileInformationByHandle(h, classRenameEx, (*byte)(unsafe.Pointer(&b[0])), uint32(size))
-	err := toErrno(raw)
-	if err == unix.EINVAL {
-		log.Warningf("winhost: rename to %q (%d chars, replace %v) refused: %v", full, len(full), replace, raw)
-	}
+	err := ntRename(h, ntClassRenameEx, flags, root, name)
 	if err == unix.EACCES && replace {
 		// Replacing a read-only file needs the flag that ignores the attribute;
 		// it is not asked for first because it needs more rights.
-		*(*uint32)(unsafe.Pointer(&b[0])) = flags | renameIgnoreReadOnly
-		if err2 := setInfo(h, classRenameEx, unsafe.Pointer(&b[0]), uint32(size)); err2 != unix.EINVAL {
+		if err2 := ntRename(h, ntClassRenameEx, flags|renameIgnoreReadOnly, root, name); err2 != unix.EINVAL {
 			err = err2
 		} // else the flag is refused to this user: keep the access error
 	}
-	if err == unix.EINVAL && strings.HasPrefix(full, `\??\`) {
-		// The path was refused (ERROR_INVALID_NAME for some names); try the Win32 long form.
-		if e2 := renameHandle(h, win32Path(full), replace); e2 != unix.EINVAL {
-			log.Warningf("winhost: rename to %q: the Win32 long form gave %v", full, e2)
-			return e2
+	if err == unix.EACCES && replace {
+		// A standard user is refused the POSIX replace of an existing file
+		// (seen on every c/storage rewrite of layers.json). The plain replace
+		// is still one atomic operation, unlike delete + rename.
+		if err2 := ntRename(h, ntClassRenameEx, renameReplace, root, name); err2 == nil {
+			log.Infof("winhost: rename to %q: the plain replace worked where the POSIX replace was refused", name)
+			return nil
+		} else if err3 := ntRename(h, ntClassRename, renameReplace, root, name); err3 == nil {
+			log.Infof("winhost: rename to %q: the classic replace worked where the Ex replaces were refused (%v)", name, err2)
+			return nil
+		} else {
+			log.Infof("winhost: rename to %q: every replace refused: POSIX %v, plain %v, classic %v", name, err, err2, err3)
 		}
 	}
 	if err == unix.EINVAL || err == unix.EOPNOTSUPP {
-		// No POSIX rename (before Windows 10 1809): classic rename.
-		r := uint32(0)
-		if replace {
-			r = 1
+		// No POSIX rename (before Windows 10 1809), or a refused name: classic rename.
+		first := err
+		err = ntRename(h, ntClassRename, flags, root, name)
+		if err != nil {
+			log.Infof("winhost: rename to %q (%d chars, replace %v, root %v): POSIX rename gave %v, classic rename gave %v", name, len(name), replace, root != 0, first, err)
 		}
-		*(*uint32)(unsafe.Pointer(&b[0])) = r
-		return setInfo(h, 3 /* FileRenameInfo */, unsafe.Pointer(&b[0]), uint32(size))
 	}
 	return err
 }

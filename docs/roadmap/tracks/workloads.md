@@ -22,7 +22,7 @@ flowchart TB
     workloads_conmon_sync_pipe>"✔ conmon sees no data<br/>on its sync pipe"]
     workloads_conmon_attach_second_cause>"✔ Second attach-socket<br/>failure"]
     workloads_tty_through_windows_client>"✔ Interactive TTY<br/>through the Windows<br/>client"]
-    workloads_isolation_flake>"⚠ Isolation step<br/>failed once"]
+    workloads_isolation_flake>"✔ Isolation step<br/>failed once"]
     workloads_volume_lost_on_restart>"✔ Volume data lost<br/>across engine restart"]
     workloads_buildah_thinks_rootless>"⚠ buildah picks<br/>rootless isolation"]
     workloads_podman_on_windows[/"⛔ Podman passes on<br/>Windows"/]
@@ -80,8 +80,8 @@ flowchart TB
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class workloads_acceptance_test,workloads_acceptance_test_windows,workloads_podman_api_named_pipe,workloads_podman_probe unrated
     class workloads_podman_on_gvisor_linux,workloads_strict_bar_linux,workloads_end_to_end_speed mixed
-    class workloads_gvisor_bridge_netlink,workloads_gvisor_port_publishing,workloads_gvisor_cgroupfs_readonly,workloads_overlay_userxattr,workloads_conmon_sync_pipe,workloads_conmon_attach_second_cause,workloads_tty_through_windows_client,workloads_volume_lost_on_restart succ
-    class workloads_isolation_flake,workloads_buildah_thinks_rootless finding
+    class workloads_gvisor_bridge_netlink,workloads_gvisor_port_publishing,workloads_gvisor_cgroupfs_readonly,workloads_overlay_userxattr,workloads_conmon_sync_pipe,workloads_conmon_attach_second_cause,workloads_tty_through_windows_client,workloads_isolation_flake,workloads_volume_lost_on_restart succ
+    class workloads_buildah_thinks_rootless finding
     class workloads_podman_on_windows blocked
     class workloads_podman_harness inprog
 ```
@@ -109,7 +109,7 @@ flowchart TB
 | `workloads-overlay-userxattr` | Overlay mounts with userxattr rejected | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
 | `workloads-conmon-attach-second-cause` | Second attach-socket failure | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
 | `workloads-tty-through-windows-client` | Interactive TTY through the Windows client | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
-| `workloads-isolation-flake` | Isolation step failed once | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/5-podman-windows.md |
+| `workloads-isolation-flake` | Isolation step failed once | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
 | `workloads-volume-lost-on-restart` | Volume data lost across engine restart | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
 | `workloads-buildah-thinks-rootless` | buildah picks rootless isolation | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/5-podman-windows.md |
 
@@ -134,7 +134,7 @@ flowchart TB
 | `workloads-overlay-userxattr` | Overlay mounts with userxattr rejected |  |  | podman build fails: the Sentry overlay rejects the userxattr option (or the layer setup) when Podman storage sits on a Windows folder. | Fixed when: podman build of a small Containerfile passes inside the Windows sandbox. |  |  |  |  |
 | `workloads-conmon-attach-second-cause` | Second attach-socket failure |  |  | Even with container directories on a tmpfs, Podman's connect to conmon's attach socket is refused; a second cause is not isolated. | No separate cause: with the host-folder socket fix, podman run --rm alpine echo ok prints ok. |  |  |  |  |
 | `workloads-tty-through-windows-client` | Interactive TTY through the Windows client |  |  | The Windows podman client says "The input device is not a TTY" inside the ConPTY test driver, so the interactive step cannot type into the container. | Fixed in the harness: ttydrive now sets STARTF_USESTDHANDLES with NULL handles so the child gets the pseudoconsole; step 4 passed 7 of 7 runs. |  |  |  |  |
-| `workloads-isolation-flake` | Isolation step failed once |  |  | Remaining acceptance flakes: step 3 sometimes loses the race between --rm cleanup and attach (podman remote, widened by sandbox slowness), and step 10 once timed out with the engine and a new Go helper idle for 123 s, which looks like the stuck process start. | Fixed when: step 10 passes 20 runs in a row, or the cause is found and fixed. |  |  |  |  |
+| `workloads-isolation-flake` | Isolation step failed once |  |  | Remaining acceptance flakes: step 3 sometimes loses the race between --rm cleanup and attach (podman remote, widened by sandbox slowness), and step 10 once timed out with the engine and a new Go helper idle for 123 s, which looks like the stuck process start. | Fixed: change-stream overflow invalidated dentries with mounts on them, which unmounted container /dev and /tmp; invalidation now keeps mounted dentries. |  |  |  |  |
 | `workloads-volume-lost-on-restart` | Volume data lost across engine restart |  |  | In 2 of 5 complete native runs, the named volume written before the engine restart is empty afterwards (step 9). | Harness cause: an old static_dir workaround put libpod's database on a tmpfs. The database now lives on the storage folder; a runsc restart test is required. |  |  |  |  |
 | `workloads-buildah-thinks-rootless` | buildah picks rootless isolation |  |  | Without BUILDAH_ISOLATION=oci every build fails in pasta, because buildah resolves the default isolation to rootless inside the sandbox, although euid, uid_map and capabilities all look rootful. | Fixed when: the BUILDAH_ISOLATION=oci workaround is removed and builds still use OCI isolation. |  |  |  |  |
 

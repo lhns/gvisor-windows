@@ -2329,19 +2329,19 @@
   depends_on: []
   replaced_by: []
   start: '2026-11-27'
-  end: ''
+  end: '2026-11-27'
   folded: []
   overview: false
   id: fs-copied-file-too-short
   title: Copied library reads as too short
   track: fs
   kind: defect
-  state: next
+  state: done
   lane: windows-ci
   plain: '"libc.so.6: file too short" in podman build was an unpatched read syscall at a MapFile seam in Debian ld.so; a gofer change fills whole executable VMAs, which fixes bind mounts; from the root
     folder it still needs the platform seam fix. apt renames on the storage folder still fail intermittently. Latest: dpkg cannot stat the archive apt just moved under /tmp/apt-dpkg-install-*. The root-folder
     loader case is fixed by the platform (padding before __read_nocancel).'
-  notes: 'Fixed when: a guest that copy_file_range-s into a host-folder file can read it from another process, and podman build of a debian RUN step passes.'
+  notes: 'Fixed: step 5 passes 8 of 8; renames that replace a file no longer fall back to delete-then-rename (a by-ID pin blocked NTFS replace).'
 - outcome: unrated
   evidence:
   - docs/results/5-podman-windows.md
@@ -2369,18 +2369,18 @@
   depends_on: []
   replaced_by: []
   start: '2026-11-27'
-  end: ''
+  end: '2026-11-27'
   folded: []
   overview: false
   id: workloads-isolation-flake
   title: Isolation step failed once
   track: workloads
   kind: defect
-  state: next
+  state: done
   lane: windows-ci
   plain: 'Remaining acceptance flakes: step 3 sometimes loses the race between --rm cleanup and attach (podman remote, widened by sandbox slowness), and step 10 once timed out with the engine and a new
     Go helper idle for 123 s, which looks like the stuck process start.'
-  notes: 'Fixed when: step 10 passes 20 runs in a row, or the cause is found and fixed.'
+  notes: 'Fixed: change-stream overflow invalidated dentries with mounts on them, which unmounted container /dev and /tmp; invalidation now keeps mounted dentries.'
 - outcome: unrated
   evidence:
   - docs/results/1j-no-fsgsbase.md
@@ -2527,18 +2527,18 @@
   depends_on: &id010 []
   replaced_by: &id011 []
   start: '2026-11-27'
-  end: ''
+  end: '2026-11-27'
   folded: &id012 []
   overview: false
   id: fs-layer-store-corrupt-after-restart
   title: Layer store unreadable after restart
   track: fs
   kind: defect
-  state: next
+  state: done
   lane: windows-ci
   plain: After a failed apt build, a layer directory (.../var/cache/apt/archives) cannot be removed ("directory not empty") although the Sentry lists it as empty; c/storage retries that removal on every
     load and fails the whole store, so steps 9-10 fail after the restart.
-  notes: 'Not caused by the hard kill (stop is now graceful). Fixed when: rmdir of a directory emptied by RemoveAll succeeds on host folders and steps 9-10 pass 8 of 8.'
+  notes: Fixed with atomic replace of layers.json/images.json (pins switch to by-name handles at replace time) and the graceful engine stop.
 - outcome: unrated
   evidence:
   - docs/results/5-podman-windows.md
@@ -2579,3 +2579,22 @@
   overview: false
   plain: Without BUILDAH_ISOLATION=oci every build fails in pasta, because buildah resolves the default isolation to rootless inside the sandbox, although euid, uid_map and capabilities all look rootful.
   notes: 'Fixed when: the BUILDAH_ISOLATION=oci workaround is removed and builds still use OCI isolation.'
+- outcome: unrated
+  evidence:
+  - docs/results/5-podman-windows.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-27'
+  end: ''
+  folded: []
+  overview: false
+  id: platform-rewrite-heap-corruption
+  title: glibc heap errors in rewrite mode
+  track: platform
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: 'In rewrite mode, aptrename dies with free(): invalid size and apt inside builds with segfaults or double free; native mode runs them, so a %fs veneer likely computes or clobbers something wrong.'
+  notes: 'Fixed when: aptrename and the acceptance build step pass in rewrite mode.'

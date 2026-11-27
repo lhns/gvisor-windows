@@ -43,6 +43,7 @@ flowchart TB
     platform_rewrite_mode_slow_engine>"✔ Podman engine stalls<br/>in rewrite mode"]
     platform_rewrite_glibc_init_crash>"✔ Static glibc crashes<br/>at start in rewrite<br/>mode"]
     platform_unrewritten_fs_in_library>"⚠ Unrewritten %fs site<br/>in a library"]
+    platform_rewrite_heap_corruption>"⚠ glibc heap errors in<br/>rewrite mode"]
     platform_own_vdso["⛔ Own vDSO for clock<br/>calls"]
     platform_64k_mapping_conflicts["⏸ Handle 64 KB mapping<br/>conflicts"]
     platform_busybox_on_windows["✔ Run busybox under<br/>the Sentry"]
@@ -86,12 +87,15 @@ flowchart TB
     platform_avx512_state_lost ~~~ platform_rewrite_mode_slow_engine
     platform_avx_on_non_avx_cpu ~~~ platform_rewrite_glibc_init_crash
     platform_fs_veneer_capacity ~~~ platform_unrewritten_fs_in_library
-    platform_rewrite_mode_slow_engine ~~~ platform_own_vdso
-    platform_rewrite_glibc_init_crash ~~~ platform_64k_mapping_conflicts
-    platform_unrewritten_fs_in_library ~~~ platform_busybox_on_windows
+    platform_rewrite_mode_slow_engine ~~~ platform_rewrite_heap_corruption
+    platform_rewrite_glibc_init_crash ~~~ platform_own_vdso
+    platform_unrewritten_fs_in_library ~~~ platform_64k_mapping_conflicts
+    platform_rewrite_heap_corruption ~~~ platform_busybox_on_windows
     platform_own_vdso ~~~ platform_hardware_acceleration
     platform_64k_mapping_conflicts ~~~ platform_binary_translation_fallback
     platform_busybox_on_windows ~~~ platform_recycle_stubs
+    platform_hardware_acceleration ~~~ platform_recycle_stubs
+    platform_binary_translation_fallback ~~~ platform_recycle_stubs
     platform_trap_cost -.-> platform_veh_on_guest_stack_unsafe
     platform_tls_register -.-> platform_veh_on_guest_stack_unsafe
     platform_trap_cost --> platform_exception_stack
@@ -119,7 +123,7 @@ flowchart TB
     platform_winstub --> platform_hardware_acceleration
     platform_debug_event_cost --> platform_binary_translation_fallback
     platform_no_fsgsbase_fallback --> platform_recycle_stubs
-    linkStyle 43,44 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    linkStyle 46,47 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -139,7 +143,7 @@ flowchart TB
     class platform_zpoline_hooks dead
     class platform_fs_base_repair unrated
     class platform_fast_process_start vsucc
-    class platform_fs_veneer_capacity,platform_unrewritten_fs_in_library finding
+    class platform_fs_veneer_capacity,platform_unrewritten_fs_in_library,platform_rewrite_heap_corruption finding
     class platform_own_vdso blocked
     class platform_64k_mapping_conflicts,platform_hardware_acceleration,platform_binary_translation_fallback parked
     class platform_recycle_stubs next
@@ -191,6 +195,7 @@ flowchart TB
 | `platform-rewrite-mode-slow-engine` | Podman engine stalls in rewrite mode | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/results/1l-platform-stability.md |
 | `platform-rewrite-glibc-init-crash` | Static glibc crashes at start in rewrite mode | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/results/1l-platform-stability.md |
 | `platform-unrewritten-fs-in-library` | Unrewritten %fs site in a library | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/5-podman-windows.md; docs/results/1m-platform-repair.md |
+| `platform-rewrite-heap-corruption` | glibc heap errors in rewrite mode | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/5-podman-windows.md |
 
 ### Details per node
 
@@ -236,6 +241,7 @@ flowchart TB
 | `platform-rewrite-mode-slow-engine` | Podman engine stalls in rewrite mode |  |  | With %fs rewriting, the Podman engine answers version after 29-52 s instead of 2 s and then goes silent; no acceptance run completed in 8 tries. | Fixed: the same frozen-stub bug plus a full veneer area; a 32 MiB %fs veneer area brings the engine to native speed. |  |  |  |  |
 | `platform-rewrite-glibc-init-crash` | Static glibc crashes at start in rewrite mode |  |  | The static glibc fsstress guest dies with SIGSEGV in libc init right after set_tid_address in rewrite mode, every run; native mode runs it. | Fixed: a %fs instruction straddling two text pieces ran natively; it is now run by the debugger from a veneer. |  |  |  |  |
 | `platform-unrewritten-fs-in-library` | Unrewritten %fs site in a library |  |  | In rewrite mode the engine once died at start with SIGSEGV addr=0x28 during a cgo call, which looks like a %fs:0x28 stack-canary access with a zero base in a shared library. | Reopened: rewrite runs still die at engine start with SIGSEGV addr=0x28 in cgo sqlite3_exec_no_args (2 of 8). Fixed when: the FS TRIPWIRE names the site, it is patched, and rewrite mode starts the engine 8 of 8. |  |  |  |  |
+| `platform-rewrite-heap-corruption` | glibc heap errors in rewrite mode |  |  | In rewrite mode, aptrename dies with free(): invalid size and apt inside builds with segfaults or double free; native mode runs them, so a %fs veneer likely computes or clobbers something wrong. | Fixed when: aptrename and the acceptance build step pass in rewrite mode. |  |  |  |  |
 
 ### Folded items per node
 

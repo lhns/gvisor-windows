@@ -190,20 +190,18 @@ flowchart TB
 | Reuse stub processes across exec | ○ next | Each fork+exec starts two stub processes at about 10 ms each; recycling a stub on release and execve and mapping memory up front would cut process start further. |
 | More room for %fs veneers | ⚠ open | python3 with libpython and libc needs about 8500 %fs veneers against room for about 7000, and 24% of far %fs sites in Rust PIE binaries such as netavark fall back to the 100 us debugger path. |
 | Unrewritten %fs site in a library | ⚠ open | In rewrite mode the engine once died at start with SIGSEGV addr=0x28 during a cgo call, which looks like a %fs:0x28 stack-canary access with a zero base in a shared library. |
+| glibc heap errors in rewrite mode | ⚠ open | In rewrite mode, aptrename dies with free(): invalid size and apt inside builds with segfaults or double free; native mode runs them, so a %fs veneer likely computes or clobbers something wrong. |
 | Event waiting on IOCP | ⏸ parked | Waiting for many host events at once (epoll on Linux) moves to Windows completion ports. |
 | Timers and clocks on Windows | ⛔ blocked | The Sentry's clocks and timers run on Windows' high-resolution timers. |
 | Profile the slow file and exec path | ✔ done · mixed | Creating a file on tmpfs costs about 1 ms and a fork+exec 32 ms on Windows; find where the time goes (syscall round trips, page faults, debug events, Sentry work) and fix the top causes. |
 | Compatibility layer, not security boundary | ✔ done · n/a | The sandbox may open the user's files directly with the user's rights; it isolates containers from each other, not from the user. |
 | Open Windows files directly | ✔ done · successful | The Sentry opens NTFS files itself for bind mounts, with its own caches, instead of going through a file protocol. |
 | Storage that survives restarts | ⛔ blocked | Implement the chosen writable filesystem so data inside the sandbox outlives a restart. |
-| Copied library reads as too short | ⚠ open | "libc.so.6: file too short" in podman build was an unpatched read syscall at a MapFile seam in Debian ld.so; a gofer change fills whole executable VMAs, which fixes bind mounts; from the root folder it still needs the platform seam fix. apt renames on the storage folder still fail intermittently. Latest: dpkg cannot stat the archive apt just moved under /tmp/apt-dpkg-install-*. The root-folder loader case is fixed by the platform (padding before __read_nocancel). |
-| Layer store unreadable after restart | ⚠ open | After a failed apt build, a layer directory (.../var/cache/apt/archives) cannot be removed ("directory not empty") although the Sentry lists it as empty; c/storage retries that removal on every load and fails the whole store, so steps 9-10 fail after the restart. |
 | Netstack to Windows sockets | ✔ done · successful | gVisor's own TCP/IP stack sends guest traffic out through ordinary Windows sockets, like a user-space NAT. |
 | Bridge networking inside gVisor | ✔ done · successful | Podman's default network creates a bridge and veth pairs over netlink; gVisor lacks part of that, so it fails today. Fix it in gVisor itself, first on Linux, then it carries over to Windows. |
 | Podman on gVisor on Linux | ✔ done · mixed ⚠ | Run the acceptance test on stock gVisor on Linux; whatever fails there is a gap in gVisor itself, not in the port. |
 | Podman passes on Windows | ⛔ blocked | The bar for enough features: an unmodified Podman engine passes the acceptance test on gVisor on Windows. |
 | Serve Podman to Windows clients | ▶ in progress | The test harness runs the Podman engine on runsc and exposes its API to the stock Windows clients. |
-| Isolation step failed once | ⚠ open | Remaining acceptance flakes: step 3 sometimes loses the race between --rm cleanup and attach (podman remote, widened by sandbox slowness), and step 10 once timed out with the engine and a new Go helper idle for 123 s, which looks like the stuck process start. |
 | buildah picks rootless isolation | ⚠ open | Without BUILDAH_ISOLATION=oci every build fails in pasta, because buildah resolves the default isolation to rootless inside the sandbox, although euid, uid_map and capabilities all look rootful. |
 | Pick gVisor as the base | ✔ done · unrated | Of all ways to run Linux code on Windows without admin, gVisor's user-space Linux kernel is the only one that already runs containers. |
 | Name it gvisor-windows | ✔ done · n/a | The project is an unofficial fork of gVisor's Go branch called gvisor-windows. |
@@ -223,12 +221,10 @@ flowchart TB
 **windows-ci**
 
 - `platform-recycle-stubs`: Reuse stub processes across exec
-- `fs-copied-file-too-short`: Copied library reads as too short
-- `workloads-isolation-flake`: Isolation step failed once
 - `platform-fs-veneer-capacity`: More room for %fs veneers
-- `fs-layer-store-corrupt-after-restart`: Layer store unreadable after restart
 - `platform-unrewritten-fs-in-library`: Unrewritten %fs site in a library
 - `workloads-buildah-thinks-rootless`: buildah picks rootless isolation
+- `platform-rewrite-heap-corruption`: glibc heap errors in rewrite mode
 <!-- END GENERATED: ready-now -->
 
 ## Running
@@ -262,7 +258,7 @@ Generated on 2026-11-27.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 97 done, 7 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 100 done, 7 abandoned</summary>
 
 - `fs-attribute-cache`: Faster stat walks on host folders (✔ done · mixed). A git-status-like walk of 20000 files takes 1.2-2.4 s through the host folder; an attribute cache fed by the change watcher would bring stat near native.
   - Cold stat walk on a fresh mount is still about 4x native, 99-105 us per file (2026-11-26)
@@ -367,9 +363,11 @@ Generated on 2026-11-27.
 - `workloads-podman-probe`: Probe Podman inside the sandbox (✔ done · unrated). Right after busybox works, run podman --version and podman info inside the sandbox; their failures are the real gap list.
 - `workloads-strict-bar-linux`: Strict bar on stock gVisor (✔ done · mixed). Find out what stock gVisor on Linux needs for -p port publishing and compose service names, across Podman versions and network modes.
 - `fs-case-sensitivity-without-admin`: Case-sensitive names without admin (✔ fixed). A standard user on the hosted runner cannot set per-directory case sensitivity (access denied), so Linux images with names differing only in case need another way, without an admin setup step.
+- `fs-copied-file-too-short`: Copied library reads as too short (✔ fixed). "libc.so.6: file too short" in podman build was an unpatched read syscall at a MapFile seam in Debian ld.so; a gofer change fills whole executable VMAs, which fixes bind mounts; from the root folder it still needs the platform seam fix. apt renames on the storage folder still fail intermittently. Latest: dpkg cannot stat the archive apt just moved under /tmp/apt-dpkg-install-*. The root-folder loader case is fixed by the platform (padding before __read_nocancel).
 - `fs-disown-children-nil-deref`: Nil dereference in gofer invalidation (✔ fixed). The Sentry panics with a nil dereference in gofer dentry.disownAllChildrenForInvalidation during the bench test in rewrite-mode CI legs.
 - `fs-flaky-negative-cache-test`: Flaky negative-cache test on host folders (✔ fixed). TestVFSNegativeCacheAndQuickChange failed once on windows-fs after passing on the previous head; a timing race in the change watcher or the test.
 - `fs-host-folder-mtime-resolution`: Host-folder writes keep the old mtime (✔ fixed). On host folders 45-60% of consecutive writes report the same mtime as the previous one (tmpfs: none), which can hide changes from tools that compare mtimes.
+- `fs-layer-store-corrupt-after-restart`: Layer store unreadable after restart (✔ fixed). After a failed apt build, a layer directory (.../var/cache/apt/archives) cannot be removed ("directory not empty") although the Sentry lists it as empty; c/storage retries that removal on every load and fails the whole store, so steps 9-10 fail after the restart.
 - `fs-unix-sockets-on-host-folders`: Unix sockets on host folders (✔ fixed). Binding a Unix socket on a Windows folder and connecting to it (by path or via /proc/self/fd) is refused, so Podman cannot reach conmon's attach socket.
 - `ops-syscall-tests-on-windows`: gVisor syscall tests on Windows (✔ done · mixed). gVisor's own syscall test suite runs against the Windows port to show which Linux calls work.
   - Linux runsc 81.5%, Windows with network 77.3% of 14620 cases (2026-11-27)
@@ -398,6 +396,7 @@ Generated on 2026-11-27.
 - `workloads-conmon-sync-pipe`: conmon sees no data on its sync pipe (✔ fixed). Every podman run fails with "conmon bytes \"\": found \x00": conmon reads nothing from its sync pipe while creating the first container inside the sandbox on Windows.
   - Cause 1 fixed: FIFO opens on host folders were rejected by policy, now in-Sentry named pipes (2026-11-27)
 - `workloads-end-to-end-speed`: Measure end-to-end speed on Windows (✔ done · mixed). Run the Phase 0 workloads (fork+exec loop, untar of small files, a CPU job) through runsc.exe on Windows and compare with runsc and native on Linux.
+- `workloads-isolation-flake`: Isolation step failed once (✔ fixed). Remaining acceptance flakes: step 3 sometimes loses the race between --rm cleanup and attach (podman remote, widened by sandbox slowness), and step 10 once timed out with the engine and a new Go helper idle for 123 s, which looks like the stuck process start.
 - `workloads-overlay-userxattr`: Overlay mounts with userxattr rejected (✔ fixed). podman build fails: the Sentry overlay rejects the userxattr option (or the layer setup) when Podman storage sits on a Windows folder.
   - Overlay upperdir must be tmpfs; /var/tmp is now a tmpfs in the engine spec (2026-11-27)
 - `workloads-tty-through-windows-client`: Interactive TTY through the Windows client (✔ fixed). The Windows podman client says "The input device is not a TTY" inside the ConPTY test driver, so the interactive step cannot type into the container.
@@ -412,11 +411,11 @@ Generated on 2026-11-27.
 Each track has its own page with its tree, node table and per-node details.
 
 - [runsc - runsc](roadmap/tracks/runsc.md): 6 nodes (6 done)
-- [platform - platform](roadmap/tracks/platform.md): 40 nodes (32 done, 3 next, 1 blocked, 3 parked, 1 abandoned)
+- [platform - platform](roadmap/tracks/platform.md): 41 nodes (32 done, 4 next, 1 blocked, 3 parked, 1 abandoned)
 - [sentry - sentry](roadmap/tracks/sentry.md): 14 nodes (12 done, 1 blocked, 1 parked)
-- [fs - files](roadmap/tracks/fs.md): 20 nodes (17 done, 2 next, 1 blocked)
+- [fs - files](roadmap/tracks/fs.md): 20 nodes (19 done, 1 blocked)
 - [net - network](roadmap/tracks/net.md): 4 nodes (4 done)
-- [workloads - workloads](roadmap/tracks/workloads.md): 20 nodes (16 done, 1 in progress, 2 next, 1 blocked)
+- [workloads - workloads](roadmap/tracks/workloads.md): 20 nodes (17 done, 1 in progress, 1 next, 1 blocked)
 - [research - research](roadmap/tracks/research.md): 8 nodes (2 done, 6 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 11 nodes (8 done, 1 next, 2 blocked)
 <!-- END GENERATED: tracks -->
