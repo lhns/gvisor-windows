@@ -2669,13 +2669,14 @@
   plain: 'Intermittently, apt''s unprivileged _apt user gets "cannot create /dev/null: Permission denied" inside a build container, so step 5 fails; dpkg''s "cannot stat" of an extracted .deb also still
     shows up rarely.'
   notes: 'Not reproduced on current windows: step 5 passed 80 of 80 native runs; the failures were on heads before the mount-keeping and atomic-replace fixes. A devnull guest test guards it.'
-- outcome: unrated
+- outcome: successful
   evidence:
   - docs/results/5-podman-windows.md
   - docs/results/1q-window-resume.md
   - docs/results/1p-rewrite-heap.md
-  verdict_quote: ''
-  headline: ''
+  verdict_quote: an unmodified Podman 6.2.0 engine passes all ten acceptance steps on gVisor on Windows as a standard user in all three CPU modes, 24 of 24 runs on the merged head, under the conditions
+    listed in ADR 0002.
+  headline: Podman passes without FSGSBASE too
   depends_on:
   - workloads-podman-on-windows
   - platform-unrewritten-fs-in-library
@@ -2686,9 +2687,9 @@
   end: '2026-11-27'
   folded:
   - 'Rewrite Podman: all 10 steps 7 of 8, then 8 of 8 (runs 46016231319, 46020575644) (2026-11-27, commit bce41cf19)'
-  overview: false
+  overview: true
   lane: windows-ci
-  notes: All 10 steps 16 of 16 in rewrite and rewrite-fxsave on the final code (run 46037364923); an earlier batch on older interrupt code also 16 of 16.
+  notes: 'Run 46041026851 on the merged head: native, rewrite and rewrite-fxsave each 8 of 8 with all 10 steps.'
   id: workloads-podman-without-fsgsbase
   title: Podman on CPUs without FSGSBASE
   track: workloads

@@ -338,3 +338,9 @@ Verdict: the engine now stops gracefully and survives without the GODEBUG line (
 On `windows` with atomic replace, mount-safe invalidation, graceful stop and the init user-namespace inode, native mode passed all ten steps in 8 of 8 runs twice (run 45976796134, and 45985526511 without `BUILDAH_ISOLATION`), and step 5 alone in 80 of 80 runs. Buildah's rootless choice came from `/proc/self/ns/user` not having Linux's fixed inode 0xEFFFFFFD. Rewrite mode still fails step 5 (glibc heap errors) and sometimes engine start (an unrewritten `%fs` site in sqlite).
 
 Verdict: an unmodified Podman 6.2.0 engine passes all ten acceptance steps on gVisor on Windows as a standard user in native mode, 8 of 8 runs twice, under the conditions listed in ADR 0002; CPUs without FSGSBASE (rewrite mode) do not pass yet.
+
+## Twelfth round: all CPU modes on the merged head (2026-11-27)
+
+Run 46041026851 on `windows` 233a84a4e, all ten steps required in every mode: native 8 of 8, rewrite 8 of 8, rewrite-fxsave 8 of 8. On the development VM (no FSGSBASE, XSAVE or AVX), `aptrename` passed 200 rounds 5 of 5 with that build's `runsc.exe`.
+
+Verdict: an unmodified Podman 6.2.0 engine passes all ten acceptance steps on gVisor on Windows as a standard user in all three CPU modes, 24 of 24 runs on the merged head, under the conditions listed in ADR 0002.
