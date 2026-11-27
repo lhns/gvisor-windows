@@ -99,7 +99,7 @@ function Start-Engine {
       terminal     = $false
       user         = @{ uid = 0; gid = 0 }
       args         = @('sh', '-c', 'mkdir -p /run/podman /run/containers/storage; exec podman --log-level=info system service --time=0 tcp://0.0.0.0:8888')
-      env          = @('PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'HOME=/root', 'TERM=xterm', 'container=podman',
+      env          = @('PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'HOME=/root', 'TERM=xterm', 'container=podman', $(if ($env:ENGINE_GODEBUG) { "GODEBUG=$env:ENGINE_GODEBUG" } else { 'CONTAINER_NOGODEBUG=1' }),
         'CONTAINERS_STORAGE_CONF=/etc/containers/storage.conf', 'CONTAINERS_CONF=/etc/containers/containers.conf',
         # Without it a build chooses buildah's rootless isolation (pasta networking, which fails as root: it drops
         # its capabilities before setns, on real Linux too, docs/results/0c-linux-strict-bar.md); the OCI isolation uses netavark.
