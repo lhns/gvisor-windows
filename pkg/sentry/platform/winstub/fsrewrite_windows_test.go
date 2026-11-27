@@ -112,6 +112,7 @@ func TestFSInstructions(t *testing.T) {
 			if c.full {
 				as := mm.as.(*addressSpace)
 				as.mu.Lock()
+				as.gcur = stubasm.FSBig + stubasm.FSBigSize
 				as.fcur = stubasm.FSVeneers + stubasm.FSVeneersSize
 				as.mu.Unlock()
 			}

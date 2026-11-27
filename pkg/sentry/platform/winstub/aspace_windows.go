@@ -120,6 +120,10 @@ type addressSpace struct {
 	siteCache map[uint64]siteInfo
 	restartAt map[uint64]uint64
 	ud2Sites  map[uint64]bool
+	fbigSec   uintptr // the big %fs veneer area (rewrite mode)
+	fbigView  unsafe.Pointer
+	gcur      uint64 // next free address in it
+	gcommit   uint64 // end of its committed part
 	fcur      uint64 // next free address in the %fs veneer area
 	ftop      uint64 // end of the free space shared by syscall veneers (up from vcur) and overflowing %fs veneers (down)
 	fsCache   map[fsKey]uint64
@@ -588,6 +592,10 @@ func (as *addressSpace) Release() {
 	as.privs = nil
 	pUnmapViewOfFile.Call(uintptr(as.areaView))
 	pUnmapViewOfFile.Call(uintptr(as.ctlView))
+	if as.fbigView != nil {
+		pUnmapViewOfFile.Call(uintptr(as.fbigView))
+		pCloseHandle.Call(as.fbigSec)
+	}
 	pCloseHandle.Call(as.areaSec)
 	pCloseHandle.Call(as.ctlSec)
 	pCloseHandle.Call(as.hMain)
@@ -617,7 +625,11 @@ func (as *addressSpace) reserveHoles(ctx context.Context, mm platform.MemoryMana
 	for _, h := range []hostarch.AddrRange{
 		{Start: holeStart, End: holeEnd},
 		{Start: hostarch.Addr(stubasm.WinWindow), End: hostarch.Addr(stubasm.WinWindow + stubasm.WinWindowSize)},
+		{Start: hostarch.Addr(stubasm.FSBig), End: hostarch.Addr(stubasm.FSBig + stubasm.FSBigSize)},
 	} {
+		if h.Start == hostarch.Addr(stubasm.FSBig) && !as.p.fsRewrite {
+			continue
+		}
 		if _, _, err := mm.FindVMAByName(h, holeName); err == nil {
 			continue // inherited through fork
 		}

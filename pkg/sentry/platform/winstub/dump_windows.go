@@ -148,8 +148,8 @@ func (as *addressSpace) dumpFSSites(w io.Writer) {
 		why[as.fsWhy[a]] += n
 	}
 	sort.Slice(hs, func(i, j int) bool { return hs[i].n > hs[j].n })
-	fmt.Fprintf(w, "  veneers: %%fs area used %d of %d bytes, tail pool %d bytes, %d ud2 sites; debugger runs by reason: %v\n",
-		as.fcur-stubasm.FSVeneers, stubasm.FSVeneersSize, stubasm.VeneersShared-as.ftop, len(as.fsUD2), why)
+	fmt.Fprintf(w, "  veneers: big area %d of %d bytes; %%fs low area used %d of %d bytes, tail pool %d bytes, %d ud2 sites; debugger runs by reason: %v\n",
+		as.gcur-stubasm.FSBig, stubasm.FSBigSize, as.fcur-stubasm.FSVeneers, stubasm.FSVeneersSize, stubasm.VeneersShared-as.ftop, len(as.fsUD2), why)
 	for i := 0; i < len(hs) && i < 8; i++ {
 		fmt.Fprintf(w, "  hot %%fs site %#x: %d runs, %s, bytes % x\n", hs[i].a, hs[i].n, as.fsWhy[hs[i].a], as.fsUD2[hs[i].a])
 	}

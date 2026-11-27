@@ -23,6 +23,7 @@ import (
 	"sort"
 	"unsafe"
 
+	"golang.org/x/sys/windows"
 	"gvisor.dev/gvisor/pkg/hostarch"
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/stubasm"
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/x86asm"
@@ -57,7 +58,11 @@ func (as *addressSpace) patchFS(code []byte, base uint64, site *scanSite, cl *cl
 	}
 	// A jump rel32 reaches the veneer area from code below about 2 GiB; anything
 	// else jumps through a pointer stored at the veneer (7 bytes).
-	rel := int64(stubasm.FSVeneers) - int64(base) - int64(x.off)
+	target := stubasm.FSVeneers
+	if as.fbigView != nil {
+		target = stubasm.FSBig
+	}
+	rel := int64(target) - int64(base) - int64(x.off)
 	minLen := 7
 	if rel > -(1<<31)+(1<<20) && rel < (1<<31)-(1<<20) {
 		minLen = 5
@@ -101,20 +106,16 @@ func (as *addressSpace) fsWindow(code []byte, base uint64, win []ins, a, b, s, m
 	va, cached := as.fsCache[key]
 	if !cached {
 		vlen := uint64(8+len(v.code)+7) &^ 7
-		switch {
-		case as.fcur+vlen <= stubasm.FSVeneers+stubasm.FSVeneersSize:
-			va = as.fcur
-			as.fcur += vlen
-		case as.ftop-vlen >= as.vcur:
-			// The area is full: take room from the end of the private syscall
-			// veneers, which use little of theirs.
-			as.ftop -= vlen
-			va = as.ftop
-		default:
+		if va = as.fsAlloc(vlen); va == 0 {
 			return false
 		}
-		as.areaWrite(va, binary.LittleEndian.AppendUint64(nil, va+8))
-		as.areaWrite(va+8, v.code)
+		if minLen == 5 {
+			if d := int64(va+8) - int64(w0+5); d != int64(int32(d)) {
+				return false // (the veneer ended up out of reach of this code: only the low area can do that)
+			}
+		}
+		as.fsPut(va, binary.LittleEndian.AppendUint64(nil, va+8))
+		as.fsPut(va+8, v.code)
 		as.fsCache[key] = va
 		vi := &fsVenInfo{lo: va + 8, hi: va + 8 + uint64(len(v.code)), w0: w0, v: v}
 		i := sort.Search(len(as.fsVen), func(i int) bool { return as.fsVen[i].lo > vi.lo })
@@ -165,7 +166,8 @@ func (as *addressSpace) fsLocate(t *thread, rip uint64) *fsVenInfo {
 	if d := t.dyn; d != nil && rip >= d.lo && rip < d.hi {
 		return d
 	}
-	if rip < stubasm.Veneers || rip >= stubasm.FSVeneers+stubasm.FSVeneersSize {
+	inBig := rip >= stubasm.FSBig && rip < stubasm.FSBig+stubasm.FSBigSize
+	if !inBig && (rip < stubasm.Veneers || rip >= stubasm.FSVeneers+stubasm.FSVeneersSize) {
 		return nil
 	}
 	as.mu.Lock()
@@ -289,4 +291,47 @@ func (as *addressSpace) fsSplitRun(t *thread, ctx *ctxBuf, a uint64) bool {
 		as.park(t, ctx, request{kind: reqFault, sig: 4, code: 1, addr: a})
 	}
 	return true
+}
+
+// fsAlloc returns the address of n bytes for a veneer, 0 if there is no room: in
+// the big area (committing it as it fills), else in the low area and the end of
+// the syscall veneers' space.
+func (as *addressSpace) fsAlloc(n uint64) uint64 {
+	if as.fbigView != nil && as.gcur+n <= stubasm.FSBig+stubasm.FSBigSize {
+		ok := true
+		for as.gcommit < as.gcur+n {
+			if _, err := windows.VirtualAlloc(uintptr(as.fbigView)+uintptr(as.gcommit-stubasm.FSBig), uintptr(stubasm.FSBigChunk), windows.MEM_COMMIT, windows.PAGE_READWRITE); err != nil {
+				debugf("commit of the %%fs veneer area: %v", err)
+				ok = false
+				break
+			}
+			as.gcommit += stubasm.FSBigChunk
+		}
+		if ok {
+			va := as.gcur
+			as.gcur += n
+			return va
+		}
+	}
+	switch {
+	case as.fcur+n <= stubasm.FSVeneers+stubasm.FSVeneersSize:
+		va := as.fcur
+		as.fcur += n
+		return va
+	case as.ftop-n >= as.vcur:
+		// The area is full: take room from the end of the private syscall
+		// veneers, which use little of theirs.
+		as.ftop -= n
+		return as.ftop
+	}
+	return 0
+}
+
+// fsPut writes veneer code at an address fsAlloc returned.
+func (as *addressSpace) fsPut(va uint64, b []byte) {
+	if va >= stubasm.FSBig && va < stubasm.FSBig+stubasm.FSBigSize {
+		copy(unsafe.Slice((*byte)(unsafe.Add(as.fbigView, va-stubasm.FSBig)), len(b)), b)
+		return
+	}
+	as.areaWrite(va, b)
 }

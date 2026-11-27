@@ -343,6 +343,12 @@ func (as *addressSpace) start() error {
 	if as.ctlSec, as.ctlView, err = section(stubasm.CtlSize, true); err != nil {
 		return fail(fmt.Errorf("control area: %w", err))
 	}
+	if as.p.fsRewrite {
+		if as.fbigSec, as.fbigView, err = section(stubasm.FSBigSize, true); err != nil {
+			return fail(fmt.Errorf("%%fs veneer area: %w", err))
+		}
+		as.gcur, as.gcommit = stubasm.FSBig, stubasm.FSBig
+	}
 	Trace("start: sections created")
 	for _, m := range []struct {
 		lo, size uint64
@@ -360,6 +366,11 @@ func (as *addressSpace) start() error {
 	}
 	if err := as.mapSys(stubasm.CtlBase, stubasm.CtlSize, as.ctlSec, 0, protR|protW|protX); err != nil {
 		return fail(err)
+	}
+	if as.fbigView != nil {
+		if err := as.mapSys(stubasm.FSBig, stubasm.FSBigSize, as.fbigSec, 0, protR|protX); err != nil {
+			return fail(err)
+		}
 	}
 	Trace("start: views mapped")
 	as.areaWrite(stubasm.StubCode, as.p.image)

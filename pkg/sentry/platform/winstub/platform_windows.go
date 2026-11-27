@@ -204,7 +204,7 @@ func (constructor) PrecompiledSeccompInfo() []platform.SeccompInfo { return nil 
 
 func init() {
 	platform.Register(Name, constructor{})
-	// Executables load low (0x1000_0000 + up to 512 MiB), within rel32 reach of the
+	// Executables load low (0x1000_0000 + up to 256 MiB), within rel32 reach of the
 	// stub's veneers; Linux's 2/3 of the address space is out of reach.
-	arch.PIELoadBase, arch.PIELoadRand = 0x1000_0000, 0x2000_0000
+	arch.PIELoadBase, arch.PIELoadRand = 0x1000_0000, 0x1000_0000
 }

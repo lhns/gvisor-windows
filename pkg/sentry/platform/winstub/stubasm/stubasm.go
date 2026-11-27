@@ -77,6 +77,14 @@ const (
 	FSVeneers     uint64 = 0x190000
 	FSVeneersSize uint64 = 0x70000
 
+	// Rewrite mode: the %fs veneers have a large area of their own, committed
+	// as it fills, inside the guest range (reserved against the guest in the
+	// memory manager). It is within rel32 reach of code loaded below about
+	// 3 GiB (executables load at 0x1000_0000 and up, see arch.PIELoadBase).
+	FSBig      uint64 = 0x4000_0000
+	FSBigSize  uint64 = 32 << 20
+	FSBigChunk uint64 = 64 << 10
+
 	AreaLo uint64 = TrapPtrs // the low stub area is one section of this range
 	AreaHi uint64 = FSVeneers + FSVeneersSize
 
