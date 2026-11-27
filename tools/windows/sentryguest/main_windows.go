@@ -88,6 +88,10 @@ func main() {
 	verbose := flag.Bool("v", false, "Sentry logging")
 	sample := flag.Bool("sample", false, "print where the task creating the process spends its time")
 	tarPath := flag.String("tar", "", "fill the tmpfs from this tar; the first argument is then a path inside it")
+	extraFiles := flag.String("files", "", "comma-separated hostfile:/guest/path pairs copied into the tmpfs after the tar")
+	withNet := flag.Bool("net", false, "give the guest lo and eth0 (user-space NAT, as --network=windows-nat)")
+	stream := flag.Bool("stream", false, "print the guest's output while it runs (so a crash of the Sentry loses little)")
+	sysMounts := flag.Bool("sysmounts", false, "mount /proc, /sys, /dev and /dev/pts")
 	envList := flag.String("env", "PATH=/bin:/usr/bin:/", "comma-separated environment of the guest")
 	flag.Parse()
 	if flag.NArg() < 1 {
@@ -129,6 +133,9 @@ func main() {
 	tk.SetClocks(ktime.NewCalibratedClocks(false), params)
 	userns := auth.NewRootUserNamespace()
 	netns := inet.NewRootNamespace(nil, nil, userns)
+	if *withNet {
+		netns = newNetNamespace(tk, userns)
+	}
 	must(k.Init(kernel.InitKernelArgs{
 		FeatureSet:           cpuid.HostFeatureSet().Fixed(),
 		Timekeeper:           tk,
@@ -171,6 +178,21 @@ func main() {
 		guest.DecRef(ctx)
 	} else {
 		extract(ctx, vfsObj, creds, root, *tarPath)
+	}
+	for _, pair := range strings.Split(*extraFiles, ",") {
+		if pair == "" {
+			continue
+		}
+		i := strings.LastIndex(pair, ":/")
+		if i < 0 {
+			fail("bad -files entry %q", pair)
+		}
+		data, err := os.ReadFile(pair[:i])
+		must(err, "reading "+pair[:i])
+		create(pair[i+1:], linux.O_WRONLY|linux.O_TRUNC, data).DecRef(ctx)
+	}
+	if *sysMounts {
+		mountSystem(ctx, vfsObj, creds, root)
 	}
 	stdin := create("/stdin", linux.O_RDONLY, nil)
 	stdout := create("/stdout", linux.O_RDWR, nil)
@@ -215,6 +237,28 @@ func main() {
 	winstub.Trace("boot: process created")
 	fdt.DecRef(ctx)
 	k.StartProcess(tg)
+	var streamed int
+	stopStream := make(chan struct{})
+	streamDone := make(chan struct{})
+	if *stream {
+		go func() {
+			defer close(streamDone)
+			for {
+				select {
+				case <-stopStream:
+					return
+				case <-time.After(20 * time.Millisecond):
+				}
+				out := readFrom(ctx, vfsObj, creds, root, "/stdout", streamed)
+				if len(out) > 0 {
+					os.Stdout.Write(out)
+					streamed += len(out)
+				}
+			}
+		}()
+	} else {
+		close(streamDone)
+	}
 	done := make(chan struct{})
 	go func() { k.WaitExited(); close(done) }()
 	select {
@@ -230,8 +274,10 @@ func main() {
 	winstub.Trace("boot: exit observed")
 	ws := tg.ExitStatus()
 
+	close(stopStream)
+	<-streamDone
 	out := readAll(ctx, vfsObj, creds, root, "/stdout")
-	fmt.Print(string(out))
+	fmt.Print(string(out[streamed:]))
 	fmt.Printf("sentryguest: exit status %v (code %d, signaled %v), init %v, run %v\n",
 		ws, ws.ExitStatus(), ws.Signaled(), tInit.Round(time.Millisecond), tRun.Round(time.Microsecond))
 	bad := false
@@ -273,6 +319,25 @@ func sampler() {
 				}
 			}
 			winstub.Trace("sample: %s", strings.Join(fr, " < "))
+		}
+	}
+}
+
+// readFrom reads what the file holds beyond offset off.
+func readFrom(ctx context.Context, vfsObj *vfs.VirtualFilesystem, creds *auth.Credentials, root vfs.VirtualDentry, path string, off int) []byte {
+	fd, err := vfsObj.OpenAt(ctx, creds, &vfs.PathOperation{Root: root, Start: root, Path: fspath.Parse(path)},
+		&vfs.OpenOptions{Flags: linux.O_RDONLY})
+	if err != nil {
+		return nil
+	}
+	defer fd.DecRef(ctx)
+	var out []byte
+	buf := make([]byte, 64<<10)
+	for {
+		n, err := fd.PRead(ctx, usermem.BytesIOSequence(buf), int64(off+len(out)), vfs.ReadOptions{})
+		out = append(out, buf[:n]...)
+		if n == 0 || err != nil {
+			return out
 		}
 	}
 }

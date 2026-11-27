@@ -32,6 +32,12 @@ jobs:
           rc=$?
           grep -E "^(\s*--- |FAIL|ok|panic|fatal)|_test.go:[0-9]+:|^goroutine|\.go:[0-9]+ " gofer.log | head -120
           exit $rc
+      - name: The watcher-driven cache tests, repeated (flakiness check)
+        if: always()
+        shell: bash
+        run: |
+          go test -p 1 -count=20 -timeout 600s -run 'TestVFSNegativeCacheAndQuickChange|TestVFSWindowsChangesReachGuest' ./pkg/sentry/fsimpl/gofer/ 2>&1 | tail -20
+          go test -p 1 -count=10 -timeout 600s -run 'TestWatch' ./pkg/sentry/fsimpl/gofer/winhost/ 2>&1 | tail -20
       - name: The same tests as a standard user (deletes and renames in the user's own folders)
         if: always()
         shell: pwsh
