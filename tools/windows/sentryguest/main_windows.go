@@ -90,6 +90,7 @@ func main() {
 	tarPath := flag.String("tar", "", "fill the tmpfs from this tar; the first argument is then a path inside it")
 	extraFiles := flag.String("files", "", "comma-separated hostfile:/guest/path pairs copied into the tmpfs after the tar")
 	withNet := flag.Bool("net", false, "give the guest lo and eth0 (user-space NAT, as --network=windows-nat)")
+	stallKill := flag.Bool("stall-kill", false, "with -stall-dump: after the dump terminate the newest stub process (workaround for a guest process that never starts)")
 	stallDump := flag.Duration("stall-dump", 0, "with -stream: dump all goroutines to stderr when the guest printed nothing for this long (0: off)")
 	handleEvery := flag.Duration("handles", 0, "print the process's handle count, goroutines and memory to stderr this often (0: off)")
 	stream := flag.Bool("stream", false, "print the guest's output while it runs (so a crash of the Sentry loses little)")
@@ -264,6 +265,10 @@ func main() {
 				if *stallDump > 0 && time.Since(lastGrowth) > *stallDump && time.Since(lastDump) > 2*time.Minute {
 					lastDump = time.Now()
 					dumpGoroutines()
+					dumpChildren()
+					if *stallKill {
+						killYoungestChild()
+					}
 				}
 			}
 		}()

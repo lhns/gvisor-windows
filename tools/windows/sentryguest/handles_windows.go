@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 	"time"
 	"unsafe"
 
@@ -70,4 +71,97 @@ func monitorHandles(interval time.Duration) {
 			int(time.Since(start).Seconds()), n, runtime.NumGoroutine(), m.WorkingSetSize>>20, m.PagefileUsage>>20)
 		time.Sleep(interval)
 	}
+}
+
+var procNtQuerySystemInformation = windows.NewLazySystemDLL("ntdll.dll").NewProc("NtQuerySystemInformation")
+
+type childProc struct {
+	pid     uint32
+	image   string
+	created int64 // 100ns since 1601
+	threads []string
+}
+
+// childProcesses lists the processes this process started (the stubs of the
+// guest processes) with the state of their threads, from
+// NtQuerySystemInformation(SystemProcessInformation).
+func childProcesses() []childProc {
+	buf := make([]byte, 1<<20)
+	for {
+		var need uint32
+		st, _, _ := procNtQuerySystemInformation.Call(5, uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)), uintptr(unsafe.Pointer(&need)))
+		if st == 0xC0000004 { // STATUS_INFO_LENGTH_MISMATCH
+			buf = make([]byte, need+(1<<16))
+			continue
+		}
+		if st != 0 {
+			return nil
+		}
+		break
+	}
+	self := uint64(windows.GetCurrentProcessId())
+	var out []childProc
+	for off := 0; ; {
+		p := buf[off:]
+		next := *(*uint32)(unsafe.Pointer(&p[0]))
+		nthreads := *(*uint32)(unsafe.Pointer(&p[4]))
+		created := *(*int64)(unsafe.Pointer(&p[32]))
+		parent := *(*uint64)(unsafe.Pointer(&p[88]))
+		if parent == self {
+			c := childProc{pid: uint32(*(*uint64)(unsafe.Pointer(&p[80]))), created: created}
+			nameLen := int(*(*uint16)(unsafe.Pointer(&p[56])))
+			if nameLen > 0 {
+				w := unsafe.Slice(*(**uint16)(unsafe.Pointer(&p[64])), nameLen/2)
+				c.image = windows.UTF16ToString(w)
+			}
+			for t := 0; t < int(nthreads); t++ {
+				th := p[256+80*t:]
+				state := *(*uint32)(unsafe.Pointer(&th[68]))
+				reason := *(*uint32)(unsafe.Pointer(&th[72]))
+				c.threads = append(c.threads, fmt.Sprintf("%d/%d", state, reason))
+			}
+			out = append(out, c)
+		}
+		if next == 0 {
+			break
+		}
+		off += int(next)
+	}
+	return out
+}
+
+// dumpChildren prints the stub processes: a thread state of "5/5" is waiting
+// while suspended, "5/0" waiting on an object (states: 2 running, 5 waiting).
+func dumpChildren() {
+	now := time.Now().UnixNano()/100 + 116444736000000000
+	nl := string(rune(10))
+	var sb strings.Builder
+	for _, c := range childProcesses() {
+		sb.WriteString(fmt.Sprintf("STALL child pid=%d image=%s age=%ds threads=%v%s", c.pid, c.image, (now-c.created)/10_000_000, c.threads, nl))
+	}
+	fmt.Fprint(os.Stderr, sb.String())
+}
+
+// killYoungestChild terminates the newest child process: after a stall it is
+// the stub of the guest process that never started, and ending it lets the
+// Sentry's address space release finish. A workaround for finding out what
+// else would stall, not a fix.
+func killYoungestChild() {
+	var y *childProc
+	cs := childProcesses()
+	for i := range cs {
+		if y == nil || cs[i].created > y.created {
+			y = &cs[i]
+		}
+	}
+	if y == nil {
+		return
+	}
+	h, err := windows.OpenProcess(windows.PROCESS_TERMINATE, false, y.pid)
+	if err != nil {
+		return
+	}
+	defer windows.CloseHandle(h)
+	windows.TerminateProcess(h, 1)
+	fmt.Fprintf(os.Stderr, "STALL killed child pid=%d%s", y.pid, string(rune(10)))
 }

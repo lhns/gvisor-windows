@@ -43,7 +43,7 @@ jobs:
           echo "shard $shard"
           grep "^$BIN	" "$shard/list.txt" > list.txt
           wc -l list.txt
-          flags="-sysmounts -stream -handles 5s -stall-dump 90s -timeout 12m"
+          flags="-sysmounts -stream -handles 5s -stall-dump 90s -stall-kill -timeout 20m"
           [ "$NET" = true ] && flags="$flags -net"
           set +e
           ./sentryguest.exe -tar "$shard/rootfs.tar" $flags -files "list.txt:/list.txt" /bin/driver -t 60 /list.txt > run.log 2>&1
@@ -52,7 +52,7 @@ jobs:
           grep "^HANDLES" run.log | awk 'NR%12==1' | head -80
           grep "^HANDLES" run.log | tail -3
           grep -E "fatal error|panic:|GetQueuedCompletion" run.log | head -5
-          grep -n "^STALL" run.log | head -3
+          grep -E "^STALL (child|killed)" run.log | head -20
       - name: The same through run_shard.py, as the syscall-tests workflow does
         shell: bash
         env: {MSYS_NO_PATHCONV: "1"}
