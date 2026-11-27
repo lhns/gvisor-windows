@@ -80,7 +80,7 @@ int main(int argc, char **argv) {
       why[0] = 0;
       snprintf(name, sizeof name, "child reads touch=%d", touch);
       report(name, same(argv[2], dst, why, sizeof why), why);
-      execl(dst, dst, "true", (char *)NULL);
+      execl(dst, "true", (char *)NULL);
       printf("exec of the copy touch=%d: FAIL %s\n", touch, strerror(errno));
       _exit(3);
     }
