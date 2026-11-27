@@ -788,7 +788,12 @@ func ntRename(h windows.Handle, class, flags uint32, root windows.Handle, name s
 		*(*uint16)(unsafe.Pointer(&b[hdr+2*i])) = c
 	}
 	var iosb windows.IO_STATUS_BLOCK
-	return toErrno(windows.NtSetInformationFile(h, &iosb, &b[0], uint32(size), class))
+	raw := windows.NtSetInformationFile(h, &iosb, &b[0], uint32(size), class)
+	err := toErrno(raw)
+	if err == unix.EACCES || err == unix.EBUSY || err == unix.EINVAL {
+		log.Infof("winhost: rename class %d flags %#x root %v to %q: %v (%v)", class, flags, root != 0, name, raw, err)
+	}
+	return err
 }
 
 // renameHandle renames an open file to the NT path full.
