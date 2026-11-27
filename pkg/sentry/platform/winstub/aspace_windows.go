@@ -143,6 +143,7 @@ type addressSpace struct {
 	nThreadReplaced atomic.Uint32
 	// debug-event counts: events handled, %fs instructions run by the debugger, stops moved out of a veneer
 	nEvents, nFSInline, nFSFix atomic.Uint64
+	nFSRepair, nFSGenuine atomic.Uint64 // %fs bases restored by the repair routine, faults it reported
 	tmu       sync.Mutex
 	byTid     map[uint32]*thread
 	slots     [stubasm.MaxThreads]*thread

@@ -639,8 +639,10 @@ func (as *addressSpace) repairFS(t *thread, ctx *ctxBuf, rip uint64) bool {
 		*t.u64(stubasm.PgEqualN) = 0
 	} else if *t.u64(stubasm.PgEqualN) >= 3 {
 		*t.u64(stubasm.PgEqualN) = 0
+		as.nFSGenuine.Add(1)
 		return false
 	}
+	as.nFSRepair.Add(1)
 	*t.u64(stubasm.PgRetRIP) = rip
 	*ctx.u64(ctxRipOff) = t.addr + stubasm.PgRepair
 	return ctx.set(t.hThread)

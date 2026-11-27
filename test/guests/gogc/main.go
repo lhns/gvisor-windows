@@ -12,6 +12,7 @@ import (
 	"runtime/debug"
 	"strconv"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -52,6 +53,26 @@ func main() {
 			total += n
 			mu.Unlock()
 		}(uint32(w) + 1)
+	}
+	// Page-fault storm: fresh anonymous memory touched page by page and given back,
+	// on threads of their own. Every first touch is a debug event of the stub, and
+	// every event stops all its threads (and drops their %fs bases).
+	for f := 0; f < 4; f++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			runtime.LockOSThread()
+			for time.Now().Before(end) {
+				m, err := syscall.Mmap(-1, 0, 4<<20, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_ANON|syscall.MAP_PRIVATE)
+				if err != nil {
+					continue
+				}
+				for i := 0; i < len(m); i += 4096 {
+					m[i] = 1
+				}
+				syscall.Munmap(m)
+			}
+		}()
 	}
 	go func() { // heap shrinks: the scavenger and forced collections
 		for time.Now().Before(end) {

@@ -51,8 +51,9 @@ jobs:
           $n = if ('${{ inputs.runs }}' -ne '') { [int]'${{ inputs.runs }}' } else { 12 }
           $pass = 0; $fail = 0
           for ($i = 0; $i -lt $n; $i++) {
+            $env:RUNSC_HANG_DUMP = "$PWD\out\dump-$i.txt:12"
             $o = C:\ci\bin\runsctest.exe -timeout 90s -gc-secs 20 -runsc C:\ci\bin\runsc.exe -rootfs C:\ci\work\rootfs -work C:\ci\work\w-$i -only gogc 2>&1 | Out-String
-            if ($o -match 'PASS gogc') { $pass++ } else {
+            if ($o -match 'PASS gogc') { $pass++; (Select-String -Path out\dump-$i.txt -Pattern 'counts:' -ErrorAction SilentlyContinue | Select-Object -First 3 | ForEach-Object { "  $($_.Line)" }) } else {
               $fail++; "FAILED $i"
               $o | Out-File -Encoding utf8 out\out-$i.txt
               ($o -split "`n" | Select-String 'SIGSEGV|addr=|ScanSpan|fatal|panic' | Select-Object -First 5) | ForEach-Object { "  $_" }
