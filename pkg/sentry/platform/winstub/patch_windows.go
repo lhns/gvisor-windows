@@ -40,13 +40,30 @@ type siteStats struct {
 
 // claims records the byte ranges (offsets in the scanned code) patches have
 // taken, so that a later patch does not displace bytes an earlier one rewrote.
-type claims []rng
+type claims struct {
+	l     []rng
+	fixed []rng // bytes that must stay as they are (checked in full)
+}
 
-func (c *claims) add(lo, hi int) { *c = append(*c, rng{uint64(lo), uint64(hi)}) }
+func (c *claims) add(lo, hi int) { c.l = append(c.l, rng{uint64(lo), uint64(hi)}) }
 
-func (c claims) taken(lo, hi int) bool {
-	for i := len(c) - 1; i >= 0 && i >= len(c)-32; i-- {
-		if int(c[i].lo) < hi && lo < int(c[i].hi) {
+func (c *claims) taken(lo, hi int) bool {
+	for _, f := range c.fixed {
+		if int(f.lo) < hi && lo < int(f.hi) {
+			return true
+		}
+	}
+	for i := len(c.l) - 1; i >= 0 && i >= len(c.l)-32; i-- {
+		if int(c.l[i].lo) < hi && lo < int(c.l[i].hi) {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *claims) inFixed(off int) bool {
+	for _, f := range c.fixed {
+		if int(f.lo) <= off && off < int(f.hi) {
 			return true
 		}
 	}
@@ -117,11 +134,14 @@ const (
 	zoneContext   = 8
 )
 
-func (as *addressSpace) patchCode(code []byte, base uint64, from, skip, zone, stop int) (siteStats, *scanResult) {
+//
+// keep lists byte ranges that are already patched and stay so (a re-patch of the start
+// of a range, see reseam); the sites inside are left alone and no patch overlaps them.
+func (as *addressSpace) patchCode(code []byte, base uint64, from, skip, zone, stop int, keep []rng) (siteStats, *scanResult) {
 	var st siteStats
 	scan := as.p.scans.scan(code, from, as.p.fsRewrite)
 	st.pairs = scan.pairs
-	var cl claims
+	cl := claims{fixed: keep}
 	if skip > 0 {
 		cl.add(0, skip) // context bytes of the range below: decoded, never patched
 	}
@@ -130,7 +150,7 @@ func (as *addressSpace) patchCode(code []byte, base uint64, from, skip, zone, st
 	}
 	for i := range scan.sites {
 		site := &scan.sites[i]
-		if site.off < skip || site.off >= stop {
+		if site.off < skip || site.off >= stop || cl.inFixed(site.off) {
 			continue
 		}
 		win, tgt := site.win[:site.n], site.tgt[:site.n]
@@ -291,7 +311,7 @@ func (as *addressSpace) patchReloc(code []byte, base uint64, list []ins, s int, 
 		for k := range list {
 			ss = append(ss, list[k].off, list[k].n)
 		}
-		debugf("reloc site %#x: list(off,n) %v s=%d window %d..%d len %d (taken: %v)", base+uint64(x.off), ss, s, bestA, bestB, bestL, *cl)
+		debugf("reloc site %#x: list(off,n) %v s=%d window %d..%d len %d (taken: %v)", base+uint64(x.off), ss, s, bestA, bestB, bestL, cl.l)
 	}
 	if bestA < 0 {
 		bestA, bestB, bestL = search(3)

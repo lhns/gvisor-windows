@@ -80,6 +80,10 @@ type scanResult struct {
 	// tail0f: the last byte is 0x0f and starts an instruction (the sweep reaches
 	// it): a `syscall` whose second byte is the first byte of the next range.
 	tail0f bool
+	// tailB: the offsets of the instructions that start in the last 64 bytes of the
+	// range (nil if the range was not decoded): a point where the next range's
+	// decoding can begin on a real instruction boundary.
+	tailB []int
 }
 
 // ---- decoding ------------------------------------------------------------------
@@ -725,6 +729,9 @@ func scanText(code []byte, from int, wantFS bool) *scanResult {
 	end, lastStart := from, -1
 	if n := len(list); n > 0 {
 		end, lastStart = list[n-1].off+list[n-1].n, list[n-1].off
+	}
+	for i := len(list) - 1; i >= 0 && list[i].off >= len(code)-64; i-- {
+		r.tailB = append(r.tailB, list[i].off)
 	}
 	// (the decoder may or may not report a lone 0x0f as an instruction)
 	r.tail0f = len(code) > 0 && (end == len(code)-1 || lastStart == len(code)-1) && code[len(code)-1] == 0x0F
