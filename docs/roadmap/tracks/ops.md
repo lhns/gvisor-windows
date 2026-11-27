@@ -70,6 +70,7 @@ flowchart TB
 | `ops-portable-packaging` | Portable zip, no installer | feature | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 | runsc-container-on-windows |  |  |  | tools/windows/podman/README-release.md; tools/windows/ci/release-test.ps1 |
 | `ops-run-on-a-work-machine` | Try it on a real work machine | owner-decision | owner | next | n/a |  |  |  |  |  |  |  |
 | `ops-ci-build-once` | Build once, run suites on demand | tooling | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/6-ci.md |
+| `ops-podman-on-the-dev-vm` | Podman on the development VM | owner-decision | owner | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/1p-rewrite-heap.md |
 
 ### Details per node
 
@@ -87,6 +88,7 @@ flowchart TB
 | `ops-portable-packaging` | Portable zip, no installer |  |  | Ship runsc for Windows as a zip or per-user installer that needs no admin. | CI builds gvisor-windows-<sha>.zip (runsc.exe, Podman engine image, podman-engine.ps1 start/stop/status, README); release-test extracts it into a fresh standard user profile and runs hello, the engine, podman version and podman run (run 46044621936). Publishing a GitHub Release is the owner's call. |  |  |  |  |
 | `ops-run-on-a-work-machine` | Try it on a real work machine |  |  | All evidence comes from GitHub hosted Windows images; the owner runs runsc.exe once on a work machine to check FSGSBASE and whether security software tolerates the generated stub being debugged. | Ready: download the gvisor-windows-zip artifact of the latest ci run on windows and follow its README. Done when: the owner reports the result of one run. |  |  |  |  |
 | `ops-ci-build-once` | Build once, run suites on demand |  |  | One ci.yml builds runsc.exe and the test binaries once and calls every Windows suite; worker branches start no runs and dispatch only what they need; heavy repeats run nightly. About 62 to 40 job-minutes per push. | Next lever: merge the 16 small Linux acceptance jobs. Also uploads a runsc-windows package (runsc.exe, hello bundle, README) for trying it on a work machine. |  |  |  |  |
+| `ops-podman-on-the-dev-vm` | Podman on the development VM |  |  | Podman has passed in rewrite-fxsave mode only on CI runners that force it; on the development VM (no FSGSBASE, XSAVE or AVX) only runsc bundles ran, because the engine opens a network listener. | Needs the owner's go-ahead to start the engine on the VM (firewall prompt). Done when: the zip's README steps run on the VM. |  |  |  |  |
 
 ### Folded items per node
 

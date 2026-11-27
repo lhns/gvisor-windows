@@ -2759,7 +2759,7 @@
   folded: []
   overview: false
   lane: windows-ci
-  notes: 'Fixed when: the cause is found, or it does not recur in a month of nightly runs.'
+  notes: 'Fixed when: the cause is found, or it does not recur for a month; pkg/safecopy tests run on every push to windows (windows-sentry in ci.yml).'
   id: sentry-waitgroup-panic
   title: One-off negative WaitGroup panic
   track: sentry
@@ -2826,3 +2826,41 @@
   - docs/results/1p-rewrite-heap.md
   plain: On the slow development VM, aptrename saw an empty layers.json in 2 of 5 runs while another process replaced it, which atomic replace should rule out.
   notes: 'Not reproduced with the final build: aptrename 200 rounds passed 5 of 5 on the VM (rewrite plus fxsave, runsc.exe from ci run 46041024959); the 2 of 5 were on an intermediate build.'
+- outcome: unrated
+  verdict_quote: ''
+  headline: ''
+  depends_on: &id019 []
+  replaced_by: &id020 []
+  start: '2026-11-27'
+  end: ''
+  folded: &id021 []
+  overview: false
+  id: sentry-epoll-timeout-overshoot
+  title: Rare long epoll timeout overshoot
+  track: sentry
+  kind: defect
+  state: next
+  lane: windows-ci
+  evidence:
+  - docs/results/3d-clocks-upstream.md
+  plain: A 30 ms timer signal meant to interrupt epoll_wait took 212 ms once in about 12 leg runs (rewrite-fxsave); the clocks test now retries, so CI would hide a repeat.
+  notes: 'Fixed when: the cause is known (runner stall or Sentry delay, e.g. interrupt retry waits in rewrite mode) and the check passes without retries in 30 runs.'
+- outcome: unrated
+  verdict_quote: ''
+  headline: ''
+  depends_on: *id019
+  replaced_by: *id020
+  start: '2026-11-27'
+  end: ''
+  folded: *id021
+  overview: false
+  id: ops-podman-on-the-dev-vm
+  title: Podman on the development VM
+  track: ops
+  kind: owner-decision
+  state: next
+  lane: owner
+  evidence:
+  - docs/results/1p-rewrite-heap.md
+  plain: Podman has passed in rewrite-fxsave mode only on CI runners that force it; on the development VM (no FSGSBASE, XSAVE or AVX) only runsc bundles ran, because the engine opens a network listener.
+  notes: 'Needs the owner''s go-ahead to start the engine on the VM (firewall prompt). Done when: the zip''s README steps run on the VM.'

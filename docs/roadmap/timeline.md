@@ -75,6 +75,7 @@ gantt
     fchmod on a standard stream fails :sentry_fchmod_std_stream, 2026-11-27, 2026-11-27
     pasta networking inside the sandbox :sentry_pasta_in_sandbox, 2026-11-27, 2026-11-27
     One-off negative WaitGroup panic :sentry_waitgroup_panic, 2026-11-27, 2026-11-27
+    Rare long epoll timeout overshoot :sentry_epoll_timeout_overshoot, 2026-11-27, 2026-11-27
     section fs - files
     Compatibility layer, not security bound… :fs_compat_layer_not_boundary, 2026-11-26, 2026-11-26
     Test persistent image storage :fs_persistent_image_storage, 2026-11-26, 2026-11-26
@@ -148,6 +149,7 @@ gantt
     Merge upstream gVisor regularly :ops_upstream_merges, 2026-11-27, 2026-11-27
     Portable zip, no installer :ops_portable_packaging, 2026-11-27, 2026-11-27
     Build once, run suites on demand :ops_ci_build_once, 2026-11-27, 2026-11-27
+    Podman on the development VM :ops_podman_on_the_dev_vm, 2026-11-27, 2026-11-27
 ```
 
 Not shown (no `start`): `platform-64k-mapping-conflicts`, `platform-hardware-acceleration`, `platform-binary-translation-fallback`, `sentry-event-loop-iocp`, `ops-run-on-a-work-machine`
