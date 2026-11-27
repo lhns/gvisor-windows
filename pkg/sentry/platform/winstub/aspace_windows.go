@@ -27,6 +27,7 @@ import (
 
 	"golang.org/x/sys/windows"
 	"gvisor.dev/gvisor/pkg/context"
+	"gvisor.dev/gvisor/pkg/errors/linuxerr"
 	"gvisor.dev/gvisor/pkg/hostarch"
 	"gvisor.dev/gvisor/pkg/safemem"
 	"gvisor.dev/gvisor/pkg/sentry/memmap"
@@ -523,13 +524,13 @@ func (as *addressSpace) PostFork() {}
 // PrepareForPtrace implements platform.AddressSpace.PrepareForPtrace. Rewritten
 // syscall sites cannot be restored, so ptrace is not supported.
 func (as *addressSpace) PrepareForPtrace(ctx context.Context, mm platform.MemoryManager) error {
-	return errUnsupported
+	return linuxerr.EPERM
 }
 
 // UserModifiedGS implements platform.AddressSpace.UserModifiedGS. The trampoline
 // uses %gs for the thread environment block.
 func (as *addressSpace) UserModifiedGS(ctx context.Context, mm platform.MemoryManager) error {
-	return errUnsupported
+	return linuxerr.EPERM
 }
 
 // Release implements platform.AddressSpace.Release.
