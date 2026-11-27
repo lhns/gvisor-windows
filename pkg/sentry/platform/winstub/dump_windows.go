@@ -19,6 +19,7 @@ package winstub
 import (
 	"fmt"
 	"io"
+	"sort"
 	"sync"
 	"time"
 	"unsafe"
@@ -71,6 +72,7 @@ func DumpState(w io.Writer) {
 	for as := range live {
 		fmt.Fprintf(w, "winstub: address space pid %d dead=%v last debug event: %v; TerminateThread fallbacks: %d\n", as.wpid, as.dead.Load(), as.lastEvent.Load(), as.nTermFallback.Load())
 		fmt.Fprintf(w, "  counts: debug events %d, %%fs run by the debugger %d, stops moved out of veneers %d, replaced threads %d\n", as.nEvents.Load(), as.nFSInline.Load(), as.nFSFix.Load(), as.nThreadReplaced.Load())
+		as.dumpFSSites(w)
 		as.tmu.Lock()
 		for i, t := range as.slots {
 			if t == nil || !t.started {
@@ -129,4 +131,26 @@ func ntdllSymbol(addr uint64) string {
 		}
 	}
 	return fmt.Sprintf("%s+%#x", bestName, rva-best)
+}
+
+// dumpFSSites lists the %fs instructions the debugger ran most often (rewrite mode).
+func (as *addressSpace) dumpFSSites(w io.Writer) {
+	as.mu.Lock()
+	defer as.mu.Unlock()
+	type hit struct {
+		a uint64
+		n uint32
+	}
+	var hs []hit
+	why := map[string]uint32{}
+	for a, n := range as.fsHits {
+		hs = append(hs, hit{a, n})
+		why[as.fsWhy[a]] += n
+	}
+	sort.Slice(hs, func(i, j int) bool { return hs[i].n > hs[j].n })
+	fmt.Fprintf(w, "  veneers: %%fs area used %d of %d bytes, tail pool %d bytes, %d ud2 sites; debugger runs by reason: %v\n",
+		as.fcur-stubasm.FSVeneers, stubasm.FSVeneersSize, stubasm.VeneersShared-as.ftop, len(as.fsUD2), why)
+	for i := 0; i < len(hs) && i < 8; i++ {
+		fmt.Fprintf(w, "  hot %%fs site %#x: %d runs, %s, bytes % x\n", hs[i].a, hs[i].n, as.fsWhy[hs[i].a], as.fsUD2[hs[i].a])
+	}
 }

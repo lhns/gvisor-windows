@@ -124,6 +124,8 @@ type addressSpace struct {
 	fsCache   map[fsKey]uint64
 	fsVen     []*fsVenInfo
 	fsUD2     map[uint64][]byte
+	fsWhy     map[uint64]string // why a %fs instruction stayed ud2, and how often the debugger ran it (diagnostics)
+	fsHits    map[uint64]uint32
 	tails     map[uint64][]byte // original last bytes of the text ranges mapped, by end address
 	privs     []*privSection
 	edges     map[uint64]edge
@@ -147,7 +149,7 @@ func newAddressSpace(p *Platform) *addressSpace {
 	return &addressSpace{
 		p: p, loopDone: make(chan struct{}), started: make(chan error, 1),
 		vcur: stubasm.Veneers, siteCache: map[uint64]siteInfo{}, restartAt: map[uint64]uint64{},
-		ud2Sites: map[uint64]bool{}, fcur: stubasm.FSVeneers, ftop: stubasm.VeneersShared, fsCache: map[fsKey]uint64{}, fsUD2: map[uint64][]byte{}, tails: map[uint64][]byte{}, byTid: map[uint32]*thread{}, edges: map[uint64]edge{},
+		ud2Sites: map[uint64]bool{}, fcur: stubasm.FSVeneers, ftop: stubasm.VeneersShared, fsCache: map[fsKey]uint64{}, fsUD2: map[uint64][]byte{}, fsWhy: map[uint64]string{}, fsHits: map[uint64]uint32{}, tails: map[uint64][]byte{}, byTid: map[uint32]*thread{}, edges: map[uint64]edge{},
 	}
 }
 
@@ -841,6 +843,8 @@ func (as *addressSpace) purgeSites(lo, hi uint64) {
 	for k := range as.fsUD2 {
 		if k >= lo && k < hi {
 			delete(as.fsUD2, k)
+			delete(as.fsWhy, k)
+			delete(as.fsHits, k)
 		}
 	}
 	for k := range as.tails {

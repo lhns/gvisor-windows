@@ -19,6 +19,7 @@ package winstub
 import (
 	"crypto/sha256"
 	"encoding/binary"
+	"fmt"
 	"sort"
 	"unsafe"
 
@@ -60,11 +61,15 @@ func (as *addressSpace) patchFS(code []byte, base uint64, site *scanSite, cl *cl
 		minLen = 5
 	}
 	a, b, ok := 0, 0, false
+	why := "start of a range"
 	if !unsure {
 		a, b, ok = planFSWindow(win, tgt, site.s, minLen, func(lo, hi int) bool { return !cl.taken(lo, hi) })
+		why = fmt.Sprintf("no window of %d bytes", minLen)
 	}
 	if ok {
-		ok = as.fsWindow(code, base, win, a, b, site.s, minLen, cl)
+		if ok = as.fsWindow(code, base, win, a, b, site.s, minLen, cl); !ok {
+			why = "veneer area full or veneer not buildable"
+		}
 	}
 	if ok {
 		st.fs++
@@ -75,6 +80,7 @@ func (as *addressSpace) patchFS(code []byte, base uint64, site *scanSite, cl *cl
 		return
 	}
 	as.fsUD2[base+uint64(x.off)] = append([]byte(nil), code[x.off:x.off+x.n]...)
+	as.fsWhy[base+uint64(x.off)] = why
 	code[x.off], code[x.off+1] = 0x0F, 0x0B
 	cl.add(x.off, x.off+x.n)
 	st.fsUD2++
@@ -144,7 +150,11 @@ func (as *addressSpace) fsWindow(code []byte, base uint64, win []ins, a, b, s, m
 func (as *addressSpace) fsUD2At(a uint64) []byte {
 	as.mu.Lock()
 	defer as.mu.Unlock()
-	return as.fsUD2[a]
+	if b := as.fsUD2[a]; b != nil {
+		as.fsHits[a]++
+		return b
+	}
+	return nil
 }
 
 // fsLocate finds the veneer a stopped thread's rip is in: one the debugger set
