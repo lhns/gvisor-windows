@@ -71,7 +71,7 @@ type Platform struct {
 	ntSetInfo     uint64
 
 	// Spare stub processes, started in the background so that a fork or an exec does
-	// not wait for a process to be created (WINSTUB_SPARES, default 2; 0 turns it off).
+	// not wait for a process to be created (WINSTUB_SPARES, default 0: no gain measured).
 	spareMu  sync.Mutex
 	spares   []*addressSpace
 	sparing  bool // a goroutine is starting spares
@@ -154,7 +154,7 @@ func New(opts platform.Options) (*Platform, error) {
 		ntWait:    uint64(pNtWaitSingle.Addr()),
 		ntTerm:    uint64(pNtTerminateThread.Addr()),
 		ntSetInfo: uint64(pNtSetInfoProcess.Addr()),
-		nSpares:   envInt("WINSTUB_SPARES", 2),
+		nSpares:   envInt("WINSTUB_SPARES", 0),
 		tripwire:  os.Getenv("WINSTUB_TRIPWIRE") != "",
 	}, nil
 }

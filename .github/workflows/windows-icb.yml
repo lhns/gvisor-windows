@@ -3,9 +3,6 @@
 name: windows-icb
 on:
   workflow_dispatch:
-  push:
-    branches: [platform-fs-repair]
-    paths: ["tools/windows/icbprobe/**", ".github/workflows/windows-icb.yml"]
 jobs:
   probe:
     runs-on: windows-latest

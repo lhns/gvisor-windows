@@ -1,12 +1,9 @@
 # The native-mode Go GC crash (SIGSEGV at 0xfffffffffffffff8, a thread's %fs base lost and not repaired;
 # docs/results/1m-platform-repair.md): a Go guest that keeps the collector busy, run repeatedly through
 # runsc.exe with three versions of the platform: "old" (repair gave up after 20 repairs in 5 ms),
-# "base" (2000 in 20 ms) and "fix" (this tree: the repair routine compares the base with the thread's).
+# "base" (2000 in 20 ms) and "fix" (this tree: the debugger decides from the fault address whether the base was lost).
 name: windows-gcrepro
 on:
-  push:
-    branches: [platform-fs-repair]
-    paths: ["pkg/sentry/platform/**", "test/guests/gogc/**", ".github/workflows/windows-gcrepro.yml"]
   workflow_dispatch:
     inputs:
       runs: {description: "runs per variant", default: "12"}
