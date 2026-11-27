@@ -16,11 +16,11 @@ $env:CONTAINER_HOST = 'unix://' + ($sock -replace '^[A-Za-z]:', '' -replace '\\'
 P pull mirror.gcr.io/library/alpine:3.20
 "=== run" | Tee-Object -Append $log
 P run --rm mirror.gcr.io/library/alpine:3.20 echo ok
-$cf = "$work\build"; New-Item -ItemType Directory -Force $cf | Out-Null
-"FROM mirror.gcr.io/library/alpine:3.20`nRUN echo built" | Set-Content "$cf\Containerfile" -Encoding ascii
-foreach ($variant in @(@(), @('--no-cache', '--network=bridge'), @('--no-cache', '--isolation=oci'), @('--no-cache', '--isolation=chroot'), @('--no-cache', '--network=pasta'))) {
-  "=== build $variant" | Tee-Object -Append $log
-  P build @variant -t diag-build $cf
-}
-P info
+P pull mirror.gcr.io/library/debian:12-slim
+$cf = "$workuild"; New-Item -ItemType Directory -Force $cf | Out-Null
+"FROM mirror.gcr.io/library/debian:12-slim`nRUN echo built" | Set-Content "$cf\Containerfile" -Encoding ascii
+"=== build" | Tee-Object -Append $log
+P build -t diag-build $cf
+"=== libc sizes in the storage" | Tee-Object -Append $log
+P run --rm -v /var/lib/containers/storage:/s mirror.gcr.io/library/alpine:3.20 sh -c 'for f in $(find /s/vfs -name libc.so.6 | head -8); do ls -l $f; wc -c < $f; head -c 4 $f | od -c | head -1; done'
 & "$repo\tools\windows\podman\start-engine.ps1" -Action stop -Runsc "$Root\bin\runsc.exe" -Work "$work\engine" -Name ci
