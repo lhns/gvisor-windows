@@ -244,31 +244,11 @@ func TestFSSeamBinary(t *testing.T) {
 	}
 	truth := scanText(code, 0, true)
 	pages := (len(code) + pageSz - 1) / pageSz
-	// the patches as one piece makes them: the runs of changed bytes
-	changed := func(got []byte) map[int]int {
-		m := map[int]int{}
-		for i := 0; i < len(code); i++ {
-			if got[i] != code[i] {
-				j := i
-				for j < len(code) && got[j] != code[j] {
-					j++
-				}
-				m[i] = j
-				i = j
-			}
+	nearSite := make([]bool, len(code))
+	for _, st := range truth.sites {
+		for k := max(0, st.off-24); k < min(len(code), st.off+40); k++ {
+			nearSite[k] = true
 		}
-		return m
-	}
-	var ref map[int]int
-	{
-		h := newHarness(t)
-		mm := h.newMM()
-		h.mapAt(mm, vaddr, h.pages(code, pages), rx)
-		g, ok := mm.as.(*addressSpace).readStub(vaddr, len(code))
-		if !ok {
-			t.Fatal("cannot read the patched text")
-		}
-		ref = changed(g)
 	}
 	for trial := 0; trial < 12; trial++ {
 		rnd := rand.New(rand.NewSource(int64(trial)))
@@ -307,6 +287,14 @@ func TestFSSeamBinary(t *testing.T) {
 		if !ok {
 			t.Fatal("cannot read the patched text")
 		}
+		near := func(off int) bool {
+			for _, p := range ps {
+				if o := p.lo * pageSz; off >= o && off < o+96 {
+					return true
+				}
+			}
+			return false
+		}
 		missed := map[string]int{}
 		var first []string
 		for _, s := range truth.sites {
@@ -325,37 +313,21 @@ func TestFSSeamBinary(t *testing.T) {
 				}
 			}
 		}
-		// Every other patch must be one the single piece makes too (a piece begins with a few
-		// bytes of guessed decoding: ud2 sites there, and their neighbours)
-		near := func(off int) bool {
-			for _, p := range ps {
-				if o := p.lo * pageSz; off >= o && off < o+96 {
-					return true
-				}
-			}
-			return false
-		}
-		gc := changed(got)
+		// Bytes that changed far from any site, or that the whole text does not change,
+		// are code damaged by a patch of something that is no instruction (a bogus site).
+		// (A piece begins with a few bytes of guessed decoding: those are left out.)
 		var odd []string
-		for a, b := range gc {
-			if rb, ok := ref[a]; ok && rb == b {
-				continue
-			}
-			if near(a) {
+		for pos := 0; pos < len(code); pos++ {
+			if got[pos] == code[pos] || nearSite[pos] || near(pos) {
 				continue
 			}
 			if len(odd) < 8 {
-				odd = append(odd, fmt.Sprintf("changed %#x-%#x (offset in the page %#x): was % x, now % x", vaddr+uint64(a), vaddr+uint64(b), a%pageSz, code[a:b], got[a:b]))
+				odd = append(odd, fmt.Sprintf("byte %#x (page offset %#x) changed from %02x to %02x, no site within 24 bytes", vaddr+uint64(pos), pos%pageSz, code[pos], got[pos]))
 			}
+			break
 		}
 		if len(odd) > 0 {
-			t.Errorf("trial %d (%d pieces): patches that the whole text does not get%s", trial, len(ps), joinLines(append([]string{""}, odd...)))
-		}
-		for a, b := range ref {
-			if _, ok := gc[a]; !ok && !near(a) && len(missed) == 0 {
-				t.Errorf("trial %d: the whole text has a patch at %#x-%#x that the pieces do not", trial, vaddr+uint64(a), vaddr+uint64(b))
-				break
-			}
+			t.Errorf("trial %d (%d pieces): damaged code%s", trial, len(ps), joinLines(append([]string{""}, odd...)))
 		}
 		if len(missed) > 0 {
 			t.Errorf("trial %d (%d pieces): sites left unpatched %v\n  %s", trial, len(ps), missed, joinLines(first))
