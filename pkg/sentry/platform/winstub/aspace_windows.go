@@ -809,9 +809,17 @@ func (as *addressSpace) patchText(content []byte, lo, hi uint64) siteStats {
 	lowE.head05 = head
 	highE.tail0f = scan.tail0f
 	as.edges[lo], as.edges[hi] = lowE, highE
-	// The piece above was mapped first.
+	// The piece above was mapped first: decode the seam again. (Text that was cut by an
+	// unmap has no kept start; a syscall across such a seam is handled by fixHead.)
 	if h := as.heads[hi]; h != nil {
 		if as.reseam(hi, h, tail, tailOK, scan.tail0f && highE.head05) {
+			highE.head05 = false
+			as.edges[hi] = highE
+		}
+	}
+	if scan.tail0f && highE.head05 {
+		if as.fixHead(hi) {
+			as.ud2Sites[hi-1] = true
 			highE.head05 = false
 			as.edges[hi] = highE
 		}
@@ -932,6 +940,41 @@ func (as *addressSpace) reseam(lo uint64, orig, tail []byte, exact, straddle boo
 	}
 	debugf("reseam %#x: the first %d bytes were decoded wrongly (disagreement up to %d); patched again", lo, end, last)
 	return straddle
+}
+
+// fixHead handles the range mapped at a whose first byte (0x05) completes a
+// syscall instruction that starts in the range below, which was mapped later:
+// the first byte becomes 0x0b (ud2) and, because the sweep over the range began
+// at the wrong offset, the rest is scanned again from offset 1 and the private
+// text updated in place.
+func (as *addressSpace) fixHead(a uint64) bool {
+	v := as.findView(a)
+	if v == nil || v.priv == nil || v.lo != a {
+		return false
+	}
+	buf, ok := as.readStub(v.lo, int(v.hi-v.lo))
+	if !ok {
+		return false
+	}
+	orig := append([]byte(nil), buf...)
+	as.patchCode(buf, v.lo, 1, 0, 0, len(buf), nil)
+	buf[0] = 0x0B
+	off := v.off
+	base := off &^ 0xFFFF
+	n := off - base + uint64(len(buf))
+	m, err := call(pMapViewOfFile, v.priv.h, fileMapWrite, uintptr(base>>32), uintptr(base&0xFFFFFFFF), uintptr(n))
+	if err != nil {
+		debugf("fixHead: %v", err)
+		return false
+	}
+	dst := unsafe.Slice((*byte)(ptr(m+uintptr(off-base))), len(buf))
+	for i := range buf {
+		if buf[i] != orig[i] {
+			dst[i] = buf[i]
+		}
+	}
+	pUnmapViewOfFile.Call(m)
+	return true
 }
 
 // writeText overwrites text that is mapped at addr in the private view v.
