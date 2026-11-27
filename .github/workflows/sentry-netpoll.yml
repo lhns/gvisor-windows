@@ -35,6 +35,7 @@ jobs:
         run: go build -o sentryguest.exe ./tools/windows/sentryguest
       - name: One kernel, one binary
         shell: bash
+        env: {MSYS_NO_PATHCONV: "1"}
         run: |
           BIN=${{ inputs.binary || 'socket_filesystem_test' }}
           NET=${{ inputs.net || 'true' }}
