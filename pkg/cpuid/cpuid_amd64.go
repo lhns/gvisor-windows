@@ -21,7 +21,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strings"
 )
 
 // FeatureSet defines features in terms of CPUID leaves and bits.
@@ -595,17 +594,3 @@ func (fs FeatureSet) UnsetFSGSBASE() FeatureSet {
 	return sfs
 }
 
-// UnsetAVX512 hides the AVX-512 features from the guest (gvisor-windows: the Go runtime's
-// AVX-512 garbage collector scan crashed a guest process with a fault at -8 now and then on
-// the winstub platform, docs/results/5-podman-windows.md).
-func (fs FeatureSet) UnsetAVX512() FeatureSet {
-	s := fs.ToStatic()
-	for f := range allFeatures {
-		if strings.HasPrefix(f.String(), "avx512") {
-			f.Unset(s)
-		}
-	}
-	sfs := s.ToFeatureSet()
-	sfs.hwCap = fs.hwCap
-	return sfs
-}
