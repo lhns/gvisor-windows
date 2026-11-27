@@ -685,6 +685,10 @@ func testDevNull() error {
 	extraMounts = []map[string]any{{"destination": "/w", "type": "bind", "source": dir, "options": []string{"rbind", "rw"}}}
 	extraCaps = []string{"CAP_SYS_ADMIN", "CAP_MKNOD", "CAP_DAC_OVERRIDE", "CAP_CHOWN", "CAP_FOWNER", "CAP_SETUID", "CAP_SETGID"}
 	defer func() { extraMounts, extraCaps = nil, nil }()
+	// Windows changes the folder while the loop runs (the engine's storage changes under a build); an overflow of the
+	// change stream used to drop the container's /dev mount, which left /dev/null a file only root could open.
+	stopFlood := startFlood(dir)
+	defer stopFlood()
 	r, err := runsc("devnull", []string{"/bin/devnull", "/w/dn", strconv.Itoa(*stressIters)}, nil)
 	if err != nil {
 		return err
@@ -716,23 +720,18 @@ func testOvlSub() error {
 	return nil
 }
 
-// testMountKeep: a tmpfs mounted on a directory of a host folder survives changes made to the folder from
-// Windows, enough of them to overflow the change stream (the container /dev and /tmp vanished in the Podman acceptance).
-func testMountKeep() error {
-	dir := filepath.Join(*workDir, "mountkeep")
-	_ = os.RemoveAll(dir)
+// startFlood creates and deletes many files in dir/flood from Windows until the returned function is called, which
+// overflows the change stream of the host folder the sandbox watches.
+func startFlood(dir string) (stop func()) {
 	must(os.MkdirAll(filepath.Join(dir, "flood"), 0o755))
-	extraMounts = []map[string]any{{"destination": "/w", "type": "bind", "source": dir, "options": []string{"rbind", "rw"}}}
-	extraCaps = []string{"CAP_SYS_ADMIN", "CAP_DAC_OVERRIDE", "CAP_CHOWN", "CAP_FOWNER"}
-	defer func() { extraMounts, extraCaps = nil, nil }()
-	stop := make(chan struct{})
+	stopCh := make(chan struct{})
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		flood := filepath.Join(dir, "flood")
 		for round := 0; ; round++ {
 			select {
-			case <-stop:
+			case <-stopCh:
 				return
 			default:
 			}
@@ -744,9 +743,24 @@ func testMountKeep() error {
 			}
 		}
 	}()
+	return func() {
+		close(stopCh)
+		<-done
+	}
+}
+
+// testMountKeep: a tmpfs mounted on a directory of a host folder survives changes made to the folder from
+// Windows, enough of them to overflow the change stream (the container /dev and /tmp vanished in the Podman acceptance).
+func testMountKeep() error {
+	dir := filepath.Join(*workDir, "mountkeep")
+	_ = os.RemoveAll(dir)
+	must(os.MkdirAll(filepath.Join(dir, "flood"), 0o755))
+	extraMounts = []map[string]any{{"destination": "/w", "type": "bind", "source": dir, "options": []string{"rbind", "rw"}}}
+	extraCaps = []string{"CAP_SYS_ADMIN", "CAP_DAC_OVERRIDE", "CAP_CHOWN", "CAP_FOWNER"}
+	defer func() { extraMounts, extraCaps = nil, nil }()
+	stopFlood := startFlood(dir)
 	r, err := runsc("mountkeep", []string{"/bin/mountkeep", "/w", "20"}, nil)
-	close(stop)
-	<-done
+	stopFlood()
 	if err != nil {
 		return err
 	}
