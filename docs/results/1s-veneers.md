@@ -36,36 +36,36 @@ A window's first instructions are replaced by the jump (5 or 7 bytes). A thread 
 ### Fix (`scan.go`, `fsrewrite_windows.go`)
 
 - `effects` records for each decoded instruction whether it can fault (`noFault`: register operands only, or lea/nop), whether it can run again with the same result (`reexec`: mov/movzx/movsx/lea/cmp/test that write only whole registers and no memory), the registers it reads and writes, and whether a stop leaves it half done (`precise`: not for string instructions, gathers, or a relocated rip-relative load, which takes two veneer instructions).
-- `rollsBack(list, a, k)`: a stop at `list[k]` may be reported at the window start when `list[k]` is precise and `list[a..k-1]` are re-executable and write no register any of them reads.
+- `rollsBack(list, a, k)`: a stop at `list[k]` may be reported at the window start when `list[k]` is precise, `list[a..k-1]` are re-executable and write no register any of them reads, and `list[k]` reads none of the registers they write (destinations of read-modify-write instructions count as read; instructions with implicit register operands, such as push, div or cqo, read all). A handler that repairs a register `list[k]` uses and returns through sigreturn then resumes at the window start with its repair intact.
 - `planFSWindow` accepts an instruction starting under the jump only if it rolls back, or if it cannot fault and is not the `%fs` one (then only an interrupt can stop there, and interrupts still wait, `inJump`). This replaces 1q's rule that the `%fs` instruction is first or at least one jump length in: one that rolls back may now lie under the jump.
 - `unwind` reports such a stop at `w0` (the roll flag is kept per bound in the veneer), for faults and interrupts alike, so those interrupts no longer wait either.
 
-Semantic change: a fault in such a window is reported with the right fault address and registers, but with a pc up to 6 bytes before the faulting instruction, at an instruction that runs again. A handler that decodes the instruction at the pc (rather than returning, retrying or unwinding) sees a different instruction there. Faults of TLS accesses and of the few instructions displaced with them are rare; the alternative was a pc a handler cannot return to.
-
-A handler that repairs the fault through the context and returns with `sigreturn` resumes at the window start, so the instructions before the faulting one run again: if the handler changed a register they write (repairing `rax` in `[mov %fs:..,%rax; mov (%rax),%rdx]`), it is overwritten and the access faults again, every time; natively the retry succeeds. Before, sigreturn resumed exactly and only a plain `ret` broke. A narrower rule would roll back only when the faulting instruction reads no register the instructions before it write (it costs windows such as the far one of `TestScanFS`); not built.
+What remains different from native: a fault in such a window is reported with the right fault address and registers, but with a pc up to 6 bytes before the faulting instruction, at instructions that run again with the same result. A handler that decodes the instruction at the pc (rather than returning, repairing or unwinding) sees a different instruction there. The alternative was a pc a handler cannot return to.
 
 ### Cost in sites (fsscan, Ubuntu binaries; debugger sites near / far)
 
-| binary | before (46060216179) | after (46062800012) |
-|--|--|--|
-| libc.so.6 | 74 / 163 | 92 / 178 |
-| busybox | 26 / 59 | 31 / 64 |
-| netavark | 40 / 760 | 71 / 780 |
-| aardvark-dns | 56 / 232 | 50 / 214 |
-| gohello | 0 / 0 | 1 / 1 |
+| binary | `windows` (46060216179) | first rule (46062800012) | final rule (46071848755) |
+|--|--|--|--|
+| libc.so.6 | 74 / 163 | 92 / 178 | 117 / 219 |
+| busybox | 26 / 59 | 31 / 64 | 42 / 83 |
+| netavark | 40 / 760 | 71 / 780 | 87 / 959 |
+| aardvark-dns | 56 / 232 | 50 / 214 | 81 / 283 |
+| gohello | 0 / 0 | 1 / 1 | 1 / 1 |
+
+The final rule (the faulting instruction reads nothing the earlier ones write) costs most: the common `mov %fs:..,%rax; mov (%rax),..` pair no longer rolls back.
 
 ### Tests
 
-- `TestFSFaultUnderJump` (windows-platform, all legs): `[mov %fs:(%rdx),%r8; mov (%rbx),%rdx]` with the load faulting under the jump is reported at the window start, and a handler's `ret` there gives the right result; with `add %fs:(%rdx),%r8` first (cannot run again) no window puts the load under the jump, the fault is reported at the load, and the `ret` works too.
+- `TestFSFaultUnderJump` (windows-platform, all legs): `[mov %fs:(%rdx),%r8; mov (%rbx),%rdx]` with the load faulting under the jump is reported at the window start, and a handler's `ret` there gives the right result; with `add %fs:(%rdx),%r8` first (cannot run again) no window puts the load under the jump, the fault is reported at the load, and the `ret` works too; with `mov %fs:(%rdx),%rbx` first (writes the load's base) the fault is reported at the load, the handler repairs `rbx` in the context and resumes there (sigreturn), and the load succeeds.
 - `TestFSInterrupt` has a second window whose `inc` under the jump does not roll back: interrupts still never report an address under either jump.
-- `TestScanFS`: the far jump now gets the window whose `%fs` instruction starts 5 bytes in (it rolls back).
-- `TestFSRealWindows` compared fault pcs exactly; it now accepts the window start, and only for instructions under the jump of a window `FSWindows` plans.
+- `TestScanFS`: unchanged in the end (its far case's `mov $8,%ecx` writes the `%fs` instruction's base, so it does not roll back).
+- `TestFSRealWindows` compared fault pcs exactly; it now accepts the window start, and only for instructions under the jump of a window `FSWindows` plans. `testdata/fswindows.txt` is dumped again with the final planner (1,112 windows).
 
 Effects are computed only for the instructions around `%fs` sites (decoded again there): computing them in the sweep for every instruction slowed every text scan.
 
 ## Interrupt retry
 
-`interrupt` refuses a thread it cannot capture exactly (starting up, waking from its reply wait, in stub code, under a jump that does not roll back); the waiting Sentry thread retried after `time.Sleep(50 us)` (a Windows timer wait, likely longer than asked; not measured). It now yields (`runtime.Gosched`) for the first 64 retries. Not measured either way; it does not explain a 212 ms interrupt (a thread is under a jump for a few instructions).
+`interrupt` refuses a thread it cannot capture exactly (starting up, waking from its reply wait, in stub code or repair code, below the stub area, under a jump that does not roll back); the waiting Sentry thread retries after `time.Sleep(50 us)`. A yield before the sleep was tried and dropped: no A/B showed it harmless. A thread is under a jump for a few instructions, so these refusals do not explain a 212 ms interrupt.
 
 ## Checks on the final code
 
@@ -96,4 +96,4 @@ Within the runner noise of 1r's own runs (its "same code, another runner" row: n
 ## Open
 
 - Hot far sites in other workloads (Podman's engine, apt, sqlite) were not measured; the counters are there (`GVISOR_PROFSTATS=1`, keys `winstub %fs ...`). If one shows up, load libraries near the veneers (commit 6d8f9c828).
-- `testdata/fswindows.txt` (TestFSRealWindows) was dumped with the old planner; it still covers the real windows, but not those the new rule plans.
+- The final rollback rule sends more sites to the debugger (table above); the measured share stays far under 1% (checks below). Hot sites a workload hits often could be won back by a window that starts after the instruction writing the base, where the code allows it.

@@ -197,7 +197,7 @@ jobs:
     steps:
       - name: Debian with python3 and netavark
         run: |
-          docker run --name fsroot debian:trixie sh -c 'apt-get update -qq && apt-get install -y -qq --no-install-recommends python3 netavark >/dev/null'
+          docker run --name fsroot debian:trixie sh -c 'apt-get update -qq && apt-get install -y -qq --no-install-recommends python3 netavark busybox-static >/dev/null'
           mkdir -p t
           cat > t/py.py <<'PY'
           import json, re, sys
@@ -242,7 +242,8 @@ jobs:
           $work = @(
             @{n='python3'; a=@('/usr/bin/python3', '/t/py.py', '1000')},
             @{n='python3-start'; a=@('/usr/bin/python3', '-c', 'pass')},
-            @{n='netavark'; a=@('/bin/sh', '/t/nv.sh')}
+            @{n='netavark'; a=@('/bin/sh', '/t/nv.sh')},
+            @{n='busybox-forkexec'; a=@('/bin/busybox', 'sh', '-c', 'i=0; while [ $i -lt 100 ]; do /bin/busybox true; i=$((i+1)); done')}
           )
           $bad = @()
           foreach ($leg in 'rewrite', 'rewrite-fxsave') {
