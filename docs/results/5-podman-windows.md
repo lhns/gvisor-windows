@@ -181,3 +181,27 @@ Causes of the flaky failures (all Sentry or platform, not runsc or the harness):
 4. **A hung job (1 of 8): no step output, no artifact; it ran past 35 minutes** (an acceptance normally takes 15-20 minutes). Not diagnosed: the job's logs were lost when the run was cancelled; the next hang needs a step timeout inside `run.ps1` (each native call has one, 900 s) and the engine logs.
 
 The required-step list of the workflow is now 1, 2, 3, 4, 6, 7, 8, 9, 10 (5 once the Sentry fix lands) and the acceptance job takes a `runs` input to repeat itself in parallel.
+
+## Sixth round (branch podman-rewrite): native against rewrite mode, 8 runs each
+Run https://github.com/lhns/gvisor-windows/actions/runs/45937432174 (`modes=native,rewrite`, `runs=8`, all on windows-latest, standard user, Podman 6.2.0). `native` = `WINSTUB_FSMODE=native`; `rewrite` = `WINSTUB_FSMODE=rewrite` and `WINSTUB_KEEP_AVX512=1` (AVX-512 not hidden). Each job is limited to 40 minutes inside the job, so a hang ends itself and the logs are uploaded (they were, for all 16 jobs). Step timings are in `steps.txt` (`[Ns]`).
+
+| | native (8 runs) | rewrite (8 runs) |
+|---|---|---|
+| sandbox deaths (SIGSEGV or `fatal error` in the engine's stderr) | 0 | 0 |
+| runs that completed all 10 steps | 5 (runs 1-5) | 0 |
+| runs that hung or never got going | 3 (runs 6, 7, 8) | 8 |
+| step 1 engine-reachable | 7 pass (2 s) | 3 pass (29-52 s), 5 timeouts of 900 s |
+| step 2 pull | 5 pass (31-46 s) | 2 pass (99 s in one run), 6 timeouts |
+| steps 3, 4, 6, 7, 8, 10 | pass in the 5 complete runs | reached only in rewrite run 5 (3 pass 17 s, 4 pass 25 s, 6 hung 1800 s) |
+| step 5 | fails (libc too short, known) | |
+| step 9 restart-persist | pass 3 of 5, fail 2 of 5 | |
+
+Native timings in the five complete runs (seconds): step 1 1-2, 2 31-46, 3 7-12, 4 20, 5 31-43 (failing), 6 12-14, 7 71-114, 8 22-26, 9 16-17, 10 10-11; the acceptance takes about 4-5 minutes of test time.
+
+What the logs say:
+- **No AVX-512 death in either mode.** The `ScanSpanPackedAVX512` crash did not reproduce in these 16 jobs (it killed the engine in about 1 of 4 runs before; with native mode in this run 0 of 8). The sample is too small to say it is gone.
+- **Rewrite mode is much slower and hangs.** With rewrite the engine answers `version` after 29-52 s instead of 2 s, `info` after 28 s, and then stops answering (the engine log ends with a `_ping`; the debug log only shows the watchdog loop with 10 tasks and `Time: Adjusting syscall overhead` samples, no fault, no panic). Rewrite never completed a run. Owner: platform (winstub rewrite mode).
+- **Native mode hangs in `vfork` (2 of 8 runs, runs 7 and 8).** The last log line of both is `Entering internal stop (*kernel.vforkStop)`: a task that called `vfork` (or `clone` with CLONE_VFORK) is stopped and never released; run 8 hung at the start of step 1, run 7 in step 6 (905 s). Owner: Sentry (vfork stop, possibly lost wakeup when the child's exec or exit races the parent's stop). A third native run (6) had no engine at all after its second boot (all steps failed within seconds; the second `runsc` started but the API never listened).
+- Step 9 fails in two of five native runs (`images before=0 after=N`: the image list is empty before the restart because the images are listed during the run, then the restart returns; the volume data is gone). The container directories are on a tmpfs by design (see round 3), the volume should survive: needs a look.
+
+Conclusion for the default: **do not switch to rewrite**: it is slower by an order of magnitude at start-up and hung in 8 of 8 runs, while native completed 5 of 8 and hung in 2 of the others in `vfork`.
