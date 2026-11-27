@@ -519,12 +519,48 @@ func (r *fsRaw) byteReg() bool {
 	return false
 }
 
+// implicitRegs returns the registers among rax, rcx and rdx (bits 0 to 2) that the
+// instruction uses without naming them, conservatively (all three when unsure).
+func (r *fsRaw) implicitRegs() uint32 {
+	const all = 1<<0 | 1<<1 | 1<<2
+	if len(r.vex) > 0 {
+		return all
+	}
+	switch len(r.opc) {
+	case 1:
+		switch r.opc[0] {
+		case 0xF6, 0xF7: // mul, div, ...
+			return 1<<0 | 1<<2
+		case 0xD2, 0xD3: // shifts by %cl
+			return 1 << 1
+		case 0xD8, 0xD9, 0xDA, 0xDB, 0xDC, 0xDD, 0xDE, 0xDF: // x87
+			return 0
+		}
+		if o := r.opc[0]; o >= 0x80 && o <= 0x8F || o >= 0xC0 && o <= 0xC7 || o == 0xFE || o < 0x40 {
+			return 0
+		}
+		return all
+	case 2:
+		switch o := r.opc[1]; {
+		case r.opc[0] != 0x0F:
+			return all
+		case o == 0xB0 || o == 0xB1: // cmpxchg
+			return 1 << 0
+		case o == 0xA5 || o == 0xAD: // shld, shrd by %cl
+			return 1 << 1
+		case o == 0xAF, o == 0xB6, o == 0xB7, o == 0xBE, o == 0xBF, o == 0xC0, o == 0xC1, o >= 0x10 && o <= 0x17, o >= 0x28 && o <= 0x2F, o >= 0x40 && o <= 0x4F, o >= 0x50 && o <= 0x7F && o != 0x77, o >= 0x90 && o <= 0x9F, o >= 0xD0:
+			return 0 // moves, imul, movzx, xadd, cmov, setcc, SSE
+		}
+	}
+	return all
+}
+
 // scratch picks the register the veneer uses for the base: not one the
 // instruction uses (explicitly or, conservatively, implicitly). A register above
 // rdi needs a REX prefix, which the veneer adds unless that would turn an 8-bit
-// operand ah..bh into spl..dil.
+// operand ah..bh into spl..dil. rax, rcx and rdx are the last resort.
 func (r *fsRaw) scratch() (int, bool) {
-	used := uint32(1<<0 | 1<<1 | 1<<2 | 1<<4) // rax, rcx, rdx, rsp
+	used := uint32(1 << 4) // rsp
 	reg := r.regx
 	digit := r.regIsDigit()
 	if !digit {
@@ -541,12 +577,18 @@ func (r *fsRaw) scratch() (int, bool) {
 	if r.index >= 0 {
 		used |= 1 << r.index
 	}
+	implicit := r.implicitRegs()
 	cands := []int{3, 6, 7, 5}
 	if r.rex != 0 || len(r.vex) == 0 && !highByte {
 		cands = append(cands, 8, 9, 10, 11, 12, 13, 14, 15)
 	}
 	for _, c := range cands {
 		if used&(1<<c) == 0 {
+			return c, true
+		}
+	}
+	for _, c := range []int{2, 1, 0} {
+		if used&(1<<c) == 0 && implicit&(1<<c) == 0 {
 			return c, true
 		}
 	}

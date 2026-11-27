@@ -609,6 +609,9 @@ func runCases(t *testing.T, mode string, textBase uint64, cases []*fdCase, offs 
 		r.Fs_base = fdFS
 		fp := ac.FloatingPointData().Slice()
 		copy(fp[160:416], cs.xmm[:])
+		if len(fp) >= 520 {
+			binary.LittleEndian.PutUint64(fp[512:], binary.LittleEndian.Uint64(fp[512:])|3) // (x87 and SSE state are in use: xrstor must load them)
+		}
 		c.FullStateChanged()
 		rr := h.sw(c, mm, ac)
 		if rr.err != nil || ac.StateData().Regs.Orig_rax != 500 {
