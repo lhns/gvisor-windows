@@ -2222,6 +2222,7 @@
   end: ''
   folded:
   - 'Background spare stubs gave no gain: process creation is not the dominant fork+exec cost (2026-11-27, commit 1dab61a25)'
+  - 'Profile: 100 fork+exec take 2.49 s, 1.33 s with two spare address spaces; 87% of CPU time waits in the debug loop, about 30 access-violation events per exec (2026-11-27, commit a147990f1)'
   overview: false
   plain: Each fork+exec starts two stub processes at about 10 ms each; recycling a stub on release and execve and mapping memory up front would cut process start further.
   notes: 'Next: profile fork+exec (about 20 ms per iteration native) before building recycling. Done when the 100x loop is 4x faster than 3.47 s.'
@@ -2545,23 +2546,24 @@
   evidence:
   - docs/results/5-podman-windows.md
   - docs/results/1m-platform-repair.md
+  - docs/results/1o-rewrite-correctness.md
   verdict_quote: ''
   headline: ''
   depends_on: *id010
   replaced_by: *id011
   start: '2026-11-27'
-  end: ''
+  end: '2026-11-27'
   folded: *id012
   overview: false
   id: platform-unrewritten-fs-in-library
   title: Unrewritten %fs site in a library
   track: platform
   kind: defect
-  state: next
+  state: done
   lane: windows-ci
   plain: In rewrite mode the engine once died at start with SIGSEGV addr=0x28 during a cgo call, which looks like a %fs:0x28 stack-canary access with a zero base in a shared library.
-  notes: 'Reopened: rewrite runs still die at engine start with SIGSEGV addr=0x28 in cgo sqlite3_exec_no_args (2 of 8). Fixed when: the FS TRIPWIRE names the site, it is patched, and rewrite mode starts
-    the engine 8 of 8.'
+  notes: 'Fixed: decoder length bugs (vzeroupper, BMI/EVEX/CET) left 30 %fs sites in glibc unrewritten; the decoder now matches objdump on libc, ld.so, busybox, sqlite and Go. The engine crash in sqlite
+    was a NULL pointer from the heap corruption, not a %fs site.'
 - id: workloads-buildah-thinks-rootless
   title: buildah picks rootless isolation
   track: workloads
@@ -2585,6 +2587,7 @@
 - outcome: unrated
   evidence:
   - docs/results/5-podman-windows.md
+  - docs/results/1o-rewrite-correctness.md
   verdict_quote: ''
   headline: ''
   depends_on: []
@@ -2597,10 +2600,11 @@
   title: glibc heap errors in rewrite mode
   track: platform
   kind: defect
-  state: next
+  state: in-progress
   lane: windows-ci
   plain: 'In rewrite mode, aptrename dies with free(): invalid size and apt inside builds with segfaults or double free; native mode runs them, so a %fs veneer likely computes or clobbers something wrong.'
-  notes: 'Fixed when: aptrename and the acceptance build step pass in rewrite mode.'
+  notes: 'Not the veneers: it also happens with every %fs site on the debugger path. Hits forked children (aptrename engine ~6 s in at opendir/readdir; apt in builds). Fixed when: aptrename and acceptance
+    step 5 pass in rewrite mode.'
 - id: ops-ci-build-once
   title: Build once, run suites on demand
   track: ops

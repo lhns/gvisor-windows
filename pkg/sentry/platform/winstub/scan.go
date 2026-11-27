@@ -113,6 +113,13 @@ func decodeRangeSafe(code []byte, from, end int, list []ins) (res []ins, at int,
 		}
 	}()
 	for off < end {
+		// CET instructions (endbr64 and endbr32 among them): the decoder reads them as other
+		// instructions of other lengths
+		if n := cetLen(code[off:min(len(code), off+16)]); n > 0 && off+n <= len(code) {
+			list = append(list, ins{off: off, n: n, op: x86asm.NOP, cls: clsOK})
+			off += n
+			continue
+		}
 		inst, err := x86asm.Decode(code[off:], 64)
 		if err == nil && off+inst.Len > len(code) {
 			err = errTruncated // (a truncated instruction at the end of the range)
@@ -122,6 +129,18 @@ func decodeRangeSafe(code []byte, from, end int, list []ins) (res []ins, at int,
 			// access needs a patch whatever it is.
 			if n := fsVexLen(code[off:min(len(code), off+16)]); n > 0 {
 				list = append(list, ins{off: off, n: n, cls: clsFS})
+				off += n
+				continue
+			}
+			// Instructions it does not know (BMI, mask registers, CET) have a length
+			// that follows from the encoding; skipping bytes instead would read the
+			// middle of them as other instructions and swallow the next ones.
+			if n, ripRel := unknownLen(code[off:min(len(code), off+16)]); n > 0 && off+n <= len(code) {
+				x := ins{off: off, n: n, cls: clsOK}
+				if ripRel {
+					x.cls = clsNever
+				}
+				list = append(list, x)
 				off += n
 				continue
 			}
@@ -444,6 +463,104 @@ func fsVexLen(b []byte) int {
 	return n
 }
 
+// modrmLen returns the length of the modrm byte at b[0] with its sib and
+// displacement, and whether the operand is rip-relative (0 if b is too short).
+func modrmLen(b []byte) (n int, ripRel bool) {
+	if len(b) == 0 {
+		return 0, false
+	}
+	mod, rm := b[0]>>6, b[0]&7
+	n = 1
+	if mod == 3 {
+		return n, false
+	}
+	if rm == 4 {
+		if len(b) < 2 {
+			return 0, false
+		}
+		n++
+		if mod == 0 && b[1]&7 == 5 {
+			n += 4
+		}
+	} else if mod == 0 && rm == 5 {
+		return n + 4, true
+	}
+	switch mod {
+	case 1:
+		n++
+	case 2:
+		n += 4
+	}
+	return n, false
+}
+
+// cetLen returns the length of the CET instruction at the start of b (endbr64/32, rdsspd/q,
+// incsspd/q, saveprevssp, setssbsy, rstorssp), 0 if it is none.
+func cetLen(b []byte) int {
+	if len(b) < 4 || b[0] != 0xF3 {
+		return 0
+	}
+	i := 1
+	if b[i]&0xF0 == 0x40 {
+		i++
+	}
+	if i+2 >= len(b) || b[i] != 0x0F {
+		return 0
+	}
+	op, m := b[i+1], b[i+2]
+	switch {
+	case op == 0x1E && m>>6 == 3 && m>>3&7 != 0: // endbr (fa, fb), rdssp (/1)
+		return i + 3
+	case op == 0xAE && m>>6 == 3 && m>>3&7 == 5: // incssp
+		return i + 3
+	case op == 0x01 && (m == 0xEA || m == 0xE8): // saveprevssp, setssbsy
+		return i + 3
+	case op == 0x01 && m>>6 != 3 && m>>3&7 == 5: // rstorssp
+		if n, _ := modrmLen(b[i+2:]); n > 0 {
+			return i + 2 + n
+		}
+	}
+	return 0
+}
+
+// unknownLen returns the length of an instruction that the decoder does not know and
+// whose length follows from its encoding: VEX (BMI, mask registers, ...) and EVEX, and
+// whether it addresses memory relative to rip. 0 if b is none.
+func unknownLen(b []byte) (n int, ripRel bool) {
+	if len(b) < 3 {
+		return 0, false
+	}
+	var pre, op int // bytes before the opcode, the opcode map
+	evex := false
+	switch b[0] {
+	case 0xC5:
+		pre, op = 2, 1
+	case 0xC4:
+		pre, op = 3, int(b[1]&0x1F)
+	case 0x62:
+		pre, op, evex = 4, int(b[1]&7), true
+	default:
+		return 0, false
+	}
+	if len(b) <= pre {
+		return 0, false
+	}
+	opcode := b[pre]
+	n = pre + 1
+	if !evex && op == 1 && opcode == 0x77 { // vzeroupper, vzeroall
+		return n, false
+	}
+	m, rip := modrmLen(b[n:])
+	if m == 0 {
+		return 0, false
+	}
+	n += m
+	if op == 3 || op == 1 && (opcode >= 0x70 && opcode <= 0x73 || opcode == 0xC2 || opcode >= 0xC4 && opcode <= 0xC6) {
+		n++
+	}
+	return n, rip
+}
+
 func regNum(r x86asm.Reg) int {
 	if r == 0 {
 		return -1
@@ -480,15 +597,95 @@ func rewritableFS(in x86asm.Inst, b []byte) bool {
 	return true
 }
 
+// regIsDigit reports whether the modrm.reg field of the instruction is an opcode
+// extension (/digit) rather than a register. Opcodes not listed count as register.
+func (r *fsRaw) regIsDigit() bool {
+	if len(r.vex) > 0 {
+		return false
+	}
+	switch len(r.opc) {
+	case 1:
+		switch o := r.opc[0]; {
+		case o >= 0x80 && o <= 0x83, o == 0x8F, o == 0xC0, o == 0xC1, o == 0xC6, o == 0xC7, o >= 0xD0 && o <= 0xDF, o == 0xF6, o == 0xF7, o == 0xFE, o == 0xFF:
+			return true
+		}
+	case 2:
+		if r.opc[0] == 0x0F {
+			switch o := r.opc[1]; {
+			case o == 0xBA, o >= 0x90 && o <= 0x9F, o == 0x18, o == 0xAE, o == 0xC7, o == 0x0D, o == 0x01, o == 0x00:
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// byteReg reports whether modrm.reg names an 8-bit register (ah..bh without a REX
+// prefix, spl..dil with one).
+func (r *fsRaw) byteReg() bool {
+	if len(r.vex) > 0 {
+		return false
+	}
+	switch len(r.opc) {
+	case 1:
+		o := r.opc[0]
+		return o < 0x40 && o&7 <= 2 && o&1 == 0 || o == 0x84 || o == 0x86 || o == 0x88 || o == 0x8A
+	case 2:
+		return r.opc[0] == 0x0F && (r.opc[1] == 0xB0 || r.opc[1] == 0xC0)
+	}
+	return false
+}
+
+// implicitRegs returns the registers among rax, rcx and rdx (bits 0 to 2) that the
+// instruction uses without naming them, conservatively (all three when unsure).
+func (r *fsRaw) implicitRegs() uint32 {
+	const all = 1<<0 | 1<<1 | 1<<2
+	if len(r.vex) > 0 {
+		return all
+	}
+	switch len(r.opc) {
+	case 1:
+		switch r.opc[0] {
+		case 0xF6, 0xF7: // mul, div, ...
+			return 1<<0 | 1<<2
+		case 0xD2, 0xD3: // shifts by %cl
+			return 1 << 1
+		case 0xD8, 0xD9, 0xDA, 0xDB, 0xDC, 0xDD, 0xDE, 0xDF: // x87
+			return 0
+		}
+		if o := r.opc[0]; o >= 0x80 && o <= 0x8F || o >= 0xC0 && o <= 0xC7 || o == 0xFE || o < 0x40 {
+			return 0
+		}
+		return all
+	case 2:
+		switch o := r.opc[1]; {
+		case r.opc[0] != 0x0F:
+			return all
+		case o == 0xB0 || o == 0xB1: // cmpxchg
+			return 1 << 0
+		case o == 0xA5 || o == 0xAD: // shld, shrd by %cl
+			return 1 << 1
+		case o == 0xAF, o == 0xB6, o == 0xB7, o == 0xBE, o == 0xBF, o == 0xC0, o == 0xC1, o >= 0x10 && o <= 0x17, o >= 0x28 && o <= 0x2F, o >= 0x40 && o <= 0x4F, o >= 0x50 && o <= 0x7F && o != 0x77, o >= 0x90 && o <= 0x9F, o >= 0xD0:
+			return 0 // moves, imul, movzx, xadd, cmov, setcc, SSE
+		}
+	}
+	return all
+}
+
 // scratch picks the register the veneer uses for the base: not one the
-// instruction uses (explicitly or, conservatively, implicitly); without a REX
-// prefix only registers that need none, so that 8-bit register operands keep
-// their meaning.
+// instruction uses (explicitly or, conservatively, implicitly). A register above
+// rdi needs a REX prefix, which the veneer adds unless that would turn an 8-bit
+// operand ah..bh into spl..dil. rax, rcx and rdx are the last resort.
 func (r *fsRaw) scratch() (int, bool) {
-	used := uint32(1<<0 | 1<<1 | 1<<2 | 1<<4) // rax, rcx, rdx, rsp
+	used := uint32(1 << 4) // rsp
 	reg := r.regx
-	used |= 1<<reg | 1<<r.vvvv
-	if r.rex == 0 && len(r.vex) == 0 && reg >= 4 && reg <= 7 {
+	digit := r.regIsDigit()
+	if !digit {
+		used |= 1 << reg
+	}
+	used |= 1 << r.vvvv
+	highByte := !digit && r.rex == 0 && r.byteReg() && reg >= 4 && reg <= 7
+	if highByte {
 		used |= 1 << (reg - 4) // ah, ch, dh, bh: parts of rax, rcx, rdx, rbx
 	}
 	if r.base >= 0 {
@@ -497,12 +694,18 @@ func (r *fsRaw) scratch() (int, bool) {
 	if r.index >= 0 {
 		used |= 1 << r.index
 	}
+	implicit := r.implicitRegs()
 	cands := []int{3, 6, 7, 5}
-	if r.rex != 0 {
+	if r.rex != 0 || len(r.vex) == 0 && !highByte {
 		cands = append(cands, 8, 9, 10, 11, 12, 13, 14, 15)
 	}
 	for _, c := range cands {
 		if used&(1<<c) == 0 {
+			return c, true
+		}
+	}
+	for _, c := range []int{2, 1, 0} {
+		if used&(1<<c) == 0 && implicit&(1<<c) == 0 {
 			return c, true
 		}
 	}
@@ -828,6 +1031,61 @@ func ScanFS(code []byte) FSReport {
 		}
 	}
 	return rep
+}
+
+// FSWindow is a window of several instructions that a patch replaces by one jump
+// (the instructions after the first are only reachable through the veneer).
+type FSWindow struct {
+	Lo, Hi int   // the bytes the window covers
+	Insn   []int // offsets of the instructions in it, the first is Lo
+	Rip    []int // offsets (in the code) of the disp32 of the rip-relative loads in it
+}
+
+// FSWindows returns the windows the patcher would plan for the %fs instructions of
+// code that are shorter than minLen (the others are patched in place), and the
+// offsets of all decoded instructions.
+func FSWindows(code []byte, minLen int) (wins []FSWindow, starts []int) {
+	scan := scanText(code, 0, true)
+	for i := range scan.sites {
+		site := &scan.sites[i]
+		if !site.fs {
+			continue
+		}
+		x := site.win[site.s]
+		if x.cls == clsFSBad || x.n >= minLen {
+			continue
+		}
+		win, tgt := site.win[:site.n], site.tgt[:site.n]
+		a, b, ok := planFSWindow(win, tgt, site.s, minLen, func(int, int) bool { return true })
+		if !ok {
+			continue
+		}
+		w := FSWindow{Lo: win[a].off, Hi: win[b].off + win[b].n}
+		for k := a; k <= b; k++ {
+			w.Insn = append(w.Insn, win[k].off)
+			if win[k].cls == clsRip {
+				w.Rip = append(w.Rip, win[k].off+win[k].n-4)
+			}
+		}
+		wins = append(wins, w)
+	}
+	for _, x := range decodeAll(code) {
+		starts = append(starts, x.off)
+	}
+	return
+}
+
+// Decoded returns the offsets of the instructions the sweep over code finds, and of
+// those of them that are %fs instructions (the decoder's view, for audits against
+// another disassembler).
+func Decoded(code []byte) (starts, fs []int) {
+	for _, x := range decodeAll(code) {
+		starts = append(starts, x.off)
+		if x.cls == clsFS || x.cls == clsFSBad {
+			fs = append(fs, x.off)
+		}
+	}
+	return
 }
 
 // splitFSAt reports whether the last bytes of code are the start of a

@@ -30,10 +30,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: [native, rewrite]
+        mode: [native, rewrite, rewrite-ud2]
     env:
-      WINSTUB_FSMODE: ${{ matrix.mode }}
-      WINSTUB_KEEP_AVX512: ${{ matrix.mode == 'rewrite' && '1' || '' }}
+      WINSTUB_FSMODE: ${{ matrix.mode == 'native' && 'native' || 'rewrite' }}
+      FSUD2: ${{ matrix.mode == 'rewrite-ud2' && '1' || '' }}
+      WINSTUB_KEEP_AVX512: ${{ matrix.mode != 'native' && '1' || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -53,12 +54,22 @@ jobs:
           Copy-Item guests\mountkeep "$r\bin\mountkeep"
           Copy-Item guests\devnull "$r\bin\devnull"
           Copy-Item guests\ovlsub "$r\bin\ovlsub"
+      - name: The text of the static guest patched in pieces (seams)
+        if: env.FSUD2 == ''
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          go test -c -o C:\ci\bin\winstub.test.exe ./pkg/sentry/platform/winstub
+          $env:FSSEAM_ELF = (Resolve-Path guests\aptrename).Path
+          Push-Location pkg/sentry/platform/winstub
+          $a = @(('-test.run=^TestFSSeamBinary'+[char]36), '-test.v=true', '-test.timeout=10m'); & C:\ci\bin\winstub.test.exe @a 2>&1 | Select-String -NotMatch 'winstub: (imm site|reloc site|%fs ud2|text |edges|wx)' | Select-Object -Last 60
+          Pop-Location
       - name: A mount on a host folder survives changes from Windows
         shell: pwsh
         run: |
           & tools/windows/ci/run-as-standard-user.ps1 `
             -Program C:\ci\bin\runsctest.exe `
-            -Arguments @('-fsmode', $env:WINSTUB_FSMODE, '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-keep','-only','mountkeep','-timeout','300s') `
+            -Arguments @('-fsmode', $env:WINSTUB_FSMODE, $(if ($env:FSUD2) { '-fsud2' } else { '-fsmode=' + $env:WINSTUB_FSMODE }), '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-keep','-only','mountkeep','-timeout','300s') `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 600
           if ($LASTEXITCODE -ne 0) { exit 1 }
       - name: Overlay on a host folder, whiteout and RemoveAll (c/storage probe)
@@ -89,12 +100,28 @@ jobs:
           for ($i = 1; $i -le 3; $i++) {
             & tools/windows/ci/run-as-standard-user.ps1 `
               -Program C:\ci\bin\runsctest.exe `
-              -Arguments @('-fsmode', $env:WINSTUB_FSMODE, '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work',"C:\ci\work\std-apt$i",'-only','aptrename','-stress-iters','200','-timeout','600s') `
+              -Arguments @('-fsmode', $env:WINSTUB_FSMODE, $(if ($env:FSUD2) { '-fsud2' } else { '-fsmode=' + $env:WINSTUB_FSMODE }), '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work',"C:\ci\work\std-apt$i",'-only','aptrename','-fslog','-stress-iters','200','-timeout','600s') `
               -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 900
             if ($LASTEXITCODE -ne 0) { $fail++ }
           }
           Write-Host "apt repetitions failed: $fail of 3"
           if ($fail) { exit 1 }
+      - name: apt rename pattern under CPU load (the guest runs slower than alone)
+        if: env.FSUD2 == ''
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $spin = 1..8 | ForEach-Object { Start-Process pwsh -ArgumentList '-NoProfile','-Command','while ($true) { }' -PassThru }
+          $fail = 0
+          for ($i = 1; $i -le 2; $i++) {
+            & tools/windows/ci/run-as-standard-user.ps1 `
+              -Program C:\ci\bin\runsctest.exe `
+              -Arguments @('-fsmode', $env:WINSTUB_FSMODE, '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work',"C:\ci\work\std-load$i",'-only','aptrename','-stress-iters','200','-timeout','900s') `
+              -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 1200
+            if ($LASTEXITCODE -ne 0) { $fail++ }
+          }
+          $spin | Stop-Process -Force
+          Write-Host "LOAD apt repetitions failed: $fail of 2"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -111,7 +138,7 @@ jobs:
           for ($i = 1; $i -le $reps; $i++) {
             & tools/windows/ci/run-as-standard-user.ps1 `
               -Program C:\ci\bin\runsctest.exe `
-              -Arguments @('-fsmode', $env:WINSTUB_FSMODE, '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work',"C:\ci\work\std-stress$i",'-only','fsstress','-stress-iters',$iters,'-stress-workers',$workers,'-timeout','900s') `
+              -Arguments @('-fsmode', $env:WINSTUB_FSMODE, $(if ($env:FSUD2) { '-fsud2' } else { '-fsmode=' + $env:WINSTUB_FSMODE }), '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work',"C:\ci\work\std-stress$i",'-only','fsstress','-stress-iters',$iters,'-stress-workers',$workers,'-timeout','900s') `
               -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 1800
             if ($LASTEXITCODE -ne 0) { $fail++ }
           }

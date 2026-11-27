@@ -20,6 +20,8 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
+	"log"
+	"os"
 	"sort"
 	"unsafe"
 
@@ -33,6 +35,12 @@ import (
 // guest becomes a jump to a veneer (see fsVeneer) that adds the guest's %fs base,
 // kept in the thread's TEB, to the address by hand. This file holds the Windows
 // side: placing veneers, and moving a stopped thread out of one.
+
+// fsForceUD2 (WINSTUB_FSUD2=1, a diagnostic) leaves every %fs instruction to the debugger path.
+var fsForceUD2 = os.Getenv("WINSTUB_FSUD2") != ""
+
+// fsLog (WINSTUB_FSLOG=1) logs the threads moved out of veneers.
+var fsLog = os.Getenv("WINSTUB_FSLOG") != ""
 
 // fsVenInfo describes a veneer in the address space.
 type fsVenInfo struct {
@@ -213,10 +221,32 @@ func (as *addressSpace) fsFix(t *thread, rip uint64) (newRip uint64, ok bool) {
 	if info == nil {
 		return rip, false
 	}
-	as.nFSFix.Add(1)
+	n := as.nFSFix.Add(1)
 	newRip, r1, restore := info.unwind(rip)
+	// The Sentry hands newRip back, inside the window the jump replaced: it must lead
+	// into the veneer again (patchText registered it, unless the entry was purged since).
+	if newRip > info.w0 && newRip < info.w0+uint64(info.v.winLen) {
+		as.mu.Lock()
+		_, had := as.restartAt[newRip]
+		for _, bd := range info.v.bnd {
+			if bd.o == uint32(newRip-info.w0) {
+				as.restartAt[newRip] = info.lo + uint64(bd.v)
+				break
+			}
+		}
+		as.mu.Unlock()
+		if fsLog && !had {
+			log.Printf("winstub: FSFIX: no restart entry for %#x (registered now)", newRip)
+		}
+	}
+	if fsLog && n <= 200 {
+		log.Printf("winstub: FSFIX thread %d: stopped at %#x in the veneer of %#x, back to %#x (restore r%d: %v)", t.idx, rip, info.w0, newRip, r1, restore)
+	}
 	if restore {
 		if v, ok := as.readTebSlot(t, stubasm.TebSave); ok {
+			if fsLog && n <= 200 {
+				log.Printf("winstub: FSFIX r%d was %#x in the context, the save slot holds %#x (teb %#x, flags %#x)", r1, *t.reg(r1), v, t.teb, *t.u64(stubasm.PgFlags))
+			}
 			*t.reg(r1) = v
 		} else {
 			debugf("cannot read the TEB save slot of thread %d", t.idx)

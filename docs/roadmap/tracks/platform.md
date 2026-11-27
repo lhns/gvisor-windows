@@ -42,7 +42,7 @@ flowchart TB
     platform_fs_veneer_capacity>"⚠ More room for %fs<br/>veneers"]
     platform_rewrite_mode_slow_engine>"✔ Podman engine stalls<br/>in rewrite mode"]
     platform_rewrite_glibc_init_crash>"✔ Static glibc crashes<br/>at start in rewrite<br/>mode"]
-    platform_unrewritten_fs_in_library>"⚠ Unrewritten %fs site<br/>in a library"]
+    platform_unrewritten_fs_in_library>"✔ Unrewritten %fs site<br/>in a library"]
     platform_rewrite_heap_corruption>"⚠ glibc heap errors in<br/>rewrite mode"]
     platform_exception_dispatch_depth[/"✔ Measure exception<br/>stack use"/]
     platform_own_vdso["○ Own vDSO for clock<br/>calls"]
@@ -139,12 +139,12 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class platform_elf_alignment_survey,platform_trap_cost,platform_4k_section_views,platform_exception_stack,platform_veh_on_guest_stack_unsafe,platform_debug_event_cost,platform_faults_per_exec,platform_stub_controller,platform_page_verification,platform_syscall_fast_path,platform_controller_wakeups,platform_winstub,platform_fp_state,platform_static_guest_from_memory,platform_retire_prototype,platform_memory_release,platform_split_syscall_unpatched,platform_map_files_without_sections,platform_veneer_address_in_child,platform_rare_hang_under_exec_load,platform_unsupported_errno,platform_avx512_state_lost,platform_avx_on_non_avx_cpu,platform_rewrite_mode_slow_engine,platform_rewrite_glibc_init_crash,platform_busybox_on_windows succ
+    class platform_elf_alignment_survey,platform_trap_cost,platform_4k_section_views,platform_exception_stack,platform_veh_on_guest_stack_unsafe,platform_debug_event_cost,platform_faults_per_exec,platform_stub_controller,platform_page_verification,platform_syscall_fast_path,platform_controller_wakeups,platform_winstub,platform_fp_state,platform_static_guest_from_memory,platform_retire_prototype,platform_memory_release,platform_split_syscall_unpatched,platform_map_files_without_sections,platform_veneer_address_in_child,platform_rare_hang_under_exec_load,platform_unsupported_errno,platform_avx512_state_lost,platform_avx_on_non_avx_cpu,platform_rewrite_mode_slow_engine,platform_rewrite_glibc_init_crash,platform_unrewritten_fs_in_library,platform_busybox_on_windows succ
     class platform_tls_register,platform_restricted_stub,platform_syscall_site_survey,platform_no_fsgsbase_fallback,platform_exception_dispatch_depth mixed
     class platform_zpoline_hooks dead
     class platform_fs_base_repair unrated
     class platform_fast_process_start vsucc
-    class platform_fs_veneer_capacity,platform_unrewritten_fs_in_library,platform_rewrite_heap_corruption finding
+    class platform_fs_veneer_capacity,platform_rewrite_heap_corruption finding
     class platform_own_vdso,platform_recycle_stubs next
     class platform_64k_mapping_conflicts,platform_hardware_acceleration,platform_binary_translation_fallback parked
 ```
@@ -194,8 +194,8 @@ flowchart TB
 | `platform-fs-veneer-capacity` | More room for %fs veneers | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/1j-no-fsgsbase.md |
 | `platform-rewrite-mode-slow-engine` | Podman engine stalls in rewrite mode | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/results/1l-platform-stability.md |
 | `platform-rewrite-glibc-init-crash` | Static glibc crashes at start in rewrite mode | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/results/1l-platform-stability.md |
-| `platform-unrewritten-fs-in-library` | Unrewritten %fs site in a library | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/5-podman-windows.md; docs/results/1m-platform-repair.md |
-| `platform-rewrite-heap-corruption` | glibc heap errors in rewrite mode | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/5-podman-windows.md |
+| `platform-unrewritten-fs-in-library` | Unrewritten %fs site in a library | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/results/1m-platform-repair.md; docs/results/1o-rewrite-correctness.md |
+| `platform-rewrite-heap-corruption` | glibc heap errors in rewrite mode | defect | windows-ci | in-progress | unrated | 2026-11-27 |  |  |  |  |  | docs/results/5-podman-windows.md; docs/results/1o-rewrite-correctness.md |
 | `platform-exception-dispatch-depth` | Measure exception stack use | experiment | windows-ci | done | mixed | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/0b-windows.md |
 
 ### Details per node
@@ -241,8 +241,8 @@ flowchart TB
 | `platform-fs-veneer-capacity` | More room for %fs veneers |  |  | python3 with libpython and libc needs about 8500 %fs veneers against room for about 7000, and 24% of far %fs sites in Rust PIE binaries such as netavark fall back to the 100 us debugger path. | Fixed when: python3 and netavark run in rewrite mode with under 1% of %fs executions on the debugger path. |  |  |  |  |
 | `platform-rewrite-mode-slow-engine` | Podman engine stalls in rewrite mode |  |  | With %fs rewriting, the Podman engine answers version after 29-52 s instead of 2 s and then goes silent; no acceptance run completed in 8 tries. | Fixed: the same frozen-stub bug plus a full veneer area; a 32 MiB %fs veneer area brings the engine to native speed. |  |  |  |  |
 | `platform-rewrite-glibc-init-crash` | Static glibc crashes at start in rewrite mode |  |  | The static glibc fsstress guest dies with SIGSEGV in libc init right after set_tid_address in rewrite mode, every run; native mode runs it. | Fixed: a %fs instruction straddling two text pieces ran natively; it is now run by the debugger from a veneer. |  |  |  |  |
-| `platform-unrewritten-fs-in-library` | Unrewritten %fs site in a library |  |  | In rewrite mode the engine once died at start with SIGSEGV addr=0x28 during a cgo call, which looks like a %fs:0x28 stack-canary access with a zero base in a shared library. | Reopened: rewrite runs still die at engine start with SIGSEGV addr=0x28 in cgo sqlite3_exec_no_args (2 of 8). Fixed when: the FS TRIPWIRE names the site, it is patched, and rewrite mode starts the engine 8 of 8. |  |  |  |  |
-| `platform-rewrite-heap-corruption` | glibc heap errors in rewrite mode |  |  | In rewrite mode, aptrename dies with free(): invalid size and apt inside builds with segfaults or double free; native mode runs them, so a %fs veneer likely computes or clobbers something wrong. | Fixed when: aptrename and the acceptance build step pass in rewrite mode. |  |  |  |  |
+| `platform-unrewritten-fs-in-library` | Unrewritten %fs site in a library |  |  | In rewrite mode the engine once died at start with SIGSEGV addr=0x28 during a cgo call, which looks like a %fs:0x28 stack-canary access with a zero base in a shared library. | Fixed: decoder length bugs (vzeroupper, BMI/EVEX/CET) left 30 %fs sites in glibc unrewritten; the decoder now matches objdump on libc, ld.so, busybox, sqlite and Go. The engine crash in sqlite was a NULL pointer from the heap corruption, not a %fs site. |  |  |  |  |
+| `platform-rewrite-heap-corruption` | glibc heap errors in rewrite mode |  |  | In rewrite mode, aptrename dies with free(): invalid size and apt inside builds with segfaults or double free; native mode runs them, so a %fs veneer likely computes or clobbers something wrong. | Not the veneers: it also happens with every %fs site on the debugger path. Hits forked children (aptrename engine ~6 s in at opendir/readdir; apt in builds). Fixed when: aptrename and acceptance step 5 pass in rewrite mode. |  |  |  |  |
 | `platform-exception-dispatch-depth` | Measure exception stack use | Dispatch writes 4512 bytes below RSP on every AVX-512 runner CPU whatever the thread dirtied (clean, ymm and zmm/k state all the same) |  | How far below the stack pointer Windows writes when it delivers an exception on AVX-512 CPUs, against what Go reserves; safecopy keeps its stack headroom helper. |  |  |  |  |  |
 
 ### Folded items per node
@@ -275,6 +275,7 @@ flowchart TB
   - Bounded anchor waits, thread restart and stub abandonment: 98 of 100 pass with the exclusive cache, 16 of 16 shared (2026-11-27, commit 0c354f20)
 - `platform-recycle-stubs`: Reuse stub processes across exec
   - Background spare stubs gave no gain: process creation is not the dominant fork+exec cost (2026-11-27, commit 1dab61a25)
+  - Profile: 100 fork+exec take 2.49 s, 1.33 s with two spare address spaces; 87% of CPU time waits in the debug loop, about 30 access-violation events per exec (2026-11-27, commit a147990f1)
 - `platform-fs-veneer-capacity`: More room for %fs veneers
   - A 32 MiB veneer area and PIE load base near it; 1-5% of far sites in high-mapped libraries still use the debugger (2026-11-27, commit 73227a2f1)
 <!-- END GENERATED: table-platform -->

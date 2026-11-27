@@ -185,7 +185,6 @@ flowchart TB
 | Start guest processes fast | ✔ done · very-successful | A guest process takes 280-560 ms to start through the Sentry, against 18 ms for a bare stub; profile the gap and keep a pool of ready stubs. |
 | Reuse stub processes across exec | ○ next | Each fork+exec starts two stub processes at about 10 ms each; recycling a stub on release and execve and mapping memory up front would cut process start further. |
 | More room for %fs veneers | ⚠ open | python3 with libpython and libc needs about 8500 %fs veneers against room for about 7000, and 24% of far %fs sites in Rust PIE binaries such as netavark fall back to the 100 us debugger path. |
-| Unrewritten %fs site in a library | ⚠ open | In rewrite mode the engine once died at start with SIGSEGV addr=0x28 during a cgo call, which looks like a %fs:0x28 stack-canary access with a zero base in a shared library. |
 | glibc heap errors in rewrite mode | ⚠ open | In rewrite mode, aptrename dies with free(): invalid size and apt inside builds with segfaults or double free; native mode runs them, so a %fs veneer likely computes or clobbers something wrong. |
 | Event waiting on IOCP | ⏸ parked | Waiting for many host events at once (epoll on Linux) moves to Windows completion ports. |
 | Timers and clocks on Windows | ○ next | The Sentry's clocks and timers run on Windows' high-resolution timers. |
@@ -222,8 +221,6 @@ flowchart TB
 - `ops-portable-packaging`: Portable zip, no installer
 - `platform-recycle-stubs`: Reuse stub processes across exec
 - `platform-fs-veneer-capacity`: More room for %fs veneers
-- `platform-unrewritten-fs-in-library`: Unrewritten %fs site in a library
-- `platform-rewrite-heap-corruption`: glibc heap errors in rewrite mode
 - `fs-overlay-native-diff`: Fast layer diffs with overlay
 - `sentry-waitgroup-panic`: One-off negative WaitGroup panic
 <!-- END GENERATED: ready-now -->
@@ -257,7 +254,7 @@ Generated on 2026-11-27.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 107 done, 7 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 108 done, 7 abandoned</summary>
 
 - `fs-attribute-cache`: Faster stat walks on host folders (✔ done · mixed). A git-status-like walk of 20000 files takes 1.2-2.4 s through the host folder; an attribute cache fed by the change watcher would bring stat near native.
   - Cold stat walk on a fresh mount is still about 4x native, 99-105 us per file (2026-11-26)
@@ -385,6 +382,7 @@ Generated on 2026-11-27.
 - `platform-rewrite-glibc-init-crash`: Static glibc crashes at start in rewrite mode (✔ fixed). The static glibc fsstress guest dies with SIGSEGV in libc init right after set_tid_address in rewrite mode, every run; native mode runs it.
 - `platform-rewrite-mode-slow-engine`: Podman engine stalls in rewrite mode (✔ fixed). With %fs rewriting, the Podman engine answers version after 29-52 s instead of 2 s and then goes silent; no acceptance run completed in 8 tries.
 - `platform-split-syscall-unpatched`: Syscalls split across mappings (✔ fixed). A syscall instruction whose two bytes fall into two separately mapped ranges is not found by the scan, so it would reach the Windows kernel.
+- `platform-unrewritten-fs-in-library`: Unrewritten %fs site in a library (✔ fixed). In rewrite mode the engine once died at start with SIGSEGV addr=0x28 during a cgo call, which looks like a %fs:0x28 stack-canary access with a zero base in a shared library.
 - `platform-unsupported-errno`: Unsupported platform calls return errnos (✔ fixed). arch_prctl(ARCH_SET_GS) and ptrace preparation return a raw error from the platform instead of an errno, so the Sentry panics with "Unknown syscall 158".
 - `platform-veneer-address-in-child`: Veneer addresses differ after clone (✔ fixed). A syscall through a relocated veneer returns into the veneer; after clone into a new address space the veneers sit elsewhere, so the child resumes on a zero page and crashes.
 - `runsc-sandbox-lifecycle`: Start and stop sandboxes on Windows (✔ done · successful). runsc creates, starts, signals and deletes a sandbox process on Windows that outlives runsc.exe.
@@ -424,7 +422,7 @@ Generated on 2026-11-27.
 Each track has its own page with its tree, node table and per-node details.
 
 - [runsc - runsc](roadmap/tracks/runsc.md): 6 nodes (6 done)
-- [platform - platform](roadmap/tracks/platform.md): 42 nodes (33 done, 5 next, 3 parked, 1 abandoned)
+- [platform - platform](roadmap/tracks/platform.md): 42 nodes (34 done, 1 in progress, 3 next, 3 parked, 1 abandoned)
 - [sentry - sentry](roadmap/tracks/sentry.md): 15 nodes (12 done, 2 next, 1 parked)
 - [fs - files](roadmap/tracks/fs.md): 22 nodes (20 done, 1 in progress, 1 next)
 - [net - network](roadmap/tracks/net.md): 4 nodes (4 done)
