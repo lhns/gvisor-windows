@@ -79,6 +79,9 @@ type Platform struct {
 	sparing  bool // a goroutine is starting spares
 	closed   bool
 	nSpares  int
+	// Emptied stubs of released address spaces (recycle_windows.go).
+	recycled               []*addressSpace
+	nRecycled, nRecycleFail atomic.Uint64
 	tripwire bool // the stubs register an instrumentation callback that catches unpatched syscalls (WINSTUB_TRIPWIRE=1)
 }
 
@@ -166,11 +169,11 @@ func New(opts platform.Options) (*Platform, error) {
 func (p *Platform) Close() {
 	p.spareMu.Lock()
 	p.closed = true
-	spares := p.spares
-	p.spares = nil
+	spares := append(p.spares, p.recycled...)
+	p.spares, p.recycled = nil, nil
 	p.spareMu.Unlock()
 	for _, as := range spares {
-		as.Release()
+		as.kill()
 	}
 	os.Remove(p.stubPath)
 }
@@ -245,6 +248,9 @@ func (*Platform) MaxUserAddress() hostarch.Addr { return hostarch.Addr(stubasm.G
 // 20 ms to start. opts.DisableSyscallPatching is ignored: an unpatched syscall
 // would reach the Windows kernel.
 func (p *Platform) NewAddressSpace(opts platform.AddressSpaceOptions) (platform.AddressSpace, error) {
+	if as := p.takeRecycled(); as != nil {
+		return as, nil
+	}
 	if as := p.takeSpare(); as != nil {
 		return as, nil
 	}

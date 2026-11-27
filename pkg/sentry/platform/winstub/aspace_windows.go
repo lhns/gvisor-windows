@@ -159,6 +159,11 @@ type addressSpace struct {
 
 	holesDone atomic.Bool
 
+	// gen counts the owners of the stub process (recycle_windows.go); relMu
+	// serializes emptying it with freeThread.
+	gen   atomic.Uint64
+	relMu sync.Mutex
+
 	lastScanNS int64 // trace: time of the last scan lookup
 
 	// hist is the history of text operations of this address space, histOK false
@@ -653,8 +658,14 @@ func (as *addressSpace) UserModifiedGS(ctx context.Context, mm platform.MemoryMa
 	return linuxerr.EPERM
 }
 
-// Release implements platform.AddressSpace.Release.
+// Release implements platform.AddressSpace.Release: the stub is kept for the next
+// address space if it can be emptied, else terminated.
 func (as *addressSpace) Release() {
+	as.p.release(as)
+}
+
+// kill terminates the stub process.
+func (as *addressSpace) kill() {
 	if as.released.Swap(true) {
 		return
 	}

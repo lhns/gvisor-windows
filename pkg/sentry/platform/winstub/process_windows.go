@@ -136,12 +136,13 @@ func (as *addressSpace) slot(idx int) *thread {
 	return t
 }
 
-// allocThread returns a free thread slot (slot 0 is the anchor thread).
-func (as *addressSpace) allocThread() (*thread, error) {
+// allocThread returns a free thread slot (slot 0 is the anchor thread) and the
+// generation of the stub it belongs to.
+func (as *addressSpace) allocThread() (*thread, uint64, error) {
 	as.tmu.Lock()
 	defer as.tmu.Unlock()
 	if as.dead.Load() {
-		return nil, errDead
+		return nil, 0, errDead
 	}
 	var idx int
 	if n := len(as.freeSlots); n > 0 {
@@ -150,7 +151,7 @@ func (as *addressSpace) allocThread() (*thread, error) {
 		for idx = 1; idx < len(as.slots) && as.slots[idx] != nil; idx++ {
 		}
 		if idx == len(as.slots) {
-			return nil, fmt.Errorf("winstub: more than %d threads in one address space", len(as.slots)-1)
+			return nil, 0, fmt.Errorf("winstub: more than %d threads in one address space", len(as.slots)-1)
 		}
 	}
 	t := as.slot(idx)
@@ -160,11 +161,17 @@ func (as *addressSpace) allocThread() (*thread, error) {
 	*t.u32(stubasm.PgRunning) = 0
 	pResetEvent.Call(t.evReq) // no stale signal from the previous thread of the slot
 	pResetEvent.Call(t.evReply)
-	return t, nil
+	return t, as.gen.Load(), nil
 }
 
-// freeThread terminates a thread and returns its slot.
-func (as *addressSpace) freeThread(t *thread) {
+// freeThread terminates a thread of generation gen and returns its slot. A thread of
+// an earlier generation is gone already (recycle_windows.go).
+func (as *addressSpace) freeThread(t *thread, gen uint64) {
+	as.relMu.Lock()
+	defer as.relMu.Unlock()
+	if gen != as.gen.Load() {
+		return
+	}
 	as.tmu.Lock()
 	h := t.hThread
 	terminate := t.started && !as.dead.Load() && h != 0
