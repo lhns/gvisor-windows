@@ -60,6 +60,15 @@ static int same(const char *a, const char *b, char *why, size_t whylen) {
   return 1;
 }
 
+// What ld.so does: open and read the header with no stat in between.
+static long rawread(const char *path) {
+  int fd = open(path, O_RDONLY | O_CLOEXEC);
+  char buf[832];
+  long n = fd < 0 ? -1 : read(fd, buf, sizeof buf);
+  close(fd);
+  return n;
+}
+
 int main(int argc, char **argv) {
   char dst[256], why[128];
   for (int touch = 0; touch < 2; touch++) {
@@ -75,8 +84,14 @@ int main(int argc, char **argv) {
     why[0] = 0;
     snprintf(name, sizeof name, "same process reads touch=%d", touch);
     report(name, same(argv[2], dst, why, sizeof why), why);
+    snprintf(why, sizeof why, "read of the header returned %ld", rawread(dst));
+    snprintf(name, sizeof name, "raw read first, same process touch=%d", touch);
+    report(name, rawread(dst) == 832, why);
     pid_t p = fork();
     if (p == 0) {
+      snprintf(why, sizeof why, "read of the header returned %ld", rawread(dst));
+      snprintf(name, sizeof name, "raw read first, child touch=%d", touch);
+      report(name, rawread(dst) == 832, why);
       why[0] = 0;
       snprintf(name, sizeof name, "child reads touch=%d", touch);
       report(name, same(argv[2], dst, why, sizeof why), why);
