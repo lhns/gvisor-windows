@@ -22,8 +22,6 @@ on:
         default: ""
   schedule:
     - cron: "0 3 * * 0"
-  push:
-    branches: [syscall-tests]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
