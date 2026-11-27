@@ -192,9 +192,6 @@ func (c *winContext) Switch(ctx pkgcontext.Context, mm platform.MemoryManager, a
 	r := &ac.StateData().Regs
 	switch req.kind {
 	case reqSyscall:
-		if watchOn && *t.reg(0) == watchSyscall {
-			as.watchSet(t, *t.reg(7))
-		}
 		loadRegs(t, r, true)
 		return nil, hostarch.NoAccess, nil
 	case reqInterrupt:

@@ -1,9 +1,0 @@
-# name|args|bind|env|flags (see run.ps1)
-apt-ubuntu|/bin/aptrename-ubuntu /w/ar 200|1
-apt|/bin/aptrename /w/ar 200|1
-aptprobe|/bin/aptprobe /w/ar 200|1|PROBE_WATCH=1
-aptprobe-strace|/bin/aptprobe /w/ar 5|1||--strace
-fcd-host|/bin/heapprobe fcd /w/d 3000|1
-fed-host|/bin/heapprobe fed /w/d 2000|1
-fpem-tmp|/bin/heapprobe fpem /tmp/d 20000|0
-aptprobe-ubuntu|/bin/aptprobe-ubuntu /w/ar 200|1|PROBE_WATCH=1

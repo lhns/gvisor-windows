@@ -629,9 +629,6 @@ func (as *addressSpace) onException(ev *debugEvent, ctx *ctxBuf, seenBP *bool) u
 		}
 		as.park(t, ctx, request{kind: reqFault, sig: 5, code: 128, addr: rip})
 	case excSingleStep:
-		if watchOn && as.watchHit(t, ctx, excAddr) {
-			break
-		}
 		as.park(t, ctx, request{kind: reqFault, sig: 5, code: 2, addr: rip})
 	case excIntDivide, excIntOverflow:
 		as.park(t, ctx, request{kind: reqFault, sig: 8, code: 1, addr: rip})
