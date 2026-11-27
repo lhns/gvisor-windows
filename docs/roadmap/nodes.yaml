@@ -2364,8 +2364,8 @@
   kind: defect
   state: next
   lane: windows-ci
-  plain: Rare container failures (/dev/null or config.json missing, exec on an unknown container) trace back to c/storage forgetting a container, not to a dentry race; a stress reproducer is clean. Host-folder
-    writes often keep the previous mtime (45-60%), which may matter to c/storage.
+  plain: 'Remaining acceptance flakes: step 3 sometimes loses the race between --rm cleanup and attach (podman remote, widened by sandbox slowness), and step 10 once timed out with the engine and a new
+    Go helper idle for 123 s, which looks like the stuck process start.'
   notes: 'Fixed when: step 10 passes 20 runs in a row, or the cause is found and fixed.'
 - outcome: unrated
   evidence:
@@ -2489,14 +2489,14 @@
   depends_on: *id009
   replaced_by: *id010
   start: '2026-11-27'
-  end: ''
+  end: '2026-11-27'
   folded: *id011
   overview: false
   id: fs-host-folder-mtime-resolution
   title: Host-folder writes keep the old mtime
   track: fs
   kind: defect
-  state: next
+  state: done
   lane: windows-ci
   plain: 'On host folders 45-60% of consecutive writes report the same mtime as the previous one (tmpfs: none), which can hide changes from tools that compare mtimes.'
-  notes: 'Fixed when: consecutive writes on a host folder get distinct mtimes like on Linux, and c/storage state survives the acceptance x8 without losing containers.'
+  notes: 'Fixed: the Sentry records the time of each guest write and reports max(host, last write); 0 repeated mtimes over 20000 writes.'

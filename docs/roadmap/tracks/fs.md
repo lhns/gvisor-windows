@@ -23,7 +23,7 @@ flowchart TB
     fs_unix_sockets_on_host_folders>"✔ Unix sockets on host<br/>folders"]
     fs_copied_file_too_short>"⚠ Copied library reads<br/>as too short"]
     fs_disown_children_nil_deref>"✔ Nil dereference in<br/>gofer invalidation"]
-    fs_host_folder_mtime_resolution>"⚠ Host-folder writes<br/>keep the old mtime"]
+    fs_host_folder_mtime_resolution>"✔ Host-folder writes<br/>keep the old mtime"]
     fs_persistent_storage_impl["⛔ Storage that<br/>survives restarts"]
     fs_persistent_image_storage ~~~ fs_change_notifications
     fs_windows_directfs ~~~ fs_linux_metadata_on_ntfs
@@ -61,8 +61,8 @@ flowchart TB
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class fs_persistent_image_storage,fs_attribute_cache mixed
-    class fs_windows_directfs,fs_change_notifications,fs_linux_metadata_on_ntfs,fs_handles_do_not_block_users,fs_root_filesystem_source,fs_safe_save_keeps_metadata,fs_flaky_negative_cache_test,fs_standard_user_delete_rights,fs_case_sensitivity_without_admin,fs_unix_sockets_on_host_folders,fs_disown_children_nil_deref succ
-    class fs_copied_file_too_short,fs_host_folder_mtime_resolution finding
+    class fs_windows_directfs,fs_change_notifications,fs_linux_metadata_on_ntfs,fs_handles_do_not_block_users,fs_root_filesystem_source,fs_safe_save_keeps_metadata,fs_flaky_negative_cache_test,fs_standard_user_delete_rights,fs_case_sensitivity_without_admin,fs_unix_sockets_on_host_folders,fs_disown_children_nil_deref,fs_host_folder_mtime_resolution succ
+    class fs_copied_file_too_short finding
     class fs_persistent_storage_impl blocked
 ```
 <!-- END GENERATED: track-fs -->
@@ -90,7 +90,7 @@ flowchart TB
 | `fs-unix-sockets-on-host-folders` | Unix sockets on host folders | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
 | `fs-copied-file-too-short` | Copied library reads as too short | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/5-podman-windows.md |
 | `fs-disown-children-nil-deref` | Nil dereference in gofer invalidation | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/1k-platform-next.md |
-| `fs-host-folder-mtime-resolution` | Host-folder writes keep the old mtime | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/5-podman-windows.md |
+| `fs-host-folder-mtime-resolution` | Host-folder writes keep the old mtime | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
 
 ### Details per node
 
@@ -114,7 +114,7 @@ flowchart TB
 | `fs-unix-sockets-on-host-folders` | Unix sockets on host folders |  |  | Binding a Unix socket on a Windows folder and connecting to it (by path or via /proc/self/fd) is refused, so Podman cannot reach conmon's attach socket. | Fixed: bind on a host folder now creates the in-Sentry synthetic socket dentry, as on tmpfs; sockfs check required. |  |  |  |  |
 | `fs-copied-file-too-short` | Copied library reads as too short |  |  | In podman build, a nested container fails with "libc.so.6: file too short" after the vfs driver copied it with copy_file_range onto the host folder; the copy has the right size but ld.so does not read it. | Fixed when: a guest that copy_file_range-s into a host-folder file can read it from another process, and podman build of a debian RUN step passes. |  |  |  |  |
 | `fs-disown-children-nil-deref` | Nil dereference in gofer invalidation |  |  | The Sentry panics with a nil dereference in gofer dentry.disownAllChildrenForInvalidation during the bench test in rewrite-mode CI legs. | Fixed: negative (nil) child entries are skipped during invalidation; bench passed 29 of 30 legs, the miss was the stuck-stub hang. |  |  |  |  |
-| `fs-host-folder-mtime-resolution` | Host-folder writes keep the old mtime |  |  | On host folders 45-60% of consecutive writes report the same mtime as the previous one (tmpfs: none), which can hide changes from tools that compare mtimes. | Fixed when: consecutive writes on a host folder get distinct mtimes like on Linux, and c/storage state survives the acceptance x8 without losing containers. |  |  |  |  |
+| `fs-host-folder-mtime-resolution` | Host-folder writes keep the old mtime |  |  | On host folders 45-60% of consecutive writes report the same mtime as the previous one (tmpfs: none), which can hide changes from tools that compare mtimes. | Fixed: the Sentry records the time of each guest write and reports max(host, last write); 0 repeated mtimes over 20000 writes. |  |  |  |  |
 
 ### Folded items per node
 

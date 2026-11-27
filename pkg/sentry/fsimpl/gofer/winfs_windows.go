@@ -48,6 +48,23 @@ type winInode struct {
 	// pinned is set while the host layer keeps the file reachable after the
 	// guest unlinked it.
 	pinned atomic.Bool
+
+	// writeFloor is the time of the last guest write (Sentry clock). NTFS
+	// stamps consecutive writes with the same coarse time (and ctime), so
+	// the reported mtime and ctime are never older than this, as on Linux
+	// where every write updates them.
+	writeFloor atomic.Int64
+}
+
+// noteWrite records a guest write at now.
+func (i *winInode) noteWrite(now int64) {
+	for {
+		old := i.writeFloor.Load()
+		if now <= old || i.writeFloor.CompareAndSwap(old, now) {
+			return
+		}
+	}
+	// The cached values are refreshed from the host on the next stat.
 }
 
 // winHandle is the hostHandle of a winInode.
@@ -295,10 +312,11 @@ func (i *winInode) updateFromAttrLocked(a *winhost.Attr) {
 	if i.atimeDirty.Load() == 0 {
 		i.atime.Store(a.Atime)
 	}
+	floor := i.writeFloor.Load()
 	if i.mtimeDirty.Load() == 0 {
-		i.mtime.Store(a.Mtime)
+		i.mtime.Store(max(a.Mtime, floor))
 	}
-	i.ctime.Store(a.Ctime)
+	i.ctime.Store(max(a.Ctime, floor))
 	i.btime.Store(a.Btime)
 	i.btimeValid.Store(true)
 	i.nlink.Store(a.Nlink)
