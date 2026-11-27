@@ -464,6 +464,8 @@
   - fs-copied-file-too-short
   - workloads-tty-through-windows-client
   - workloads-isolation-flake
+  - platform-rewrite-mode-slow-engine
+  - workloads-volume-lost-on-restart
   replaced_by: []
   lane: windows-ci
   start: ''
@@ -2145,7 +2147,8 @@
   state: in-progress
   lane: windows-ci
   plain: 'A guest that forks many children hangs now and then: about 1 in 50 gopodman runs, and 9 in 48 fork+exec loops through runsc.exe with the exclusive root cache (2 in 48 with the shared cache); the
-    shell waits in wait4 with no child task. Syscall-test runs show the same root: a stub process that never finishes starting (one thread in a kernel wait), and newAS/Release wait forever on it.'
+    shell waits in wait4 with no child task. Syscall-test runs show the same root: a stub process that never finishes starting (one thread in a kernel wait), and newAS/Release wait forever on it. The Podman
+    engine also hangs in vforkStop (2 of 8 runs): the vfork child never gets its new address space.'
   notes: 'Fixed when: the gopodman hunt step passes 200 runs in a row; suggested: capture threads with a request flag the stub polls instead of SuspendThread.'
 - outcome: unrated
   evidence:
@@ -2398,3 +2401,40 @@
   lane: windows-ci
   plain: python3 with libpython and libc needs about 8500 %fs veneers against room for about 7000, and 24% of far %fs sites in Rust PIE binaries such as netavark fall back to the 100 us debugger path.
   notes: 'Fixed when: python3 and netavark run in rewrite mode with under 1% of %fs executions on the debugger path.'
+- outcome: unrated
+  evidence: &id004
+  - docs/results/5-podman-windows.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: &id005 []
+  replaced_by: &id006 []
+  start: '2026-11-27'
+  end: ''
+  folded: &id007 []
+  overview: false
+  id: platform-rewrite-mode-slow-engine
+  title: Podman engine stalls in rewrite mode
+  track: platform
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: With %fs rewriting, the Podman engine answers version after 29-52 s instead of 2 s and then goes silent; no acceptance run completed in 8 tries.
+  notes: 'Fixed when: the acceptance completes in rewrite mode at native speed in 8 of 8 runs.'
+- outcome: unrated
+  evidence: *id004
+  verdict_quote: ''
+  headline: ''
+  depends_on: *id005
+  replaced_by: *id006
+  start: '2026-11-27'
+  end: ''
+  folded: *id007
+  overview: false
+  id: workloads-volume-lost-on-restart
+  title: Volume data lost across engine restart
+  track: workloads
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: In 2 of 5 complete native runs, the named volume written before the engine restart is empty afterwards (step 9).
+  notes: 'Fixed when: step 9 passes in 8 of 8 runs.'

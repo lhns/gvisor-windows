@@ -43,7 +43,8 @@ $stepsFile = Join-Path $ResultsDir 'steps.txt'
 
 function Report([int]$n, [string]$name, [bool]$ok, [string]$detail) {
   $st = if ($ok) { 'PASS' } else { $script:Failed++; 'FAIL' }
-  $line = "STEP $n $st $name $detail"
+  $secs = [int]((Get-Date) - $script:stepStart).TotalSeconds
+  $line = "STEP $n $st $name [${secs}s] $detail"
   Write-Host $line
   Add-Content $stepsFile $line
 }
@@ -170,6 +171,6 @@ function Step10 { $L = & $tmpl 10; '' | Set-Content $L; $ok = $true; $d = ''
   Pm @('rm', '-f', '-t', '0', 'acc-a', 'acc-b') $L | Out-Null
   Report 10 'isolation' $ok $(if ($d) { $d } else { 'ok' }) }
 
-foreach ($n in $Only) { try { & "Step$n" } catch { Report $n 'exception' $false "$_" } }
+foreach ($n in $Only) { $script:stepStart = Get-Date; try { & "Step$n" } catch { Report $n 'exception' $false "$_" } }
 "FAILED_STEPS=$script:Failed" | Tee-Object -Append $stepsFile
 exit $script:Failed

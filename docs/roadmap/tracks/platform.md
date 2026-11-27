@@ -40,6 +40,7 @@ flowchart TB
     platform_avx512_state_lost>"⚠ AVX-512 state lost<br/>across stops"]
     platform_avx_on_non_avx_cpu>"⚠ glibc runs AVX code<br/>on a non-AVX CPU"]
     platform_fs_veneer_capacity>"⚠ More room for %fs<br/>veneers"]
+    platform_rewrite_mode_slow_engine>"⚠ Podman engine stalls<br/>in rewrite mode"]
     platform_own_vdso["⛔ Own vDSO for clock<br/>calls"]
     platform_64k_mapping_conflicts["⏸ Handle 64 KB mapping<br/>conflicts"]
     platform_busybox_on_windows["✔ Run busybox under<br/>the Sentry"]
@@ -80,12 +81,15 @@ flowchart TB
     platform_no_fsgsbase_fallback ~~~ platform_avx512_state_lost
     platform_rare_hang_under_exec_load ~~~ platform_avx_on_non_avx_cpu
     platform_unsupported_errno ~~~ platform_fs_veneer_capacity
-    platform_avx512_state_lost ~~~ platform_own_vdso
-    platform_avx_on_non_avx_cpu ~~~ platform_64k_mapping_conflicts
-    platform_fs_veneer_capacity ~~~ platform_busybox_on_windows
+    platform_avx512_state_lost ~~~ platform_rewrite_mode_slow_engine
+    platform_avx_on_non_avx_cpu ~~~ platform_own_vdso
+    platform_fs_veneer_capacity ~~~ platform_64k_mapping_conflicts
+    platform_rewrite_mode_slow_engine ~~~ platform_busybox_on_windows
     platform_own_vdso ~~~ platform_hardware_acceleration
     platform_64k_mapping_conflicts ~~~ platform_binary_translation_fallback
     platform_busybox_on_windows ~~~ platform_recycle_stubs
+    platform_hardware_acceleration ~~~ platform_recycle_stubs
+    platform_binary_translation_fallback ~~~ platform_recycle_stubs
     platform_trap_cost -.-> platform_veh_on_guest_stack_unsafe
     platform_tls_register -.-> platform_veh_on_guest_stack_unsafe
     platform_trap_cost --> platform_exception_stack
@@ -113,7 +117,7 @@ flowchart TB
     platform_winstub --> platform_hardware_acceleration
     platform_debug_event_cost --> platform_binary_translation_fallback
     platform_no_fsgsbase_fallback --> platform_recycle_stubs
-    linkStyle 40,41 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    linkStyle 43,44 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -133,7 +137,7 @@ flowchart TB
     class platform_zpoline_hooks dead
     class platform_fs_base_repair unrated
     class platform_fast_process_start vsucc
-    class platform_rare_hang_under_exec_load,platform_avx512_state_lost,platform_avx_on_non_avx_cpu,platform_fs_veneer_capacity finding
+    class platform_rare_hang_under_exec_load,platform_avx512_state_lost,platform_avx_on_non_avx_cpu,platform_fs_veneer_capacity,platform_rewrite_mode_slow_engine finding
     class platform_own_vdso blocked
     class platform_64k_mapping_conflicts,platform_hardware_acceleration,platform_binary_translation_fallback parked
     class platform_recycle_stubs next
@@ -182,6 +186,7 @@ flowchart TB
 | `platform-avx512-state-lost` | AVX-512 state lost across stops | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/5-podman-windows.md |
 | `platform-avx-on-non-avx-cpu` | glibc runs AVX code on a non-AVX CPU | defect | windows-local | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/1j-no-fsgsbase.md |
 | `platform-fs-veneer-capacity` | More room for %fs veneers | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/1j-no-fsgsbase.md |
+| `platform-rewrite-mode-slow-engine` | Podman engine stalls in rewrite mode | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/5-podman-windows.md |
 
 ### Details per node
 
@@ -218,12 +223,13 @@ flowchart TB
 | `platform-split-syscall-unpatched` | Syscalls split across mappings |  |  | A syscall instruction whose two bytes fall into two separately mapped ranges is not found by the scan, so it would reach the Windows kernel. | Fixed when: a test guest with a syscall straddling two MapFile ranges is patched and served correctly. |  |  |  |  |
 | `platform-map-files-without-sections` | Map files not in the memory file |  |  | The platform can only map pages of the Sentry memory file; erofs image pages (and any other memmap.File) make the guest fault on its first instruction. | Fixed when: runsc run boots busybox from an erofs image root (mkfs.erofs --all-root) on windows-latest. |  |  |  |  |
 | `platform-veneer-address-in-child` | Veneer addresses differ after clone |  |  | A syscall through a relocated veneer returns into the veneer; after clone into a new address space the veneers sit elsewhere, so the child resumes on a zero page and crashes. | Fixed: patch windows end at the syscall where possible, other veneers get a platform-wide address per site; clonesys cases are required. |  |  |  |  |
-| `platform-rare-hang-under-exec-load` | Rare hang under heavy exec load |  |  | A guest that forks many children hangs now and then: about 1 in 50 gopodman runs, and 9 in 48 fork+exec loops through runsc.exe with the exclusive root cache (2 in 48 with the shared cache); the shell waits in wait4 with no child task. Syscall-test runs show the same root: a stub process that never finishes starting (one thread in a kernel wait), and newAS/Release wait forever on it. | Fixed when: the gopodman hunt step passes 200 runs in a row; suggested: capture threads with a request flag the stub polls instead of SuspendThread. |  |  |  |  |
+| `platform-rare-hang-under-exec-load` | Rare hang under heavy exec load |  |  | A guest that forks many children hangs now and then: about 1 in 50 gopodman runs, and 9 in 48 fork+exec loops through runsc.exe with the exclusive root cache (2 in 48 with the shared cache); the shell waits in wait4 with no child task. Syscall-test runs show the same root: a stub process that never finishes starting (one thread in a kernel wait), and newAS/Release wait forever on it. The Podman engine also hangs in vforkStop (2 of 8 runs): the vfork child never gets its new address space. | Fixed when: the gopodman hunt step passes 200 runs in a row; suggested: capture threads with a request flag the stub polls instead of SuspendThread. |  |  |  |  |
 | `platform-unsupported-errno` | Unsupported platform calls return errnos |  |  | arch_prctl(ARCH_SET_GS) and ptrace preparation return a raw error from the platform instead of an errno, so the Sentry panics with "Unknown syscall 158". | Fixed when: arch_prctl_test fails cleanly (EPERM or ENOTSUP) instead of crashing the Sentry. |  |  |  |  |
 | `platform-recycle-stubs` | Reuse stub processes across exec |  |  | Each fork+exec starts two stub processes at about 10 ms each; recycling a stub on release and execve and mapping memory up front would cut process start further. | Done when: the 100x fork+exec loop through runsc.exe is at least 4x faster than the 3.47 s baseline in docs/results/3b. |  |  |  |  |
 | `platform-avx512-state-lost` | AVX-512 state lost across stops |  |  | The engine dies in about 1 run in 4: Go GC SIGSEGV at 0xfffffffffffffff8 (Go %fs:-8 with a zero base) in its AVX-512 path. Guests run CPUID natively, so hiding AVX-512 in the Sentry cannot work; the zero base points at a missed %fs repair in native mode. | Fixed when: a guest keeps zmm and k registers across syscalls, faults and interrupts on an AVX-512 runner, and the CPUID workaround in runsc/boot/loader.go is removed. |  |  |  |  |
 | `platform-avx-on-non-avx-cpu` | glibc runs AVX code on a non-AVX CPU |  |  | On the dev VM a static glibc hello dies with SIGILL on vmovd (AVX) in start-up code, although the CPU has no AVX; busybox runs fine. | Fixed when: the hello and glibc guests run on the dev VM in rewrite plus fxsave mode. |  |  |  |  |
 | `platform-fs-veneer-capacity` | More room for %fs veneers |  |  | python3 with libpython and libc needs about 8500 %fs veneers against room for about 7000, and 24% of far %fs sites in Rust PIE binaries such as netavark fall back to the 100 us debugger path. | Fixed when: python3 and netavark run in rewrite mode with under 1% of %fs executions on the debugger path. |  |  |  |  |
+| `platform-rewrite-mode-slow-engine` | Podman engine stalls in rewrite mode |  |  | With %fs rewriting, the Podman engine answers version after 29-52 s instead of 2 s and then goes silent; no acceptance run completed in 8 tries. | Fixed when: the acceptance completes in rewrite mode at native speed in 8 of 8 runs. |  |  |  |  |
 
 ### Folded items per node
 
