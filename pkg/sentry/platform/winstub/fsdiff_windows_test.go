@@ -762,45 +762,7 @@ func fsDifferential(t *testing.T, loop bool, n int) {
 			g.r.Read(areaInit)
 			nat := runCases(t, "native", false, textBase, cases, offs, text, areaInit, dataInit)
 			rew := runCases(t, "rewrite", loop, textBase, cases, offs, text, areaInit, dataInit)
-			bad := 0
-			for i := range cases {
-				a, b := nat[i], rew[i]
-				var diffs []string
-				if a.err != b.err {
-					diffs = append(diffs, fmt.Sprintf("native %q, rewrite %q", a.err, b.err))
-				} else if a.err == "" {
-					for k := 0; k < 16; k++ {
-						if a.regs[k] != b.regs[k] {
-							diffs = append(diffs, fmt.Sprintf("reg %d: native %#x, rewrite %#x", k, a.regs[k], b.regs[k]))
-						}
-					}
-					if a.rax != b.rax || a.rcx != b.rcx { // (r11 is not compared: a context's first run starts with r11 = rip)
-						diffs = append(diffs, fmt.Sprintf("rax/rcx native %#x/%#x rewrite %#x/%#x", a.rax, a.rcx, b.rax, b.rcx))
-					}
-					if a.flags != b.flags {
-						diffs = append(diffs, fmt.Sprintf("flags native %#x rewrite %#x", a.flags, b.flags))
-					}
-					if a.xmm != b.xmm || a.mxcsr != b.mxcsr {
-						for k := 0; k < 16; k++ {
-							if !bytes.Equal(a.xmm[16*k:16*k+16], b.xmm[16*k:16*k+16]) {
-								diffs = append(diffs, fmt.Sprintf("xmm%d native %x rewrite %x (initial %x)", k, a.xmm[16*k:16*k+16], b.xmm[16*k:16*k+16], cases[i].xmm[16*k:16*k+16]))
-							}
-						}
-						if a.mxcsr != b.mxcsr {
-							diffs = append(diffs, fmt.Sprintf("mxcsr native %#x rewrite %#x", a.mxcsr, b.mxcsr))
-						}
-					}
-					if !bytes.Equal(a.mem, b.mem) {
-						diffs = append(diffs, "memory differs")
-					}
-				}
-				if len(diffs) > 0 {
-					bad++
-					if bad <= 25 {
-						t.Errorf("case %d: %s\n  %s", i, cases[i].desc, strings.Join(diffs, "\n  "))
-					}
-				}
-			}
+			bad := fsCompare(t, cases, nat, rew)
 			if bad > 0 {
 				t.Errorf("%d of %d cases differ", bad, n)
 			}
@@ -813,4 +775,165 @@ func fsDifferential(t *testing.T, loop bool, n int) {
 			t.Logf("FSDIFF %d cases, %d differ, %d faulted in both (seed %d)", n, bad, nerr, seed)
 		})
 	}
+}
+
+// fsCompare reports the cases whose native and rewritten results differ.
+func fsCompare(t *testing.T, cases []*fdCase, nat, rew []fdResult) int {
+	t.Helper()
+	bad := 0
+	for i := range cases {
+		a, b := nat[i], rew[i]
+		var diffs []string
+		if a.err != b.err {
+			diffs = append(diffs, fmt.Sprintf("native %q, rewrite %q", a.err, b.err))
+		} else if a.err == "" {
+			for k := 0; k < 16; k++ {
+				if a.regs[k] != b.regs[k] {
+					diffs = append(diffs, fmt.Sprintf("reg %d: native %#x, rewrite %#x", k, a.regs[k], b.regs[k]))
+				}
+			}
+			if a.rax != b.rax || a.rcx != b.rcx { // (r11 is not compared: a context's first run starts with r11 = rip)
+				diffs = append(diffs, fmt.Sprintf("rax/rcx native %#x/%#x rewrite %#x/%#x", a.rax, a.rcx, b.rax, b.rcx))
+			}
+			if a.flags != b.flags {
+				diffs = append(diffs, fmt.Sprintf("flags native %#x rewrite %#x", a.flags, b.flags))
+			}
+			if a.xmm != b.xmm || a.mxcsr != b.mxcsr {
+				for k := 0; k < 16; k++ {
+					if !bytes.Equal(a.xmm[16*k:16*k+16], b.xmm[16*k:16*k+16]) {
+						diffs = append(diffs, fmt.Sprintf("xmm%d native %x rewrite %x (initial %x)", k, a.xmm[16*k:16*k+16], b.xmm[16*k:16*k+16], cases[i].xmm[16*k:16*k+16]))
+					}
+				}
+				if a.mxcsr != b.mxcsr {
+					diffs = append(diffs, fmt.Sprintf("mxcsr native %#x rewrite %#x", a.mxcsr, b.mxcsr))
+				}
+			}
+			if !bytes.Equal(a.mem, b.mem) {
+				diffs = append(diffs, "memory differs")
+			}
+		}
+		if len(diffs) > 0 {
+			bad++
+			if bad <= 25 {
+				t.Errorf("case %d: %s\n  %s", i, cases[i].desc, strings.Join(diffs, "\n  "))
+			}
+		}
+	}
+	return bad
+}
+
+// TestFSRealWindows replays the %fs windows of real programs (glibc, busybox, a static
+// guest; testdata/fswindows.txt, made by `fsscan -dumpwin`): the instructions around an
+// %fs instruction as the compiler left them, the rip-relative loads pointing at a page of
+// small TLS offsets, registers holding such offsets or pointers into a data area. Native
+// and rewritten runs must end the same way (the same state, or the same fault).
+func TestFSRealWindows(t *testing.T) {
+	if !stubasm.HasFSGSBASE() {
+		t.Skip("native mode needs FSGSBASE")
+	}
+	raw, err := os.ReadFile("testdata/fswindows.txt")
+	if err != nil {
+		t.Skipf("no windows: %v", err)
+	}
+	type win struct {
+		code []byte
+		rip  []int
+	}
+	var wins []win
+	for _, l := range strings.Split(string(raw), "\n") {
+		f := strings.Fields(l)
+		if len(f) == 0 {
+			continue
+		}
+		var w win
+		if b, err := hexDecode(f[0]); err == nil {
+			w.code = b
+		} else {
+			continue
+		}
+		if len(f) > 1 {
+			for _, o := range strings.Split(f[1], ",") {
+				var n int
+				fmt.Sscan(o, &n)
+				w.rip = append(w.rip, n)
+			}
+		}
+		wins = append(wins, w)
+	}
+	const rounds = 4
+	for _, textBase := range []uint64{fdText, fdFar} {
+		t.Run(fmt.Sprintf("text %#x", textBase), func(t *testing.T) {
+			rnd := rand.New(rand.NewSource(7))
+			dataBase := textBase - 0x100000
+			dataInit := make([]byte, pageSz)
+			for q := 0; q < pageSz; q += 8 {
+				v := uint64(int64(rnd.Intn(0x60)-0x30) * 8)
+				if rnd.Intn(4) == 0 {
+					v = fdArea + 0x8000 + uint64(rnd.Intn(0x400))*8
+				}
+				binary.LittleEndian.PutUint64(dataInit[q:], v)
+			}
+			areaInit := make([]byte, fdAreaLen)
+			rnd.Read(areaInit)
+			text := bytes.Repeat([]byte{0x90}, 64)
+			var cases []*fdCase
+			var offs []uint64
+			for round := 0; round < rounds; round++ {
+				for _, w := range wins {
+					code := append([]byte(nil), w.code...)
+					pc := textBase + uint64(len(text))
+					for _, o := range w.rip {
+						target := dataBase + uint64(rnd.Intn(pageSz/8))*8
+						binary.LittleEndian.PutUint32(code[o:], uint32(int32(int64(target)-int64(pc+uint64(o)+4))))
+					}
+					code = append(code, 0x9C, 0x48, 0x89, 0x44, 0x24, 0xF8, 0x48, 0x89, 0x4C, 0x24, 0xF0, 0x4C, 0x89, 0x5C, 0x24, 0xE8, 0xB8, 0xF4, 1, 0, 0, 0x0F, 0x05)
+					c := &fdCase{code: code, desc: fmt.Sprintf("window % x", w.code)}
+					for i := range c.regs {
+						if rnd.Intn(2) == 0 {
+							c.regs[i] = uint64(int64(rnd.Intn(0x60)-0x30) * 8)
+						} else {
+							c.regs[i] = fdArea + 0x8000 + uint64(rnd.Intn(0x400))*8
+						}
+					}
+					c.regs[4] = fdStack + 0x3000
+					c.flags = uint64(rnd.Uint32()) & 0xCD5
+					rnd.Read(c.xmm[:])
+					cases = append(cases, c)
+					offs = append(offs, uint64(len(text)))
+					text = append(text, code...)
+					for len(text)%16 != 0 {
+						text = append(text, 0xCC)
+					}
+				}
+			}
+			nat := runCases(t, "native", false, textBase, cases, offs, text, areaInit, dataInit)
+			rew := runCases(t, "rewrite", false, textBase, cases, offs, text, areaInit, dataInit)
+			bad := fsCompare(t, cases, nat, rew)
+			ok := 0
+			for _, r := range nat {
+				if r.err == "" {
+					ok++
+				}
+			}
+			t.Logf("FSREAL %d windows x %d, %d cases, %d ran to the end natively, %d differ", len(wins), rounds, len(cases), ok, bad)
+			if bad > 0 {
+				t.Errorf("%d of %d cases differ", bad, len(cases))
+			}
+		})
+	}
+}
+
+func hexDecode(s string) ([]byte, error) {
+	if len(s)%2 != 0 {
+		return nil, fmt.Errorf("odd hex")
+	}
+	out := make([]byte, len(s)/2)
+	for i := range out {
+		var b byte
+		if _, err := fmt.Sscanf(s[2*i:2*i+2], "%02x", &b); err != nil {
+			return nil, err
+		}
+		out[i] = b
+	}
+	return out, nil
 }
