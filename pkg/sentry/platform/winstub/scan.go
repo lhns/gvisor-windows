@@ -813,7 +813,9 @@ func ScanFS(code []byte) FSReport {
 // splitFSAt reports whether the last bytes of code are the start of a
 // %fs-prefixed instruction that continues in the next piece of text, and where it
 // starts (-1 if not). The decoder cannot see such an instruction in either piece.
-func splitFSAt(code []byte, list []ins, from int) (p int) {
+// The bytes are decoded again from an instruction boundary, padded with zeros so
+// that the decoder can tell how long the last instruction is.
+func splitFSAt(code []byte, list []ins, from int) int {
 	pos := from
 	for i := len(list) - 1; i >= 0; i-- {
 		if list[i].off+list[i].n <= len(code)-15 {
@@ -822,25 +824,29 @@ func splitFSAt(code []byte, list []ins, from int) (p int) {
 		}
 	}
 	pos = max(pos, from)
-	p = -1
-	defer func() {
-		if recover() != nil && hasFSPrefix(code[pos:]) {
-			p = pos // (the decoder panics on a truncated instruction)
-		}
-	}()
 	for pos < len(code) {
-		inst, err := x86asm.Decode(code[pos:], 64)
-		if err == x86asm.ErrTruncated || (err == nil && pos+inst.Len > len(code)) {
+		padded := append(append(make([]byte, 0, len(code)-pos+15), code[pos:]...), make([]byte, 15)...)
+		n := 0
+		func() {
+			defer func() { recover() }()
+			if inst, err := x86asm.Decode(padded, 64); err == nil {
+				n = inst.Len
+			}
+		}()
+		if n == 0 {
+			n = fsVexLen(padded[:min(len(padded), 16)])
+		}
+		if n == 0 {
+			pos++
+			continue
+		}
+		if pos+n > len(code) {
 			if hasFSPrefix(code[pos:]) {
 				return pos
 			}
 			return -1
 		}
-		if err != nil || inst.Len == 0 {
-			pos++
-			continue
-		}
-		pos += inst.Len
+		pos += n
 	}
 	return -1
 }
