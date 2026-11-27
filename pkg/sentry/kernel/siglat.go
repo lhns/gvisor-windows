@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"strconv"
 	"sync"
 	"time"
@@ -87,6 +88,8 @@ var sigLat struct {
 	blockAt int64
 	n, over int64
 	dropped int64
+	dog     *time.Timer // dumps the goroutines if the send takes sigLatDogAfter
+	dumps   int
 	max     float64
 	hist    [len(sigLatBuckets)]int64
 }
@@ -105,7 +108,36 @@ func sigLatFire(signo int32) {
 		sigLat.dropped++
 	}
 	sigLat.cur = sigLatTrace{signo: signo, late: late, fire: now, cpuFire: profCPU(), cpuSent: -1, cpuOut: -1}
+	if sigLat.dog != nil {
+		sigLat.dog.Stop()
+	}
+	if sigLat.dumps < sigLatMaxDumps {
+		sigLat.dog = time.AfterFunc(sigLatDogAfter, func() { sigLatDump(now) })
+	}
 	sigLat.mu.Unlock()
+}
+
+// A send of a timer signal that takes longer than sigLatDogAfter dumps every
+// goroutine's stack (at most sigLatMaxDumps times), to show what it waits for.
+const (
+	sigLatDogAfter = 50 * time.Millisecond
+	sigLatMaxDumps = 3
+)
+
+func sigLatDump(fire int64) {
+	sigLat.mu.Lock()
+	stuck := sigLat.cur.fire == fire && sigLat.cur.sent == 0
+	if stuck {
+		sigLat.dumps++
+	}
+	sigLat.mu.Unlock()
+	if !stuck {
+		return
+	}
+	buf := make([]byte, 4<<20)
+	buf = buf[:runtime.Stack(buf, true)]
+	fmt.Fprintf(os.Stderr, "SIGLAT send of a timer signal not done after %v (fire qpc %.3f ms, qpc %.3f ms); goroutines:\n%s\nSIGLAT end of goroutines\n",
+		sigLatDogAfter, float64(fire)/1e6, float64(profNow())/1e6, buf)
 }
 
 // sigLatSent is called when the timer goroutine has sent the signal.
@@ -115,6 +147,9 @@ func sigLatSent() {
 	sigLat.mu.Lock()
 	if c := &sigLat.cur; c.fire != 0 && c.sent == 0 {
 		c.sent, c.cpuSent = now, cpu
+		if sigLat.dog != nil {
+			sigLat.dog.Stop()
+		}
 	}
 	sigLat.mu.Unlock()
 }
