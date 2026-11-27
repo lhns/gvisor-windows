@@ -11,6 +11,7 @@
 .PARAMETER Data     Folder of the engine state and storage (images, containers, volumes, logs).
 .PARAMETER Share    Windows folder the engine may bind-mount from (as /mnt/<drive>/<path>); none by default.
 .PARAMETER Podman   podman.exe (the remote client); with it, start waits until the engine answers.
+.PARAMETER StorageDriver  overlay (default, the Sentry's overlay) or vfs. A storage folder keeps the driver it was made with: delete it to change.
 #>
 [CmdletBinding()]
 param(
@@ -18,6 +19,7 @@ param(
   [string]$Data = (Join-Path $env:LOCALAPPDATA 'gvisor-windows'),
   [string]$Share,
   [string]$Podman,
+  [ValidateSet('overlay', 'vfs')][string]$StorageDriver = 'overlay',
   [int]$TimeoutSeconds = 300
 )
 $ErrorActionPreference = 'Stop'
@@ -47,7 +49,7 @@ switch ($Action) {
   'start' {
     if (Get-EnginePid) { Write-Host "podman-engine: already running (pid $(Get-EnginePid))"; Show-Connect; return }
     $a = @{ Action = 'start'; Quiet = $true; Runsc = (Join-Path $root 'runsc.exe'); Work = $engine; Image = (Join-Path $root 'podman.erofs')
-      Name = 'gvisor'; TimeoutSeconds = $TimeoutSeconds }
+      Name = 'gvisor'; TimeoutSeconds = $TimeoutSeconds; StorageDriver = $StorageDriver }
     if ($Share) { $a.Share = $Share }
     if (-not $Podman) { $c = Get-Command podman.exe -ErrorAction SilentlyContinue; if ($c) { $Podman = $c.Source } }
     if ($Podman) { $a.Podman = $Podman }

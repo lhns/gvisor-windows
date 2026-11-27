@@ -1,9 +1,10 @@
 # Runs as the standard CI user: starts the engine in runsc and the acceptance test against it.
-param([Parameter(Mandatory)][string]$Root, [string]$StorageDriver = 'vfs', [string]$Only = 'all', [string]$FsMode = 'default')
+param([Parameter(Mandatory)][string]$Root, [string]$StorageDriver = 'overlay', [string]$Only = 'all', [string]$FsMode = 'default')
 $ErrorActionPreference = 'Continue'
-# A "-overlay" suffix on a mode (native-overlay, rewrite-overlay, rewrite-fxsave-overlay) runs that mode with the overlay storage driver
-# (kernel overlay in the Sentry on the host-folder storage, fuse-overlayfs removed).
-if ($FsMode -like '*-overlay') { $FsMode = $FsMode -replace '-overlay$', ''; $StorageDriver = 'overlay'; $env:ENGINE_NO_FUSE_OVERLAYFS = '1' }
+# The storage driver is overlay (ADR 0021); a "-vfs" suffix on a mode (native-vfs, rewrite-vfs) selects vfs. A "-overlay" suffix (native-overlay)
+# is still accepted.
+if ($FsMode -like '*-vfs') { $FsMode = $FsMode -replace '-vfs$', ''; $StorageDriver = 'vfs' }
+if ($FsMode -like '*-overlay') { $FsMode = $FsMode -replace '-overlay$', ''; $StorageDriver = 'overlay' }
 # Engine settings of the platform under test (ADR 0020): rewrite mode also keeps AVX-512 visible.
 if ($FsMode -eq 'native') { $env:WINSTUB_FSMODE = 'native' }
 if ($FsMode -eq 'native-replace') { $env:WINSTUB_FSMODE = 'native'; $env:WINSTUB_REPLACE_STALLED = '1' }

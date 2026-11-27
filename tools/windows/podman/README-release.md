@@ -59,7 +59,7 @@ Images and volumes stay and are there at the next start.
 
 The Podman acceptance (pull, run, TTY, build, bind mounts, ports, compose, restart, isolation) passes as a standard user
 under these conditions, each a property of the missing Linux host and not a change to Podman: stock Podman 6.2.0 from
-`quay.io/podman/stable`; storage driver `vfs` (the Sentry's overlay mount fails c/storage's probe); storage on a Windows
+`quay.io/podman/stable`; storage driver `overlay` on the Sentry's overlay (`-StorageDriver vfs` selects vfs; docs/adr/0021); storage on a Windows
 folder; published ports through the windows-nat gateway (a `podman-machine` marker in the image); the engine listens on
 TCP 8888 inside the sandbox and runsc relays it to the pipe and socket; cgroupfs manager with cgroups disabled (no
 systemd); the harness's containers.conf and storage.conf; all capabilities; `--network=windows-nat`,

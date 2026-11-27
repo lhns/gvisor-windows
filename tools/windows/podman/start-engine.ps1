@@ -25,7 +25,7 @@ param(
   [string]$Image,
   [string]$Name = 'ci',
   [string]$Share,                                 # Windows folder to expose to the engine
-  [string]$StorageDriver = 'vfs',
+  [string]$StorageDriver = 'overlay',
   [switch]$StaticOnTmpfs,
   [switch]$Quiet,                                 # end-user run: no --debug logs, engine-env probe or hang dump
   [string]$Podman,                                # podman.exe, to wait for the engine
@@ -105,10 +105,10 @@ function Start-Engine {
   'CAP_PERFMON', 'CAP_BPF', 'CAP_CHECKPOINT_RESTORE'
   # What the engine's process sees (capabilities, user namespace, environment), for comparison with the Linux harness; podman logs it as engine-env.txt.
   $probe = '{ grep -E "^(Uid|Gid|NoNewPrivs|Seccomp|Cap)" /proc/self/status; echo uid_map; cat /proc/self/uid_map; echo gid_map; cat /proc/self/gid_map; echo cap_last_cap; cat /proc/sys/kernel/cap_last_cap; readlink /proc/self/ns/user; stat -L -c %i /proc/self/ns/user; echo env; env | sort; } > /var/lib/containers/engine-env.txt 2>&1; '
-  # The overlay driver falls back to fuse-overlayfs when it is in the image; its FUSE daemon cannot run in the sandbox, so a run that wants the
-  # Sentry's overlay removes it from the engine's writable root (ENGINE_NO_FUSE_OVERLAYFS=1; the image keeps it, as the Linux harness image does).
+  # The overlay driver falls back to fuse-overlayfs when it is in the image; its FUSE daemon cannot run in the sandbox, so the overlay driver
+  # (the default, ADR 0021) removes it from the engine's writable root (the image keeps it, as the Linux harness image does).
   if ($Quiet) { $probe = '' }
-  if ($env:ENGINE_NO_FUSE_OVERLAYFS) { $probe += 'rm -f /usr/bin/fuse-overlayfs /usr/sbin/fuse-overlayfs; ' }
+  if ($StorageDriver -eq 'overlay' -or $env:ENGINE_NO_FUSE_OVERLAYFS) { $probe += 'rm -f /usr/bin/fuse-overlayfs /usr/sbin/fuse-overlayfs; ' }
   $spec = [ordered]@{
     ociVersion = '1.0.2'
     process    = [ordered]@{
