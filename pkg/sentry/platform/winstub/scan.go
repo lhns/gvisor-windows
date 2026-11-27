@@ -131,6 +131,18 @@ func decodeRangeSafe(code []byte, from, end int, list []ins) (res []ins, at int,
 				off += n
 				continue
 			}
+			// Instructions it does not know (BMI, mask registers, CET) have a length
+			// that follows from the encoding; skipping bytes instead would read the
+			// middle of them as other instructions and swallow the next ones.
+			if n, ripRel := unknownLen(code[off:min(len(code), off+16)]); n > 0 && off+n <= len(code) {
+				x := ins{off: off, n: n, cls: clsOK}
+				if ripRel {
+					x.cls = clsNever
+				}
+				list = append(list, x)
+				off += n
+				continue
+			}
 			off++
 			continue
 		}
@@ -448,6 +460,96 @@ func fsVexLen(b []byte) int {
 		return 0
 	}
 	return n
+}
+
+// modrmLen returns the length of the modrm byte at b[0] with its sib and
+// displacement, and whether the operand is rip-relative (0 if b is too short).
+func modrmLen(b []byte) (n int, ripRel bool) {
+	if len(b) == 0 {
+		return 0, false
+	}
+	mod, rm := b[0]>>6, b[0]&7
+	n = 1
+	if mod == 3 {
+		return n, false
+	}
+	if rm == 4 {
+		if len(b) < 2 {
+			return 0, false
+		}
+		n++
+		if mod == 0 && b[1]&7 == 5 {
+			n += 4
+		}
+	} else if mod == 0 && rm == 5 {
+		return n + 4, true
+	}
+	switch mod {
+	case 1:
+		n++
+	case 2:
+		n += 4
+	}
+	return n, false
+}
+
+// unknownLen returns the length of an instruction that the decoder does not know and
+// whose length follows from its encoding: VEX (BMI, mask registers, ...), EVEX and the
+// CET instructions, and whether it addresses memory relative to rip. 0 if b is none.
+func unknownLen(b []byte) (n int, ripRel bool) {
+	if len(b) < 3 {
+		return 0, false
+	}
+	var pre, op int // bytes before the opcode, the opcode map
+	evex := false
+	switch b[0] {
+	case 0xC5:
+		pre, op = 2, 1
+	case 0xC4:
+		pre, op = 3, int(b[1]&0x1F)
+	case 0x62:
+		pre, op, evex = 4, int(b[1]&7), true
+	case 0xF3: // CET: rdsspd/q, incsspd/q, saveprevssp, setssbsy, rstorssp
+		i := 1
+		if b[i]&0xF0 == 0x40 {
+			i++
+		}
+		if i+2 >= len(b) {
+			return 0, false
+		}
+		switch {
+		case b[i] == 0x0F && (b[i+1] == 0x1E || b[i+1] == 0xAE) && b[i+2]>>6 == 3:
+			return i + 3, false
+		case b[i] == 0x0F && b[i+1] == 0x01 && (b[i+2] == 0xEA || b[i+2] == 0xE8):
+			return i + 3, false
+		case b[i] == 0x0F && b[i+1] == 0x01 && b[i+2]>>6 != 3 && b[i+2]>>3&7 == 5:
+			m, rip := modrmLen(b[i+2:])
+			if m == 0 {
+				return 0, false
+			}
+			return i + 2 + m, rip
+		}
+		return 0, false
+	default:
+		return 0, false
+	}
+	if len(b) <= pre {
+		return 0, false
+	}
+	opcode := b[pre]
+	n = pre + 1
+	if !evex && op == 1 && opcode == 0x77 { // vzeroupper, vzeroall
+		return n, false
+	}
+	m, rip := modrmLen(b[n:])
+	if m == 0 {
+		return 0, false
+	}
+	n += m
+	if op == 3 || op == 1 && (opcode >= 0x70 && opcode <= 0x73 || opcode == 0xC2 || opcode >= 0xC4 && opcode <= 0xC6) {
+		n++
+	}
+	return n, rip
 }
 
 func regNum(r x86asm.Reg) int {
