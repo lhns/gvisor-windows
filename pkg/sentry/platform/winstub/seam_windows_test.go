@@ -123,3 +123,82 @@ func TestEntryAfterPadding(t *testing.T) {
 		})
 	}
 }
+
+// TestFSSeam: the %fs counterpart of TestSeamRedecode, in both mapping orders and
+// near and far from the veneers. Text mapped in two pieces whose boundary is inside
+// an instruction; when the upper piece comes first its first bytes are decoded from
+// a guess, and the guess must be put right once the lower piece arrives:
+//   - a guessed instruction swallows the start of a real %fs instruction (the site
+//     would run unrewritten, with a zero base);
+//   - the bytes of an immediate look like an %fs instruction (the immediate must not
+//     be changed);
+//   - an %fs instruction itself is cut by the boundary.
+//
+// In native mode the same code must give the same results (no rewriting at all).
+func TestFSSeam(t *testing.T) {
+	pad := func(head, tail []byte) []byte {
+		b := make([]byte, pageSz)
+		for i := range b {
+			b[i] = 0x90
+		}
+		copy(b, head)
+		copy(b[pageSz-len(tail):], tail)
+		return b
+	}
+	report := []byte{0x48, 0x89, 0xc7, 0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05} // mov %rax,%rdi; mov $500,%eax; syscall
+	cat := func(parts ...[]byte) []byte {
+		var out []byte
+		for _, p := range parts {
+			out = append(out, p...)
+		}
+		return out
+	}
+	cases := []struct {
+		name   string
+		lo, hi []byte
+		cut    uint64 // where execution starts, counted back from the end of the low page
+		want   uint64 // rdi at the syscall
+	}{
+		// lea 0x????c081(%rip),%rbx is cut after its opcode; its displacement bytes (81 c0 12 34)
+		// read as `add $imm32,%eax` from the middle, which swallows the first bytes of the
+		// real `mov %fs:0x28,%rax` behind it.
+		{"guessed instruction swallows an %fs instruction",
+			pad(nil, []byte{0x48, 0x8d, 0x1d}),
+			pad(cat([]byte{0x81, 0xc0, 0x12, 0x34, 0x64, 0x48, 0x8b, 0x04, 0x25, 0x28, 0, 0, 0}, report), nil), 3, 0x1111},
+		// movabs $imm64,%rax is cut after its opcode; the immediate 64 8b 04 25 28 00 00 00
+		// is `mov %fs:0x28,%eax` from the middle.
+		{"guessed %fs instruction inside an immediate",
+			pad(nil, []byte{0x48, 0xb8}),
+			pad(cat([]byte{0x64, 0x8b, 0x04, 0x25, 0x28, 0, 0, 0}, report), nil), 2, 0x0000002825048b64},
+		// mov %fs:0x28,%rax cut after its first three bytes
+		{"%fs instruction cut by the boundary",
+			pad(nil, []byte{0x64, 0x48, 0x8b}),
+			pad(cat([]byte{0x04, 0x25, 0x28, 0, 0, 0}, report), nil), 3, 0x1111},
+	}
+	for _, base := range []uint64{textBase, 0x1_0000_0000} {
+		for _, c := range cases {
+			for _, lowFirst := range []bool{true, false} {
+				t.Run(fmt.Sprintf("%s, base %#x, low first %v", c.name, base, lowFirst), func(t *testing.T) {
+					h := newHarness(t)
+					mm := h.newMM()
+					lo, hi := h.pages(c.lo, 1), h.pages(c.hi, 1)
+					if lowFirst {
+						h.mapAt(mm, base, lo, rx)
+						h.mapAt(mm, base+pageSz, hi, rx)
+					} else {
+						h.mapAt(mm, base+pageSz, hi, rx)
+						h.mapAt(mm, base, lo, rx)
+					}
+					h.mapAt(mm, tlsBase, h.pages(tlsData(), 1), rw)
+					cx := h.p.NewContext(pkgcontext.Background())
+					defer cx.Release()
+					ac := newAC(base+pageSz-c.cut, 0)
+					ac.StateData().Regs.Fs_base = tlsBase
+					if nr := h.syscall(cx, mm, ac); nr != 500 || ac.StateData().Regs.Rdi != c.want {
+						t.Fatalf("syscall %d, rdi %#x; want 500, %#x", nr, ac.StateData().Regs.Rdi, c.want)
+					}
+				})
+			}
+		}
+	}
+}

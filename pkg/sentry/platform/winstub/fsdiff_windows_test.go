@@ -46,7 +46,7 @@ import (
 const (
 	fdText    = 0xC00000
 	fdFar     = 0x3_0000_0000
-	fdFS      = 0x910000          // the %fs base: the middle of a data area
+	fdFS      = 0x910000 // the %fs base: the middle of a data area
 	fdArea    = 0x900000
 	fdAreaLen = 0x20000
 	fdStack   = 0x700000
