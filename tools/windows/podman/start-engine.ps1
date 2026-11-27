@@ -101,17 +101,14 @@ function Start-Engine {
   'CAP_MAC_OVERRIDE', 'CAP_MAC_ADMIN', 'CAP_SYSLOG', 'CAP_WAKE_ALARM', 'CAP_BLOCK_SUSPEND', 'CAP_AUDIT_READ',
   'CAP_PERFMON', 'CAP_BPF', 'CAP_CHECKPOINT_RESTORE'
   # What the engine's process sees (capabilities, user namespace, environment), for comparison with the Linux harness; podman logs it as engine-env.txt.
-  $probe = '{ grep -E "^(Uid|Gid|NoNewPrivs|Seccomp|Cap)" /proc/self/status; echo uid_map; cat /proc/self/uid_map; echo gid_map; cat /proc/self/gid_map; echo cap_last_cap; cat /proc/sys/kernel/cap_last_cap; readlink /proc/self/ns/user; echo env; env | sort; } > /var/lib/containers/engine-env.txt 2>&1; '
+  $probe = '{ grep -E "^(Uid|Gid|NoNewPrivs|Seccomp|Cap)" /proc/self/status; echo uid_map; cat /proc/self/uid_map; echo gid_map; cat /proc/self/gid_map; echo cap_last_cap; cat /proc/sys/kernel/cap_last_cap; readlink /proc/self/ns/user; stat -L -c %i /proc/self/ns/user; echo env; env | sort; } > /var/lib/containers/engine-env.txt 2>&1; '
   $spec = [ordered]@{
     ociVersion = '1.0.2'
     process    = [ordered]@{
       terminal     = $false
       user         = @{ uid = 0; gid = 0 }
       args         = @('sh', '-c', ($probe + 'mkdir -p /run/podman /run/containers/storage; exec podman --log-level=info system service --time=0 tcp://0.0.0.0:8888'))
-      env          = @('PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'HOME=/root', 'TERM=xterm', 'container=podman', 'CONTAINERS_STORAGE_CONF=/etc/containers/storage.conf',
-        # Still needed (round 10): without it the build picks buildah's rootless isolation (pasta fails as root); the
-        # inputs of c/storage's IsRootless() (euid, CapEff, uid_map, env) all look rootful in engine-env.txt, cause unknown.
-        'BUILDAH_ISOLATION=oci')
+      env          = @('PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'HOME=/root', 'TERM=xterm', 'container=podman', 'CONTAINERS_STORAGE_CONF=/etc/containers/storage.conf')
       cwd          = '/'
       capabilities = @{ bounding = $caps; effective = $caps; permitted = $caps; inheritable = $caps }
     }
