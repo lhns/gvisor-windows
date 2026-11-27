@@ -44,7 +44,7 @@ type fsKey struct {
 
 // patchFS rewrites the %fs instruction of site into a jump to a veneer, or, if
 // that is impossible, leaves it as ud2 for the debugger to run (fsRunInline).
-func (as *addressSpace) patchFS(code []byte, base uint64, site *scanSite, cl *claims, st *siteStats) {
+func (as *addressSpace) patchFS(code []byte, base uint64, site *scanSite, cl *claims, st *siteStats, unsure bool) {
 	win, tgt := site.win[:site.n], site.tgt[:site.n]
 	x := win[site.s]
 	if x.cls != clsFS {
@@ -59,7 +59,10 @@ func (as *addressSpace) patchFS(code []byte, base uint64, site *scanSite, cl *cl
 	if rel > -(1<<31)+(1<<20) && rel < (1<<31)-(1<<20) {
 		minLen = 5
 	}
-	a, b, ok := planFSWindow(win, tgt, site.s, minLen, func(lo, hi int) bool { return !cl.taken(lo, hi) })
+	a, b, ok := 0, 0, false
+	if !unsure {
+		a, b, ok = planFSWindow(win, tgt, site.s, minLen, func(lo, hi int) bool { return !cl.taken(lo, hi) })
+	}
 	if ok {
 		ok = as.fsWindow(code, base, win, a, b, site.s, minLen, cl)
 	}

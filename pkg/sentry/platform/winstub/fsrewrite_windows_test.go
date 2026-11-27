@@ -320,3 +320,31 @@ func TestAVX512State(t *testing.T) {
 	}
 	check("across an interrupt", 512)
 }
+
+// TestFSInstructionAfterSplit maps text in two pieces, the second beginning in the
+// middle of an instruction (xorps %xmm15,%xmm15) that is followed by a Go-style
+// `mov %fs:-8,%r14`: the sweep over the second piece starts at a wrong boundary,
+// unless it is given the last bytes of the first.
+func TestFSInstructionAfterSplit(t *testing.T) {
+	h := newHarness(t)
+	mm := h.newMM()
+	const base = 0x1_0000_0000
+	page1 := make([]byte, pageSz)
+	copy(page1[pageSz-3:], []byte{0x45, 0x0f, 0x57}) // xorps %xmm15,%xmm15, first three bytes
+	page2 := []byte{0xff,
+		0x64, 0x4c, 0x8b, 0x34, 0x25, 0xf8, 0xff, 0xff, 0xff, // mov %fs:-8,%r14
+		0x4c, 0x89, 0xf7, // mov %r14,%rdi
+		0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05} // syscall 500
+	h.mapAt(mm, base, h.pages(page1, 1), rx)
+	h.mapAt(mm, base+pageSz, h.pages(page2, 1), rx)
+	d := tlsData()
+	copy(d[0xf8:], le64(0x5eed))
+	h.mapAt(mm, tlsBase, h.pages(d, 1), rw)
+	c := h.p.NewContext(pkgcontext.Background())
+	defer c.Release()
+	ac := newAC(base+pageSz-3, 0)
+	ac.StateData().Regs.Fs_base = tlsBase + 0x100
+	if nr := h.syscall(c, mm, ac); nr != 500 || ac.StateData().Regs.Rdi != 0x5eed {
+		t.Fatalf("syscall %d, rdi %#x, want 500 and 0x5eed", nr, ac.StateData().Regs.Rdi)
+	}
+}

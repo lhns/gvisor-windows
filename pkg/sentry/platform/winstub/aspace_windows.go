@@ -122,6 +122,7 @@ type addressSpace struct {
 	fsCache   map[fsKey]uint64
 	fsVen     []*fsVenInfo
 	fsUD2     map[uint64][]byte
+	tails     map[uint64][]byte // original last bytes of the text ranges mapped, by end address
 	privs     []*privSection
 	edges     map[uint64]edge
 
@@ -141,7 +142,7 @@ func newAddressSpace(p *Platform) *addressSpace {
 	return &addressSpace{
 		p: p, loopDone: make(chan struct{}), started: make(chan error, 1),
 		vcur: stubasm.Veneers, siteCache: map[uint64]siteInfo{}, restartAt: map[uint64]uint64{},
-		ud2Sites: map[uint64]bool{}, fcur: stubasm.FSVeneers, fsCache: map[fsKey]uint64{}, fsUD2: map[uint64][]byte{}, byTid: map[uint32]*thread{}, edges: map[uint64]edge{},
+		ud2Sites: map[uint64]bool{}, fcur: stubasm.FSVeneers, fsCache: map[fsKey]uint64{}, fsUD2: map[uint64][]byte{}, tails: map[uint64][]byte{}, byTid: map[uint32]*thread{}, edges: map[uint64]edge{},
 	}
 }
 
@@ -701,7 +702,23 @@ func (as *addressSpace) patchText(content []byte, lo, hi uint64) siteStats {
 	if head && as.edges[lo].tail0f {
 		from = 1 // the 0x05 belongs to a syscall that starts in the range below
 	}
-	st, scan := as.patchCode(content, lo, from)
+	// The decoder needs a real instruction boundary to start from: the original
+	// last bytes of the range mapped just below are decoded first (the text is
+	// mapped in pieces, and a piece may begin in the middle of an instruction).
+	var pre []byte
+	if from == 0 {
+		pre = as.tails[lo]
+	}
+	tail := append([]byte(nil), content[max(0, len(content)-16):]...)
+	buf, bufBase := content, lo
+	if len(pre) > 0 {
+		buf, bufBase = append(append([]byte(nil), pre...), content...), lo-uint64(len(pre))
+	}
+	st, scan := as.patchCode(buf, bufBase, from, len(pre))
+	if len(pre) > 0 {
+		copy(content, buf[len(pre):])
+	}
+	as.tails[hi] = tail
 	debugf("edges at %#x: head05 %v from %d tail0f %v", lo, head, from, scan.tail0f)
 	lowE, highE := as.edges[lo], as.edges[hi]
 	if head && lowE.tail0f {
@@ -740,7 +757,7 @@ func (as *addressSpace) fixHead(a uint64) bool {
 		return false
 	}
 	orig := append([]byte(nil), buf...)
-	as.patchCode(buf, v.lo, 1)
+	as.patchCode(buf, v.lo, 1, 0)
 	buf[0] = 0x0B
 	off := v.off
 	base := off &^ 0xFFFF
