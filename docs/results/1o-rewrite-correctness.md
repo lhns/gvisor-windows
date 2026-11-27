@@ -26,3 +26,8 @@ Verdict: the rewrite-mode scanner had real holes (a decoder that lost its place 
 ## What is known about the failure
 
 The engine (the forked child) dies about 6 s in, when it begins to call opendir/readdir/closedir, in all runs. `WINSTUB_FSLOG` shows three threads moved out of veneers in every run: two at start-up and one in the errno veneer of `0x41e41f` (`neg %eax; mov %eax,%fs:(%rdx)`), restored scratch register and restart entry present. Open: what the rewrite mode changes for a forked child besides the veneers (the `%fs` base only in the TEB, no repair code in the thread page, the reserved veneer area in the guest range).
+
+## Measurements
+
+- Podman `modes=rewrite runs=8` (run 45999368417, on the decoder fix): the engine started in 6 of 8 runs (runs 2 and 8 lost it at the first request, as before); step 5 (apt) failed in every run with `double free or corruption (!prev)`, `Segmentation fault` or an abort in apt-get itself (Debian's dynamic glibc, so not only the static guest); steps 1-4 and 6-10 passed in the six runs with an engine. Target (8 of 8, steps like native) not met.
+- fork+exec (windows-profile, run 45980115921): 100 iterations 2.49 s, with `-aspool=2` 1.33 s, `-aspool=4` 1.23 s (runsc already uses 2 spares). The CPU profile is 87% waiting in `debugLoop`; the trace shows about 30 access-violation debug events per exec (lazily mapped text and data pages) and 3 to 4 DLL-load events of the new stub process, each 0.2 to 2 ms: the cost is the number of debug events per exec, not the Sentry's CPU. Not pursued (scope change).
