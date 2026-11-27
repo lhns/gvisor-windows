@@ -829,7 +829,6 @@ func (d *dentry) Translate(ctx context.Context, required, optional memmap.Mappab
 	if translatedEnd < required.End && cerr != nil {
 		return ts, &memmap.BusError{cerr}
 	}
-	log.Debugf("gofer Translate %s: at %v required %v optional %v fill %v -> %d translations %v", d.name, at, required, optional, fill, len(ts), ts)
 	if beyondEOF {
 		return ts, &memmap.BusError{io.EOF}
 	}
