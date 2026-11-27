@@ -186,8 +186,6 @@ flowchart TB
 | Exceptions overwrite guest stacks | ✔ fixed | Windows writes about 3 KB of exception data below the faulting thread stack pointer, so in-process handlers can corrupt Linux code; faults must go to the Sentry as debugger instead. |
 | Binary translation as a fallback | ⏸ parked | Translate guest code (as the owner's v3compat does with DynamoRIO on Linux) only if debugger faults or unpatchable syscalls prove too slow, or to support CPUs without FSGSBASE. |
 | Start guest processes fast | ✔ done · very-successful | A guest process takes 280-560 ms to start through the Sentry, against 18 ms for a bare stub; profile the gap and keep a pool of ready stubs. |
-| More room for %fs veneers | ⚠ open | python3 with libpython and libc needs about 8500 %fs veneers against room for about 7000, and 24% of far %fs sites in Rust PIE binaries such as netavark fall back to the 100 us debugger path. |
-| Fault reported under a patch jump | ⚠ open | A fault in an instruction displaced into a veneer can still be reported at an address under the jump; a signal handler returning there with ret would run the jump bytes. No case is known. |
 | Event waiting on IOCP | ⏸ parked | Waiting for many host events at once (epoll on Linux) moves to Windows completion ports. |
 | Profile the slow file and exec path | ✔ done · mixed | Creating a file on tmpfs costs about 1 ms and a fork+exec 32 ms on Windows; find where the time goes (syscall round trips, page faults, debug events, Sentry work) and fix the top causes. |
 | One-off negative WaitGroup panic | ⚠ open | A "negative WaitGroup counter" panic seen once in safecopy tests is not explained by stack overrun and did not recur in 1600 runs. |
@@ -211,9 +209,7 @@ flowchart TB
 <!-- BEGIN GENERATED: ready-now -->
 **windows-ci**
 
-- `platform-fs-veneer-capacity`: More room for %fs veneers
 - `sentry-waitgroup-panic`: One-off negative WaitGroup panic
-- `platform-fault-under-fs-jump`: Fault reported under a patch jump
 - `sentry-epoll-timeout-overshoot`: Rare long epoll timeout overshoot
 <!-- END GENERATED: ready-now -->
 
@@ -247,7 +243,7 @@ Generated on 2026-11-27.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 119 done, 7 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 121 done, 7 abandoned</summary>
 
 - `fs-attribute-cache`: Faster stat walks on host folders (✔ done · mixed). A git-status-like walk of 20000 files takes 1.2-2.4 s through the host folder; an attribute cache fed by the change watcher would bring stat near native.
   - Cold stat walk on a fresh mount is still about 4x native, 99-105 us per file (2026-11-26)
@@ -371,6 +367,9 @@ Generated on 2026-11-27.
 - `platform-avx-on-non-avx-cpu`: glibc runs AVX code on a non-AVX CPU (✔ fixed). On the dev VM a static glibc hello dies with SIGILL on vmovd (AVX) in start-up code, although the CPU has no AVX; busybox runs fine.
 - `platform-avx512-state-lost`: AVX-512 state lost across stops (✔ fixed). Podman's Go GC crashed at 0xfffffffffffffff8; a likely cause was found: a straddling instruction at a text-piece start swallowed Go's mov %fs:-8 load, now fixed. AVX-512 stays hidden until repeated acceptance runs are clean.
 - `platform-exception-dispatch-depth`: Measure exception stack use (✔ done · mixed). How far below the stack pointer Windows writes when it delivers an exception on AVX-512 CPUs, against what Go reserves; safecopy keeps its stack headroom helper.
+- `platform-fault-under-fs-jump`: Fault reported under a patch jump (✔ fixed). A fault in an instruction displaced into a veneer can still be reported at an address under the jump; a signal handler returning there with ret would run the jump bytes. No case is known.
+- `platform-fs-veneer-capacity`: More room for %fs veneers (✔ fixed). python3 with libpython and libc needs about 8500 %fs veneers against room for about 7000, and 24% of far %fs sites in Rust PIE binaries such as netavark fall back to the 100 us debugger path.
+  - A 32 MiB veneer area and PIE load base near it; 1-5% of far sites in high-mapped libraries still use the debugger (2026-11-27)
 - `platform-no-fsgsbase-fallback`: Support CPUs without FSGSBASE (✔ done · mixed). On CPUs or VMs without the instruction to set the thread-local register (like the dev VM), rewrite every %fs-prefixed guest instruction into a veneer that reads the base from per-thread storage; chosen automatically by CPUID.
   - Dev VM lacks FSGSBASE, XSAVE, OSXSAVE and AVX; runsc.exe refuses to start (2026-11-27)
   - Static glibc hello still dies with SIGILL on an AVX instruction on the dev VM (2026-11-27)
@@ -430,7 +429,7 @@ Generated on 2026-11-27.
 Each track has its own page with its tree, node table and per-node details.
 
 - [runsc - runsc](roadmap/tracks/runsc.md): 6 nodes (6 done)
-- [platform - platform](roadmap/tracks/platform.md): 44 nodes (38 done, 2 next, 3 parked, 1 abandoned)
+- [platform - platform](roadmap/tracks/platform.md): 44 nodes (40 done, 3 parked, 1 abandoned)
 - [sentry - sentry](roadmap/tracks/sentry.md): 16 nodes (13 done, 2 next, 1 parked)
 - [fs - files](roadmap/tracks/fs.md): 23 nodes (23 done)
 - [net - network](roadmap/tracks/net.md): 4 nodes (4 done)

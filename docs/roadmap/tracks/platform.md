@@ -42,14 +42,14 @@ flowchart TB
     platform_recycle_stubs["✔ Reuse stub processes<br/>across exec"]
     platform_avx512_state_lost>"✔ AVX-512 state lost<br/>across stops"]
     platform_avx_on_non_avx_cpu>"✔ glibc runs AVX code<br/>on a non-AVX CPU"]
-    platform_fs_veneer_capacity>"⚠ More room for %fs<br/>veneers"]
+    platform_fs_veneer_capacity>"✔ More room for %fs<br/>veneers"]
     platform_rewrite_mode_slow_engine>"✔ Podman engine stalls<br/>in rewrite mode"]
     platform_rewrite_glibc_init_crash>"✔ Static glibc crashes<br/>at start in rewrite<br/>mode"]
     platform_unrewritten_fs_in_library>"✔ Unrewritten %fs site<br/>in a library"]
     platform_rewrite_heap_corruption>"✔ glibc heap errors in<br/>rewrite mode"]
     platform_exception_dispatch_depth[/"✔ Measure exception<br/>stack use"/]
     platform_resume_inside_fs_window>"✔ Thread resumed<br/>inside a patch window"]
-    platform_fault_under_fs_jump>"⚠ Fault reported under<br/>a patch jump"]
+    platform_fault_under_fs_jump>"✔ Fault reported under<br/>a patch jump"]
     platform_64k_mapping_conflicts["⏸ Handle 64 KB mapping<br/>conflicts"]
     platform_hardware_acceleration["⏸ Use hardware<br/>acceleration when<br/>available"]
     platform_binary_translation_fallback["⏸ Binary translation<br/>as a fallback"]
@@ -141,12 +141,11 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class platform_elf_alignment_survey,platform_trap_cost,platform_4k_section_views,platform_exception_stack,platform_veh_on_guest_stack_unsafe,platform_debug_event_cost,platform_faults_per_exec,platform_stub_controller,platform_page_verification,platform_syscall_fast_path,platform_controller_wakeups,platform_winstub,platform_fp_state,platform_static_guest_from_memory,platform_retire_prototype,platform_memory_release,platform_split_syscall_unpatched,platform_map_files_without_sections,platform_busybox_on_windows,platform_veneer_address_in_child,platform_rare_hang_under_exec_load,platform_unsupported_errno,platform_avx512_state_lost,platform_avx_on_non_avx_cpu,platform_rewrite_mode_slow_engine,platform_rewrite_glibc_init_crash,platform_unrewritten_fs_in_library,platform_rewrite_heap_corruption,platform_resume_inside_fs_window succ
+    class platform_elf_alignment_survey,platform_trap_cost,platform_4k_section_views,platform_exception_stack,platform_veh_on_guest_stack_unsafe,platform_debug_event_cost,platform_faults_per_exec,platform_stub_controller,platform_page_verification,platform_syscall_fast_path,platform_controller_wakeups,platform_winstub,platform_fp_state,platform_static_guest_from_memory,platform_retire_prototype,platform_memory_release,platform_split_syscall_unpatched,platform_map_files_without_sections,platform_busybox_on_windows,platform_veneer_address_in_child,platform_rare_hang_under_exec_load,platform_unsupported_errno,platform_avx512_state_lost,platform_avx_on_non_avx_cpu,platform_fs_veneer_capacity,platform_rewrite_mode_slow_engine,platform_rewrite_glibc_init_crash,platform_unrewritten_fs_in_library,platform_rewrite_heap_corruption,platform_resume_inside_fs_window,platform_fault_under_fs_jump succ
     class platform_tls_register,platform_restricted_stub,platform_syscall_site_survey,platform_no_fsgsbase_fallback,platform_exception_dispatch_depth mixed
     class platform_zpoline_hooks dead
     class platform_fs_base_repair,platform_own_vdso,platform_recycle_stubs unrated
     class platform_fast_process_start vsucc
-    class platform_fs_veneer_capacity,platform_fault_under_fs_jump finding
     class platform_64k_mapping_conflicts,platform_hardware_acceleration,platform_binary_translation_fallback parked
 ```
 <!-- END GENERATED: track-platform -->
@@ -192,14 +191,14 @@ flowchart TB
 | `platform-recycle-stubs` | Reuse stub processes across exec | feature | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 | platform-no-fsgsbase-fallback |  |  |  | docs/results/1i-profile.md; docs/results/1r-platform-speed.md; docs/adr/0022-fork-and-exec-without-faults-patching-or-process-creation.md |
 | `platform-avx512-state-lost` | AVX-512 state lost across stops | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/results/1m-platform-repair.md |
 | `platform-avx-on-non-avx-cpu` | glibc runs AVX code on a non-AVX CPU | defect | windows-local | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/1j-no-fsgsbase.md; docs/results/1k-platform-next.md |
-| `platform-fs-veneer-capacity` | More room for %fs veneers | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/1j-no-fsgsbase.md |
+| `platform-fs-veneer-capacity` | More room for %fs veneers | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/1j-no-fsgsbase.md; docs/results/1s-veneers.md |
 | `platform-rewrite-mode-slow-engine` | Podman engine stalls in rewrite mode | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/results/1l-platform-stability.md |
 | `platform-rewrite-glibc-init-crash` | Static glibc crashes at start in rewrite mode | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/results/1l-platform-stability.md |
 | `platform-unrewritten-fs-in-library` | Unrewritten %fs site in a library | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/results/1m-platform-repair.md; docs/results/1o-rewrite-correctness.md |
 | `platform-rewrite-heap-corruption` | glibc heap errors in rewrite mode | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/results/1o-rewrite-correctness.md; docs/results/1p-rewrite-heap.md |
 | `platform-exception-dispatch-depth` | Measure exception stack use | experiment | windows-ci | done | mixed | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/0b-windows.md |
 | `platform-resume-inside-fs-window` | Thread resumed inside a patch window | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/1p-rewrite-heap.md; docs/results/1q-window-resume.md |
-| `platform-fault-under-fs-jump` | Fault reported under a patch jump | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/1q-window-resume.md |
+| `platform-fault-under-fs-jump` | Fault reported under a patch jump | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/1q-window-resume.md; docs/results/1s-veneers.md |
 
 ### Details per node
 
@@ -241,14 +240,14 @@ flowchart TB
 | `platform-recycle-stubs` | Reuse stub processes across exec |  |  | Each fork+exec starts two stub processes at about 10 ms each; recycling a stub on release and execve and mapping memory up front would cut process start further. | Done: 100 fork+exec take 0.36-0.57 s in all three modes (was 2.07/3.34/3.56 s): eager mapping at fork, exec and brk, a patched-text cache, recycled stub processes and reused stub threads (ADR 0022). |  |  |  |  |
 | `platform-avx512-state-lost` | AVX-512 state lost across stops |  |  | Podman's Go GC crashed at 0xfffffffffffffff8; a likely cause was found: a straddling instruction at a text-piece start swallowed Go's mov %fs:-8 load, now fixed. AVX-512 stays hidden until repeated acceptance runs are clean. | Fixed: not AVX-512 state but the native %fs repair giving up after 20 repairs in 5 ms; the debugger now decides from the fault address whether a base was lost. A Go reproducer died 12/12 with the old rule and passes 12/12 now. |  |  |  |  |
 | `platform-avx-on-non-avx-cpu` | glibc runs AVX code on a non-AVX CPU |  |  | On the dev VM a static glibc hello dies with SIGILL on vmovd (AVX) in start-up code, although the CPU has no AVX; busybox runs fine. | Not a platform bug: the runner's static glibc runs AVX in init_cpu_features; guests are now built in debian:bookworm. Found on the way: text pieces starting inside an instruction were decoded from garbage, now decoded with the tail of the piece below. |  |  |  |  |
-| `platform-fs-veneer-capacity` | More room for %fs veneers |  |  | python3 with libpython and libc needs about 8500 %fs veneers against room for about 7000, and 24% of far %fs sites in Rust PIE binaries such as netavark fall back to the 100 us debugger path. | Fixed when: python3 and netavark run in rewrite mode with under 1% of %fs executions on the debugger path. |  |  |  |  |
+| `platform-fs-veneer-capacity` | More room for %fs veneers |  |  | python3 with libpython and libc needs about 8500 %fs veneers against room for about 7000, and 24% of far %fs sites in Rust PIE binaries such as netavark fall back to the 100 us debugger path. | Met: with the 32 MiB area python3 sends 0.008% of %fs executions to the debugger and netavark 0.17%, all far under 1%; counters under GVISOR_PROFSTATS. |  |  |  |  |
 | `platform-rewrite-mode-slow-engine` | Podman engine stalls in rewrite mode |  |  | With %fs rewriting, the Podman engine answers version after 29-52 s instead of 2 s and then goes silent; no acceptance run completed in 8 tries. | Fixed: the same frozen-stub bug plus a full veneer area; a 32 MiB %fs veneer area brings the engine to native speed. |  |  |  |  |
 | `platform-rewrite-glibc-init-crash` | Static glibc crashes at start in rewrite mode |  |  | The static glibc fsstress guest dies with SIGSEGV in libc init right after set_tid_address in rewrite mode, every run; native mode runs it. | Fixed: a %fs instruction straddling two text pieces ran natively; it is now run by the debugger from a veneer. |  |  |  |  |
 | `platform-unrewritten-fs-in-library` | Unrewritten %fs site in a library |  |  | In rewrite mode the engine once died at start with SIGSEGV addr=0x28 during a cgo call, which looks like a %fs:0x28 stack-canary access with a zero base in a shared library. | Fixed: decoder length bugs (vzeroupper, BMI/EVEX/CET) left 30 %fs sites in glibc unrewritten; the decoder now matches objdump on libc, ld.so, busybox, sqlite and Go. The engine crash in sqlite was a NULL pointer from the heap corruption, not a %fs site. |  |  |  |  |
 | `platform-rewrite-heap-corruption` | glibc heap errors in rewrite mode |  |  | In rewrite mode, aptrename dies with free(): invalid size and apt inside builds with segfaults or double free; native mode runs them, so a %fs veneer likely computes or clobbers something wrong. | Fixed: Unmap refused any range reaching the sealed %fs veneer area, so released pages stayed mapped in the stub; it now unmaps around stub views. aptrename passes in rewrite; podman rewrite 8 of 8 all steps in the second run. |  |  |  |  |
 | `platform-exception-dispatch-depth` | Measure exception stack use | Dispatch writes 4512 bytes below RSP on every AVX-512 runner CPU whatever the thread dirtied (clean, ymm and zmm/k state all the same) |  | How far below the stack pointer Windows writes when it delivers an exception on AVX-512 CPUs, against what Go reserves; safecopy keeps its stack headroom helper. |  |  |  |  |  |
 | `platform-resume-inside-fs-window` | Thread resumed inside a patch window |  |  | In rewrite mode the platform can move a thread out of a veneer to an address inside the patch window; a Go signal handler then returns there and runs nop filler (one engine crash in 16 rewrite runs). | Fixed: int3 filler sends a thread returning into a window to its veneer; interrupts wait only while a thread would be reported under the jump. Open: a displaced-instruction fault under the jump (no known case). |  |  |  |  |
-| `platform-fault-under-fs-jump` | Fault reported under a patch jump |  |  | A fault in an instruction displaced into a veneer can still be reported at an address under the jump; a signal handler returning there with ret would run the jump bytes. No case is known. | Fixed when: such faults are reported at the window start or end, with a test. |  |  |  |  |
+| `platform-fault-under-fs-jump` | Fault reported under a patch jump |  |  | A fault in an instruction displaced into a veneer can still be reported at an address under the jump; a signal handler returning there with ret would run the jump bytes. No case is known. | Fixed: a fault under the jump is reported at the window start only when the earlier displaced instructions re-run with the same result and write nothing the faulting one reads; otherwise the planner refuses the window. TestFSFaultUnderJump covers repair-and-sigreturn. |  |  |  |  |
 
 ### Folded items per node
 

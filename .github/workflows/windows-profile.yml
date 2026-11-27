@@ -189,3 +189,87 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with: {name: runsc-profile, path: out}
+  # Rewrite mode (ADR 0020): how many %fs executions take the debugger path
+  # (docs/results/1s-veneers.md). The same workload runs normally and with every %fs
+  # instruction through the debugger (WINSTUB_FSUD2=1), whose count is the total.
+  fs-guests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Debian with python3 and netavark
+        run: |
+          docker run --name fsroot debian:trixie sh -c 'apt-get update -qq && apt-get install -y -qq --no-install-recommends python3 netavark busybox-static >/dev/null'
+          mkdir -p t
+          cat > t/py.py <<'PY'
+          import json, re, sys
+          n = int(sys.argv[1])
+          s = 0
+          for i in range(n):
+              s += len(json.dumps({"a": [i, str(i)], "b": re.sub("1", "x", str(i))}))
+          print("py", n, s)
+          PY
+          cat > t/nv.sh <<'SH'
+          /usr/lib/podman/netavark --version
+          mkdir -p /tmp/nv
+          cat > /tmp/opts.json <<'J'
+          {"container_id":"c0ffee","container_name":"c","networks":{"podman":{"interface_name":"eth1","static_ips":["10.88.0.2"]}},"network_info":{"podman":{"name":"podman","id":"2f259bab93aaaaa2542ba43ef33eb990d0999ee1b9924b557b7be53c0b7a1bb9","driver":"bridge","network_interface":"podman0","subnets":[{"subnet":"10.88.0.0/16","gateway":"10.88.0.1"}],"ipv6_enabled":false,"internal":false,"dns_enabled":false,"ipam_options":{"driver":"host-local"}}},"port_mappings":[]}
+          J
+          for i in 1 2 3; do
+            NETAVARK_FW=none /usr/lib/podman/netavark --config /tmp/nv setup /proc/self/ns/net < /tmp/opts.json; echo "setup $?"
+            NETAVARK_FW=none /usr/lib/podman/netavark --config /tmp/nv teardown /proc/self/ns/net < /tmp/opts.json; echo "teardown $?"
+          done
+          echo nv done
+          SH
+          docker cp t fsroot:/t
+          docker export fsroot > fsroot.tar
+          ls -l fsroot.tar
+      - uses: actions/upload-artifact@v4
+        with: {name: fs-guests, path: fsroot.tar, compression-level: 0}
+  fs-share:
+    needs: fs-guests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {name: fs-guests, path: dl}
+      - uses: ./.github/actions/winbin
+        with: {targets: sentryguest}
+      - name: Debugger share of %fs executions
+        shell: pwsh
+        run: |
+          . tools/windows/ci/leg.ps1
+          New-Item -ItemType Directory -Force out | Out-Null
+          $env:GVISOR_PROFSTATS = '1' # (the platform's counters; -profstats sets only the Sentry's)
+          $work = @(
+            @{n='python3'; a=@('/usr/bin/python3', '/t/py.py', '1000')},
+            @{n='python3-start'; a=@('/usr/bin/python3', '-c', 'pass')},
+            @{n='netavark'; a=@('/bin/sh', '/t/nv.sh')},
+            @{n='busybox-forkexec'; a=@('/bin/busybox', 'sh', '-c', 'i=0; while [ $i -lt 100 ]; do /bin/busybox true; i=$((i+1)); done')}
+          )
+          $bad = @()
+          foreach ($leg in 'rewrite', 'rewrite-fxsave') {
+            Set-Leg $leg
+            foreach ($w in $work) {
+              foreach ($ud2 in '', '1') {
+                $env:WINSTUB_FSUD2 = $ud2
+                $tag = "$leg $($w.n) $(if ($ud2) { 'all-ud2' } else { 'normal' })"
+                $t0 = Get-Date
+                $o = & C:\ci\bin\sentryguest.exe -profstats -net -sysmounts -timeout=900s '-tar=dl/fsroot.tar' '-env=PATH=/usr/bin:/bin,HOME=/tmp' @($w.a) 2>&1 | Out-String
+                $s = ((Get-Date) - $t0).TotalSeconds
+                $o | Out-File -Encoding utf8 "out/$($tag -replace ' ', '_').txt"
+                $dbg = 0; foreach ($m in [regex]::Matches($o, 'PROFSTATS key winstub %fs debugger run: (.*?)\s+(\d+)\s+[\d.]+ ms')) { $dbg += [int64]$m.Groups[2].Value }
+                "FSSHARE $tag : debugger runs $dbg, $([math]::Round($s, 1)) s, exit: $(($o -split "`n" | Select-String 'sentryguest: exit|py \d|nv done|setup \d|teardown \d|Error' | Select-Object -First 8) -join ' / ')" | Tee-Object -Append out/share.txt
+                $o -split "`n" | Select-String 'PROFSTATS key winstub' | ForEach-Object { "  $($_.Line.Trim())" } | Tee-Object -Append out/share.txt
+                if ($ud2) { $total = $dbg } else { $normal = $dbg }
+                if ($o -notmatch 'code 0, signaled false') { $bad += "$tag (did not exit 0)" }
+              }
+              # (the all-ud2 count is every %fs execution of the same workload)
+              $share = if ($total) { 100.0 * $normal / $total } else { 100 }
+              "FSSHARE $leg $($w.n): $normal of $total %fs executions on the debugger path ($([math]::Round($share, 4)) %)" | Tee-Object -Append out/share.txt
+              if ($share -ge 1) { $bad += "$leg $($w.n)" }
+            }
+          }
+          $env:WINSTUB_FSUD2 = ''
+          if ($bad) { "1% or more of the %fs executions on the debugger path: $bad"; exit 1 }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: fs-share, path: out}

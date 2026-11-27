@@ -2418,12 +2418,13 @@
 - outcome: unrated
   evidence:
   - docs/results/1j-no-fsgsbase.md
+  - docs/results/1s-veneers.md
   verdict_quote: ''
   headline: ''
   depends_on: []
   replaced_by: []
   start: '2026-11-27'
-  end: ''
+  end: '2026-11-27'
   folded:
   - A 32 MiB veneer area and PIE load base near it; 1-5% of far sites in high-mapped libraries still use the debugger (2026-11-27, commit 73227a2f1)
   overview: false
@@ -2431,10 +2432,10 @@
   title: More room for %fs veneers
   track: platform
   kind: defect
-  state: next
+  state: done
   lane: windows-ci
   plain: python3 with libpython and libc needs about 8500 %fs veneers against room for about 7000, and 24% of far %fs sites in Rust PIE binaries such as netavark fall back to the 100 us debugger path.
-  notes: 'Fixed when: python3 and netavark run in rewrite mode with under 1% of %fs executions on the debugger path.'
+  notes: 'Met: with the 32 MiB area python3 sends 0.008% of %fs executions to the debugger and netavark 0.17%, all far under 1%; counters under GVISOR_PROFSTATS.'
 - outcome: unrated
   evidence:
   - docs/results/5-podman-windows.md
@@ -2794,19 +2795,21 @@
   depends_on: &id016 []
   replaced_by: &id017 []
   start: '2026-11-27'
-  end: ''
+  end: '2026-11-27'
   folded: &id018 []
   overview: false
   id: platform-fault-under-fs-jump
   title: Fault reported under a patch jump
   track: platform
   kind: defect
-  state: next
+  state: done
   lane: windows-ci
   evidence:
   - docs/results/1q-window-resume.md
+  - docs/results/1s-veneers.md
   plain: A fault in an instruction displaced into a veneer can still be reported at an address under the jump; a signal handler returning there with ret would run the jump bytes. No case is known.
-  notes: 'Fixed when: such faults are reported at the window start or end, with a test.'
+  notes: 'Fixed: a fault under the jump is reported at the window start only when the earlier displaced instructions re-run with the same result and write nothing the faulting one reads; otherwise the planner
+    refuses the window. TestFSFaultUnderJump covers repair-and-sigreturn.'
 - outcome: unrated
   verdict_quote: ''
   headline: ''
