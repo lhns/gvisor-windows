@@ -226,3 +226,5 @@ var pGetExitCode = k32.NewProc("GetExitCodeThread")
 var pResetEvent = k32.NewProc("ResetEvent")
 
 var pNtTerminateThread = ntd.NewProc("NtTerminateThread")
+
+var pQueryThreadCycle = k32.NewProc("QueryThreadCycleTime")

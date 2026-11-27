@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 	"unsafe"
 
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/stubasm"
@@ -48,6 +49,25 @@ func unregisterAS(as *addressSpace) {
 func DumpState(w io.Writer) {
 	liveMu.Lock()
 	defer liveMu.Unlock()
+	// CPU cycles each thread used in 300 ms: which threads are running at all.
+	cycles := func() map[*thread]uint64 {
+		m := map[*thread]uint64{}
+		for as := range live {
+			as.tmu.Lock()
+			for _, t := range as.slots {
+				if t != nil && t.started && t.hThread != 0 {
+					var c uint64
+					pQueryThreadCycle.Call(t.hThread, uintptr(unsafe.Pointer(&c)))
+					m[t] = c
+				}
+			}
+			as.tmu.Unlock()
+		}
+		return m
+	}
+	c0 := cycles()
+	time.Sleep(300 * time.Millisecond)
+	c1 := cycles()
 	for as := range live {
 		fmt.Fprintf(w, "winstub: address space pid %d dead=%v\n", as.wpid, as.dead.Load())
 		as.tmu.Lock()
@@ -69,8 +89,8 @@ func DumpState(w io.Writer) {
 				}
 				pResumeThread.Call(t.hThread)
 			}
-			fmt.Fprintf(w, "  thread %d tid %d: state %d ctlSleep %d stubSleep %d mode %d parked %v lastKind %d req %+v spins %d rip %#x (%s) exit %d suspendcount %d replies %d setevents %d (failed %d, error %d) stubwaits %d\n",
-				i, t.tid, t.state(), *t.u32(stubasm.PgCtlSlp), *t.u32(stubasm.PgStubSlp), *t.u32(stubasm.PgMode), t.parked, t.lastKind, t.req, *t.u64(stubasm.PgSpins), rip, ntdllSymbol(rip), code, prevSuspend, t.nReply.Load(), t.nSet.Load(), t.nSetFail.Load(), t.lastSetErr.Load(), *t.u32(stubasm.PgWaits))
+			fmt.Fprintf(w, "  thread %d tid %d: state %d ctlSleep %d stubSleep %d mode %d parked %v lastKind %d req %+v spins %d rip %#x (%s) exit %d suspendcount %d cycles300ms %d replies %d setevents %d (failed %d, error %d) stubwaits %d\n",
+				i, t.tid, t.state(), *t.u32(stubasm.PgCtlSlp), *t.u32(stubasm.PgStubSlp), *t.u32(stubasm.PgMode), t.parked, t.lastKind, t.req, *t.u64(stubasm.PgSpins), rip, ntdllSymbol(rip), code, prevSuspend, c1[t]-c0[t], t.nReply.Load(), t.nSet.Load(), t.nSetFail.Load(), t.lastSetErr.Load(), *t.u32(stubasm.PgWaits))
 			t.mu.Unlock()
 		}
 		as.tmu.Unlock()
