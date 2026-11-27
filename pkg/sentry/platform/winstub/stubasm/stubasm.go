@@ -35,7 +35,8 @@ import "unsafe"
 // Windows maps fixed regions at [0x10000,0x94000), [0xA0000,0xA2000),
 // [0x200000,0x400000) and around 0x7FFE0000 in every process. The guest range
 // therefore starts at 0x400000 (GuestMin). Everything below it that the stub needs
-// (trap table, trampolines, veneers) lives in the free gap [0xA2000,0x200000), which
+// (trap table, trampolines, veneers) lives in the free gap [0xC0000,0x200000) (Windows maps
+// more below: [0x10000,0xA4000) and, depending on the build, a few pages at 0xA0000 or 0xB0000), which
 // is below 2 GiB so that `jmp *abs32` and `jmp rel32` from low guest code reach it.
 const (
 	ReserveMin uint64 = 0x10000          // placeholders start here
@@ -52,29 +53,29 @@ const (
 	GuestMin uint64 = 0x400000
 	GuestMax uint64 = CtlBase // first address the guest may not use
 
-	TrapPtrs     uint64 = 0xB0000 // 8-byte pointers, one per patched site (jmp *abs32 targets)
+	TrapPtrs     uint64 = 0xC0000 // 8-byte pointers, one per patched site (jmp *abs32 targets)
 	TrapPtrsSize uint64 = 0x10000
-	TrapCode     uint64 = 0xC0000 // 32-byte entries: mov $nr,%eax; movabs $ret,%rcx; jmp tramp
+	TrapCode     uint64 = 0xD0000 // 32-byte entries: mov $nr,%eax; movabs $ret,%rcx; jmp tramp
 	TrapCodeSize uint64 = 0x40000
 	EntrySize    uint64 = 32
 	MaxSites            = int(TrapPtrsSize / 8)
 
-	StubCode     uint64 = 0x100000 // tramp at +0, trampWait at +0x400, threadEntry at +0x800
+	StubCode     uint64 = 0x110000 // tramp at +0, trampWait at +0x400, threadEntry at +0x800
 	StubCodeSize uint64 = 0x1000
 	OffTramp     uint64 = 0
 	OffTrampWait uint64 = 0x400
 	OffThreadEnt uint64 = 0x800
 	OffTrampPark uint64 = 0xC00
 
-	Veneers     uint64 = 0x110000 // displaced instructions of relocated syscall sites
+	Veneers     uint64 = 0x120000 // displaced instructions of relocated syscall sites
 	VeneersSize uint64 = 0x70000
 	// Veneers whose syscall returns inside them live in the upper part, at
 	// addresses chosen platform-wide (the same in every address space).
-	VeneersShared uint64 = 0x148000
+	VeneersShared uint64 = 0x158000
 
 	// Veneers of %fs instructions (rewrite mode, ADR 0020), private to the address space.
-	FSVeneers     uint64 = 0x180000
-	FSVeneersSize uint64 = 0x80000
+	FSVeneers     uint64 = 0x190000
+	FSVeneersSize uint64 = 0x70000
 
 	AreaLo uint64 = TrapPtrs // the low stub area is one section of this range
 	AreaHi uint64 = FSVeneers + FSVeneersSize

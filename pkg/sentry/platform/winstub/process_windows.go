@@ -290,7 +290,15 @@ func (as *addressSpace) start() error {
 	as.mu.Lock()
 	defer as.mu.Unlock()
 	Trace("start: CreateProcess done")
-	if err := as.reserve(queryUsed(as.h, stubasm.ReserveMin, stubasm.ReserveMax)); err != nil {
+	used := queryUsed(as.h, stubasm.ReserveMin, stubasm.ReserveMax)
+	if debugEnabled {
+		for _, u := range used {
+			if u.lo < 0x1000000 {
+				debugf("stub process uses %v", u)
+			}
+		}
+	}
+	if err := as.reserve(used); err != nil {
 		return fail(err)
 	}
 	Trace("start: placeholders reserved")
@@ -524,6 +532,10 @@ func (as *addressSpace) onException(ev *debugEvent, ctx *ctxBuf, seenBP *bool) u
 		} else if orig := as.fsUD2At(rip); isUD2 && orig != nil && as.fsRunInline(t, ctx, rip, orig) {
 			// An %fs instruction that could not be patched runs in a veneer of the thread's own.
 		} else {
+			if debugEnabled {
+				bb, _ := as.readStub(rip-8, 24)
+				debugf("illegal instruction at %#x (thread %d): % x", rip, t.idx, bb)
+			}
 			as.park(t, ctx, request{kind: reqFault, sig: 4, code: 1, addr: rip})
 		}
 	case excBreakpoint:
