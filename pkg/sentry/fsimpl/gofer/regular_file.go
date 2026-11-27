@@ -15,10 +15,10 @@
 package gofer
 
 import (
-	"runtime"
 	"fmt"
 	"io"
 	"math"
+	"runtime"
 
 	"gvisor.dev/gvisor/pkg/abi/linux"
 	"gvisor.dev/gvisor/pkg/context"
