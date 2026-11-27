@@ -221,8 +221,11 @@ func (as *addressSpace) fsFix(t *thread, rip uint64) (newRip uint64, ok bool) {
 	if info == nil {
 		return rip, false
 	}
-	as.nFSFix.Add(1)
+	n := as.nFSFix.Add(1)
 	newRip, r1, restore := info.unwind(rip)
+	if fsLog && n <= 200 {
+		log.Printf("winstub: FSFIX thread %d: stopped at %#x in the veneer of %#x, back to %#x (restore r%d: %v)", t.idx, rip, info.w0, newRip, r1, restore)
+	}
 	if restore {
 		if v, ok := as.readTebSlot(t, stubasm.TebSave); ok {
 			*t.reg(r1) = v
