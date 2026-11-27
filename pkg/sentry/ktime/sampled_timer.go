@@ -194,13 +194,6 @@ func (t *SampledTimer) Get() (Time, Setting) {
 	if t.clock != unlockedClock {
 		now = t.clock.Now()
 	}
-	if TraceLate && t.setting.Enabled {
-		late := int64(now.Sub(t.setting.Next)) // gvisor-windows: GVISOR_SIGLAT
-		lastLate.Store(late)
-		if LateHook != nil {
-			LateHook(late, now.Nanoseconds())
-		}
-	}
 	s, exp := t.setting.At(now)
 	t.setting = s
 	if exp > 0 {
@@ -336,7 +329,11 @@ func (t *SampledTimer) tick() {
 		now = t.clock.Now()
 	}
 	if TraceLate && t.setting.Enabled {
-		lastLate.Store(int64(now.Sub(t.setting.Next))) // gvisor-windows: GVISOR_SIGLAT
+		late := int64(now.Sub(t.setting.Next)) // gvisor-windows: GVISOR_SIGLAT
+		lastLate.Store(late)
+		if LateHook != nil {
+			LateHook(late, now.Nanoseconds())
+		}
 	}
 	s, exp := t.setting.At(now)
 	t.setting = s

@@ -57,11 +57,11 @@ func sigLatTimedOut(signo int32) {
 		signo, float64(profNow())/1e6, time.Now().UTC().Format("15:04:05.000"))
 }
 
-// sigLatTick reports a Sentry timer that ran late or early by the threshold, with
-// the timer clock's reading beside the host's QPC (a gap between the two that
+// sigLatTick reports a Sentry timer that ran late by the threshold, with the
+// timer clock's reading beside the host's QPC (a gap between the two that
 // changes means the Sentry clock drifted).
 func sigLatTick(late, now int64) {
-	if late >= sigLatMin || -late >= sigLatMin {
+	if late >= sigLatMin {
 		fmt.Fprintf(os.Stderr, "SIGLAT ktime tick %.2f ms after its expiry (clock %.3f ms, qpc %.3f ms, %s UTC)\n",
 			float64(late)/1e6, float64(now)/1e6, float64(profNow())/1e6, time.Now().UTC().Format("15:04:05.000"))
 	}

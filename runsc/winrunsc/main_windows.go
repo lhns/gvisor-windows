@@ -238,9 +238,13 @@ type instance struct {
 	pf      *pipeForward
 	uf      *unixForward
 	logFile *os.File
+	log     *asyncLog
 }
 
 func (in *instance) closeLog() {
+	if in.log != nil {
+		in.log.Close()
+	}
 	if in.logFile != nil {
 		in.logFile.Close()
 	}
@@ -249,10 +253,15 @@ func (in *instance) closeLog() {
 // newInstance reads the bundle and creates the Loader (the sandbox, with the
 // container not yet started). On failure it prints the error and returns the
 // exit code.
-func newInstance(id, bundle string, terminal bool) (*instance, int) {
+func newInstance(id, bundle string, terminal bool) (ret *instance, code int) {
 	// Logs must not reach stderr, which belongs to the container.
 	log.SetTarget(discard{})
 	in := &instance{}
+	defer func() {
+		if ret == nil {
+			in.closeLog() // write out the error's log lines
+		}
+	}()
 	conf, err := config.NewFromFlags(flag.CommandLine)
 	if err != nil {
 		return nil, fatalf("%v", err)
@@ -266,7 +275,8 @@ func newInstance(id, bundle string, terminal bool) (*instance, int) {
 			return nil, fatalf("opening the debug log: %v", err)
 		}
 		in.logFile = f // closed by the caller (closeLog), not when newInstance returns
-		log.SetTarget(log.GoogleEmitter{Writer: &log.Writer{Next: &reportingWriter{w: f}}})
+		in.log = newAsyncLog(&reportingWriter{w: f})
+		log.SetTarget(log.GoogleEmitter{Writer: &log.Writer{Next: in.log}})
 	}
 	log.Infof("runsc %s %s, %d CPUs, args %v", version.Version(), runtime.Version(), runtime.NumCPU(), os.Args)
 

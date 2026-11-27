@@ -12,7 +12,7 @@ var TraceLate bool
 var lastLate atomic.Int64
 
 // LateHook, if set, is called by every SampledTimer.tick with its lateness (ns,
-// negative if the tick came before the expiry by the timer's clock) and the
+// negative if the tick came before the expiry, as after a reset) and the
 // clock's reading.
 var LateHook func(late, now int64)
 

@@ -884,9 +884,6 @@ func testCfr() error {
 // testClocks runs test/guests/clocks: sleeps, clocks, timerfd, POSIX and interval timers and
 // poll/select/epoll timeouts, each within a generous tolerance. The guest names every failed check.
 func testClocks() error {
-	// A late timer signal explains itself in stderr (SIGLAT, STALL lines).
-	os.Setenv("GVISOR_SIGLAT", "1")
-	defer os.Unsetenv("GVISOR_SIGLAT")
 	r, err := runsc("clocks", []string{"/bin/clocks"}, nil)
 	if err != nil {
 		return err
