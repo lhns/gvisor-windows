@@ -40,6 +40,8 @@ var (
 	stressWorkers = flag.Int("stress-workers", 6, "fsstress: parallel mount namespaces")
 	stressStrace  = flag.Bool("stress-strace", false, "fsstress: run with runsc --strace")
 	stressIters   = flag.Int("stress-iters", 600, "fsstress: iterations per worker")
+	winstubDebug  = flag.Bool("winstub-debug", false, "WINSTUB_DEBUG=1 for runsc (patching log lines in stderr)")
+	gcSecs        = flag.Int("gc-secs", 20, "gogc: seconds to run")
 	fsMode   = flag.String("fsmode", "", "WINSTUB_FSMODE for runsc (native or rewrite)")
 	fpMode   = flag.String("fpmode", "", "WINSTUB_FPMODE for runsc (fxsave)")
 )
@@ -52,6 +54,10 @@ type result struct {
 func main() {
 	flag.Parse()
 	// (the CI runs this as another user, whose environment cannot be set from outside)
+	if *winstubDebug {
+		os.Setenv("WINSTUB_DEBUG", "1")
+	}
+	os.Setenv("WINSTUB_TRIPWIRE", "1") // a syscall that runs on Windows fails the test
 	if *fsMode != "" {
 		os.Setenv("WINSTUB_FSMODE", *fsMode)
 	}
@@ -89,6 +95,7 @@ func main() {
 		{"mountkeep", testMountKeep},
 		{"cfr", testCfr},
 		{"debian", testDebian},
+		{"gogc", testGoGC},
 		{"bench", testBench},
 		{"forward", testForward},
 		{"mounts", func() error { return profileRun("mounts", "cat /proc/self/mountinfo; pwd; ls -la /tmp") }},
@@ -107,7 +114,7 @@ func main() {
 	}
 	failed := 0
 	for _, t := range tests {
-		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "strace" || t.name == "restart" || t.name == "aptrename" || t.name == "mountkeep" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec" || t.name == "sockfs" || t.name == "fsstress" || t.name == "cfr" || t.name == "debian")) {
+		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "strace" || t.name == "restart" || t.name == "aptrename" || t.name == "mountkeep" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec" || t.name == "sockfs" || t.name == "fsstress" || t.name == "cfr" || t.name == "debian" || t.name == "gogc")) {
 			continue
 		}
 		start := time.Now()
@@ -807,6 +814,9 @@ func testDebian() error {
 		fmt.Printf("debian ld.so from %s: exit %d stdout %q stderr %q\n", d, r.code, r.stdout, r.stderr)
 		if r.code != 0 {
 			bad++
+			if *winstubDebug {
+				fmt.Println("runsc stderr:", r.stderr)
+			}
 			if b, err := os.ReadFile(filepath.Join(*workDir, "logs", "debian.log")); err == nil {
 				for _, l := range strings.Split(string(b), "\n") {
 					if (strings.Contains(l, " X ") && (strings.Contains(l, "ld-linux") || strings.Contains(l, " echo "))) || strings.Contains(l, "gofer Translate") {
@@ -820,4 +830,33 @@ func testDebian() error {
 		return fmt.Errorf("%d of 2 runs failed", bad)
 	}
 	return nil
+}
+
+// testGoGC runs test/guests/gogc (a Go program that keeps the collector busy on 8 threads) for
+// -gcsecs seconds: the guest dies with SIGSEGV at 0xfffffffffffffff8 when a thread's %fs base is lost
+// and not restored (docs/results/1m-platform-repair.md).
+func testGoGC() error {
+	r, err := runsc("gogc", []string{"/bin/gogc", strconv.Itoa(*gcSecs)}, nil)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("gogc: exit %d stdout %q stderr head %q tail %q\n", r.code, r.stdout, head(r.stderr, 1200), tail(r.stderr, 800))
+	if r.code != 0 || !strings.Contains(r.stdout, "gogc ok") {
+		return fmt.Errorf("gogc: exit %d", r.code)
+	}
+	return nil
+}
+
+func head(s string, n int) string {
+	if len(s) > n {
+		return s[:n]
+	}
+	return s
+}
+
+func tail(s string, n int) string {
+	if len(s) > n {
+		return s[len(s)-n:]
+	}
+	return s
 }

@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"sync"
 	"sync/atomic"
 
 	pkgcontext "gvisor.dev/gvisor/pkg/context"
@@ -67,6 +68,16 @@ type Platform struct {
 	image         []byte
 	ntSet, ntWait uint64
 	ntTerm        uint64
+	ntSetInfo     uint64
+
+	// Spare stub processes, started in the background so that a fork or an exec does
+	// not wait for a process to be created (WINSTUB_SPARES, default 0: no gain measured).
+	spareMu  sync.Mutex
+	spares   []*addressSpace
+	sparing  bool // a goroutine is starting spares
+	closed   bool
+	nSpares  int
+	tripwire bool // the stubs register an instrumentation callback that catches unpatched syscalls (WINSTUB_TRIPWIRE=1)
 }
 
 // New creates the platform.
@@ -94,6 +105,9 @@ func New(opts platform.Options) (*Platform, error) {
 		return nil, err
 	}
 	if err := pNtTerminateThread.Find(); err != nil {
+		return nil, err
+	}
+	if err := pNtSetInfoProcess.Find(); err != nil {
 		return nil, err
 	}
 	// Without XSAVE (or with WINSTUB_FPMODE=fxsave, which also hides it from the
@@ -131,20 +145,80 @@ func New(opts platform.Options) (*Platform, error) {
 	return &Platform{
 		spinLimit: envInt("WINSTUB_SPINLIMIT", runtime.NumCPU()),
 		maxTokens: int32(envInt("WINSTUB_TOKENS", max(1, runtime.NumCPU()/2))),
-		xmask:    xmask,
+		xmask:     xmask,
 		fsRewrite: rewrite,
-		fpSize:   int(fpSize),
-		stubPath: f.Name(),
-		image:    stubasm.Image(rewrite, fxsave),
-		ntSet:    uint64(pNtSetEvent.Addr()),
-		ntWait:   uint64(pNtWaitSingle.Addr()),
-		ntTerm:   uint64(pNtTerminateThread.Addr()),
+		fpSize:    int(fpSize),
+		stubPath:  f.Name(),
+		image:     stubasm.Image(rewrite, fxsave),
+		ntSet:     uint64(pNtSetEvent.Addr()),
+		ntWait:    uint64(pNtWaitSingle.Addr()),
+		ntTerm:    uint64(pNtTerminateThread.Addr()),
+		ntSetInfo: uint64(pNtSetInfoProcess.Addr()),
+		nSpares:   envInt("WINSTUB_SPARES", 0),
+		tripwire:  os.Getenv("WINSTUB_TRIPWIRE") != "",
 	}, nil
 }
 
 // Close removes the stub image file (best effort: Windows keeps it while a stub
 // runs).
-func (p *Platform) Close() { os.Remove(p.stubPath) }
+func (p *Platform) Close() {
+	p.spareMu.Lock()
+	p.closed = true
+	spares := p.spares
+	p.spares = nil
+	p.spareMu.Unlock()
+	for _, as := range spares {
+		as.Release()
+	}
+	os.Remove(p.stubPath)
+}
+
+// takeSpare returns a started stub process if there is one, and makes sure the
+// next ones are being started.
+func (p *Platform) takeSpare() *addressSpace {
+	p.spareMu.Lock()
+	defer p.spareMu.Unlock()
+	if p.nSpares <= 0 || p.closed {
+		return nil
+	}
+	var as *addressSpace
+	for len(p.spares) > 0 && as == nil {
+		as, p.spares = p.spares[len(p.spares)-1], p.spares[:len(p.spares)-1]
+		if as.dead.Load() {
+			go as.Release()
+			as = nil
+		}
+	}
+	if !p.sparing && len(p.spares) < p.nSpares {
+		p.sparing = true
+		go p.startSpares()
+	}
+	return as
+}
+
+func (p *Platform) startSpares() {
+	for {
+		p.spareMu.Lock()
+		if p.closed || len(p.spares) >= p.nSpares {
+			p.sparing = false
+			p.spareMu.Unlock()
+			return
+		}
+		p.spareMu.Unlock()
+		as, err := p.newAS()
+		p.spareMu.Lock()
+		if err != nil || p.closed {
+			p.sparing = false
+			p.spareMu.Unlock()
+			if err == nil {
+				as.Release()
+			}
+			return
+		}
+		p.spares = append(p.spares, as)
+		p.spareMu.Unlock()
+	}
+}
 
 // SupportsAddressSpaceIO implements platform.Platform.
 func (*Platform) SupportsAddressSpaceIO() bool { return false }
@@ -169,6 +243,9 @@ func (*Platform) MaxUserAddress() hostarch.Addr { return hostarch.Addr(stubasm.G
 // 20 ms to start. opts.DisableSyscallPatching is ignored: an unpatched syscall
 // would reach the Windows kernel.
 func (p *Platform) NewAddressSpace(opts platform.AddressSpaceOptions) (platform.AddressSpace, error) {
+	if as := p.takeSpare(); as != nil {
+		return as, nil
+	}
 	// A stub that does not come up (a rare loader stall) is tried again.
 	var err error
 	for try := 0; try < 3; try++ {

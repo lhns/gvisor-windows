@@ -277,3 +277,19 @@ Crashes: **1 of 8 runs still has the guest GC crash** (run 2, second engine boot
 **What the hang dumps show** (runs 2, 6, 8; 60-95 KB each): the Sentry is idle: 7 to 12 task goroutines in `futexWaitDuration` (the guest's threads asleep on futexes), the kernel's main goroutine waiting, no goroutine inside a stub wait. The winstub state of run 8 shows all stub threads of the container's address spaces parked in `NtWaitForSingleObject` (state 1, stubSleep 1, nothing published), i.e. no stuck stub in the sense of the bounded waits; one address space (pid 3020) has `last debug event ... code 0xc0000005 ... ContinueDebugEvent ok=false err=The parameter is incorrect`, `replaced threads 3`, a thread in state 0 with ctlSleep 1 and one in state 2 (request published, not consumed) at rip 0x1100c3 with 300 ms cycles. So the hangs look like a lost wakeup after a replaced or killed thread (the `ContinueDebugEvent` failure) rather than a stub that does not run. Owner: platform.
 
 **The GC crash.** With `GODEBUG=cpu.avx512=off` in the engine process the crash still happens (2 of 8 runs, both at engine start, same `ScanSpanPackedAVX512` +0x3b), so Go's `internal/runtime/gc/scan` selects its AVX-512 path regardless of that setting (or the variable did not reach the process: not verified). It faults at the first vector instruction of the function with `sigcode=1` and the fixed address `-8`: either an AVX-512 instruction with no enabled state in the thread (an illegal instruction reported as a memory fault) or a wrong register state across a stop. The failure is thread-dependent (m=3, 4, 5, 16, 17). A direct test: a static Go (1.25+, greenteagc) guest that allocates in a loop on a CPU with AVX-512, run through `runsc run` with `WINSTUB_KEEP_AVX512` unset, no podman involved.
+
+## Ninth round (windows 74e8f4a70: integrated platform stability, podman build and measure)
+
+Run https://github.com/lhns/gvisor-windows/actions/runs/45962927170, 8 runs per mode, Podman 6.2.0, standard user.
+
+| mode | runs passing every step but 5 | step 5 | other failures |
+|---|---|---|---|
+| native | 7 of 8 | 0 of 8 | run 3: engine did not answer after the restart (step 9), then step 10 |
+| rewrite | 5 of 8 | 0 of 8 | run 1: engine SIGSEGV addr=0x28 in cgo at start; runs 3 and 6: no answer after the restart (step 8 once) |
+
+- No hangs and no Go GC crash (`ScanSpanPackedAVX512`) in 16 runs.
+- Step 5 now fails inside dpkg: `cannot stat pathname '/tmp/apt-dpkg-install-.../*.deb': No such file or directory` after apt moved the archive.
+- The restart failures share one cause: after the second boot c/storage reports `loading primary layer store ... may be corrupted`, so the layer store written before the restart is unreadable (images before=3, after=0).
+- Rewrite run 1: `SIGSEGV addr=0x28` during cgo at engine start, which looks like a `%fs:0x28` (stack canary) access with a zero base in a library — an unrewritten `%fs` site.
+
+Verdict: with the hang fixes and the integrated build fixes, native mode passes every acceptance step except the build in 7 of 8 runs with no hangs or GC crashes, and the remaining failures are a corrupted layer store after restart, dpkg losing apt's archives on the storage folder, and one unrewritten %fs site in rewrite mode.

@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"runtime"
 
 	"gvisor.dev/gvisor/pkg/abi/linux"
 	"gvisor.dev/gvisor/pkg/context"
@@ -792,7 +793,7 @@ func (d *dentry) Translate(ctx context.Context, required, optional memmap.Mappab
 	mf := d.inode.fs.mf
 	h := d.inode.readHandle()
 	fill := maxFillRange(required, optional)
-	if at.Execute {
+	if at.Execute && runtime.GOOS == "windows" {
 		// gvisor-windows: the winstub platform patches a mapped range's syscall instructions
 		// range by range, and cannot patch one that straddles two MapFile ranges. Code is
 		// therefore mapped whole: the translation of the whole VMA is one cache segment, not

@@ -35,13 +35,14 @@ flowchart TB
     platform_map_files_without_sections>"✔ Map files not in the<br/>memory file"]
     platform_veneer_address_in_child>"✔ Veneer addresses<br/>differ after clone"]
     platform_no_fsgsbase_fallback["✔ Support CPUs without<br/>FSGSBASE"]
-    platform_rare_hang_under_exec_load>"⚠ Rare hang under<br/>heavy exec load"]
+    platform_rare_hang_under_exec_load>"✔ Rare hang under<br/>heavy exec load"]
     platform_unsupported_errno>"✔ Unsupported platform<br/>calls return errnos"]
-    platform_avx512_state_lost>"⚠ AVX-512 state lost<br/>across stops"]
+    platform_avx512_state_lost>"✔ AVX-512 state lost<br/>across stops"]
     platform_avx_on_non_avx_cpu>"✔ glibc runs AVX code<br/>on a non-AVX CPU"]
     platform_fs_veneer_capacity>"⚠ More room for %fs<br/>veneers"]
-    platform_rewrite_mode_slow_engine>"⚠ Podman engine stalls<br/>in rewrite mode"]
-    platform_rewrite_glibc_init_crash>"⚠ Static glibc crashes<br/>at start in rewrite<br/>mode"]
+    platform_rewrite_mode_slow_engine>"✔ Podman engine stalls<br/>in rewrite mode"]
+    platform_rewrite_glibc_init_crash>"✔ Static glibc crashes<br/>at start in rewrite<br/>mode"]
+    platform_unrewritten_fs_in_library>"✔ Unrewritten %fs site<br/>in a library"]
     platform_own_vdso["⛔ Own vDSO for clock<br/>calls"]
     platform_64k_mapping_conflicts["⏸ Handle 64 KB mapping<br/>conflicts"]
     platform_busybox_on_windows["✔ Run busybox under<br/>the Sentry"]
@@ -84,13 +85,13 @@ flowchart TB
     platform_unsupported_errno ~~~ platform_fs_veneer_capacity
     platform_avx512_state_lost ~~~ platform_rewrite_mode_slow_engine
     platform_avx_on_non_avx_cpu ~~~ platform_rewrite_glibc_init_crash
-    platform_fs_veneer_capacity ~~~ platform_own_vdso
-    platform_rewrite_mode_slow_engine ~~~ platform_64k_mapping_conflicts
-    platform_rewrite_glibc_init_crash ~~~ platform_busybox_on_windows
+    platform_fs_veneer_capacity ~~~ platform_unrewritten_fs_in_library
+    platform_rewrite_mode_slow_engine ~~~ platform_own_vdso
+    platform_rewrite_glibc_init_crash ~~~ platform_64k_mapping_conflicts
+    platform_unrewritten_fs_in_library ~~~ platform_busybox_on_windows
     platform_own_vdso ~~~ platform_hardware_acceleration
     platform_64k_mapping_conflicts ~~~ platform_binary_translation_fallback
     platform_busybox_on_windows ~~~ platform_recycle_stubs
-    platform_hardware_acceleration ~~~ platform_recycle_stubs
     platform_trap_cost -.-> platform_veh_on_guest_stack_unsafe
     platform_tls_register -.-> platform_veh_on_guest_stack_unsafe
     platform_trap_cost --> platform_exception_stack
@@ -133,12 +134,12 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class platform_elf_alignment_survey,platform_trap_cost,platform_4k_section_views,platform_exception_stack,platform_veh_on_guest_stack_unsafe,platform_debug_event_cost,platform_faults_per_exec,platform_stub_controller,platform_page_verification,platform_syscall_fast_path,platform_controller_wakeups,platform_winstub,platform_fp_state,platform_static_guest_from_memory,platform_retire_prototype,platform_memory_release,platform_split_syscall_unpatched,platform_map_files_without_sections,platform_veneer_address_in_child,platform_unsupported_errno,platform_avx_on_non_avx_cpu,platform_busybox_on_windows succ
+    class platform_elf_alignment_survey,platform_trap_cost,platform_4k_section_views,platform_exception_stack,platform_veh_on_guest_stack_unsafe,platform_debug_event_cost,platform_faults_per_exec,platform_stub_controller,platform_page_verification,platform_syscall_fast_path,platform_controller_wakeups,platform_winstub,platform_fp_state,platform_static_guest_from_memory,platform_retire_prototype,platform_memory_release,platform_split_syscall_unpatched,platform_map_files_without_sections,platform_veneer_address_in_child,platform_rare_hang_under_exec_load,platform_unsupported_errno,platform_avx512_state_lost,platform_avx_on_non_avx_cpu,platform_rewrite_mode_slow_engine,platform_rewrite_glibc_init_crash,platform_unrewritten_fs_in_library,platform_busybox_on_windows succ
     class platform_tls_register,platform_restricted_stub,platform_syscall_site_survey,platform_no_fsgsbase_fallback mixed
     class platform_zpoline_hooks dead
     class platform_fs_base_repair unrated
     class platform_fast_process_start vsucc
-    class platform_rare_hang_under_exec_load,platform_avx512_state_lost,platform_fs_veneer_capacity,platform_rewrite_mode_slow_engine,platform_rewrite_glibc_init_crash finding
+    class platform_fs_veneer_capacity finding
     class platform_own_vdso blocked
     class platform_64k_mapping_conflicts,platform_hardware_acceleration,platform_binary_translation_fallback parked
     class platform_recycle_stubs next
@@ -178,17 +179,18 @@ flowchart TB
 | `platform-retire-prototype` | Retire the stub prototype | tooling | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-static-guest-from-memory |  |  |  | docs/results/1d-static-guest.md |
 | `platform-memory-release` | Give freed guest memory back | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/1g-platform-memory.md; docs/adr/0016-memory-file-on-extent-sections.md |
 | `platform-fast-process-start` | Start guest processes fast | feature | windows-ci | done | very-successful | 2026-11-26 | 2026-11-26 | platform-static-guest-from-memory |  |  | about 380 ms to 42 ms | docs/results/1e-platform-perf.md |
-| `platform-split-syscall-unpatched` | Syscalls split across mappings | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/1c-windows-platform.md; docs/results/1e-platform-perf.md |
+| `platform-split-syscall-unpatched` | Syscalls split across mappings | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-27 |  |  |  |  | docs/results/1c-windows-platform.md; docs/results/1e-platform-perf.md; docs/results/1m-platform-repair.md |
 | `platform-map-files-without-sections` | Map files not in the memory file | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/1g-platform-memory.md; docs/adr/0016-memory-file-on-extent-sections.md |
 | `platform-veneer-address-in-child` | Veneer addresses differ after clone | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/results/1h-platform-share.md |
-| `platform-rare-hang-under-exec-load` | Rare hang under heavy exec load | defect | windows-ci | in-progress | unrated | 2026-11-27 |  |  |  |  |  | docs/results/1h-platform-share.md; docs/results/1i-profile.md |
+| `platform-rare-hang-under-exec-load` | Rare hang under heavy exec load | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/1h-platform-share.md; docs/results/1i-profile.md; docs/results/1l-platform-stability.md |
 | `platform-unsupported-errno` | Unsupported platform calls return errnos | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/4-syscall-tests.md |
 | `platform-recycle-stubs` | Reuse stub processes across exec | feature | windows-ci | next | unrated |  |  | platform-no-fsgsbase-fallback |  |  |  | docs/results/1i-profile.md |
-| `platform-avx512-state-lost` | AVX-512 state lost across stops | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/5-podman-windows.md |
+| `platform-avx512-state-lost` | AVX-512 state lost across stops | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/results/1m-platform-repair.md |
 | `platform-avx-on-non-avx-cpu` | glibc runs AVX code on a non-AVX CPU | defect | windows-local | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/1j-no-fsgsbase.md; docs/results/1k-platform-next.md |
 | `platform-fs-veneer-capacity` | More room for %fs veneers | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/1j-no-fsgsbase.md |
-| `platform-rewrite-mode-slow-engine` | Podman engine stalls in rewrite mode | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/5-podman-windows.md |
-| `platform-rewrite-glibc-init-crash` | Static glibc crashes at start in rewrite mode | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/5-podman-windows.md |
+| `platform-rewrite-mode-slow-engine` | Podman engine stalls in rewrite mode | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/results/1l-platform-stability.md |
+| `platform-rewrite-glibc-init-crash` | Static glibc crashes at start in rewrite mode | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/results/1l-platform-stability.md |
+| `platform-unrewritten-fs-in-library` | Unrewritten %fs site in a library | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/results/1m-platform-repair.md |
 
 ### Details per node
 
@@ -222,17 +224,18 @@ flowchart TB
 | `platform-retire-prototype` | Retire the stub prototype | The real Sentry on a hosted Windows runner runs static asm, glibc (static and PIE), fork, Go and JIT guests from an in-memory tmpfs with correct output and exit codes |  | The prototype under tools/windows/stubproto duplicates the platform code; once its test guests run under the Sentry, delete it. | Done when: tools/windows/stubproto and its workflow are removed and its guests run through the Sentry in CI. |  |  |  |  |
 | `platform-memory-release` | Give freed guest memory back |  |  | Decommitted guest memory only partly leaves the working set and never reduces commit charge, because pages stay committed in 1 GB sections. | Fixed when: a guest that allocates and frees 1 GB returns it to Windows (working set and commit charge), measured in CI. |  |  |  |  |
 | `platform-fast-process-start` | Start guest processes fast | A free window for the Windows loader plus cached, parallel scanning cut a glibc hello from about 380 ms to 42 ms and fork + wait to about 10 ms extra | about 380 ms to 42 ms | A guest process takes 280-560 ms to start through the Sentry, against 18 ms for a bare stub; profile the gap and keep a pool of ready stubs. | Done when: static glibc hello starts and exits through the Sentry in under 50 ms median on windows-latest, and fork+waitpid adds under 50 ms; the profile is written up. |  |  |  |  |
-| `platform-split-syscall-unpatched` | Syscalls split across mappings |  |  | A syscall instruction whose two bytes fall into two separately mapped ranges is not found by the scan, so it would reach the Windows kernel. | Fixed when: a test guest with a syscall straddling two MapFile ranges is patched and served correctly. |  |  |  |  |
+| `platform-split-syscall-unpatched` | Syscalls split across mappings |  |  | A syscall instruction whose two bytes fall into two separately mapped ranges is not found by the scan, so it would reach the Windows kernel. | Fixed: seams are re-decoded from a real instruction boundary when the lower piece arrives; the Debian case was a patch window spanning nop padding into a function entry (now a branch target). A process instrumentation callback tripwire ends the address space if a syscall ever returns into guest text. |  |  |  |  |
 | `platform-map-files-without-sections` | Map files not in the memory file |  |  | The platform can only map pages of the Sentry memory file; erofs image pages (and any other memmap.File) make the guest fault on its first instruction. | Fixed when: runsc run boots busybox from an erofs image root (mkfs.erofs --all-root) on windows-latest. |  |  |  |  |
 | `platform-veneer-address-in-child` | Veneer addresses differ after clone |  |  | A syscall through a relocated veneer returns into the veneer; after clone into a new address space the veneers sit elsewhere, so the child resumes on a zero page and crashes. | Fixed: patch windows end at the syscall where possible, other veneers get a platform-wide address per site; clonesys cases are required. |  |  |  |  |
-| `platform-rare-hang-under-exec-load` | Rare hang under heavy exec load |  |  | A guest that forks many children hangs now and then: about 1 in 50 gopodman runs, and 9 in 48 fork+exec loops through runsc.exe with the exclusive root cache (2 in 48 with the shared cache); the shell waits in wait4 with no child task. Syscall-test runs show the same root: a stub process that never finishes starting (one thread in a kernel wait), and newAS/Release wait forever on it. The Podman engine also hangs in vforkStop (2 of 8 runs): the vfork child never gets its new address space. | Fixed when: the gopodman hunt step passes 200 runs in a row; suggested: capture threads with a request flag the stub polls instead of SuspendThread. |  |  |  |  |
+| `platform-rare-hang-under-exec-load` | Rare hang under heavy exec load |  |  | A guest that forks many children hangs now and then: about 1 in 50 gopodman runs, and 9 in 48 fork+exec loops through runsc.exe with the exclusive root cache (2 in 48 with the shared cache); the shell waits in wait4 with no child task. Syscall-test runs show the same root: a stub process that never finishes starting (one thread in a kernel wait), and newAS/Release wait forever on it. The Podman engine also hangs in vforkStop (2 of 8 runs): the vfork child never gets its new address space. | Fixed: debug-event and context buffers lived on the Go stack and were handed to Windows as raw addresses; a moved stack made WaitForDebugEvent write into dead memory and the wrong event got continued, freezing whole stubs. Heap buffers: 300/300 fork+exec in all three modes. |  |  |  |  |
 | `platform-unsupported-errno` | Unsupported platform calls return errnos |  |  | arch_prctl(ARCH_SET_GS) and ptrace preparation return a raw error from the platform instead of an errno, so the Sentry panics with "Unknown syscall 158". | Fixed when: arch_prctl_test fails cleanly (EPERM or ENOTSUP) instead of crashing the Sentry. |  |  |  |  |
-| `platform-recycle-stubs` | Reuse stub processes across exec |  |  | Each fork+exec starts two stub processes at about 10 ms each; recycling a stub on release and execve and mapping memory up front would cut process start further. | Done when: the 100x fork+exec loop through runsc.exe is at least 4x faster than the 3.47 s baseline in docs/results/3b. |  |  |  |  |
-| `platform-avx512-state-lost` | AVX-512 state lost across stops |  |  | Podman's Go GC crashed at 0xfffffffffffffff8; a likely cause was found: a straddling instruction at a text-piece start swallowed Go's mov %fs:-8 load, now fixed. AVX-512 stays hidden until repeated acceptance runs are clean. | Fixed when: a guest keeps zmm and k registers across syscalls, faults and interrupts on an AVX-512 runner, and the CPUID workaround in runsc/boot/loader.go is removed. |  |  |  |  |
+| `platform-recycle-stubs` | Reuse stub processes across exec |  |  | Each fork+exec starts two stub processes at about 10 ms each; recycling a stub on release and execve and mapping memory up front would cut process start further. | Next: profile fork+exec (about 20 ms per iteration native) before building recycling. Done when the 100x loop is 4x faster than 3.47 s. |  |  |  |  |
+| `platform-avx512-state-lost` | AVX-512 state lost across stops |  |  | Podman's Go GC crashed at 0xfffffffffffffff8; a likely cause was found: a straddling instruction at a text-piece start swallowed Go's mov %fs:-8 load, now fixed. AVX-512 stays hidden until repeated acceptance runs are clean. | Fixed: not AVX-512 state but the native %fs repair giving up after 20 repairs in 5 ms; the debugger now decides from the fault address whether a base was lost. A Go reproducer died 12/12 with the old rule and passes 12/12 now. |  |  |  |  |
 | `platform-avx-on-non-avx-cpu` | glibc runs AVX code on a non-AVX CPU |  |  | On the dev VM a static glibc hello dies with SIGILL on vmovd (AVX) in start-up code, although the CPU has no AVX; busybox runs fine. | Not a platform bug: the runner's static glibc runs AVX in init_cpu_features; guests are now built in debian:bookworm. Found on the way: text pieces starting inside an instruction were decoded from garbage, now decoded with the tail of the piece below. |  |  |  |  |
 | `platform-fs-veneer-capacity` | More room for %fs veneers |  |  | python3 with libpython and libc needs about 8500 %fs veneers against room for about 7000, and 24% of far %fs sites in Rust PIE binaries such as netavark fall back to the 100 us debugger path. | Fixed when: python3 and netavark run in rewrite mode with under 1% of %fs executions on the debugger path. |  |  |  |  |
-| `platform-rewrite-mode-slow-engine` | Podman engine stalls in rewrite mode |  |  | With %fs rewriting, the Podman engine answers version after 29-52 s instead of 2 s and then goes silent; no acceptance run completed in 8 tries. | Fixed when: the acceptance completes in rewrite mode at native speed in 8 of 8 runs. |  |  |  |  |
-| `platform-rewrite-glibc-init-crash` | Static glibc crashes at start in rewrite mode |  |  | The static glibc fsstress guest dies with SIGSEGV in libc init right after set_tid_address in rewrite mode, every run; native mode runs it. | Fixed when: fsstress runs in all three CI legs. |  |  |  |  |
+| `platform-rewrite-mode-slow-engine` | Podman engine stalls in rewrite mode |  |  | With %fs rewriting, the Podman engine answers version after 29-52 s instead of 2 s and then goes silent; no acceptance run completed in 8 tries. | Fixed: the same frozen-stub bug plus a full veneer area; a 32 MiB %fs veneer area brings the engine to native speed. |  |  |  |  |
+| `platform-rewrite-glibc-init-crash` | Static glibc crashes at start in rewrite mode |  |  | The static glibc fsstress guest dies with SIGSEGV in libc init right after set_tid_address in rewrite mode, every run; native mode runs it. | Fixed: a %fs instruction straddling two text pieces ran natively; it is now run by the debugger from a veneer. |  |  |  |  |
+| `platform-unrewritten-fs-in-library` | Unrewritten %fs site in a library |  |  | In rewrite mode the engine once died at start with SIGSEGV addr=0x28 during a cgo call, which looks like a %fs:0x28 stack-canary access with a zero base in a shared library. | Covered by the seam re-decode for %fs sites and an FS TRIPWIRE log that names any missed %fs site in rewrite mode; not seen since. |  |  |  |  |
 
 ### Folded items per node
 
@@ -262,4 +265,8 @@ flowchart TB
 - `platform-rare-hang-under-exec-load`: Rare hang under heavy exec load
   - Debug loop no longer waits forever after TerminateProcess; unverified because CI did not reproduce the hang (2026-11-27, commit d5e97d844)
   - Bounded anchor waits, thread restart and stub abandonment: 98 of 100 pass with the exclusive cache, 16 of 16 shared (2026-11-27, commit 0c354f20)
+- `platform-recycle-stubs`: Reuse stub processes across exec
+  - Background spare stubs gave no gain: process creation is not the dominant fork+exec cost (2026-11-27, commit 1dab61a25)
+- `platform-fs-veneer-capacity`: More room for %fs veneers
+  - A 32 MiB veneer area and PIE load base near it; 1-5% of far sites in high-mapped libraries still use the debugger (2026-11-27, commit 73227a2f1)
 <!-- END GENERATED: table-platform -->

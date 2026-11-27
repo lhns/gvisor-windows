@@ -56,6 +56,7 @@ func startConPTY(cmdline string, cols, rows int16) (*conpty, error) {
 		return nil, err
 	}
 	defer attrs.Delete()
+	// go vet false positive: the attribute value is the HPCON handle itself, not a Go pointer.
 	if err := attrs.Update(windows.PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, unsafe.Pointer(c.hpc), unsafe.Sizeof(c.hpc)); err != nil {
 		return nil, err
 	}
