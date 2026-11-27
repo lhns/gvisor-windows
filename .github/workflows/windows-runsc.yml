@@ -93,59 +93,53 @@ jobs:
       - name: Erofs image root as a standard user
         shell: pwsh
         run: |
-          $wenv = @{ WINSTUB_FSMODE = $env:WINSTUB_FSMODE; WINSTUB_FPMODE = $env:WINSTUB_FPMODE }
+          $wargs = @('-fsmode', $env:WINSTUB_FSMODE); if ($env:WINSTUB_FPMODE) { $wargs += '-fpmode', $env:WINSTUB_FPMODE }
           & tools/windows/ci/run-as-standard-user.ps1 `
-            -Environment $wenv `
             -Program C:\ci\bin\runsctest.exe `
-            -Arguments '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-erofs','-image','C:\ci\work\rootfs.erofs','-only','erofs' `
+            -Arguments ($wargs + @('-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-erofs','-image','C:\ci\work\rootfs.erofs','-only','erofs')) `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 300
       - name: Host-folder rename and the port forwarder API as a standard user
         shell: pwsh
         run: |
-          $wenv = @{ WINSTUB_FSMODE = $env:WINSTUB_FSMODE; WINSTUB_FPMODE = $env:WINSTUB_FPMODE }
+          $wargs = @('-fsmode', $env:WINSTUB_FSMODE); if ($env:WINSTUB_FPMODE) { $wargs += '-fpmode', $env:WINSTUB_FPMODE }
           & tools/windows/ci/run-as-standard-user.ps1 `
-            -Environment $wenv `
             -Program C:\ci\bin\runsctest.exe `
-            -Arguments '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-hostfs','-only','hostfs,forward' `
+            -Arguments ($wargs + @('-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-hostfs','-only','hostfs,forward')) `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 300
       - name: Case sensitivity as a standard user (known gap, Windows denies the flag, see docs/results/5-podman-windows.md)
         shell: pwsh
         continue-on-error: true
         run: |
-          $wenv = @{ WINSTUB_FSMODE = $env:WINSTUB_FSMODE; WINSTUB_FPMODE = $env:WINSTUB_FPMODE }
+          $wargs = @('-fsmode', $env:WINSTUB_FSMODE); if ($env:WINSTUB_FPMODE) { $wargs += '-fpmode', $env:WINSTUB_FPMODE }
           & tools/windows/ci/run-as-standard-user.ps1 `
-            -Environment $wenv `
             -Program C:\ci\bin\runsctest.exe `
-            -Arguments '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-case','-only','case' `
+            -Arguments ($wargs + @('-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-case','-only','case')) `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 300
       - name: Phase 0 workloads and start-to-exit as a standard user
         shell: pwsh
         continue-on-error: true
         run: |
           Get-Content guests\native.txt
-          $wenv = @{ WINSTUB_FSMODE = $env:WINSTUB_FSMODE; WINSTUB_FPMODE = $env:WINSTUB_FPMODE }
+          $wargs = @('-fsmode', $env:WINSTUB_FSMODE); if ($env:WINSTUB_FPMODE) { $wargs += '-fpmode', $env:WINSTUB_FPMODE }
           & tools/windows/ci/run-as-standard-user.ps1 `
-            -Environment $wenv `
             -Program C:\ci\bin\runsctest.exe `
-            -Arguments '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-bench','-only','bench' `
+            -Arguments ($wargs + @('-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-bench','-only','bench')) `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 1200
       - name: Container lifecycle commands as a standard user
         shell: pwsh
         run: |
-          $wenv = @{ WINSTUB_FSMODE = $env:WINSTUB_FSMODE; WINSTUB_FPMODE = $env:WINSTUB_FPMODE }
+          $wargs = @('-fsmode', $env:WINSTUB_FSMODE); if ($env:WINSTUB_FPMODE) { $wargs += '-fpmode', $env:WINSTUB_FPMODE }
           & tools/windows/ci/run-as-standard-user.ps1 `
-            -Environment $wenv `
             -Program C:\ci\bin\runsctest.exe `
-            -Arguments '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-lifecycle','-only','lifecycle' `
+            -Arguments ($wargs + @('-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-lifecycle','-only','lifecycle')) `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 600
       - name: All tests as a standard user
         shell: pwsh
         run: |
-          $wenv = @{ WINSTUB_FSMODE = $env:WINSTUB_FSMODE; WINSTUB_FPMODE = $env:WINSTUB_FPMODE }
+          $wargs = @('-fsmode', $env:WINSTUB_FSMODE); if ($env:WINSTUB_FPMODE) { $wargs += '-fpmode', $env:WINSTUB_FPMODE }
           & tools/windows/ci/run-as-standard-user.ps1 `
-            -Environment $wenv `
             -Program C:\ci\bin\runsctest.exe `
-            -Arguments '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std' `
+            -Arguments ($wargs + @('-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std')) `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 1500
       - uses: actions/upload-artifact@v4
         if: always()
