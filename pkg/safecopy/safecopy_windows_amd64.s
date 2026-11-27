@@ -124,5 +124,5 @@ TEXT ·addrOfVEHHandler(SB),NOSPLIT,$0-8
 // ensureFaultStack: the frame size makes the prologue grow the stack until
 // 16 KB are free below the caller (plus the runtime's own headroom for
 // system calls).
-TEXT ·ensureFaultStack(SB),0,$16384-0
+TEXT ·ensureFaultStackAsm(SB),0,$16384-0
 	RET
