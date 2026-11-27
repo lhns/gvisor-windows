@@ -1,0 +1,233 @@
+// Copyright 2026 The gVisor Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//go:build windows && amd64
+
+package winstub
+
+import (
+	"fmt"
+	"encoding/binary"
+	"math/rand"
+	"testing"
+	"time"
+
+	"gvisor.dev/gvisor/pkg/abi/linux"
+	pkgcontext "gvisor.dev/gvisor/pkg/context"
+	"gvisor.dev/gvisor/pkg/hostarch"
+	"gvisor.dev/gvisor/pkg/sentry/platform"
+)
+
+const (
+	tlsBase    = 0x900000
+	fsFaultOff = 0x2000000
+)
+
+// fsGuest is code full of %fs accesses; it reports results with syscall 500.
+type fsGuest struct {
+	code      []byte
+	faultInsn uint64
+}
+
+func buildFSGuest(base uint64) *fsGuest {
+	a := &asm{base: base}
+	g := &fsGuest{}
+	report := func(src ...byte) {
+		a.emit(src...)                // mov rdi,<src>
+		a.emit(0xb8, 0xf4, 1, 0, 0)   // mov eax,500
+		a.emit(0x0f, 0x05)            // syscall
+	}
+	rax := []byte{0x48, 0x89, 0xc7} // mov rdi,rax
+	a.emit(0x64, 0x48, 0x8b, 0x04, 0x25, 0x28, 0, 0, 0) // mov %fs:0x28,%rax
+	report(rax...)
+	a.emit(0xb9, 8, 0, 0, 0)          // mov $8,%ecx
+	a.emit(0x64, 0x48, 0x8b, 0x01)    // mov %fs:(%rcx),%rax: 4 bytes, needs neighbours
+	report(rax...)
+	a.emit(0xbe, 0, 1, 0, 0)                      // mov $0x100,%esi
+	a.emit(0xbf, 0x20, 0, 0, 0)                   // mov $0x20,%edi
+	a.emit(0x64, 0x48, 0x8b, 0x44, 0x7e, 0x10)    // mov %fs:0x10(%rsi,%rdi,2),%rax
+	report(rax...)
+	a.emit(0x64, 0x48, 0x83, 0x04, 0x25, 0x40, 0, 0, 0, 5) // addq $5,%fs:0x40
+	a.emit(0x64, 0x48, 0x8b, 0x04, 0x25, 0x40, 0, 0, 0)    // mov %fs:0x40,%rax
+	report(rax...)
+	a.emit(0x64, 0xc7, 0x04, 0x25, 0x48, 0, 0, 0, 0x34, 0x12, 0, 0) // movl $0x1234,%fs:0x48
+	a.emit(0x64, 0x8b, 0x04, 0x25, 0x48, 0, 0, 0)                   // mov %fs:0x48,%eax
+	report(rax...)
+	a.emit(0x48, 0xbb, 0xaa, 0x99, 0xff, 0xee, 0xdd, 0xcc, 0xbb, 0xaa) // movabs $0xaabbccddeeff99aa,%rbx
+	a.emit(0x64, 0x8a, 0x3c, 0x25, 0x28, 0, 0, 0)                      // mov %fs:0x28,%bh
+	report(0x48, 0x89, 0xdf)                                            // mov rdi,rbx
+	a.emit(0xbb, 0xef, 0xbe, 0, 0)                                      // mov $0xbeef,%ebx
+	g.faultInsn = a.emit(0x64, 0x48, 0x8b, 0x04, 0x25, 0, 0, 0, 2)      // mov %fs:0x2000000,%rax
+	report(rax...)
+	a.emit(0xb9, 0x28, 0, 0, 0) // mov $0x28,%ecx
+	a.emit(0xeb, 0x00)          // jmp +0: no neighbour to take along
+	a.emit(0x64, 0x8b, 0x01)    // mov %fs:(%rcx),%eax
+	a.emit(0xeb, 0x00)
+	report(rax...)
+	a.emit(0xeb, 0xfe)
+	g.code = a.b
+	return g
+}
+
+func tlsData() []byte {
+	d := make([]byte, pageSz)
+	put := func(off int, v uint64) { copy(d[off:], le64(v)) }
+	put(0x28, 0x1111)
+	put(8, 0x2222)
+	put(0x150, 0x3333)
+	put(0x40, 0x10)
+	return d
+}
+
+// TestFSInstructions runs %fs accesses of every shape the veneers handle, near
+// the veneer area and far above it (a pointer jump). It works in both modes.
+func TestFSInstructions(t *testing.T) {
+	for _, base := range []uint64{0xC00000, 0x3_0000_0000} {
+		t.Run(fmt.Sprintf("%#x", base), func(t *testing.T) {
+			h := newHarness(t)
+			mm := h.newMM()
+			g := buildFSGuest(base)
+			h.mapAt(mm, base, h.pages(g.code, 2), rx)
+			h.mapAt(mm, 0x700000, h.pages(nil, 4), rw)
+			h.mapAt(mm, tlsBase, h.pages(tlsData(), 1), rw)
+			c := h.p.NewContext(pkgcontext.Background())
+			defer c.Release()
+			ac := newAC(base, 0x700000+4*pageSz-64)
+			r := &ac.StateData().Regs
+			r.Fs_base = tlsBase
+			for i, want := range []uint64{0x1111, 0x2222, 0x3333, 0x15, 0x1234, 0xaabbccddeeff11aa} {
+				if nr := h.syscall(c, mm, ac); nr != 500 || r.Rdi != want {
+					t.Fatalf("step %d: syscall %d(%#x), want 500(%#x)", i, nr, r.Rdi, want)
+				}
+			}
+			res := h.sw(c, mm, ac)
+			if res.err != platform.ErrContextSignal || res.si == nil || res.si.Signo != int32(linux.SIGSEGV) {
+				t.Fatalf("want SIGSEGV, got %v %+v", res.err, res.si)
+			}
+			if res.si.Addr() != tlsBase+fsFaultOff || !res.at.Read || res.at.Write {
+				t.Fatalf("fault: addr %#x at %v", res.si.Addr(), res.at)
+			}
+			if r.Rip != g.faultInsn || r.Rbx != 0xbeef {
+				t.Fatalf("fault: rip %#x (want %#x), rbx %#x (want 0xbeef)", r.Rip, g.faultInsn, r.Rbx)
+			}
+			// map the page and resume at the instruction
+			h.mapAt(mm, tlsBase+fsFaultOff, h.pages(le64(0x7777), 1), rw)
+			for i, want := range []uint64{0x7777, 0x1111} {
+				if nr := h.syscall(c, mm, ac); nr != 500 || r.Rdi != want {
+					t.Fatalf("after the fault, step %d: syscall %d(%#x), want 500(%#x)", i, nr, r.Rdi, want)
+				}
+			}
+			if r.Rbx != 0xbeef {
+				t.Errorf("rbx = %#x, want 0xbeef", r.Rbx)
+			}
+		})
+	}
+}
+
+// TestFSInterrupt interrupts a loop of %fs accesses over and over: the thread
+// is stopped inside veneers at all kinds of places, and must come out with its
+// registers and its progress intact.
+func TestFSInterrupt(t *testing.T) {
+	h := newHarness(t)
+	mm := h.newMM()
+	const base = 0xC00000
+	a := &asm{base: base}
+	loop := a.emit(0x64, 0x48, 0x8b, 0x04, 0x25, 0x28, 0, 0, 0) // mov %fs:0x28,%rax
+	a.emit(0x64, 0x48, 0x01, 0x0c, 0x25, 0x40, 0, 0, 0)         // add %rcx,%fs:0x40
+	a.emit(0x48, 0xff, 0xc1)                                    // inc %rcx
+	a.emit(0xeb, byte(256-int(a.pc()+2-loop)))                  // jmp loop
+	end := a.pc()
+	h.mapAt(mm, base, h.pages(a.b, 1), rx)
+	tfr := h.pages(tlsData(), 1)
+	h.mapAt(mm, tlsBase, tfr, rw)
+	tls, err := h.mf.MapInternal(tfr, hostarch.Read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := h.p.NewContext(pkgcontext.Background())
+	defer c.Release()
+	ac := newAC(loop, 0)
+	r := &ac.StateData().Regs
+	r.Fs_base = tlsBase
+	r.Rbx, r.Rsi, r.Rdi = 0xb1b1b1b1b1b1b1b1, 0x5151515151515151, 0xd1d1d1d1d1d1d1d1
+	var last uint64
+	for i := 0; i < 400; i++ {
+		go func() {
+			time.Sleep(time.Duration(20+rand.Intn(300)) * time.Microsecond)
+			c.Interrupt()
+		}()
+		res := h.sw(c, mm, ac)
+		if res.err != platform.ErrContextInterrupt {
+			t.Fatalf("interrupt %d: got %v (si %+v)", i, res.err, res.si)
+		}
+		if r.Rbx != 0xb1b1b1b1b1b1b1b1 || r.Rsi != 0x5151515151515151 || r.Rdi != 0xd1d1d1d1d1d1d1d1 {
+			t.Fatalf("interrupt %d: scratch registers clobbered: rbx %#x rsi %#x rdi %#x (rip %#x)", i, r.Rbx, r.Rsi, r.Rdi, r.Rip)
+		}
+		if r.Rip < loop || r.Rip >= end {
+			t.Fatalf("interrupt %d: rip %#x outside the loop [%#x,%#x)", i, r.Rip, loop, end)
+		}
+		if r.Rcx < last {
+			t.Fatalf("interrupt %d: rcx went back from %d to %d", i, last, r.Rcx)
+		}
+		last = r.Rcx
+		// The add of this iteration has happened exactly when rip is past it: no
+		// instruction is lost or repeated, whichever way the thread was moved out.
+		want := 0x10 + r.Rcx*(r.Rcx-1)/2
+		if r.Rip >= loop+18 {
+			want += r.Rcx
+		}
+		if got := binary.LittleEndian.Uint64(tls.Head().ToSlice()[0x40:]); got != want {
+			t.Fatalf("interrupt %d: the counter in memory is %#x, want %#x (rcx %d, rip %#x)", i, got, want, r.Rcx, r.Rip)
+		}
+	}
+	if last == 0 {
+		t.Fatalf("no progress")
+	}
+}
+
+// TestFSSpeed times a loop of %fs loads against the same loop with a plain
+// load: the cost of a veneer in the mode the test runs in (the CI legs compare).
+func TestFSSpeed(t *testing.T) {
+	h := newHarness(t)
+	mm := h.newMM()
+	const base = 0xC00000
+	const iters = 5_000_000
+	build := func(load ...byte) (code []byte) {
+		a := &asm{base: base}
+		a.emit(append([]byte{0xb9}, le32(iters)...)...) // mov $iters,%ecx
+		loop := a.emit(load...)
+		a.emit(0xff, 0xc9) // dec %ecx
+		a.emit(0x75, byte(256-int(a.pc()+2-loop)))
+		a.emit(0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05)
+		return a.b
+	}
+	h.mapAt(mm, tlsBase, h.pages(tlsData(), 1), rw)
+	c := h.p.NewContext(pkgcontext.Background())
+	defer c.Release()
+	run := func(name string, at uint64, code []byte) time.Duration {
+		h.mapAt(mm, at, h.pages(code, 1), rx)
+		ac := newAC(at, 0)
+		r := &ac.StateData().Regs
+		r.Fs_base, r.Rdx = tlsBase, tlsBase
+		start := time.Now()
+		if nr := h.syscall(c, mm, ac); nr != 500 {
+			t.Fatalf("%s: syscall %d", name, nr)
+		}
+		return time.Since(start)
+	}
+	plain := run("plain", base, build(0x48, 0x8b, 0x42, 0x28))                                         // mov 0x28(%rdx),%rax
+	fs := run("fs", base+0x10000, build(0x64, 0x48, 0x8b, 0x04, 0x25, 0x28, 0, 0, 0))                 // mov %fs:0x28,%rax
+	t.Logf("FSSPEED rewrite=%v plain %.2f ns/iter, %%fs %.2f ns/iter", h.p.fsRewrite,
+		float64(plain.Nanoseconds())/iters, float64(fs.Nanoseconds())/iters)
+}

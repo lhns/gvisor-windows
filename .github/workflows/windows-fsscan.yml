@@ -1,0 +1,35 @@
+# ADR 0020: how many %fs-prefixed instructions do real binaries have, and how
+# many can the winstub rewrite mode patch in place? Runs the scanner of the
+# platform (tools/windows/fsscan) over glibc, musl, a Go binary, Python and the
+# Podman stack.
+name: windows-fsscan
+on:
+  push:
+    paths: ["pkg/sentry/platform/winstub/**", "tools/windows/fsscan/**", ".github/workflows/windows-fsscan.yml"]
+  workflow_dispatch:
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version-file: go.mod, cache: false}
+      - name: Install the binaries
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq musl-tools podman conmon crun netavark aardvark-dns python3 libpython3-dev busybox-static || sudo apt-get install -y -qq musl-tools podman conmon crun python3 busybox-static
+          echo "== $(podman --version)"; ls /usr/lib/podman /usr/libexec/podman 2>/dev/null || true
+      - name: Scan
+        run: |
+          go build -o fsscan ./tools/windows/fsscan
+          go build -o /tmp/gohello ./test/guests/gohello 2>/dev/null || (cd test/guests/gohello && go build -o /tmp/gohello .)
+          pick() { for f in "$@"; do [ -e "$f" ] && echo "$f"; done; }
+          {
+            echo "=== glibc"; ./fsscan $(pick /lib/x86_64-linux-gnu/libc.so.6 /lib64/ld-linux-x86-64.so.2 /lib/x86_64-linux-gnu/libm.so.6 /lib/x86_64-linux-gnu/libpthread.so.0 /lib/x86_64-linux-gnu/libdl.so.2 /usr/bin/busybox /bin/bash)
+            echo "=== musl"; ./fsscan $(pick /usr/lib/x86_64-linux-musl/libc.so /usr/lib/musl/lib/libc.so)
+            echo "=== Go"; ./fsscan /tmp/gohello $(command -v podman) 
+            echo "=== python3"; ./fsscan $(pick "$(readlink -f /usr/bin/python3)" /usr/lib/x86_64-linux-gnu/libpython3.*.so.1.0)
+            echo "=== podman stack"; ./fsscan $(pick "$(command -v podman)" "$(command -v conmon)" "$(command -v crun)" /usr/lib/podman/netavark /usr/libexec/podman/netavark "$(command -v netavark)" /usr/lib/podman/aardvark-dns /usr/libexec/podman/aardvark-dns)
+          } 2>&1 | tee fsscan.txt
+      - uses: actions/upload-artifact@v4
+        with: {name: fsscan, path: fsscan.txt}

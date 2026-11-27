@@ -60,6 +60,7 @@ type Platform struct {
 	denied        atomic.Int32 // contexts that found no token free since the last handover
 	spinLimit     int          // spin only while active <= spinLimit (WINSTUB_SPINLIMIT)
 	xmask         uint64
+	fsRewrite     bool // %fs instructions are rewritten (CPU without FSGSBASE or forced)
 	fpSize        int
 	stubPath      string
 	image         []byte
@@ -69,8 +70,21 @@ type Platform struct {
 
 // New creates the platform.
 func New(opts platform.Options) (*Platform, error) {
-	if !stubasm.HasFSGSBASE() {
-		return nil, errors.New("winstub: the CPU lacks FSGSBASE")
+	// ADR 0020: guests of CPUs without FSGSBASE get their %fs instructions
+	// rewritten; WINSTUB_FSMODE=native|rewrite forces a mode.
+	hasFS := stubasm.HasFSGSBASE()
+	rewrite := !hasFS
+	switch m := os.Getenv("WINSTUB_FSMODE"); m {
+	case "":
+	case "rewrite":
+		rewrite = true
+	case "native":
+		if !hasFS {
+			return nil, errors.New("winstub: WINSTUB_FSMODE=native, but the CPU lacks FSGSBASE")
+		}
+		rewrite = false
+	default:
+		return nil, fmt.Errorf("winstub: WINSTUB_FSMODE=%q: want native or rewrite", m)
 	}
 	if err := pNtSetEvent.Find(); err != nil {
 		return nil, err
@@ -81,11 +95,23 @@ func New(opts platform.Options) (*Platform, error) {
 	if err := pNtTerminateThread.Find(); err != nil {
 		return nil, err
 	}
-	if !cpuid.HostFeatureSet().UseXsave() {
-		return nil, errors.New("winstub: the CPU lacks XSAVE")
-	}
+	// Without XSAVE (or with WINSTUB_FPMODE=fxsave, which also hides it from the
+	// guest, see pkg/cpuid) the stub saves the FP state with fxsave: 512 bytes.
+	fxsave := !cpuid.HostFeatureSet().UseXsave()
 	fpSize, _ := cpuid.HostFeatureSet().ExtendedStateSize()
 	fpSize -= cpuid.HostFeatureSet().AMXExtendedStateSize()
+	switch m := os.Getenv("WINSTUB_FPMODE"); m {
+	case "", "xsave":
+		if fxsave && m != "" {
+			return nil, errors.New("winstub: WINSTUB_FPMODE=xsave, but the CPU lacks XSAVE")
+		}
+	case "fxsave":
+		if !fxsave {
+			return nil, errors.New("winstub: WINSTUB_FPMODE=fxsave, but the CPU feature set still has XSAVE")
+		}
+	default:
+		return nil, fmt.Errorf("winstub: WINSTUB_FPMODE=%q: want xsave or fxsave", m)
+	}
 	if fpSize > stubasm.XsaveSize {
 		return nil, fmt.Errorf("winstub: xsave area of %d bytes does not fit", fpSize)
 	}
@@ -101,9 +127,10 @@ func New(opts platform.Options) (*Platform, error) {
 		spinLimit: envInt("WINSTUB_SPINLIMIT", runtime.NumCPU()),
 		maxTokens: int32(envInt("WINSTUB_TOKENS", max(1, runtime.NumCPU()/2))),
 		xmask:    stubasm.XSaveMask(),
+		fsRewrite: rewrite,
 		fpSize:   int(fpSize),
 		stubPath: f.Name(),
-		image:    stubasm.Image(),
+		image:    stubasm.Image(rewrite, fxsave),
 		ntSet:    uint64(pNtSetEvent.Addr()),
 		ntWait:   uint64(pNtWaitSingle.Addr()),
 		ntTerm:   uint64(pNtTerminateThread.Addr()),

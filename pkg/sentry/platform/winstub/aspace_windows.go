@@ -118,6 +118,10 @@ type addressSpace struct {
 	siteCache map[uint64]siteInfo
 	restartAt map[uint64]uint64
 	ud2Sites  map[uint64]bool
+	fcur      uint64 // next free address in the %fs veneer area
+	fsCache   map[fsKey]uint64
+	fsVen     []*fsVenInfo
+	fsUD2     map[uint64][]byte
 	privs     []*privSection
 	edges     map[uint64]edge
 
@@ -137,7 +141,7 @@ func newAddressSpace(p *Platform) *addressSpace {
 	return &addressSpace{
 		p: p, loopDone: make(chan struct{}), started: make(chan error, 1),
 		vcur: stubasm.Veneers, siteCache: map[uint64]siteInfo{}, restartAt: map[uint64]uint64{},
-		ud2Sites: map[uint64]bool{}, byTid: map[uint32]*thread{}, edges: map[uint64]edge{},
+		ud2Sites: map[uint64]bool{}, fcur: stubasm.FSVeneers, fsCache: map[fsKey]uint64{}, fsUD2: map[uint64][]byte{}, byTid: map[uint32]*thread{}, edges: map[uint64]edge{},
 	}
 }
 
@@ -299,7 +303,7 @@ func (as *addressSpace) removeRange(lo, hi uint64) error {
 		if v.lo < lo {
 			if b, ok := as.readStub(lo-1, 1); ok && b[0] == 0x0F {
 				if piece, ok := as.readStub(v.lo, int(lo-v.lo)); ok {
-					leftTail = scanText(piece, 0).tail0f
+					leftTail = scanText(piece, 0, false).tail0f
 				}
 			}
 		}

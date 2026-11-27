@@ -64,6 +64,13 @@ jobs:
   run:
     needs: guests
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [native, rewrite, rewrite-fxsave]
+    env:
+      WINSTUB_FSMODE: ${{ matrix.mode == 'native' && 'native' || 'rewrite' }}
+      WINSTUB_FPMODE: ${{ matrix.mode == 'rewrite-fxsave' && 'fxsave' || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -143,7 +150,7 @@ jobs:
           exit $fail
       - name: Hunt for hangs (limit policy)
         timeout-minutes: 15
-        if: always()
+        if: always() && matrix.mode == 'native'
         continue-on-error: true
         shell: pwsh
         run: |
@@ -169,7 +176,7 @@ jobs:
             "TIMING $n median $($t[4]) ms (min $($t[0]), max $($t[8])) all: $($t -join ' ')" | Tee-Object -Append -FilePath timing.txt
           }
       - name: Trace
-        if: always()
+        if: always() && matrix.mode == 'native'
         continue-on-error: true
         shell: pwsh
         env: {WINSTUB_TRACE: "1"}
@@ -180,4 +187,4 @@ jobs:
           }
       - uses: actions/upload-artifact@v4
         if: always()
-        with: {name: sentry-guests-output, path: "guests.txt\ntrace.txt\ntiming.txt\npodman.txt\nhang.txt"}
+        with: {name: "sentry-guests-output-${{ matrix.mode }}", path: "guests.txt\ntrace.txt\ntiming.txt\npodman.txt\nhang.txt"}

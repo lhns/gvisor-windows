@@ -47,6 +47,13 @@ jobs:
   run:
     needs: guests
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [native, rewrite, rewrite-fxsave]
+    env:
+      WINSTUB_FSMODE: ${{ matrix.mode == 'native' && 'native' || 'rewrite' }}
+      WINSTUB_FPMODE: ${{ matrix.mode == 'rewrite-fxsave' && 'fxsave' || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -86,14 +93,18 @@ jobs:
       - name: Erofs image root as a standard user
         shell: pwsh
         run: |
+          $wenv = @{ WINSTUB_FSMODE = $env:WINSTUB_FSMODE; WINSTUB_FPMODE = $env:WINSTUB_FPMODE }
           & tools/windows/ci/run-as-standard-user.ps1 `
+            -Environment $wenv `
             -Program C:\ci\bin\runsctest.exe `
             -Arguments '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-erofs','-image','C:\ci\work\rootfs.erofs','-only','erofs' `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 300
       - name: Host-folder rename and the port forwarder API as a standard user
         shell: pwsh
         run: |
+          $wenv = @{ WINSTUB_FSMODE = $env:WINSTUB_FSMODE; WINSTUB_FPMODE = $env:WINSTUB_FPMODE }
           & tools/windows/ci/run-as-standard-user.ps1 `
+            -Environment $wenv `
             -Program C:\ci\bin\runsctest.exe `
             -Arguments '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-hostfs','-only','hostfs,forward' `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 300
@@ -101,7 +112,9 @@ jobs:
         shell: pwsh
         continue-on-error: true
         run: |
+          $wenv = @{ WINSTUB_FSMODE = $env:WINSTUB_FSMODE; WINSTUB_FPMODE = $env:WINSTUB_FPMODE }
           & tools/windows/ci/run-as-standard-user.ps1 `
+            -Environment $wenv `
             -Program C:\ci\bin\runsctest.exe `
             -Arguments '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-case','-only','case' `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 300
@@ -110,28 +123,34 @@ jobs:
         continue-on-error: true
         run: |
           Get-Content guests\native.txt
+          $wenv = @{ WINSTUB_FSMODE = $env:WINSTUB_FSMODE; WINSTUB_FPMODE = $env:WINSTUB_FPMODE }
           & tools/windows/ci/run-as-standard-user.ps1 `
+            -Environment $wenv `
             -Program C:\ci\bin\runsctest.exe `
             -Arguments '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-bench','-only','bench' `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 1200
       - name: Container lifecycle commands as a standard user
         shell: pwsh
         run: |
+          $wenv = @{ WINSTUB_FSMODE = $env:WINSTUB_FSMODE; WINSTUB_FPMODE = $env:WINSTUB_FPMODE }
           & tools/windows/ci/run-as-standard-user.ps1 `
+            -Environment $wenv `
             -Program C:\ci\bin\runsctest.exe `
             -Arguments '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-lifecycle','-only','lifecycle' `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 600
       - name: All tests as a standard user
         shell: pwsh
         run: |
+          $wenv = @{ WINSTUB_FSMODE = $env:WINSTUB_FSMODE; WINSTUB_FPMODE = $env:WINSTUB_FPMODE }
           & tools/windows/ci/run-as-standard-user.ps1 `
+            -Environment $wenv `
             -Program C:\ci\bin\runsctest.exe `
             -Arguments '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std' `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 1500
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: runsc-logs
+          name: runsc-logs-${{ matrix.mode }}
           path: |
             C:\ci\work\admin\logs
             C:\ci\work\std\logs

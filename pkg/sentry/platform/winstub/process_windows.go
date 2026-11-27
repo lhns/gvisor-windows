@@ -88,6 +88,11 @@ type thread struct {
 	started  bool
 	lastKind int
 
+	// teb: address of the stub thread's TEB (rewrite mode, read lazily); dyn: the
+	// veneer the debugger set up for it, if any.
+	teb uint64
+	dyn *fsVenInfo
+
 	lastRepairRIP uint64
 	lastRepair    time.Time
 	repairN       int
@@ -120,8 +125,10 @@ func (as *addressSpace) slot(idx int) *thread {
 	*t.u64(stubasm.PgStkTop) = addr + stubasm.ThreadRegion - 0x100
 	*t.u64(stubasm.PgSpins) = uint64(stubSpin)
 	*t.u64(stubasm.PgXMask) = as.p.xmask
-	code := stubasm.RepairCode(addr)
-	copy(unsafe.Slice((*byte)(unsafe.Add(t.page, stubasm.PgRepair)), len(code)), code)
+	if !as.p.fsRewrite {
+		code := stubasm.RepairCode(addr)
+		copy(unsafe.Slice((*byte)(unsafe.Add(t.page, stubasm.PgRepair)), len(code)), code)
+	}
 	as.slots[idx] = t
 	return t
 }
@@ -318,6 +325,7 @@ func (as *addressSpace) start() error {
 		{stubasm.TrapCode, stubasm.TrapCodeSize, protR | protX},
 		{stubasm.StubCode, stubasm.StubCodeSize, protR | protX},
 		{stubasm.Veneers, stubasm.VeneersSize, protR | protX},
+		{stubasm.FSVeneers, stubasm.FSVeneersSize, protR | protX},
 	} {
 		if err := as.mapSys(m.lo, m.size, as.areaSec, m.lo-stubasm.AreaLo, m.prot); err != nil {
 			return fail(err)
@@ -470,7 +478,7 @@ func (as *addressSpace) onException(ev *debugEvent, ctx *ctxBuf, seenBP *bool) u
 		case kind == 8 && as.wxExec(addr):
 			return dbgContinue
 		}
-		if (addr < 0x10000 || addr >= 0xFFFF800000000000) && *t.u64(stubasm.PgFS) != 0 {
+		if !as.p.fsRewrite && (addr < 0x10000 || addr >= 0xFFFF800000000000) && *t.u64(stubasm.PgFS) != 0 {
 			if as.repairFS(t, ctx, rip) {
 				return dbgContinue
 			}
@@ -488,9 +496,13 @@ func (as *addressSpace) onException(ev *debugEvent, ctx *ctxBuf, seenBP *bool) u
 		}
 		as.park(t, ctx, request{kind: reqFault, sig: 11, code: sc, addr: addr, at: at})
 	case excIllegalInstr:
-		if b, ok := as.readStub(rip, 2); ok && b[0] == 0x0F && b[1] == 0x0B && as.isUD2Site(rip) {
+		b, ok := as.readStub(rip, 2)
+		isUD2 := ok && b[0] == 0x0F && b[1] == 0x0B
+		if isUD2 && as.isUD2Site(rip) {
 			// A rewritten syscall that could not be patched: make it a request.
 			as.parkAs(t, ctx, request{kind: reqSyscall}, rip+2)
+		} else if orig := as.fsUD2At(rip); isUD2 && orig != nil && as.fsRunInline(t, ctx, rip, orig) {
+			// An %fs instruction that could not be patched runs in a veneer of the thread's own.
 		} else {
 			as.park(t, ctx, request{kind: reqFault, sig: 4, code: 1, addr: rip})
 		}
@@ -552,6 +564,10 @@ func (as *addressSpace) park(t *thread, ctx *ctxBuf, req request) {
 func (as *addressSpace) parkAs(t *thread, ctx *ctxBuf, req request, resume uint64) {
 	for i := 0; i < 16; i++ {
 		*t.reg(i) = *ctx.u64(ctxRegsOff + uintptr(8*i))
+	}
+	// A thread inside an %fs veneer is moved out of it first (ADR 0020).
+	if nr, ok := as.fsFix(t, resume); ok {
+		resume = nr
 	}
 	*t.u64(stubasm.PgRIP) = resume
 	*t.u64(stubasm.PgFlags) = uint64(ctx.eflags())

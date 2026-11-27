@@ -23,6 +23,7 @@ import (
 	"os"
 	"runtime"
 	"strconv"
+	"strings"
 
 	"gvisor.dev/gvisor/pkg/log"
 )
@@ -263,6 +264,21 @@ func archInitialize() {
 	hostFeatureSet = FeatureSet{
 		Function: &Native{},
 	}.Fixed()
+	if runtime.GOOS == "windows" && os.Getenv("WINSTUB_FPMODE") == "fxsave" {
+		// gvisor-windows: pretend the host has no XSAVE (and nothing that needs its
+		// state) to test the fxsave path on CPUs that do.
+		hw := hostFeatureSet.hwCap
+		hs := hostFeatureSet.ToStatic()
+		for f, info := range allFeatures {
+			n := strings.ToLower(info.displayName)
+			if strings.HasPrefix(n, "avx") || strings.HasPrefix(n, "xsave") || strings.HasPrefix(n, "amx") ||
+				n == "osxsave" || n == "fma" || n == "f16c" || n == "vaes" || n == "vpclmulqdq" || n == "pku" || n == "ospke" {
+				hs.Remove(f)
+			}
+		}
+		hostFeatureSet = hs.ToFeatureSet()
+		hostFeatureSet.hwCap = hw
+	}
 
 	readMaxCPUFreq()
 	initHWCap()
