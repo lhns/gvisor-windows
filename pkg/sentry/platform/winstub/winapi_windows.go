@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync/atomic"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -95,6 +96,8 @@ func debugf(format string, a ...any) {
 
 // call invokes a Windows API and returns its result and, if it reported failure
 // (a zero result), the Win32 error.
+//
+//go:uintptrescapes
 func call(p *windows.LazyProc, a ...uintptr) (uintptr, error) {
 	r, _, e := p.Call(a...)
 	if r == 0 {
@@ -168,6 +171,25 @@ func winProt(prot int) uintptr {
 	}
 	return pageNoAccess
 }
+
+// ctxBuf and debugEvent are handed to the OS as uintptr (base()), so they must
+// not live on a goroutine stack: the stack can move between taking the address
+// and the system call (a stack growth in the callee's prologue), and the OS would
+// then write into the old stack, or the buffer would keep stale contents. The
+// debugger loop of a stub hit this: WaitForDebugEvent filled a dead stack, the
+// loop re-read the previous event, continued the wrong thread and the real event
+// stayed unacknowledged, which froze the stub process for good (docs/results/1l).
+// newCtxBuf and newDebugEvent return heap objects, which never move.
+var (
+	ctxSink atomic.Pointer[ctxBuf]
+	evSink  atomic.Pointer[debugEvent]
+)
+
+//go:noinline
+func newCtxBuf() *ctxBuf { c := new(ctxBuf); ctxSink.Store(c); return c }
+
+//go:noinline
+func newDebugEvent() *debugEvent { e := new(debugEvent); evSink.Store(e); return e }
 
 // ctxBuf is a CONTEXT (amd64, 1232 bytes) with the 16-byte alignment the API needs.
 type ctxBuf struct{ raw [1232 + 16]byte }

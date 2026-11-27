@@ -84,7 +84,7 @@ func DumpState(w io.Writer) {
 			pGetExitCode.Call(t.hThread, uintptr(unsafe.Pointer(&code)))
 			if r, _, _ := pSuspendThread.Call(t.hThread); int32(r) != -1 {
 				prevSuspend = int64(r)
-				var ctx ctxBuf
+				ctx := newCtxBuf()
 				if ctx.get(t.hThread, ctxControl) {
 					rip = *ctx.u64(ctxRipOff)
 				}

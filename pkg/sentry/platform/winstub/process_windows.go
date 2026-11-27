@@ -390,8 +390,7 @@ func (as *addressSpace) debugLoop() {
 		return
 	}
 	as.started <- nil
-	var ev debugEvent
-	var ctx ctxBuf
+	ev, ctx := newDebugEvent(), newCtxBuf()
 	seenBP := false
 	for {
 		// A bounded wait: a Release that terminated the process must not depend on
@@ -430,7 +429,7 @@ func (as *addressSpace) debugLoop() {
 		}
 		switch ev.code() {
 		case 1: // EXCEPTION_DEBUG_EVENT
-			status = as.onException(&ev, &ctx, &seenBP)
+			status = as.onException(ev, ctx, &seenBP)
 		case 3, 6: // CREATE_PROCESS, LOAD_DLL: close the file handle
 			if h := uintptr(ev.u64(16)); h != 0 {
 				pCloseHandle.Call(h)
@@ -665,7 +664,7 @@ func (as *addressSpace) interrupt(t *thread) bool {
 	if r, _, _ := pSuspendThread.Call(t.hThread); int32(r) == -1 {
 		return false
 	}
-	var ctx ctxBuf
+	ctx := newCtxBuf()
 	if !ctx.get(t.hThread, ctxControlInt) {
 		pResumeThread.Call(t.hThread)
 		return false
@@ -677,7 +676,7 @@ func (as *addressSpace) interrupt(t *thread) bool {
 		pResumeThread.Call(t.hThread)
 		return false
 	}
-	as.park(t, &ctx, request{kind: reqInterrupt})
+	as.park(t, ctx, request{kind: reqInterrupt})
 	pResumeThread.Call(t.hThread)
 	return true
 }
