@@ -1,9 +1,6 @@
 # Debian 12's glibc (2.36) under the Sentry from a tmpfs (docs/results/5-podman-windows.md, "libc.so.6: file too short").
 name: windows-debian-guest
 on:
-  push:
-    branches: [podman-build]
-    paths: ["pkg/sentry/**", "tools/windows/sentryguest/**", ".github/workflows/windows-debian-guest.yml"]
   workflow_dispatch:
 jobs:
   rootfs:
