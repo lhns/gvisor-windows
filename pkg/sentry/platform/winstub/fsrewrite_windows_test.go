@@ -170,6 +170,16 @@ func TestFSInterrupt(t *testing.T) {
 	inc := a.emit(0x48, 0xff, 0xc1)                             // inc %rcx is under the jump in rewrite mode
 	jmp := a.emit(0xeb, byte(256-int(a.pc()+2-loop)))           // jmp loop
 	end := a.pc()
+	for _, minLen := range []int{5, 7} { // (the inc lies under a jump of either length)
+		wins, _ := FSWindows(a.b, minLen)
+		planned := false
+		for _, w := range wins {
+			planned = planned || uint64(w.Lo) == win-base && uint64(w.Hi) == jmp-base
+		}
+		if !planned {
+			t.Fatalf("no window [mov %%fs:(%%rdx); inc] planned (jump of %d bytes): %+v", minLen, wins)
+		}
+	}
 	h.mapAt(mm, base, h.pages(a.b, 1), rx)
 	tfr := h.pages(tlsData(), 1)
 	h.mapAt(mm, tlsBase, tfr, rw)
