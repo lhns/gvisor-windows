@@ -16,6 +16,7 @@
 #include <sys/sysmacros.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 static int worker, fails;
@@ -92,6 +93,33 @@ static void lockloop(int iters) {
   for (int i = 0; i < iters; i++) locked_update(lockp, datap, i, i % 4 != 3);
 }
 
+// E: file timestamps. c/storage notices changes by mtime; two writes in a row must give distinct,
+// non-decreasing mtimes that are not in the future of clock_gettime(CLOCK_REALTIME).
+static void mtimes(void) {
+  char p[600];
+  snprintf(p, sizeof p, "%s/mtime-probe", base);
+  int fd = open(p, O_RDWR | O_CREAT, 0644);
+  if (fd < 0) { fail("E:open", 0, p); return; }
+  struct timespec prev = {0, 0};
+  long same = 0, back = 0, future = 0, n = 20000, minstep = 1000000000L;
+  for (long i = 0; i < n; i++) {
+    struct stat st;
+    struct timespec now;
+    if (pwrite(fd, "x", 1, 0) != 1 || fstat(fd, &st)) { fail("E:write", 0, p); break; }
+    clock_gettime(CLOCK_REALTIME, &now);
+    long d = (st.st_mtim.tv_sec - prev.tv_sec) * 1000000000L + (st.st_mtim.tv_nsec - prev.tv_nsec);
+    if (i && d == 0) same++;
+    else if (i && d < 0) back++;
+    else if (i && d < minstep) minstep = d;
+    if (st.st_mtim.tv_sec > now.tv_sec || (st.st_mtim.tv_sec == now.tv_sec && st.st_mtim.tv_nsec > now.tv_nsec)) future++;
+    prev = st.st_mtim;
+  }
+  close(fd);
+  unlink(p);
+  printf("mtime on %s: %ld writes, %ld with the same mtime as the previous, %ld backwards, %ld in the future, smallest step %ld ns\n", base, n, same, back, future, minstep);
+  fflush(stdout);
+}
+
 static void run(int iters) {
   lockloop(iters < 200 ? iters : 200);
   char ctr[512], p[600], q[600], tok[64];
@@ -166,6 +194,7 @@ int main(int argc, char **argv) {
   unlink(p);
   snprintf(p, sizeof p, "%s/ctr", base);
   mkdir(p, 0755);
+  mtimes();
   pid_t pids[64];
   for (worker = 0; worker < workers; worker++) {
     pid_t pid = fork();
