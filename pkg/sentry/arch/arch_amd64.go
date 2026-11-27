@@ -284,8 +284,21 @@ func (c *Context64) NewMmapLayout(min, max hostarch.Addr, r *limits.LimitSet) (M
 	return l, nil
 }
 
+// PIELoadBase, if non-zero, is where position-independent executables are
+// loaded, with PIELoadRand bytes of randomization, instead of Linux's 2/3 of the
+// address space. The Windows platform sets it: code within 2 GiB of the stub's
+// low area can jump to its veneers with 5 bytes instead of 7 (and in far more
+// places).
+var (
+	PIELoadBase hostarch.Addr
+	PIELoadRand uint64
+)
+
 // PIELoadAddress implements Context.PIELoadAddress.
 func (c *Context64) PIELoadAddress(l MmapLayout) hostarch.Addr {
+	if PIELoadBase != 0 && PIELoadBase+hostarch.Addr(PIELoadRand) < l.MaxAddr {
+		return PIELoadBase + mmapRand(PIELoadRand)
+	}
 	base := preferredPIELoadAddr
 	max, ok := base.AddLength(maxMmapRand64)
 	if !ok {

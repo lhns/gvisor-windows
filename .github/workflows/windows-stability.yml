@@ -1,0 +1,72 @@
+# Stability of the stub process platform: fork+exec through runsc.exe repeated many times, in the three
+# platform modes (docs/results/1l-platform-stability.md). A run that does not pass within 16 s leaves its
+# full output and a state dump (goroutines and stub threads) in the artifact.
+name: windows-stability
+on:
+  push:
+    branches: [platform-stability]
+    paths: ["pkg/sentry/platform/**", "runsc/**", "tools/windows/runsctest/**", ".github/workflows/windows-stability.yml"]
+  workflow_dispatch:
+    inputs:
+      runs: {description: "runs per mode", default: "300"}
+jobs:
+  busybox:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq busybox-static
+          mkdir -p out; cp "$(command -v busybox)" out/busybox
+      - uses: actions/upload-artifact@v4
+        with: {name: busybox, path: out}
+  hang:
+    needs: busybox
+    runs-on: windows-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [native, rewrite, rewrite-fxsave]
+    env:
+      WINSTUB_FSMODE: ${{ matrix.mode == 'native' && 'native' || 'rewrite' }}
+      WINSTUB_FPMODE: ${{ matrix.mode == 'rewrite-fxsave' && 'fxsave' || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version-file: go.mod, cache: false}
+      - uses: actions/download-artifact@v4
+        with: {name: busybox, path: guests}
+      - name: Build
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force C:\ci\bin | Out-Null
+          go build -p 2 -o C:\ci\bin\runsc.exe ./runsc
+          go build -o C:\ci\bin\runsctest.exe ./tools/windows/runsctest
+      - name: Rootfs folder
+        shell: pwsh
+        run: |
+          $r = 'C:\ci\work\rootfs'
+          foreach ($d in 'bin','etc','proc','dev','tmp') { New-Item -ItemType Directory -Force "$r\$d" | Out-Null }
+          foreach ($a in 'busybox','sh','true','tar','mkdir','cat','ls') { Copy-Item guests\busybox "$r\bin\$a" }
+          Set-Content "$r\small.tar" ''
+      - name: Fork+exec runs
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          $n = if ('${{ inputs.runs }}' -ne '') { [int]'${{ inputs.runs }}' } else { 300 }
+          $pass = 0; $hang = 0
+          for ($i = 0; $i -lt $n; $i++) {
+            $env:RUNSC_HANG_DUMP = "$PWD\out\dump-$i.txt:12"
+            $o = C:\ci\bin\runsctest.exe -timeout 16s -runsc C:\ci\bin\runsc.exe -rootfs C:\ci\work\rootfs -work C:\ci\work\w-$i -only forkexec 2>&1 | Out-String
+            if ($o -match 'PASS forkexec') { $pass++; Remove-Item -ErrorAction SilentlyContinue $env:RUNSC_HANG_DUMP } else {
+              $hang++
+              "FAILED $i"
+              $o | Out-File -Encoding utf8 out\out-$i.txt
+              Copy-Item C:\ci\work\w-$i\logs\*.log out\$i.log -ErrorAction SilentlyContinue
+            }
+            Remove-Item -Recurse -Force C:\ci\work\w-$i -ErrorAction SilentlyContinue
+          }
+          "STABILITY ${{ matrix.mode }} pass=$pass fail=$hang of $n"
+          if ($hang -gt 0) { exit 1 }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: "stability-${{ matrix.mode }}", path: out, if-no-files-found: ignore}

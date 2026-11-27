@@ -1,0 +1,52 @@
+# Diagnosis of the static glibc crash at start in rewrite mode (fsstress dies after set_tid_address):
+# disassembly around the faulting instruction and a debug run of the platform.
+name: windows-glibc-diag
+on:
+  push:
+    branches: [platform-stability]
+    paths: [".github/workflows/windows-glibc-diag.yml", "tools/windows/disasm/**"]
+  workflow_dispatch:
+jobs:
+  guests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {sparse-checkout: test/guests}
+      - run: |
+          mkdir -p out
+          gcc -static -no-pie -O1 -Wall -o out/fsstress test/guests/fsstress.c
+          objdump -d out/fsstress --start-address=0x431f60 --stop-address=0x432030 > out/objdump.txt
+          readelf -lW out/fsstress > out/readelf.txt
+      - uses: actions/upload-artifact@v4
+        with: {name: fsstress-guest, path: out}
+  diag:
+    needs: guests
+    runs-on: windows-latest
+    env:
+      WINSTUB_FSMODE: rewrite
+      WINSTUB_KEEP_AVX512: "1"
+      WINSTUB_DEBUG: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version-file: go.mod, cache: false}
+      - uses: actions/download-artifact@v4
+        with: {name: fsstress-guest, path: guests}
+      - name: Build and run
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          Copy-Item guests\objdump.txt, guests\readelf.txt out\
+          go run ./tools/windows/disasm guests\fsstress 0x431f60 0x432030 | Tee-Object out\disasm.txt
+          New-Item -ItemType Directory -Force C:\ci\bin | Out-Null
+          go build -p 2 -o C:\ci\bin\runsc.exe ./runsc
+          go build -o C:\ci\bin\runsctest.exe ./tools/windows/runsctest
+          $r = 'C:\ci\work\rootfs'
+          foreach ($d in 'bin','etc','proc','dev','tmp') { New-Item -ItemType Directory -Force "$r\$d" | Out-Null }
+          Copy-Item guests\fsstress "$r\bin\fsstress"
+          C:\ci\bin\runsctest.exe -runsc C:\ci\bin\runsc.exe -rootfs $r -work C:\ci\work\w -only fsstress -stress-iters 2 -stress-workers 1 -timeout 120s *> out\run.txt
+          Get-ChildItem -Recurse C:\ci\work\w -Filter *.log | ForEach-Object { Copy-Item $_.FullName out\ }
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: glibc-diag, path: out}

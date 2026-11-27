@@ -5,6 +5,9 @@ $ErrorActionPreference = 'Continue'
 if ($FsMode -eq 'native') { $env:WINSTUB_FSMODE = 'native' }
 if ($FsMode -eq 'goavx512off') { $env:ENGINE_GODEBUG = 'cpu.avx512=off' }
 if ($FsMode -eq 'rewrite') { $env:WINSTUB_FSMODE = 'rewrite'; $env:WINSTUB_KEEP_AVX512 = '1' }
+# State of the platform (goroutines, stub threads, debug-event counts) 20 s after the start, while the engine is still coming up.
+New-Item -ItemType Directory -Force "$Root\std\engine\logs" | Out-Null
+$env:RUNSC_HANG_DUMP = "$Root\std\engine\logs\state-20s.txt:20"
 "fsmode=$FsMode WINSTUB_FSMODE=$env:WINSTUB_FSMODE WINSTUB_KEEP_AVX512=$env:WINSTUB_KEEP_AVX512"
 $acceptStart = Get-Date
 $repo = (Resolve-Path "$PSScriptRoot\..\..\..").Path

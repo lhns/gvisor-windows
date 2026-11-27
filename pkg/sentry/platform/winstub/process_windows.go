@@ -343,6 +343,12 @@ func (as *addressSpace) start() error {
 	if as.ctlSec, as.ctlView, err = section(stubasm.CtlSize, true); err != nil {
 		return fail(fmt.Errorf("control area: %w", err))
 	}
+	if as.p.fsRewrite {
+		if as.fbigSec, as.fbigView, err = section(stubasm.FSBigSize, true); err != nil {
+			return fail(fmt.Errorf("%%fs veneer area: %w", err))
+		}
+		as.gcur, as.gcommit = stubasm.FSBig, stubasm.FSBig
+	}
 	Trace("start: sections created")
 	for _, m := range []struct {
 		lo, size uint64
@@ -360,6 +366,11 @@ func (as *addressSpace) start() error {
 	}
 	if err := as.mapSys(stubasm.CtlBase, stubasm.CtlSize, as.ctlSec, 0, protR|protW|protX); err != nil {
 		return fail(err)
+	}
+	if as.fbigView != nil {
+		if err := as.mapSys(stubasm.FSBig, stubasm.FSBigSize, as.fbigSec, 0, protR|protX); err != nil {
+			return fail(err)
+		}
 	}
 	Trace("start: views mapped")
 	as.areaWrite(stubasm.StubCode, as.p.image)
@@ -390,9 +401,9 @@ func (as *addressSpace) debugLoop() {
 		return
 	}
 	as.started <- nil
-	var ev debugEvent
-	var ctx ctxBuf
+	ev, ctx := newDebugEvent(), newCtxBuf()
 	seenBP := false
+	fails := 0 // consecutive ContinueDebugEvent failures
 	for {
 		// A bounded wait: a Release that terminated the process must not depend on
 		// the exit event ever arriving (a dump of a hung fork+exec loop showed an
@@ -430,7 +441,7 @@ func (as *addressSpace) debugLoop() {
 		}
 		switch ev.code() {
 		case 1: // EXCEPTION_DEBUG_EVENT
-			status = as.onException(&ev, &ctx, &seenBP)
+			status = as.onException(ev, ctx, &seenBP)
 		case 3, 6: // CREATE_PROCESS, LOAD_DLL: close the file handle
 			if h := uintptr(ev.u64(16)); h != 0 {
 				pCloseHandle.Call(h)
@@ -444,6 +455,17 @@ func (as *addressSpace) debugLoop() {
 		}
 		cr, _, ce := pContinueDebug.Call(uintptr(ev.pid()), uintptr(ev.tid()), uintptr(status))
 		as.lastEvent.Store(fmt.Sprintf("continued event %d tid %d code %#x (status %#x, ContinueDebugEvent ok=%v err=%v)", ev.code(), ev.tid(), ev.u32(16), status, cr != 0, ce))
+		if cr != 0 {
+			fails = 0
+		} else if fails++; !exited && fails >= 3 {
+			// A debug event that cannot be continued leaves the process frozen
+			// for good: end this address space (the tasks using it fail) rather
+			// than hang.
+			debugf("ContinueDebugEvent for event %d tid %d failed: %v; ending the stub", ev.code(), ev.tid(), ce)
+			pTerminateProcess.Call(as.h, 1)
+			as.markDead()
+			return
+		}
 		if exited {
 			as.markDead()
 			return
@@ -559,6 +581,9 @@ func (as *addressSpace) onException(ev *debugEvent, ctx *ctxBuf, seenBP *bool) u
 			as.park(t, ctx, request{kind: reqFault, sig: 4, code: 1, addr: rip})
 		}
 	case excBreakpoint:
+		if as.fsSplitRun(t, ctx, excAddr) {
+			break
+		}
 		as.park(t, ctx, request{kind: reqFault, sig: 5, code: 128, addr: rip})
 	case excSingleStep:
 		as.park(t, ctx, request{kind: reqFault, sig: 5, code: 2, addr: rip})
@@ -589,14 +614,20 @@ func (as *addressSpace) readStub(a uint64, n int) ([]byte, bool) {
 // its repair routine, which reloads the base and returns to the instruction.
 func (as *addressSpace) repairFS(t *thread, ctx *ctxBuf, rip uint64) bool {
 	now := time.Now()
-	if rip == t.lastRepairRIP && now.Sub(t.lastRepair) < 5*time.Millisecond {
+	// The base is lost whenever Windows deschedules the thread, and every debug
+	// event of the process stops all its threads, so under a storm of events (a
+	// Go collector with workers on all CPUs) one instruction can be repaired many
+	// times in a row. Only a long run of repairs of the same instruction in quick
+	// succession means a genuine fault at a low address (it costs a fraction of a
+	// second to report one).
+	if rip == t.lastRepairRIP && now.Sub(t.lastRepair) < 20*time.Millisecond {
 		t.repairN++
 	} else {
 		t.repairN = 0
 	}
 	t.lastRepairRIP, t.lastRepair = rip, now
-	if t.repairN >= 20 {
-		return false // a genuine fault at a low address
+	if t.repairN >= 2000 {
+		return false
 	}
 	*t.u64(stubasm.PgRetRIP) = rip
 	*ctx.u64(ctxRipOff) = t.addr + stubasm.PgRepair
@@ -665,7 +696,7 @@ func (as *addressSpace) interrupt(t *thread) bool {
 	if r, _, _ := pSuspendThread.Call(t.hThread); int32(r) == -1 {
 		return false
 	}
-	var ctx ctxBuf
+	ctx := newCtxBuf()
 	if !ctx.get(t.hThread, ctxControlInt) {
 		pResumeThread.Call(t.hThread)
 		return false
@@ -677,7 +708,7 @@ func (as *addressSpace) interrupt(t *thread) bool {
 		pResumeThread.Call(t.hThread)
 		return false
 	}
-	as.park(t, &ctx, request{kind: reqInterrupt})
+	as.park(t, ctx, request{kind: reqInterrupt})
 	pResumeThread.Call(t.hThread)
 	return true
 }
