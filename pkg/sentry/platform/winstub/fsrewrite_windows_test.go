@@ -330,6 +330,9 @@ func TestFSInstructionAfterSplit(t *testing.T) {
 	mm := h.newMM()
 	const base = 0x1_0000_0000
 	page1 := make([]byte, pageSz)
+	for i := range page1 {
+		page1[i] = 0x90 // (nops: a decoder started in them stays in step)
+	}
 	copy(page1[pageSz-3:], []byte{0x45, 0x0f, 0x57}) // xorps %xmm15,%xmm15, first three bytes
 	page2 := []byte{0xff,
 		0x64, 0x4c, 0x8b, 0x34, 0x25, 0xf8, 0xff, 0xff, 0xff, // mov %fs:-8,%r14
