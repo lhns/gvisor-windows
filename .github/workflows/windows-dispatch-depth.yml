@@ -1,0 +1,77 @@
+# S9: depth of Windows exception dispatch below RSP (clean / ymm / zmm state, big stack and
+# goroutine stack), and the sentrysmoke safecopy probe in a loop with and without the
+# ensureFaultStack helper. Hosted runners vary in CPU (AVX-512 or not), so each job runs
+# several times; see docs/results/0b-windows.md "S9".
+name: windows-dispatch-depth
+on:
+  workflow_dispatch:
+env:
+  CGO_ENABLED: "0"
+jobs:
+  depth:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        attempt: [1, 2, 3, 4, 5, 6]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: test/spikes/windows
+      - uses: actions/setup-go@v5
+        with: {go-version: "1.26.x", cache: false}
+      - name: CPU
+        shell: pwsh
+        run: Get-CimInstance Win32_Processor | Select-Object Name, NumberOfLogicalProcessors | Format-List
+      - name: Run s9
+        shell: bash
+        env: {GODEBUG: asyncpreemptoff=1}
+        working-directory: test/spikes/windows/s9
+        run: |
+          go build -o s9.exe .
+          ./s9.exe 2>&1 | tee ../s9-output.txt
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: s9-output-${{ matrix.attempt }}
+          path: test/spikes/windows/s9-output.txt
+  loop:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        attempt: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: CPU and AVX-512 (s9 header)
+        shell: bash
+        run: |
+          powershell -Command "Get-CimInstance Win32_Processor | Select-Object -ExpandProperty Name"
+          (cd test/spikes/windows/s9 && go build -o s9.exe . && GODEBUG=asyncpreemptoff=1 ./s9.exe 2>&1 | head -3)
+      - name: Safecopy probe loop, with and without ensureFaultStack
+        shell: bash
+        run: |
+          go build -o sentrysmoke.exe ./tools/windows/sentrysmoke
+          export SENTRYSMOKE_ONLY=safecopy
+          N=${LOOP_N:-400}
+          declare -A runs fails panics
+          for variant in with without; do runs[$variant]=0; fails[$variant]=0; panics[$variant]=0; done
+          for i in $(seq 1 $N); do
+            for variant in with without; do
+              if [ $variant = without ]; then export GVISOR_NO_FAULT_STACK=1; else unset GVISOR_NO_FAULT_STACK; fi
+              timeout 120 ./sentrysmoke.exe > out.txt 2>&1
+              rc=$?
+              runs[$variant]=$((runs[$variant]+1))
+              if [ $rc -ne 0 ]; then
+                fails[$variant]=$((fails[$variant]+1))
+                if grep -qE "^(panic|fatal error)|negative WaitGroup|panic:" out.txt; then panics[$variant]=$((panics[$variant]+1)); fi
+                if [ ${fails[$variant]} -le 3 ]; then echo "--- first failures, variant=$variant run=$i rc=$rc"; grep -vE "^PASS|^INFO" out.txt | head -25; fi
+              fi
+            done
+          done
+          for variant in with without; do
+            echo "LOOP variant=$variant runs=${runs[$variant]} nonzero_exit=${fails[$variant]} panics=${panics[$variant]}"
+          done

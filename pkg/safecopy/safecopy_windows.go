@@ -7,6 +7,7 @@ package safecopy
 
 import (
 	"fmt"
+	"os"
 	"syscall"
 )
 
@@ -32,7 +33,6 @@ func installFaultHandlers() {
 	}
 }
 
-
 // ensureFaultStack makes sure that the goroutine stack has room below the
 // caller for the exception dispatcher. Windows runs vectored exception
 // handlers on the faulting thread's current stack, which for a goroutine is
@@ -42,4 +42,13 @@ func installFaultHandlers() {
 // memory (the one-off "negative WaitGroup counter" in sentrysmoke). The
 // function is assembly with a large frame and no body, so it costs only the
 // prologue's stack check.
-func ensureFaultStack()
+func ensureFaultStackAsm()
+
+// noFaultStack disables the helper (S9 experiment, branch dispatch-depth only).
+var noFaultStack = os.Getenv("GVISOR_NO_FAULT_STACK") != ""
+
+func ensureFaultStack() {
+	if !noFaultStack {
+		ensureFaultStackAsm()
+	}
+}

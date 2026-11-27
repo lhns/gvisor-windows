@@ -18,8 +18,8 @@ import (
 
 	"golang.org/x/sys/windows"
 	"gvisor.dev/gvisor/pkg/cpuid"
-	"gvisor.dev/gvisor/pkg/hosttid"
 	"gvisor.dev/gvisor/pkg/hostarch"
+	"gvisor.dev/gvisor/pkg/hosttid"
 	"gvisor.dev/gvisor/pkg/rand"
 	"gvisor.dev/gvisor/pkg/safecopy"
 	"gvisor.dev/gvisor/pkg/safemem"
@@ -56,6 +56,13 @@ func probe(name string, f func()) {
 
 func main() {
 	info("env", "%s/%s %s GOMAXPROCS=%d", runtime.GOOS, runtime.GOARCH, runtime.Version(), runtime.GOMAXPROCS(0))
+	if os.Getenv("SENTRYSMOKE_ONLY") == "safecopy" { // S9 loop: only the safecopy probe
+		probe("safecopy", probeSafecopy)
+		if failed {
+			os.Exit(1)
+		}
+		return
+	}
 	probe("rand", probeRand)
 	probe("hosttid", probeHostTID)
 	probe("cpuid", probeCPUID)
