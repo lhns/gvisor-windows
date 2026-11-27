@@ -38,6 +38,7 @@ var (
 	only     = flag.String("only", "", "comma-separated test names (default all)")
 	timeout  = flag.Duration("timeout", 120*time.Second, "per test")
 	stressWorkers = flag.Int("stress-workers", 6, "fsstress: parallel mount namespaces")
+	stressStrace  = flag.Bool("stress-strace", false, "fsstress: run with runsc --strace")
 	stressIters   = flag.Int("stress-iters", 600, "fsstress: iterations per worker")
 	fsMode   = flag.String("fsmode", "", "WINSTUB_FSMODE for runsc (native or rewrite)")
 	fpMode   = flag.String("fpmode", "", "WINSTUB_FPMODE for runsc (fxsave)")
@@ -332,6 +333,9 @@ var extraMounts []map[string]any
 // extraCaps, when set, are the capabilities of the guest process (the default has no CAP_SYS_ADMIN).
 var extraCaps []string
 
+// stressExtra are extra runsc flags of the fsstress test (for example --strace).
+var stressExtra []string
+
 // testHostfs is the reproducer for the rename and rmdir failures Podman's
 // storage hits on a host-folder bind mount ("rename .tmp-images.json
 // images.json: permission denied", "remove /.pivot_root: permission denied").
@@ -611,6 +615,9 @@ func testSockfs() error {
 // testFsStress runs test/guests/fsstress: parallel mount namespaces creating container-like
 // directories on a tmpfs and on a host-folder bind mount (docs/results/5-podman-windows.md, fifth round).
 func testFsStress() error {
+	if *stressStrace {
+		stressExtra = []string{"--strace"}
+	}
 	dir := filepath.Join(*workDir, "fsstress")
 	_ = os.RemoveAll(dir)
 	must(os.MkdirAll(dir, 0o755))
@@ -619,7 +626,7 @@ func testFsStress() error {
 	defer func() { extraMounts, extraCaps = nil, nil }()
 	bad := 0
 	for _, where := range []string{"/tmp/fs", "/w/fs"} {
-		r, err := runsc("fsstress", []string{"/bin/fsstress", where, strconv.Itoa(*stressWorkers), strconv.Itoa(*stressIters)}, nil)
+		r, err := runsc("fsstress", []string{"/bin/fsstress", where, strconv.Itoa(*stressWorkers), strconv.Itoa(*stressIters)}, nil, stressExtra...)
 		if err != nil {
 			return err
 		}
