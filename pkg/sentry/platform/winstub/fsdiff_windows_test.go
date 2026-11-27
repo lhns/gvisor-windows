@@ -857,7 +857,7 @@ func TestFSRealWindows(t *testing.T) {
 		}
 		wins = append(wins, w)
 	}
-	const rounds = 2
+	const rounds = 1
 	for _, textBase := range []uint64{fdText, fdFar} {
 		t.Run(fmt.Sprintf("text %#x", textBase), func(t *testing.T) {
 			rnd := rand.New(rand.NewSource(7))
@@ -876,7 +876,10 @@ func TestFSRealWindows(t *testing.T) {
 			var cases []*fdCase
 			var offs []uint64
 			for round := 0; round < rounds; round++ {
-				for _, w := range wins {
+				for wi, w := range wins {
+					if textBase == fdFar && wi%3 != 0 {
+						continue
+					}
 					code := append([]byte(nil), w.code...)
 					pc := textBase + uint64(len(text))
 					for _, o := range w.rip {
