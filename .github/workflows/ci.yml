@@ -4,7 +4,7 @@
 name: ci
 on:
   push:
-    branches: [windows, ci-fast]
+    branches: [windows]
     paths: ["pkg/**", "runsc/**", "third_party/**", "tools/**", "test/guests/**", "test/e2e/podman-acceptance/**", "go.mod", "go.sum", ".github/**"]
   workflow_dispatch:
 concurrency:
