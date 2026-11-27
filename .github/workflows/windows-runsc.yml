@@ -72,7 +72,7 @@ jobs:
           $r = 'C:\ci\work\rootfs'
           foreach ($d in 'bin','etc','proc','dev','tmp','www') { New-Item -ItemType Directory -Force "$r\$d" | Out-Null }
           Copy-Item guests\hello "$r\bin\hello"; Copy-Item guests\unixsock "$r\bin\unixsock"; Copy-Item guests\cfr "$r\bin\cfr"; New-Item -ItemType Directory -Force "$r\dbin" | Out-Null; Copy-Item guests\dbin\* "$r\dbin"
-          foreach ($a in 'busybox','sh','ls','cat','wget','httpd','sleep','stty','tty','true','chmod','tar','head','sha256sum','gzip','awk','cut','mkdir','rm') { Copy-Item guests\busybox "$r\bin\$a" }
+          foreach ($a in 'busybox','sh','ls','cat','wget','httpd','sleep','stty','tty','true','chmod','ln','tar','head','sha256sum','gzip','awk','cut','mkdir','rm') { Copy-Item guests\busybox "$r\bin\$a" }
           Copy-Item guests\rootfs.erofs C:\ci\work\rootfs.erofs
           Copy-Item guests\bench.sh "$r\bench.sh"; Copy-Item guests\small.tar "$r\small.tar"
           [IO.File]::WriteAllText("$r\etc\hostname", "ciguest`n")

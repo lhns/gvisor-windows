@@ -324,12 +324,12 @@ func testHostfs() error {
 	must(os.MkdirAll(dir, 0o755))
 	extraMounts = []map[string]any{{"destination": "/w", "type": "bind", "source": dir, "options": []string{"rbind", "rw"}}}
 	defer func() { extraMounts = nil }()
-	script := `cd /w; set -x; echo a >x; echo b >y; mv x y && echo replace-ok; cat y; mkdir d; mkdir d/e; rmdir d/e && echo rmdir-ok; mv d d2 && echo dirmove-ok; rmdir d2 && echo rmdir2-ok; echo c >z; rm z && echo rm-ok; mkfifo p; echo fifo-data >p & cat p; wait; echo fifo-ok; exit 0`
+	script := `cd /w; set -x; echo a >x; echo b >y; mv x y && echo replace-ok; cat y; mkdir d; mkdir d/e; rmdir d/e && echo rmdir-ok; mv d d2 && echo dirmove-ok; rmdir d2 && echo rmdir2-ok; echo c >z; rm z && echo rm-ok; mkfifo p; echo fifo-data >p & cat p; wait; echo fifo-ok; echo link-data >lt; ln -s /w/lt sl-abs; cat sl-abs && echo abs-symlink-ok; ln -s lt sl-rel; cat sl-rel && echo rel-symlink-ok; ln lt hl; cat hl && echo hardlink-ok; mkdir -p ld; ln -s /w/lt ld/00-a%3ab.deb; cat ld/00-a%3ab.deb && echo odd-name-symlink-ok; ln -s /w/lt /w/ld/abs2; cat /w/ld/abs2 && echo abs-in-dir-ok; exit 0`
 	r, err := runsc("hostfs", []string{"/bin/sh", "-c", script}, nil)
 	if err != nil {
 		return err
 	}
-	for _, want := range []string{"replace-ok", "rmdir-ok", "dirmove-ok", "rmdir2-ok", "rm-ok", "fifo-data", "fifo-ok"} {
+	for _, want := range []string{"replace-ok", "rmdir-ok", "dirmove-ok", "rmdir2-ok", "rm-ok", "fifo-data", "fifo-ok", "abs-symlink-ok", "rel-symlink-ok", "hardlink-ok", "odd-name-symlink-ok", "abs-in-dir-ok"} {
 		if !strings.Contains(r.stdout, want) {
 			return fmt.Errorf("%q missing; stdout %q stderr %q", want, r.stdout, r.stderr)
 		}
