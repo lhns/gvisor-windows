@@ -71,6 +71,7 @@ jobs:
     env:
       WINSTUB_FSMODE: ${{ matrix.mode == 'native' && 'native' || 'rewrite' }}
       WINSTUB_FPMODE: ${{ matrix.mode == 'rewrite-fxsave' && 'fxsave' || '' }}
+      WINSTUB_KEEP_AVX512: ${{ matrix.mode == 'rewrite' && '1' || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
