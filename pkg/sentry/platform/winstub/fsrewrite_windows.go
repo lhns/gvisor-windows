@@ -29,6 +29,7 @@ import (
 	"gvisor.dev/gvisor/pkg/hostarch"
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/stubasm"
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/x86asm"
+	"gvisor.dev/gvisor/pkg/sentry/profkeys"
 )
 
 // Rewrite mode (ADR 0020): on CPUs without FSGSBASE every %fs instruction of the
@@ -72,26 +73,33 @@ func (as *addressSpace) patchFS(code []byte, base uint64, site *scanSite, cl *cl
 		target = stubasm.FSBig
 	}
 	rel := int64(target) - int64(base) - int64(x.off)
-	minLen := 7
+	lens := []int{7}
 	if rel > -(1<<31)+(1<<20) && rel < (1<<31)-(1<<20) {
-		minLen = 5
+		lens = []int{5, 7} // (7 if the veneer ends up out of rel32 reach after all)
 	}
-	a, b, ok := 0, 0, false
 	why := "start of a range"
-	if fsForceUD2 {
+	switch {
+	case fsForceUD2:
 		why = "WINSTUB_FSUD2"
-	} else if !unsure {
-		a, b, ok = planFSWindow(win, tgt, site.s, minLen, func(lo, hi int) bool { return !cl.taken(lo, hi) })
-		why = fmt.Sprintf("no window of %d bytes", minLen)
-	}
-	if ok {
-		if ok = as.fsWindow(code, base, win, a, b, site.s, minLen, cl); !ok {
+	case !unsure:
+		for _, minLen := range lens {
+			a, b, ok := planFSWindow(win, tgt, site.s, minLen, func(lo, hi int) bool { return !cl.taken(lo, hi) })
+			if !ok {
+				why = fmt.Sprintf("no window of %d bytes", minLen)
+				break // (a longer jump needs a longer window)
+			}
+			if as.fsWindow(code, base, win, a, b, site.s, minLen, cl) {
+				st.fs++
+				if profkeys.On {
+					profkeys.Count(fmt.Sprintf("winstub %%fs site: veneer, jump of %d bytes", minLen), 0)
+				}
+				return
+			}
 			why = "veneer area full or veneer not buildable"
 		}
 	}
-	if ok {
-		st.fs++
-		return
+	if profkeys.On {
+		profkeys.Count("winstub %fs site: debugger, "+why, 0)
 	}
 	if cl.taken(x.off, x.off+x.n) {
 		st.fsBad++
@@ -188,6 +196,9 @@ func (as *addressSpace) fsUD2At(a uint64) []byte {
 	defer as.mu.Unlock()
 	if b := as.fsUD2[a]; b != nil {
 		as.fsHits[a]++
+		if profkeys.On {
+			profkeys.Count("winstub %fs debugger run: "+as.fsWhy[a], 0)
+		}
 		return b
 	}
 	return nil
@@ -334,6 +345,9 @@ func (as *addressSpace) fsSplitRun(t *thread, ctx *ctxBuf, a uint64) bool {
 	as.mu.Unlock()
 	if head == nil {
 		return false
+	}
+	if profkeys.On {
+		profkeys.Count("winstub %fs debugger run: split between pieces", 0)
 	}
 	*ctx.u64(ctxRipOff) = a // the int3 itself (the exception reports the next byte)
 	next := a + uint64(len(head))

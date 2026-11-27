@@ -189,3 +189,72 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with: {name: runsc-profile, path: out}
+  # Rewrite mode (ADR 0020): how many %fs executions take the debugger path
+  # (docs/results/1s-veneers.md). The same workload runs normally and with every %fs
+  # instruction through the debugger (WINSTUB_FSUD2=1), whose count is the total.
+  fs-guests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Debian with python3 and netavark
+        run: |
+          docker run --name r debian:trixie sh -c 'apt-get update -qq && apt-get install -y -qq --no-install-recommends python3 netavark >/dev/null'
+          mkdir -p t
+          cat > t/py.py <<'PY'
+          import json, re, sys
+          n = int(sys.argv[1])
+          s = 0
+          for i in range(n):
+              s += len(json.dumps({"a": [i, str(i)], "b": re.sub("1", "x", str(i))}))
+          print("py", n, s)
+          PY
+          cat > t/nv.sh <<'SH'
+          /usr/lib/podman/netavark --version
+          for i in 1 2 3; do
+            echo '{"name":"n1","driver":"bridge","network_interface":"podman1","subnets":[{"subnet":"10.89.0.0/24","gateway":"10.89.0.1"}],"ipv6_enabled":false,"internal":false,"dns_enabled":false,"ipam_options":{"driver":"host-local"}}' | /usr/lib/podman/netavark create
+          done
+          echo nv done
+          SH
+          docker cp t r:/t
+          docker export r > fsroot.tar
+          ls -l fsroot.tar
+      - uses: actions/upload-artifact@v4
+        with: {name: fs-guests, path: fsroot.tar, compression-level: 0}
+  fs-share:
+    needs: fs-guests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {name: fs-guests, path: dl}
+      - uses: ./.github/actions/winbin
+        with: {targets: sentryguest}
+      - name: Debugger share of %fs executions
+        shell: pwsh
+        run: |
+          . tools/windows/ci/leg.ps1
+          New-Item -ItemType Directory -Force out | Out-Null
+          $work = @(
+            @{n='python3'; a=@('/usr/bin/python3', '/t/py.py', '2000')},
+            @{n='python3-start'; a=@('/usr/bin/python3', '-c', 'pass')},
+            @{n='netavark'; a=@('/bin/sh', '/t/nv.sh')}
+          )
+          foreach ($leg in 'rewrite', 'rewrite-fxsave') {
+            Set-Leg $leg
+            foreach ($w in $work) {
+              foreach ($ud2 in '', '1') {
+                $env:WINSTUB_FSUD2 = $ud2
+                $tag = "$leg $($w.n) $(if ($ud2) { 'all-ud2' } else { 'normal' })"
+                $t0 = Get-Date
+                $o = & C:\ci\bin\sentryguest.exe -profstats -timeout=900s '-tar=dl/fsroot.tar' '-env=PATH=/usr/bin:/bin,HOME=/tmp' @($w.a) 2>&1 | Out-String
+                $s = ((Get-Date) - $t0).TotalSeconds
+                $o | Out-File -Encoding utf8 "out/$($tag -replace ' ', '_').txt"
+                $dbg = 0; foreach ($m in [regex]::Matches($o, 'PROFSTATS key winstub %fs debugger run: (.*?)\s+(\d+)\s+[\d.]+ ms')) { $dbg += [int64]$m.Groups[2].Value }
+                "FSSHARE $tag : debugger runs $dbg, $([math]::Round($s, 1)) s, exit: $(($o -split "`n" | Select-String 'sentryguest: exit|py \d|nv done|netavark' | Select-Object -First 3) -join ' / ')" | Tee-Object -Append out/share.txt
+                $o -split "`n" | Select-String 'PROFSTATS key winstub' | ForEach-Object { "  $($_.Line.Trim())" } | Tee-Object -Append out/share.txt
+              }
+            }
+          }
+          $env:WINSTUB_FSUD2 = ''
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: fs-share, path: out}
