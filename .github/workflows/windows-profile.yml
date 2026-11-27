@@ -162,13 +162,15 @@ jobs:
             go tool pprof -top -cum -nodecount=50 C:\ci\bin\runsc.exe out/runsc-$p.pprof 2>&1 | Tee-Object -Append out/runsc-pprof.txt | Select-Object -First 62
           }
       - name: Hang check (fork+exec, root folder exclusive and shared)
+        timeout-minutes: 40
         shell: pwsh
         continue-on-error: true
         run: |
           New-Item -ItemType Directory -Force out\hang | Out-Null
           foreach ($mode in 'exclusive', 'shared') {
             $pass = 0; $hang = 0
-            for ($i = 0; $i -lt 16; $i++) {
+            $n = if ($mode -eq 'exclusive') { 100 } else { 16 }
+            for ($i = 0; $i -lt $n; $i++) {
               $env:RUNSC_HANG_DUMP = "$PWD\out\hang\dump-$mode-$i.txt:12"
               Remove-Item Env:PROF_ROOTFS_OPTIONS -ErrorAction SilentlyContinue
               if ($mode -eq 'shared') { $env:PROF_ROOTFS_OPTIONS = 'cache=shared' }
