@@ -1,0 +1,71 @@
+# Chasing "fatal error: runtime: netpoll failed" of the Sentry on Windows
+# (docs/results/4-syscall-tests.md): one kernel runs one syscall test binary
+# while the process's handle count, goroutines and memory are logged.
+name: sentry-netpoll
+on:
+  workflow_dispatch:
+    inputs:
+      shards_run:
+        description: "Run id of a syscall-tests run whose artifact syscalltests-shards is still there"
+        default: "45917614175"
+      binary:
+        description: "Test binary"
+        default: "socket_filesystem_test"
+      net:
+        description: "Network stack for the guest (true/false)"
+        default: "true"
+  push:
+jobs:
+  run:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version-file: go.mod, cache: false}
+      - uses: actions/download-artifact@v4
+        with:
+          name: syscalltests-shards
+          path: shards
+          run-id: ${{ inputs.shards_run || '45917614175' }}
+          github-token: ${{ github.token }}
+      - name: Build
+        shell: bash
+        run: go build -o sentryguest.exe ./tools/windows/sentryguest
+      - name: One kernel, one binary
+        shell: bash
+        env: {MSYS_NO_PATHCONV: "1"}
+        run: |
+          BIN=${{ inputs.binary || 'socket_filesystem_test' }}
+          NET=${{ inputs.net || 'true' }}
+          shard=$(grep -l "^$BIN	" shards/*/list.txt | head -1 | xargs dirname)
+          echo "shard $shard"
+          grep "^$BIN	" "$shard/list.txt" > list.txt
+          wc -l list.txt
+          flags="-sysmounts -stream -handles 5s -stall-dump 90s -stall-kill -timeout 20m"
+          [ "$NET" = true ] && flags="$flags -net"
+          set +e
+          ./sentryguest.exe -tar "$shard/rootfs.tar" $flags -files "list.txt:/list.txt" /bin/driver -t 60 /list.txt > run.log 2>&1
+          echo "exit $?"
+          grep -c "^R	" run.log
+          grep "^HANDLES" run.log | awk 'NR%12==1' | head -80
+          grep "^HANDLES" run.log | tail -3
+          grep -E "fatal error|panic:|GetQueuedCompletion" run.log | head -5
+          grep -E "^STALL (child|killed)" run.log | head -20
+      - name: The same through run_shard.py, as the syscall-tests workflow does
+        shell: bash
+        env: {MSYS_NO_PATHCONV: "1"}
+        run: |
+          BIN=${{ inputs.binary || 'socket_filesystem_test' }}
+          shard=$(grep -l "^$BIN	" shards/*/list.txt | head -1 | xargs dirname)
+          grep "^$BIN	" "$shard/list.txt" > list2.txt
+          python tools/windows/syscalltests/run_shard.py --list list2.txt --out shard.tsv --sentryguest ./sentryguest.exe --tar "$shard/rootfs.tar" --guest-flags='-handles 5s -stall-dump 90s' --stall 200 | tail -20
+          cut -f3 shard.tsv | sort | uniq -c
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: netpoll-log
+          path: |
+            run.log
+            shard.tsv
+            shard.tsv.out

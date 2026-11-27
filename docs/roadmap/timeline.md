@@ -61,7 +61,7 @@ gantt
     Make Linux names resolve on Windows :sentry_unix_shim, 2026-11-26, 2026-11-26
     Dynamic programs, exec and pipes :sentry_dynamic_elf_and_exec, 2026-11-26, 2026-11-26
     Profile the slow file and exec path :sentry_profile_small_file_path, 2026-11-27, 2026-11-27
-    Sentry dies with netpoll failed :sentry_netpoll_failure, 2026-11-27, 2026-11-27
+    Sentry stalls after many socket tests :sentry_netpoll_failure, 2026-11-27, 2026-11-27
     fchmod on a standard stream fails :sentry_fchmod_std_stream, 2026-11-27, 2026-11-27
     pasta networking inside the sandbox :sentry_pasta_in_sandbox, 2026-11-27, 2026-11-27
     section fs - files

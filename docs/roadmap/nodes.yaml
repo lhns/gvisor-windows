@@ -2145,7 +2145,7 @@
   state: in-progress
   lane: windows-ci
   plain: 'A guest that forks many children hangs now and then: about 1 in 50 gopodman runs, and 9 in 48 fork+exec loops through runsc.exe with the exclusive root cache (2 in 48 with the shared cache); the
-    shell waits in wait4 with no child task.'
+    shell waits in wait4 with no child task. Syscall-test runs show the same root: a stub process that never finishes starting (one thread in a kernel wait), and newAS/Release wait forever on it.'
   notes: 'Fixed when: the gopodman hunt step passes 200 runs in a row; suggested: capture threads with a request flag the stub polls instead of SuspendThread.'
 - outcome: unrated
   evidence:
@@ -2155,17 +2155,18 @@
   depends_on: []
   replaced_by: []
   start: '2026-11-27'
-  end: ''
+  end: '2026-11-27'
   folded: []
   overview: false
   id: sentry-netpoll-failure
-  title: Sentry dies with netpoll failed
+  title: Sentry stalls after many socket tests
   track: sentry
   kind: defect
-  state: next
+  state: done
   lane: windows-ci
   plain: 'After a few hundred socket test cases in one kernel the Sentry dies with "fatal error: runtime: netpoll failed" or stalls; about 1,700 syscall-test cases fail only because of this.'
-  notes: 'Fixed when: socket_filesystem_test and socket_abstract_test complete in one kernel on Windows; cause separated between Go''s IOCP netpoller and a host-handle leak per guest process.'
+  notes: 'Cause found: not a handle leak or the netpoller; a stub process that never starts (about 1 per 100-1500 guest processes) leaves the Sentry waiting forever in newAS/Release. Moved to the platform
+    hang defect.'
 - outcome: unrated
   evidence:
   - docs/results/4-syscall-tests.md
