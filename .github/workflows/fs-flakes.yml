@@ -28,10 +28,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: [native, rewrite]
+        mode: [native, rewrite, rewrite-ud2]
     env:
-      WINSTUB_FSMODE: ${{ matrix.mode }}
-      WINSTUB_KEEP_AVX512: ${{ matrix.mode == 'rewrite' && '1' || '' }}
+      WINSTUB_FSMODE: ${{ matrix.mode == 'native' && 'native' || 'rewrite' }}
+      FSUD2: ${{ matrix.mode == 'rewrite-ud2' && '1' || '' }}
+      WINSTUB_KEEP_AVX512: ${{ matrix.mode != 'native' && '1' || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -54,7 +55,7 @@ jobs:
         run: |
           & tools/windows/ci/run-as-standard-user.ps1 `
             -Program C:\ci\bin\runsctest.exe `
-            -Arguments @('-fsmode', $env:WINSTUB_FSMODE, '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-keep','-only','mountkeep','-timeout','300s') `
+            -Arguments @('-fsmode', $env:WINSTUB_FSMODE, $(if ($env:FSUD2) { '-fsud2' } else { '-fsmode=' + $env:WINSTUB_FSMODE }), '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-keep','-only','mountkeep','-timeout','300s') `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 600
           if ($LASTEXITCODE -ne 0) { exit 1 }
       - name: apt rename pattern as a standard user
@@ -64,7 +65,7 @@ jobs:
           for ($i = 1; $i -le 3; $i++) {
             & tools/windows/ci/run-as-standard-user.ps1 `
               -Program C:\ci\bin\runsctest.exe `
-              -Arguments @('-fsmode', $env:WINSTUB_FSMODE, '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work',"C:\ci\work\std-apt$i",'-only','aptrename','-stress-iters','200','-timeout','600s') `
+              -Arguments @('-fsmode', $env:WINSTUB_FSMODE, $(if ($env:FSUD2) { '-fsud2' } else { '-fsmode=' + $env:WINSTUB_FSMODE }), '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work',"C:\ci\work\std-apt$i",'-only','aptrename','-stress-iters','200','-timeout','600s') `
               -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 900
             if ($LASTEXITCODE -ne 0) { $fail++ }
           }
@@ -84,7 +85,7 @@ jobs:
           for ($i = 1; $i -le $reps; $i++) {
             & tools/windows/ci/run-as-standard-user.ps1 `
               -Program C:\ci\bin\runsctest.exe `
-              -Arguments @('-fsmode', $env:WINSTUB_FSMODE, '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work',"C:\ci\work\std-stress$i",'-only','fsstress','-stress-iters',$iters,'-stress-workers',$workers,'-timeout','900s') `
+              -Arguments @('-fsmode', $env:WINSTUB_FSMODE, $(if ($env:FSUD2) { '-fsud2' } else { '-fsmode=' + $env:WINSTUB_FSMODE }), '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work',"C:\ci\work\std-stress$i",'-only','fsstress','-stress-iters',$iters,'-stress-workers',$workers,'-timeout','900s') `
               -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 1800
             if ($LASTEXITCODE -ne 0) { $fail++ }
           }

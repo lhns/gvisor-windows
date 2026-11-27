@@ -43,6 +43,7 @@ var (
 	winstubDebug  = flag.Bool("winstub-debug", false, "WINSTUB_DEBUG=1 for runsc (patching log lines in stderr)")
 	gcSecs        = flag.Int("gc-secs", 20, "gogc: seconds to run")
 	fsMode   = flag.String("fsmode", "", "WINSTUB_FSMODE for runsc (native or rewrite)")
+	fsUD2    = flag.Bool("fsud2", false, "WINSTUB_FSUD2=1 for runsc (every %fs instruction through the debugger)")
 	fpMode   = flag.String("fpmode", "", "WINSTUB_FPMODE for runsc (fxsave)")
 )
 
@@ -60,6 +61,9 @@ func main() {
 	os.Setenv("WINSTUB_TRIPWIRE", "1") // a syscall that runs on Windows fails the test
 	if *fsMode != "" {
 		os.Setenv("WINSTUB_FSMODE", *fsMode)
+	}
+	if *fsUD2 {
+		os.Setenv("WINSTUB_FSUD2", "1")
 	}
 	if *fpMode != "" {
 		os.Setenv("WINSTUB_FPMODE", *fpMode)

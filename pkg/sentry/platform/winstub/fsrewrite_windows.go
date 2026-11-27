@@ -20,6 +20,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
+	"os"
 	"sort"
 	"unsafe"
 
@@ -33,6 +34,9 @@ import (
 // guest becomes a jump to a veneer (see fsVeneer) that adds the guest's %fs base,
 // kept in the thread's TEB, to the address by hand. This file holds the Windows
 // side: placing veneers, and moving a stopped thread out of one.
+
+// fsForceUD2 (WINSTUB_FSUD2=1, a diagnostic) leaves every %fs instruction to the debugger path.
+var fsForceUD2 = os.Getenv("WINSTUB_FSUD2") != ""
 
 // fsVenInfo describes a veneer in the address space.
 type fsVenInfo struct {
