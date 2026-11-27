@@ -83,7 +83,7 @@ function Start-Engine {
     @{ destination = '/tmp'; type = 'tmpfs'; source = 'tmpfs'; options = @('mode=1777') },
     # buildah mounts an overlay with its upperdir in /var/tmp; the Sentry accepts only tmpfs or host-folder uppers for user mounts, not the root overlay.
     @{ destination = '/var/tmp'; type = 'tmpfs'; source = 'tmpfs'; options = @('mode=1777') },
-    @{ destination = '/var/lib/containers'; type = 'bind'; source = $storage; options = @('rbind', 'rw', 'case-sensitive', 'cache=exclusive') }
+    @{ destination = '/var/lib/containers'; type = 'bind'; source = $storage; options = @('rbind', 'rw', 'case-sensitive') }
   )
   if ($Share) {
     $mounts += @{ destination = (Guest-Path $Share); type = 'bind'; source = (Resolve-Path $Share).Path; options = @('rbind', 'rw', 'case-sensitive') }
