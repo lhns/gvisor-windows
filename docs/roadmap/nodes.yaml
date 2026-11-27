@@ -2598,3 +2598,23 @@
   lane: windows-ci
   plain: 'In rewrite mode, aptrename dies with free(): invalid size and apt inside builds with segfaults or double free; native mode runs them, so a %fs veneer likely computes or clobbers something wrong.'
   notes: 'Fixed when: aptrename and the acceptance build step pass in rewrite mode.'
+- id: ops-ci-build-once
+  title: Build once, run suites on demand
+  track: ops
+  kind: tooling
+  state: done
+  outcome: unrated
+  evidence:
+  - docs/results/6-ci.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: windows-ci
+  start: '2026-11-27'
+  end: '2026-11-27'
+  folded: []
+  overview: false
+  plain: One ci.yml builds runsc.exe and the test binaries once and calls every Windows suite; worker branches start no runs and dispatch only what they need; heavy repeats run nightly. About 62 to 40 job-minutes
+    per push.
+  notes: 'Next lever: merge the 16 small Linux acceptance jobs. Also uploads a runsc-windows package (runsc.exe, hello bundle, README) for trying it on a work machine.'

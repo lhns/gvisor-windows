@@ -1,29 +1,23 @@
+# Called by ci.yml on push; dispatch it alone with `gh workflow run windows-net --ref <branch>`.
 name: windows-net
 
 on:
-  push:
+  workflow_call:
+    inputs:
+      prebuilt: {type: boolean, default: false}
   workflow_dispatch:
 
-env:
-  CGO_ENABLED: "0"
+concurrency:
+  group: windows-net-${{ github.ref }}-${{ inputs.prebuilt && 'ci' || 'solo' }}
+  cancel-in-progress: true
 
 jobs:
   net:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - name: Vet
-        shell: bash
-        run: go vet -p 2 ./pkg/tcpip/winnat/
-      - name: Build the test binary (as the runner's administrator)
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force C:\ci\bin | Out-Null
-          go test -c -p 2 -o C:\ci\bin\winnat.test.exe ./pkg/tcpip/winnat
-          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - uses: ./.github/actions/winbin
+        with: {prebuilt: "${{ inputs.prebuilt }}", targets: winnat}
       - name: Network tests as a standard user
         shell: pwsh
         run: >

@@ -1,8 +1,15 @@
+# Called by ci.yml on push; dispatch it alone with `gh workflow run windows-sentry --ref <branch>`.
 name: windows-sentry
 
 on:
-  push:
+  workflow_call:
+    inputs:
+      prebuilt: {type: boolean, default: false}
   workflow_dispatch:
+
+concurrency:
+  group: windows-sentry-${{ github.ref }}-${{ inputs.prebuilt && 'ci' || 'solo' }}
+  cancel-in-progress: true
 
 env:
   CGO_ENABLED: "0"
@@ -12,24 +19,26 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
+      - uses: ./.github/actions/winbin
+        with: {prebuilt: "${{ inputs.prebuilt }}", targets: "sentrysmoke,safecopy,pgalloc"}
+      # The init loop below needs the toolchain; when prebuilt winbin has not set it up.
+      - if: inputs.prebuilt
+        uses: ./.github/actions/gosetup
       - name: Sentry smoke program
         shell: bash
-        run: timeout 300 go run ./tools/windows/sentrysmoke
+        run: timeout 300 C:/ci/bin/sentrysmoke.exe
       - name: Diagnostics of memclr faults
         if: always()
         shell: bash
-        run: go test -p 2 -count=1 -v -run TestWindowsFaultMatrix -timeout 60s ./pkg/safecopy/ 2>&1 | grep -E "DIAG|hasERMS|panic|FAIL|ok" | head -400
+        run: (cd pkg/safecopy && C:/ci/bin/safecopy.test.exe -test.count=1 -test.v -test.run TestWindowsFaultMatrix -test.timeout 60s) 2>&1 | grep -E "DIAG|hasERMS|panic|FAIL|ok|PASS" | head -400
       - name: Tests of pkg/safecopy
         if: always()
         shell: bash
         run: |
           set +e
-          go test -p 2 -count=1 -v -timeout 100s ./pkg/safecopy/ > safecopy.log 2>&1
+          (cd pkg/safecopy && C:/ci/bin/safecopy.test.exe -test.count=1 -test.v -test.timeout=100s) > safecopy.log 2>&1
           rc=$?
-          grep -E "^([[:space:]]*--- FAIL|FAIL|ok|panic|fatal)" safecopy.log | head -60
+          grep -E "^([[:space:]]*--- FAIL|FAIL|ok|PASS|panic|fatal)" safecopy.log | head -60
           echo "top-level: $(grep -cE "^--- PASS" safecopy.log) passed, $(grep -cE "^--- FAIL" safecopy.log) failed, $(grep -cE "^--- SKIP" safecopy.log) skipped; subtests: $(grep -cE "^[[:space:]]+--- PASS" safecopy.log) passed, $(grep -cE "^[[:space:]]+--- FAIL" safecopy.log) failed, $(grep -cE "^[[:space:]]+--- SKIP" safecopy.log) skipped"
           exit $rc
       - name: Tests of pkg/sentry/pgalloc
@@ -37,9 +46,9 @@ jobs:
         shell: bash
         run: |
           set +e
-          go test -p 2 -count=1 -v -timeout 200s ./pkg/sentry/pgalloc/ > pgalloc.log 2>&1
+          (cd pkg/sentry/pgalloc && C:/ci/bin/pgalloc.test.exe -test.count=1 -test.v -test.timeout=200s) > pgalloc.log 2>&1
           rc=$?
-          grep -E "^([[:space:]]*--- (FAIL|SKIP|PASS)|FAIL|ok|panic|fatal)" pgalloc.log | head -60
+          grep -E "^([[:space:]]*--- (FAIL|SKIP|PASS)|FAIL|ok|PASS|panic|fatal)" pgalloc.log | head -60
           echo "top-level: $(grep -cE "^--- PASS" pgalloc.log) passed, $(grep -cE "^--- FAIL" pgalloc.log) failed, $(grep -cE "^--- SKIP" pgalloc.log) skipped"
           exit $rc
       - name: Init of each package alone
