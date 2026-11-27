@@ -1,9 +1,10 @@
 name: syscall-survey
 on:
-  push:
-    branches: [syscall-site-survey]
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   # A: syscall sites per image (static) and per workload (dynamic, ptrace on the runner).
   sites:

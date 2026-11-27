@@ -22,9 +22,10 @@ on:
         default: ""
   schedule:
     - cron: "0 3 * * 0"
-  push:
-    branches: [syscall-tests]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 env:
   UPSTREAM_SHA: c3efd8c9381c89b78c1d86b6c64a49d53ee938f8
   # A push to the branch runs a quick subset; dispatch and schedule run all.

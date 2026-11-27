@@ -3,9 +3,14 @@
 # full output and a state dump (goroutines and stub threads) in the artifact.
 name: windows-stability
 on:
+  schedule:
+    - cron: "43 3 * * *"
   workflow_dispatch:
     inputs:
       runs: {description: "runs per mode", default: "300"}
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   busybox:
     runs-on: ubuntu-latest
