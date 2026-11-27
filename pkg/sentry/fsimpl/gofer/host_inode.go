@@ -6,6 +6,7 @@ import (
 	"gvisor.dev/gvisor/pkg/abi/linux"
 	"gvisor.dev/gvisor/pkg/context"
 	"gvisor.dev/gvisor/pkg/sentry/kernel/auth"
+	"gvisor.dev/gvisor/pkg/sentry/kernel/pipe"
 	"gvisor.dev/gvisor/pkg/sentry/vfs"
 )
 
@@ -82,6 +83,12 @@ type hostInode interface {
 	hostStatfs() (linux.Statfs, error)
 	hostAllocate(mode, offset, length uint64) error
 	hostDoRevalidation(ctx context.Context, vfsObj *vfs.VirtualFilesystem, state *revalidateState, ds **[]*dentry) error
+}
+
+// hostFifo is implemented by host-folder inodes that share the in-Sentry pipe
+// of an emulated FIFO between all mounts of the same file.
+type hostFifo interface {
+	hostFifoPipe() *pipe.VFSPipe
 }
 
 // hostHandle is the I/O side of a handle of the host-folder backend. Each

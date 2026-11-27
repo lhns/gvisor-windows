@@ -75,10 +75,7 @@ jobs:
           Copy-Item dl\podman.erofs C:\ci\podman.erofs
           icacls C:\ci /grant 'Users:(OI)(CI)M' /Q
           New-Item -ItemType Directory -Force C:\ci\std | Out-Null
-          # A standard user cannot set per-directory case sensitivity on the runner (fsutil: 0x5 Access is
-          # denied, see the results); set it once as the administrator, subfolders inherit it.
           New-Item -ItemType Directory -Force C:\ci\std\engine\storage | Out-Null
-          fsutil file setCaseSensitiveInfo C:\ci\std\engine\storage enable
           & tools/windows/ci/run-as-standard-user.ps1 `
             -Program 'C:\Program Files\PowerShell\7\pwsh.exe' `
             -Arguments '-NoProfile','-File',"$PWD\tools\windows\podman\ci-run.ps1",'-Root','C:\ci' `

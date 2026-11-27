@@ -625,3 +625,32 @@ func TestVFSDefaultRevalidates(t *testing.T) {
 		t.Errorf("default interop is %v, want revalidating", hostFS(e).opts.interop)
 	}
 }
+
+// A FIFO of a host folder is an in-Sentry pipe, and the two mounts of the same
+// folder share it; a socket still cannot be opened.
+func TestVFSFifoSharedAcrossMounts(t *testing.T) {
+	e1 := newEnv(t, HostFolderOptions{})
+	e2 := newEnv(t, HostFolderOptions{Path: e1.dir})
+	e1.must("mknod fifo", e1.v.MknodAt(e1.ctx, e1.creds, e1.pop("/p"), &vfs.MknodOptions{Mode: linux.S_IFIFO | 0o600}))
+	e1.must("mknod socket", e1.v.MknodAt(e1.ctx, e1.creds, e1.pop("/s"), &vfs.MknodOptions{Mode: linux.S_IFSOCK | 0o600}))
+	w, err := e1.v.OpenAt(e1.ctx, e1.creds, e1.pop("/p"), &vfs.OpenOptions{Flags: linux.O_RDWR | linux.O_NONBLOCK})
+	e1.must("open the fifo in mount 1", err)
+	defer w.DecRef(e1.ctx)
+	r, err := e2.v.OpenAt(e2.ctx, e2.creds, e2.pop("/p"), &vfs.OpenOptions{Flags: linux.O_RDWR | linux.O_NONBLOCK})
+	e2.must("open the fifo in mount 2", err)
+	defer r.DecRef(e2.ctx)
+	if _, err := w.Write(e1.ctx, usermem.BytesIOSequence([]byte("hello")), vfs.WriteOptions{}); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	buf := make([]byte, 16)
+	n, err := r.Read(e2.ctx, usermem.BytesIOSequence(buf), vfs.ReadOptions{})
+	if err != nil || string(buf[:n]) != "hello" {
+		t.Errorf("read through the other mount = %q, %v", buf[:n], err)
+	}
+	if fd, err := e1.v.OpenAt(e1.ctx, e1.creds, e1.pop("/s"), &vfs.OpenOptions{Flags: linux.O_RDWR}); err == nil {
+		fd.DecRef(e1.ctx)
+		t.Errorf("a socket file of a host folder opened")
+	} else if !linuxerr.Equals(linuxerr.ENXIO, err) {
+		t.Errorf("opening a socket file: %v, want ENXIO", err)
+	}
+}

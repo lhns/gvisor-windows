@@ -45,6 +45,7 @@ type FS struct {
 	watcher  *watcher
 	watching atomic.Bool
 	ntfs     bool // file IDs are NTFS index numbers
+	caseErr  error // why the root could not be made case sensitive, if asked
 	dirs     dirCache
 	cbMu     sync.Mutex
 	recheck  map[string]bool
@@ -103,7 +104,14 @@ func Open(path string, opts Options) (*FS, error) {
 	fs.loadIndex()
 	fs.startIndexFlusher()
 	if opts.CaseSensitive {
-		_ = setCaseSensitive(h, true) // only succeeds on an empty directory
+		// Only works on an empty directory, and needs no administrator: write
+		// attributes on a folder of the user's own is enough.
+		fs.caseErr = fs.SetCaseSensitive(fs.rootID, true)
+		if fs.caseErr == nil {
+			if on, err := fs.IsCaseSensitive(fs.rootID); err == nil && !on {
+				fs.caseErr = unix.EOPNOTSUPP
+			}
+		}
 	}
 	return fs, nil
 }
@@ -121,6 +129,10 @@ func (fs *FS) Close() {
 	fs.pinMu.Unlock()
 	windows.CloseHandle(fs.root)
 }
+
+// CaseSensitiveError says why the mounted folder could not be made case
+// sensitive although Options.CaseSensitive asked for it (nil: it is).
+func (fs *FS) CaseSensitiveError() error { return fs.caseErr }
 
 // Root is the ID of the mounted folder.
 func (fs *FS) Root() ID { return fs.rootID }
@@ -1055,12 +1067,3 @@ func (fs *FS) IsCaseSensitive(dir ID) (bool, error) {
 	return flags&1 != 0, nil
 }
 
-// SetCaseSensitive changes a directory's case sensitivity (it must be empty).
-func (fs *FS) SetCaseSensitive(dir ID, on bool) error {
-	h, err := fs.openID(dir, fileReadAttributes|fileWriteAttributes)
-	if err != nil {
-		return err
-	}
-	defer fs.closeID(dir, h)
-	return setCaseSensitive(h, on)
-}

@@ -344,6 +344,13 @@ func testCase() error {
 	extraMounts = []map[string]any{{"destination": "/w", "type": "bind", "source": dir, "options": []string{"rbind", "rw", "case-sensitive"}}}
 	defer func() { extraMounts = nil }()
 	r, err := runsc("case", []string{"/bin/sh", "-c", "cd /w; echo lower >f; echo upper >F; mkdir d; echo dl >d/a; echo du >d/A; ls; cat f F d/a d/A"}, nil)
+	if lb, lerr := os.ReadFile(filepath.Join(*workDir, "logs", "case.log")); lerr == nil {
+		for _, l := range strings.Split(string(lb), string(rune(10))) {
+			if strings.Contains(l, "case sensitive") {
+				fmt.Println("runsc log:", strings.TrimSpace(l))
+			}
+		}
+	}
 	if err != nil {
 		return err
 	}

@@ -36,10 +36,10 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force C:\ci\bin | Out-Null
+          New-Item -ItemType Directory -Force C:\ci\bin, C:\ci\probe | Out-Null
           go test -c -o C:\ci\bin\winhost.test.exe ./pkg/sentry/fsimpl/gofer/winhost
           go test -c -o C:\ci\bin\gofer.test.exe ./pkg/sentry/fsimpl/gofer
-          & tools/windows/ci/run-as-standard-user.ps1 -Program C:\ci\bin\winhost.test.exe -Arguments '-test.v','-test.count=1','-test.timeout=600s' -GrantPath C:\ci\bin -TimeoutSeconds 900
+          & tools/windows/ci/run-as-standard-user.ps1 -Program C:\ci\bin\winhost.test.exe -Arguments '-test.v','-test.count=1','-test.timeout=600s' -GrantPath C:\ci\bin -WritablePath C:\ci\probe -Environment @{GVISOR_PROBE_DIR='C:\ci\probe'; TEMP='C:\ci\probe'; TMP='C:\ci\probe'} -TimeoutSeconds 900
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & tools/windows/ci/run-as-standard-user.ps1 -Program C:\ci\bin\gofer.test.exe -Arguments '-test.v','-test.count=1','-test.timeout=900s','-test.run','TestVFS' -GrantPath C:\ci\bin -TimeoutSeconds 1200
           exit $LASTEXITCODE

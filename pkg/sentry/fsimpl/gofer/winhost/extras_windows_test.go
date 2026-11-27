@@ -3,8 +3,12 @@
 package winhost
 
 import (
+	"golang.org/x/sys/windows"
 	"os"
+	"os/exec"
+	"os/user"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -215,5 +219,110 @@ func TestWatchSeesChangeRightAfterOwnWrite(t *testing.T) {
 		t.Errorf("a Windows write right after a guest write was not reported")
 	} else {
 		t.Logf("reported after %v", d)
+	}
+}
+
+// Which rights NTFS wants for FileCaseSensitiveInformation. Only logs: the
+// answer depends on the ACL of the folder (a user's own profile folder gives
+// full control, a CI folder that was granted Modify does not).
+func TestCaseSensitivityRights(t *testing.T) {
+	base := os.Getenv("GVISOR_PROBE_DIR")
+	if base == "" {
+		base = t.TempDir()
+	}
+	for _, c := range []struct {
+		name   string
+		access uint32
+	}{
+		{"FILE_WRITE_ATTRIBUTES", fileWriteAttributes},
+		{"FILE_WRITE_ATTRIBUTES|FILE_DELETE_CHILD", fileWriteAttributes | fileDeleteChild},
+		{"FILE_WRITE_ATTRIBUTES|DELETE", fileWriteAttributes | deleteAccess},
+		{"FILE_WRITE_ATTRIBUTES|WRITE_DAC", fileWriteAttributes | 0x40000},
+		{"FILE_WRITE_ATTRIBUTES|FILE_WRITE_DATA|FILE_APPEND_DATA|FILE_WRITE_EA", fileWriteAttributes | fileWriteData | fileAppendData | fileWriteEA},
+		{"MAXIMUM_ALLOWED", 0x02000000},
+	} {
+		dir, err := os.MkdirTemp(base, "probe")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.RemoveAll(dir)
+		h, err := ntOpen(0, `\??\`+dir, c.access, shareAll, windows.FILE_OPEN, windows.FILE_DIRECTORY_FILE, 0)
+		if err != nil {
+			t.Logf("%-70s open: %v", c.name, err)
+			continue
+		}
+		err = setCaseSensitive(h, true)
+		windows.CloseHandle(h)
+		t.Logf("%-70s open ok, set case sensitive: %v", c.name, err)
+	}
+}
+
+// If the flag is refused, which right granted on the folder itself (the owner
+// may change its ACL) makes it work?
+func TestCaseSensitivityAfterGrant(t *testing.T) {
+	base := os.Getenv("GVISOR_PROBE_DIR")
+	if base == "" {
+		base = t.TempDir()
+	}
+	u, err := user.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range []string{"(DC)", "(WA)", "(WD)", "(AD)", "(WEA)", "(F)", "(M)"} {
+		dir, err := os.MkdirTemp(base, "grant")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.RemoveAll(dir)
+		out, gerr := exec.Command("icacls", dir, "/grant", u.Username+":"+g, "/Q").CombinedOutput()
+		if gerr != nil {
+			t.Logf("grant %s: %v %s", g, gerr, strings.TrimSpace(string(out)))
+			continue
+		}
+		h, err := ntOpen(0, `\??\`+dir, fileWriteAttributes|fileReadAttributes, shareAll, windows.FILE_OPEN, windows.FILE_DIRECTORY_FILE, 0)
+		if err != nil {
+			t.Logf("after granting %-5s open: %v", g, err)
+			continue
+		}
+		err = setCaseSensitive(h, true)
+		windows.CloseHandle(h)
+		t.Logf("after granting %-5s set case sensitive: %v", g, err)
+	}
+}
+
+// A mount with the case-sensitive option makes its folder case sensitive
+// without an administrator, in a folder the user was only granted Modify on.
+func TestCaseSensitiveMountWithoutAdmin(t *testing.T) {
+	base := os.Getenv("GVISOR_PROBE_DIR")
+	if base == "" {
+		base = t.TempDir()
+	}
+	dir, err := os.MkdirTemp(base, "mount")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	fs, err := Open(dir, Options{CaseSensitive: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fs.Close()
+	if err := fs.CaseSensitiveError(); err != nil {
+		t.Fatalf("the folder is not case sensitive: %v", err)
+	}
+	root := fs.Root()
+	a := mustCreate(t, fs, root, "name", Spec{Mode: 0o644})
+	b := mustCreate(t, fs, root, "NAME", Spec{Mode: 0o644})
+	if a.ID == b.ID {
+		t.Errorf("name and NAME are one file")
+	}
+	d := mustCreate(t, fs, root, "Sub", Spec{Mode: SIFDIR | 0o755})
+	x := mustCreate(t, fs, d.ID, "f", Spec{Mode: 0o644})
+	y := mustCreate(t, fs, d.ID, "F", Spec{Mode: 0o644})
+	if x.ID == y.ID {
+		t.Errorf("f and F are one file in a directory made through the mount")
+	}
+	if _, err := fs.Lookup(root, "Name"); err == nil {
+		t.Errorf("Name found in a case-sensitive folder")
 	}
 }
