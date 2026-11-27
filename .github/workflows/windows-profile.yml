@@ -1,12 +1,6 @@
 # Profile of the slow small-file and exec path of the Sentry on Windows (docs/results/1i-profile.md).
 name: windows-profile
 on:
-<<<<<<< HEAD
-=======
-  push:
-    branches: [sentry-profile, platform-next, platform-stability]
-    paths: ["pkg/sentry/**", "runsc/**", "tools/windows/runsctest/**", "tools/windows/sentryguest/**", "test/guests/t/**", ".github/workflows/windows-profile.yml"]
->>>>>>> 73227a2f16b644399bb6dbc2fd0167420e123445
   workflow_dispatch:
 jobs:
   rootfs:

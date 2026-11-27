@@ -3,9 +3,6 @@
 # full output and a state dump (goroutines and stub threads) in the artifact.
 name: windows-stability
 on:
-  push:
-    branches: [platform-stability]
-    paths: ["pkg/sentry/platform/**", "runsc/**", "tools/windows/runsctest/**", ".github/workflows/windows-stability.yml"]
   workflow_dispatch:
     inputs:
       runs: {description: "runs per mode", default: "300"}

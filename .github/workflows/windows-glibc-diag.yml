@@ -2,9 +2,6 @@
 # disassembly around the faulting instruction and a debug run of the platform.
 name: windows-glibc-diag
 on:
-  push:
-    branches: [platform-stability]
-    paths: [".github/workflows/windows-glibc-diag.yml", "tools/windows/disasm/**"]
   workflow_dispatch:
 jobs:
   guests:
