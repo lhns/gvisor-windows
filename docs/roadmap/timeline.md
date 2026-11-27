@@ -57,7 +57,7 @@ gantt
     Guest threads and signals :sentry_threads_and_signals, 2026-11-26, 2026-11-26
     Make Linux names resolve on Windows :sentry_unix_shim, 2026-11-26, 2026-11-26
     Dynamic programs, exec and pipes :sentry_dynamic_elf_and_exec, 2026-11-26, 2026-11-26
-    Profile the slow file and exec path :active, sentry_profile_small_file_path, 2026-11-27, 2026-11-27
+    Profile the slow file and exec path :sentry_profile_small_file_path, 2026-11-27, 2026-11-27
     Sentry dies with netpoll failed :sentry_netpoll_failure, 2026-11-27, 2026-11-27
     section fs - files
     Compatibility layer, not security bound… :fs_compat_layer_not_boundary, 2026-11-26, 2026-11-26
@@ -114,5 +114,5 @@ gantt
     gVisor syscall tests on Windows :ops_syscall_tests_on_windows, 2026-11-26, 2026-11-27
 ```
 
-Not shown (no `start`): `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-hardware-acceleration`, `platform-binary-translation-fallback`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `fs-persistent-storage-impl`, `workloads-podman-on-windows`, `ops-upstream-merges`, `ops-portable-packaging`, `ops-run-on-a-work-machine`
+Not shown (no `start`): `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-hardware-acceleration`, `platform-binary-translation-fallback`, `platform-recycle-stubs`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `fs-persistent-storage-impl`, `workloads-podman-on-windows`, `ops-upstream-merges`, `ops-portable-packaging`, `ops-run-on-a-work-machine`
 <!-- END GENERATED: timeline -->

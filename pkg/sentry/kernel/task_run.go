@@ -270,7 +270,25 @@ func (app *runApp) execute(t *Task) taskRunState {
 
 	region := trace.StartRegion(t.traceContext, runRegion)
 	t.accountTaskGoroutineEnter(TaskGoroutineRunningApp)
+	var profT0 int64
+	if ProfStats {
+		profT0 = profNow()
+	}
 	info, at, err := t.p.Switch(t, t.MemoryManager(), t.Arch(), t.rseqCPU)
+	if ProfStats {
+		o := 4
+		switch err {
+		case nil:
+			o = 0
+		case platform.ErrContextInterrupt:
+			o = 1
+		case platform.ErrContextSignal:
+			o = 2
+		case platform.ErrContextCPUPreempted:
+			o = 3
+		}
+		profRecordSwitch(o, profNow()-profT0)
+	}
 	t.accountTaskGoroutineLeave(TaskGoroutineRunningApp)
 	region.End()
 

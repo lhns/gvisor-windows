@@ -33,7 +33,22 @@ func hostFolderForRoot(spec *specs.Spec) (gofer.HostFolderOptions, bool) {
 	if v := spec.Annotations[RootfsOptionsAnnotation]; v != "" {
 		opts = strings.Split(v, ",")
 	}
-	return hostFolderOptions(spec.Root.Path, opts), true
+	hf := hostFolderOptions(spec.Root.Path, opts)
+	// The root of a container is not changed behind the Sentry's back (below the root
+	// overlay it is read-only), so trust the Sentry's cache by default: revalidating every
+	// walk costs a host open and query per path component (about 130 us), which made
+	// every failed lookup of /etc/passwd by busybox tar cost 0.4 ms (docs/results/1i-profile.md).
+	// "cache=shared" in the annotation restores the revalidation.
+	cacheSet := false
+	for _, o := range opts {
+		if strings.HasPrefix(o, "cache=") {
+			cacheSet = true
+		}
+	}
+	if !cacheSet {
+		hf.Exclusive = true
+	}
+	return hf, true
 }
 
 func hostFolderForMount(m *specs.Mount) (gofer.HostFolderOptions, bool) {
@@ -46,7 +61,7 @@ func hostFolderForMount(m *specs.Mount) (gofer.HostFolderOptions, bool) {
 // isHostFolderOption reports whether o is an option of hostFolderOptions.
 func isHostFolderOption(o string) bool {
 	switch o {
-	case "emulate-symlinks", "case-sensitive", "cache=exclusive", "cache=watched":
+	case "emulate-symlinks", "case-sensitive", "cache=exclusive", "cache=watched", "cache=shared":
 		return true
 	}
 	for _, p := range []string{"owner=", "file-mode=", "dir-mode="} {
@@ -93,6 +108,8 @@ func hostFolderOptions(path string, options []string) gofer.HostFolderOptions {
 			hf.Exclusive = true
 		case o == "cache=watched":
 			hf.Watched = true
+		case o == "cache=shared":
+			// the default of a mount; the root asks for it explicitly
 		}
 	}
 	return hf

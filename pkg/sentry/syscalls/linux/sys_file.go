@@ -15,6 +15,8 @@
 package linux
 
 import (
+	"gvisor.dev/gvisor/pkg/sentry/profkeys"
+	"fmt"
 	"gvisor.dev/gvisor/pkg/abi/linux"
 	"gvisor.dev/gvisor/pkg/errors/linuxerr"
 	"gvisor.dev/gvisor/pkg/fspath"
@@ -210,10 +212,24 @@ func openat(t *kernel.Task, dirfd int32, pathAddr hostarch.Addr, flags uint32, m
 	}
 	defer tpop.Release(t)
 
+	var profT0 int64
+	if profkeys.On {
+		profT0 = profNow()
+	}
 	file, err := t.Kernel().VFS().OpenAt(t, t.Credentials(), &tpop.pop, &vfs.OpenOptions{
 		Flags: flags | linux.O_LARGEFILE,
 		Mode:  linux.FileMode(mode & (0777 | linux.S_ISUID | linux.S_ISGID | linux.S_ISVTX) &^ t.FSContext().Umask()),
 	})
+	if profkeys.On {
+		fsName, abs := "-", "rel"
+		if err == nil {
+			fsName = file.Mount().Filesystem().FilesystemType().Name()
+		}
+		if path.Absolute {
+			abs = "abs"
+		}
+		profkeys.Count(fmt.Sprintf("openat %s %s creat=%v err=%v", fsName, abs, flags&linux.O_CREAT != 0, err != nil), profNow()-profT0)
+	}
 	if err != nil {
 		return 0, nil, err
 	}
@@ -1827,3 +1843,5 @@ func MemfdCreate(t *kernel.Task, sysno uintptr, args arch.SyscallArguments) (uin
 
 	return uintptr(fd), nil, nil
 }
+
+func profNow() int64 { return kernel.ProfNow() }

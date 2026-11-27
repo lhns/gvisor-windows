@@ -44,7 +44,9 @@ import (
 	"strings"
 	"time"
 
+	"gvisor.dev/gvisor/pkg/abi"
 	"gvisor.dev/gvisor/pkg/abi/linux"
+	"gvisor.dev/gvisor/pkg/sentry/arch"
 	"gvisor.dev/gvisor/pkg/context"
 	"gvisor.dev/gvisor/pkg/cpuid"
 	"gvisor.dev/gvisor/pkg/fspath"
@@ -93,7 +95,16 @@ func main() {
 	stream := flag.Bool("stream", false, "print the guest's output while it runs (so a crash of the Sentry loses little)")
 	sysMounts := flag.Bool("sysmounts", false, "mount /proc, /sys, /dev and /dev/pts")
 	envList := flag.String("env", "PATH=/bin:/usr/bin:/", "comma-separated environment of the guest")
+	cpuProf := flag.String("cpuprofile", "", "write a Go CPU profile of the Sentry process to this file")
+	profStats := flag.Bool("profstats", false, "print per-syscall counts and time (kernel.ProfStats)")
+	asPool := flag.Int("aspool", 0, "address spaces kept ready (0: none)")
 	flag.Parse()
+	kernel.ProfStats = kernel.ProfStats || *profStats
+	if *cpuProf != "" {
+		f, err := os.Create(*cpuProf)
+		must(err, "cpuprofile")
+		must(pprof.StartCPUProfile(f), "cpuprofile")
+	}
 	if flag.NArg() < 1 {
 		fail("usage: sentryguest [flags] guest [args...]")
 	}
@@ -119,7 +130,7 @@ func main() {
 
 	p, err := winstub.New(platform.Options{})
 	must(err, "platform")
-	k := &kernel.Kernel{Platform: p}
+	k := &kernel.Kernel{Platform: platform.NewASPool(p, *asPool)}
 	mf, err := pgalloc.NewMemoryFile(nil, pgalloc.MemoryFileOpts{
 		DelayedEviction:         pgalloc.DelayedEvictionManual,
 		DisableMemoryAccounting: true,
@@ -271,6 +282,13 @@ func main() {
 		fail("the guest did not exit within %v", *timeout)
 	}
 	tRun := time.Since(t1)
+	if *cpuProf != "" {
+		pprof.StopCPUProfile()
+	}
+	if kernel.ProfStats {
+		tbl, _ := kernel.LookupSyscallTable(abi.Linux, arch.AMD64)
+		kernel.DumpProfStats(os.Stdout, tbl.LookupName)
+	}
 	winstub.Trace("boot: exit observed")
 	ws := tg.ExitStatus()
 

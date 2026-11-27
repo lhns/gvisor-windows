@@ -69,6 +69,11 @@ func main() {
 		{"lifecycle", testLifecycle},
 		{"bench", testBench},
 		{"forward", testForward},
+		{"mounts", func() error { return profileRun("mounts", "cat /proc/self/mountinfo; pwd; ls -la /tmp") }},
+		{"untar-trace", func() error { return profileRun("untar-trace", "mkdir -p /tmp/u && tar -xf /small.tar -C /tmp/u ./pkg0 ./pkg1") }},
+		{"noop", func() error { return profileRun("noop", "/bin/true") }},
+		{"untar", func() error { return profileRun("untar", "mkdir -p /tmp/u && tar -xf /small.tar -C /tmp/u") }},
+		{"forkexec", func() error { return profileRun("forkexec", "i=0; while [ $i -lt 100 ]; do /bin/true; i=$((i+1)); done") }},
 		// Not in the default run: fails today (docs/results/3-runsc-boot.md).
 		{"erofs", testErofs},
 	}
@@ -80,7 +85,7 @@ func main() {
 	}
 	failed := 0
 	for _, t := range tests {
-		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "lifecycle" || t.name == "bench")) {
+		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec")) {
 			continue
 		}
 		start := time.Now()
@@ -142,7 +147,7 @@ func bundle(name string, args []string, terminal bool) string {
 		"hostname": "runsc-win",
 		"mounts":   mounts,
 		// The files were made by Windows tools and have no Linux modes.
-		"annotations": map[string]string{"dev.gvisor.windows.rootfs-options": "file-mode=0755"},
+		"annotations": map[string]string{"dev.gvisor.windows.rootfs-options": rootfsOptions()},
 		"linux": map[string]any{"namespaces": []map[string]string{
 			{"type": "pid"}, {"type": "network"}, {"type": "ipc"}, {"type": "uts"}, {"type": "mount"},
 		}, "devices": []map[string]any{
@@ -534,4 +539,25 @@ func testBench() error {
 		return fmt.Errorf("bench: %v, stderr %q", err, errb.String())
 	}
 	return nil
+}
+
+// profileRun times one shell command through runsc run (docs/results/1i-profile.md); the
+// Sentry's own counters come from GVISOR_PROFSTATS and RUNSC_CPUPROFILE in the environment.
+func profileRun(name, script string) error {
+	t := time.Now()
+	r, err := runsc("prof-"+name, []string{"/bin/sh", "-c", script}, nil, strings.Fields(os.Getenv("PROF_RUNSC_FLAGS"))...)
+	fmt.Printf("RESULT %s_wall %.2f\n", name, time.Since(t).Seconds())
+	fmt.Print(r.stdout, r.stderr)
+	if err != nil || r.code != 0 {
+		return fmt.Errorf("%s: %v, exit %d, stdout %q", name, err, r.code, r.stdout)
+	}
+	return nil
+}
+
+// rootfsOptions are the folder options of the rootfs; PROF_ROOTFS_OPTIONS adds more (e.g. cache=shared).
+func rootfsOptions() string {
+	if o := os.Getenv("PROF_ROOTFS_OPTIONS"); o != "" {
+		return "file-mode=0755," + o
+	}
+	return "file-mode=0755"
 }

@@ -17,7 +17,7 @@ flowchart TB
     sentry_host_stdio_and_tty["✔ Guest terminal and<br/>stdio"]
     sentry_threads_and_signals["✔ Guest threads and<br/>signals"]
     sentry_dynamic_elf_and_exec["✔ Dynamic programs,<br/>exec and pipes"]
-    sentry_profile_small_file_path[/"▶ Profile the slow<br/>file and exec path"/]
+    sentry_profile_small_file_path[/"✔ Profile the slow<br/>file and exec path"/]
     sentry_netpoll_failure>"⚠ Sentry dies with<br/>netpoll failed"]
     sentry_event_loop_iocp["⏸ Event waiting on<br/>IOCP"]
     sentry_timers_and_clocks["⛔ Timers and clocks on<br/>Windows"]
@@ -55,7 +55,7 @@ flowchart TB
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class sentry_go_fault_recovery,sentry_unix_shim,sentry_fault_recovery,sentry_host_stdio_and_tty,sentry_threads_and_signals,sentry_dynamic_elf_and_exec succ
     class sentry_windows_build,sentry_memory_file_sections unrated
-    class sentry_profile_small_file_path inprog
+    class sentry_profile_small_file_path mixed
     class sentry_netpoll_failure finding
     class sentry_event_loop_iocp parked
     class sentry_timers_and_clocks blocked
@@ -77,7 +77,7 @@ flowchart TB
 | `sentry-threads-and-signals` | Guest threads and signals | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-winstub |  |  |  | docs/results/1f-exec-signals.md |
 | `sentry-unix-shim` | Make Linux names resolve on Windows | feature | none | done | successful | 2026-11-26 | 2026-11-26 | ops-phase0-go-no-go |  |  | 25 hand-edited shared files | docs/adr/0006-a-linux-abi-shim-for-x-sys-unix.md; docs/results/1b-windows-build.md |
 | `sentry-dynamic-elf-and-exec` | Dynamic programs, exec and pipes | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-static-guest-from-memory |  |  |  | docs/results/1f-exec-signals.md |
-| `sentry-profile-small-file-path` | Profile the slow file and exec path | experiment | windows-ci | in-progress | unrated | 2026-11-27 |  | workloads-end-to-end-speed |  |  |  | docs/results/3b-runsc-speed-lifecycle.md |
+| `sentry-profile-small-file-path` | Profile the slow file and exec path | experiment | windows-ci | done | mixed | 2026-11-27 | 2026-11-27 | workloads-end-to-end-speed |  |  | 6x to 12x faster | docs/results/1i-profile.md |
 | `sentry-netpoll-failure` | Sentry dies with netpoll failed | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/4-syscall-tests.md |
 
 ### Details per node
@@ -94,7 +94,7 @@ flowchart TB
 | `sentry-threads-and-signals` | Guest threads and signals | Under the real Sentry on `windows-latest`, dynamic glibc and musl programs with `dlopen`, execve chains, fork+exec+wait, busybox shell pipelines |  | Multi-threaded guests (such as Go programs) get one stub thread per guest thread, with signals delivered correctly. | Done when: a multi-threaded Go program and a signal-handling test run correctly under the Sentry on Windows. |  |  |  |  |
 | `sentry-unix-shim` | Make Linux names resolve on Windows | the sandbox side compiles for Windows with 25 hand-edited shared files and one x/sys shim | 25 hand-edited shared files | A Windows copy of x/sys/unix defines the Linux constants and types and stubs the calls, so the Sentry compiles with few edits. | Done when: ./runsc/boot type-checks for GOOS=windows with Linux-only subsystems excluded by build tags. |  |  |  |  |
 | `sentry-dynamic-elf-and-exec` | Dynamic programs, exec and pipes | Under the real Sentry on `windows-latest`, dynamic glibc and musl programs with `dlopen`, execve chains, fork+exec+wait, busybox shell pipelines |  | Run dynamically linked programs with their interpreter and shared libraries, exec a second program, and connect processes with pipes. | Done when: a dynamic glibc and a dynamic musl program, an exec chain and a shell pipeline (static busybox sh -c "echo a \| cat") pass under the Sentry on Windows. |  |  |  |  |
-| `sentry-profile-small-file-path` | Profile the slow file and exec path |  |  | Creating a file on tmpfs costs about 1 ms and a fork+exec 32 ms on Windows; find where the time goes (syscall round trips, page faults, debug events, Sentry work) and fix the top causes. | Done when: a profile is written up and untar of 20k files on tmpfs and fork+exec are each at least 4x faster than today. |  |  |  |  |
+| `sentry-profile-small-file-path` | Profile the slow file and exec path | trusting the Sentry's cache of the root folder made it 6x to 12x faster | 6x to 12x faster | Creating a file on tmpfs costs about 1 ms and a fork+exec 32 ms on Windows; find where the time goes (syscall round trips, page faults, debug events, Sentry work) and fix the top causes. | Done when: a profile is written up and untar of 20k files on tmpfs and fork+exec are each at least 4x faster than today. |  |  |  |  |
 | `sentry-netpoll-failure` | Sentry dies with netpoll failed |  |  | After a few hundred socket test cases in one kernel the Sentry dies with "fatal error: runtime: netpoll failed" or stalls; about 1,700 syscall-test cases fail only because of this. | Fixed when: socket_filesystem_test and socket_abstract_test complete in one kernel on Windows; cause separated between Go's IOCP netpoller and a host-handle leak per guest process. |  |  |  |  |
 
 ### Folded items per node
@@ -103,4 +103,6 @@ flowchart TB
   - GOOS=windows build of runsc/boot succeeds, CI green (2026-11-26, commit 3b38a4660)
 - `sentry-threads-and-signals`: Guest threads and signals
   - A new process inside a guest costs 0.9-1.2 s; busybox pipelines take 3.3-3.8 s (2026-11-26, session record)
+- `sentry-profile-small-file-path`: Profile the slow file and exec path
+  - Fork+exec only 1.7-2.1x faster with a pool of ready address spaces; stub creation is the floor (2026-11-27, commit 1d513a109)
 <!-- END GENERATED: table-sentry -->

@@ -15,6 +15,7 @@
 package overlay
 
 import (
+	"gvisor.dev/gvisor/pkg/sentry/profkeys"
 	"fmt"
 	"strings"
 
@@ -188,7 +189,14 @@ func (fs *filesystem) getChildLocked(ctx context.Context, parent *dentry, name s
 	if child, ok := parent.children[name]; ok {
 		return child, child.topLookupLayer(), nil
 	}
+	var profT0 int64
+	if profkeys.On {
+		profT0 = profkeys.Now()
+	}
 	child, topLookupLayer, err := fs.lookupLocked(ctx, parent, name)
+	if profkeys.On {
+		profkeys.Count(fmt.Sprintf("overlay lookup %q in %q layer=%v err=%v", name, parent.name, topLookupLayer, err), profkeys.Now()-profT0)
+	}
 	if err != nil {
 		return nil, topLookupLayer, err
 	}

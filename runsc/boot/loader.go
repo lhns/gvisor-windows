@@ -1296,6 +1296,17 @@ func createPlatform(conf *config.Config, numCPU int, deviceFile *fd.FD, sandboxI
 	if err := time.SetTSCOffset(offset); err != nil {
 		return nil, fmt.Errorf("platform %q: %w", platformName, err)
 	}
+	if platformName == "winstub" {
+		// Starting the host process of an address space takes about 10 ms and fork and
+		// execve need one each: keep spares ready (GVISOR_ASPOOL=0 turns this off).
+		spares := 2
+		if v := os.Getenv("GVISOR_ASPOOL"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil {
+				spares = n
+			}
+		}
+		plat = platform.NewASPool(plat, spares)
+	}
 	return plat, nil
 }
 
