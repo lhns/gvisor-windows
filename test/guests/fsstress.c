@@ -58,7 +58,8 @@ static int listed(const char *dir, const char *name) {
 // temporary file + rename under an fcntl write lock (a reader takes a read lock). Every update appends
 // one line and increments the counter, so under mutual exclusion the line count equals the counter.
 static void locked_update(const char *lockp, const char *datap, int i, int writer) {
-  char tmp[600], line[64], buf[65536];
+  static char buf[65536];
+  char tmp[600], line[64];
   snprintf(tmp, sizeof tmp, "%s.tmp%d", datap, worker);
   int lfd = open(lockp, O_RDWR | O_CREAT, 0644);
   if (lfd < 0) { fail("D:open-lock", i, lockp); return; }
@@ -88,7 +89,7 @@ static void locked_update(const char *lockp, const char *datap, int i, int write
 
 // A reader without the lock sees the file replaced by rename: always present, complete, never shorter.
 static void unlocked_read(const char *datap, int i, ssize_t *last) {
-  char buf[65536];
+  static char buf[65536];
   int fd = open(datap, O_RDONLY);
   if (fd < 0) { fail("D:unlocked-open", i, datap); return; }
   ssize_t n = read(fd, buf, sizeof buf), m = 0;
