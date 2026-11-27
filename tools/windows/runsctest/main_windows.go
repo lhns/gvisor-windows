@@ -71,6 +71,7 @@ func main() {
 		{"lifecycle", testLifecycle},
 		{"sockfs", testSockfs},
 		{"cfr", testCfr},
+		{"debian", testDebian},
 		{"bench", testBench},
 		{"forward", testForward},
 		{"mounts", func() error { return profileRun("mounts", "cat /proc/self/mountinfo; pwd; ls -la /tmp") }},
@@ -89,7 +90,7 @@ func main() {
 	}
 	failed := 0
 	for _, t := range tests {
-		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "strace" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec" || t.name == "sockfs" || t.name == "cfr")) {
+		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "strace" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec" || t.name == "sockfs" || t.name == "cfr" || t.name == "debian")) {
 			continue
 		}
 		start := time.Now()
@@ -641,6 +642,36 @@ func testCfr() error {
 		if r.code != 0 {
 			return fmt.Errorf("cfr with %q: exit %d, stdout %q", cache, r.code, r.stdout)
 		}
+	}
+	return nil
+}
+
+// testDebian runs Debian 12's dynamic loader and echo from the root folder (a lower layer of the
+// root overlay) and from a bind mounted host folder: "libc.so.6: file too short" in Podman.
+func testDebian() error {
+	dir := filepath.Join(*workDir, "debian")
+	_ = os.RemoveAll(dir)
+	must(os.MkdirAll(dir, 0o755))
+	for _, f := range []string{"ld-linux-x86-64.so.2", "libc.so.6", "echo"} {
+		b, err := os.ReadFile(filepath.Join(*rootfs, "dbin", f))
+		must(err)
+		must(os.WriteFile(filepath.Join(dir, f), b, 0o755))
+	}
+	extraMounts = []map[string]any{{"destination": "/dw", "type": "bind", "source": dir, "options": []string{"rbind", "rw"}}}
+	defer func() { extraMounts = nil }()
+	bad := 0
+	for _, d := range []string{"/dbin", "/dw"} {
+		r, err := runsc("debian", []string{d + "/ld-linux-x86-64.so.2", "--library-path", d, d + "/echo", "ok-from-" + d}, nil)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("debian ld.so from %s: exit %d stdout %q stderr %q\n", d, r.code, r.stdout, r.stderr)
+		if r.code != 0 {
+			bad++
+		}
+	}
+	if bad > 0 {
+		return fmt.Errorf("%d of 2 runs failed", bad)
 	}
 	return nil
 }
