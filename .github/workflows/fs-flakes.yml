@@ -5,8 +5,8 @@ on:
     branches: [fs-flakes]
   workflow_dispatch:
     inputs:
-      iters: {description: iterations per worker, default: "300"}
-      workers: {description: parallel mount namespaces, default: "6"}
+      iters: {description: iterations per worker, default: "600"}
+      workers: {description: parallel mount namespaces, default: "12"}
       reps: {description: repetitions, default: "3"}
 jobs:
   guests:
@@ -43,7 +43,7 @@ jobs:
       - name: Stress as a standard user
         shell: pwsh
         run: |
-          $iters = if ($env:IT) { $env:IT } else { '300' }; $workers = if ($env:WK) { $env:WK } else { '6' }; $reps = if ($env:RP) { [int]$env:RP } else { 3 }
+          $iters = if ($env:IT) { $env:IT } else { '600' }; $workers = if ($env:WK) { $env:WK } else { '12' }; $reps = if ($env:RP) { [int]$env:RP } else { 3 }
           $fail = 0
           for ($i = 1; $i -le $reps; $i++) {
             & tools/windows/ci/run-as-standard-user.ps1 `

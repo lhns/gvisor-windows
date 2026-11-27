@@ -53,7 +53,47 @@ static int listed(const char *dir, const char *name) {
   return found;
 }
 
+// D: the c/storage pattern: a lock file holding a write counter, and a data file rewritten by
+// temporary file + rename under an fcntl write lock (a reader takes a read lock). Every update appends
+// one line and increments the counter, so under mutual exclusion the line count equals the counter.
+static void locked_update(const char *lockp, const char *datap, int i, int writer) {
+  char tmp[600], line[64], buf[65536];
+  snprintf(tmp, sizeof tmp, "%s.tmp%d", datap, worker);
+  int lfd = open(lockp, O_RDWR | O_CREAT, 0644);
+  if (lfd < 0) { fail("D:open-lock", i, lockp); return; }
+  struct flock fl = {.l_type = writer ? F_WRLCK : F_RDLCK, .l_whence = SEEK_SET};
+  if (fcntl(lfd, F_SETLKW, &fl)) { fail("D:lock", i, lockp); close(lfd); return; }
+  long long c = 0;
+  if (pread(lfd, &c, sizeof c, 0) < 0) fail("D:pread-counter", i, lockp);
+  int dfd = open(datap, O_RDONLY);
+  ssize_t n = 0;
+  if (dfd < 0) fail("D:open-data", i, datap);
+  else { n = read(dfd, buf, sizeof buf - 64); close(dfd); }
+  int lines = 0;
+  for (ssize_t k = 0; k < n; k++) if (buf[k] == '\n') lines++;
+  if (lines != c) { errno = 0; snprintf(line, sizeof line, "%d lines, counter %lld", lines, c); fail("D:stale", i, line); }
+  if (writer && n >= 0) {
+    snprintf(line, sizeof line, "w%d-i%d\n", worker, i);
+    memcpy(buf + n, line, strlen(line));
+    int tfd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (tfd < 0 || write(tfd, buf, n + strlen(line)) < 0 || fsync(tfd) || close(tfd) || rename(tmp, datap)) fail("D:write", i, tmp);
+    c++;
+    if (pwrite(lfd, &c, sizeof c, 0) != sizeof c) fail("D:pwrite-counter", i, lockp);
+  }
+  fl.l_type = F_UNLCK;
+  fcntl(lfd, F_SETLK, &fl);
+  close(lfd);
+}
+
+static void lockloop(int iters) {
+  char lockp[600], datap[600];
+  snprintf(lockp, sizeof lockp, "%s/lock", base);
+  snprintf(datap, sizeof datap, "%s/data", base);
+  for (int i = 0; i < iters; i++) locked_update(lockp, datap, i, i % 4 != 3);
+}
+
 static void run(int iters) {
+  lockloop(iters < 200 ? iters : 200);
   char ctr[512], p[600], q[600], tok[64];
   snprintf(ctr, sizeof ctr, "%s/ctr", base);
   if (unshare(CLONE_NEWNS)) { fail("unshare", 0, "unshare"); return; }
@@ -120,6 +160,10 @@ int main(int argc, char **argv) {
   int workers = atoi(argv[2]), iters = atoi(argv[3]);
   char p[600];
   mkdir(base, 0755);
+  snprintf(p, sizeof p, "%s/data", base);
+  writefile(p, "", O_TRUNC);
+  snprintf(p, sizeof p, "%s/lock", base);
+  unlink(p);
   snprintf(p, sizeof p, "%s/ctr", base);
   mkdir(p, 0755);
   pid_t pids[64];

@@ -38,7 +38,7 @@ var (
 	only     = flag.String("only", "", "comma-separated test names (default all)")
 	timeout  = flag.Duration("timeout", 120*time.Second, "per test")
 	stressWorkers = flag.Int("stress-workers", 6, "fsstress: parallel mount namespaces")
-	stressIters   = flag.Int("stress-iters", 300, "fsstress: iterations per worker")
+	stressIters   = flag.Int("stress-iters", 600, "fsstress: iterations per worker")
 	fsMode   = flag.String("fsmode", "", "WINSTUB_FSMODE for runsc (native or rewrite)")
 	fpMode   = flag.String("fpmode", "", "WINSTUB_FPMODE for runsc (fxsave)")
 )
