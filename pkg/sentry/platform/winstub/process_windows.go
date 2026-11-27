@@ -367,7 +367,22 @@ func (as *addressSpace) debugLoop() {
 	var ctx ctxBuf
 	seenBP := false
 	for {
-		if r, _, _ := pWaitDebugEvent.Call(ev.base(), infinite); r == 0 {
+		// A bounded wait: a Release that terminated the process must not depend on
+		// the exit event ever arriving (a dump of a hung fork+exec loop showed an
+		// exiting task stuck in Release waiting for this goroutine, which sat in an
+		// unbounded WaitForDebugEvent).
+		if r, _, e := pWaitDebugEvent.Call(ev.base(), 100); r == 0 {
+			if en, ok := e.(syscall.Errno); ok && en == 121 { // ERROR_SEM_TIMEOUT
+				if as.released.Load() {
+					as.markDead()
+					return
+				}
+				if w, _, _ := pWaitSingle.Call(as.h, 0); w == 0 { // the process is gone
+					as.markDead()
+					return
+				}
+				continue
+			}
 			as.markDead()
 			return
 		}
