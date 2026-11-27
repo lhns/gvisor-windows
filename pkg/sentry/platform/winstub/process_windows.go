@@ -657,28 +657,29 @@ func (as *addressSpace) readStub(a uint64, n int) ([]byte, bool) {
 // can drop the bases of the others. The thread continues in its repair routine, which
 // reloads the base and returns to the instruction.
 //
-// Only an instruction with an %fs prefix depends on the base (the fault address of a
-// lost base is its bare displacement), so any other fault at a low address is the
-// guest's own and is reported at once. A prefixed instruction is repaired every time
-// it faults: whether the base is the expected one cannot be told in the routine, as the
-// event that sent the thread there has dropped it. Only a long unbroken run of repairs
-// of one instruction at one address (a genuine fault with a prefix, which
-// no base can cure) is reported, after at least two seconds.
+// Whether the base was lost is read off the fault itself: the address of an access
+// without a base is the bare operand (displacement plus registers), with the right base
+// it is that plus the base. An instruction without an %fs prefix, or a fault at the
+// address the right base would give, is the guest's own and is reported. A tight loop
+// can lose its base at the same instruction any number of times, so repairs are never
+// counted against a thread unless the instruction cannot be decoded (then 100000 in a
+// row end it).
 func (as *addressSpace) repairFS(t *thread, ctx *ctxBuf, rip, addr uint64) bool {
-	b, ok := as.readStub(rip, 16)
-	if !ok || !hasFSPrefix(b) {
+	lost, decided := as.fsBaseLost(ctx, rip, addr, *t.u64(stubasm.PgFS))
+	if decided && !lost {
+		as.nFSGenuine.Add(1)
 		return false
 	}
-	now := time.Now()
-	if rip == t.lastRepairRIP && addr == t.lastRepairAddr {
-		t.repairN++
-		if t.repairN >= 1000 && now.Sub(t.repairSince) >= 2*time.Second {
-			t.repairN = 0
-			as.nFSGenuine.Add(1)
-			return false
+	if !decided {
+		if rip == t.lastRepairRIP && addr == t.lastRepairAddr {
+			if t.repairN++; t.repairN >= 100000 {
+				t.repairN = 0
+				as.nFSGenuine.Add(1)
+				return false
+			}
+		} else {
+			t.lastRepairRIP, t.lastRepairAddr, t.repairN = rip, addr, 0
 		}
-	} else {
-		t.lastRepairRIP, t.lastRepairAddr, t.repairN, t.repairSince = rip, addr, 0, now
 	}
 	as.nFSRepair.Add(1)
 	*t.u64(stubasm.PgRetRIP) = rip
@@ -691,6 +692,37 @@ func (as *addressSpace) repairFS(t *thread, ctx *ctxBuf, rip, addr uint64) bool 
 	// The thread continues at the faulting instruction and faults again: another try.
 	as.nFSRepairFail.Add(1)
 	return true
+}
+
+// fsBaseLost tells whether the access violation at addr, in the instruction at rip,
+// is an %fs access that ran with a zero base (lost) or with the right one (fsBase);
+// decided is false if the instruction cannot be taken apart or the address fits neither.
+func (as *addressSpace) fsBaseLost(ctx *ctxBuf, rip, addr, fsBase uint64) (lost, decided bool) {
+	b, ok := as.readStub(rip, 16)
+	if !ok {
+		return false, false
+	}
+	if !hasFSPrefix(b) {
+		return false, true
+	}
+	r, ok := parseFS(b)
+	if !ok {
+		return false, false
+	}
+	x := uint64(int64(r.disp))
+	if r.base >= 0 {
+		x += *ctx.u64(ctxRegsOff + uintptr(8*r.base))
+	}
+	if r.index >= 0 {
+		x += *ctx.u64(ctxRegsOff + uintptr(8*r.index)) << r.scale
+	}
+	switch addr {
+	case x:
+		return true, true
+	case x + fsBase:
+		return false, true
+	}
+	return false, false
 }
 
 // park saves the context of t (stopped at a debug event, or suspended) into its

@@ -771,11 +771,18 @@ func testGoGC() error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("gogc: exit %d stdout %q stderr %q\n", r.code, r.stdout, tail(r.stderr, 1500))
+	fmt.Printf("gogc: exit %d stdout %q stderr head %q tail %q\n", r.code, r.stdout, head(r.stderr, 1200), tail(r.stderr, 800))
 	if r.code != 0 || !strings.Contains(r.stdout, "gogc ok") {
 		return fmt.Errorf("gogc: exit %d", r.code)
 	}
 	return nil
+}
+
+func head(s string, n int) string {
+	if len(s) > n {
+		return s[:n]
+	}
+	return s
 }
 
 func tail(s string, n int) string {
