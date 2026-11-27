@@ -113,8 +113,8 @@ jobs:
         run: |
           $only = '${{ inputs.only }}'
           $must = 1, 2, 3, 4, 6, 7, 8, 9, 10 | Where-Object { -not $only -or ($only -split '[, ]+') -contains "$_" }
-          $t = Get-Content C:\ci\std\results\steps.txt
-          $bad = $must | Where-Object { $t -notmatch "^STEP $_ PASS" }
+          $t = Get-Content -Raw C:\ci\std\results\steps.txt
+          $bad = $must | Where-Object { $t -notmatch "(?m)^STEP $_ PASS" }
           if ($bad) { "required steps failed: $bad"; exit 1 }
       - name: Summary
         if: always()
