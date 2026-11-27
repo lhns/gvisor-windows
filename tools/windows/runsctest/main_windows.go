@@ -657,17 +657,24 @@ func testDebian() error {
 		must(err)
 		must(os.WriteFile(filepath.Join(dir, f), b, 0o755))
 	}
-	extraMounts = []map[string]any{{"destination": "/dw", "type": "bind", "source": dir, "options": []string{"rbind", "rw"}}}
+	extraMounts = []map[string]any{{"destination": "/dw", "type": "bind", "source": dir, "options": []string{"rbind", "rw", "file-mode=0755"}}}
 	defer func() { extraMounts = nil }()
 	bad := 0
 	for _, d := range []string{"/dbin", "/dw"} {
-		r, err := runsc("debian", []string{d + "/ld-linux-x86-64.so.2", "--library-path", d, d + "/echo", "ok-from-" + d}, nil)
+		r, err := runsc("debian", []string{d + "/ld-linux-x86-64.so.2", "--library-path", d, d + "/echo", "ok-from-" + d}, nil, "--strace")
 		if err != nil {
 			return err
 		}
 		fmt.Printf("debian ld.so from %s: exit %d stdout %q stderr %q\n", d, r.code, r.stdout, r.stderr)
 		if r.code != 0 {
 			bad++
+			if b, err := os.ReadFile(filepath.Join(*workDir, "logs", "debian.log")); err == nil {
+				for _, l := range strings.Split(string(b), "\n") {
+					if strings.Contains(l, " X ") && (strings.Contains(l, "ld-linux") || strings.Contains(l, " echo ")) {
+						fmt.Println(l)
+					}
+				}
+			}
 		}
 	}
 	if bad > 0 {
