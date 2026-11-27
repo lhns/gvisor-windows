@@ -2633,12 +2633,14 @@
   evidence:
   - docs/adr/0002-what-done-means.md
   - docs/results/2r-step5-overlay.md
+  - docs/results/2s-overlay-default.md
+  - docs/adr/0021-overlay-storage-driver.md
   verdict_quote: ''
   headline: ''
   depends_on: &id013 []
   replaced_by: &id014 []
   start: '2026-11-27'
-  end: ''
+  end: '2026-11-27'
   folded: &id015 []
   overview: false
   lane: windows-ci
@@ -2646,11 +2648,10 @@
   title: Overlay with a host-folder upper layer
   track: fs
   kind: defect
-  state: in-progress
+  state: done
   plain: 'Podman uses the slow vfs storage driver because native overlay with its upper layer on a Windows folder fails c/storage''s probe: removing a directory in the merged view returns "directory not
     empty".'
-  notes: 'Cause fixed: device nodes came back as DT_UNKNOWN, hiding whiteouts; native overlay passed all 10 steps 4 of 4 (run 45992758965). Fixed when: native-overlay passes 8 of 8, then the acceptance
-    default can switch by a new ADR.'
+  notes: 'Fixed and now the default (ADR 0021): overlay passed all 10 steps 24 of 24 in native, rewrite and rewrite-fxsave (run 46048940236).'
 - outcome: unrated
   evidence:
   - docs/results/5-podman-windows.md
@@ -2702,21 +2703,23 @@
 - outcome: unrated
   evidence:
   - docs/results/2r-step5-overlay.md
+  - docs/results/2s-overlay-default.md
+  - docs/adr/0021-overlay-storage-driver.md
   verdict_quote: ''
   headline: ''
   depends_on: []
   replaced_by: []
   start: '2026-11-27'
-  end: ''
+  end: '2026-11-27'
   folded: []
   overview: false
   lane: windows-ci
-  notes: 'Fixed when: podman info reports Native Overlay Diff true.'
+  notes: 'Fixed: the overlay forced userxattr on gofer uppers, so trusted.overlay.opaque was copied up; podman info now reports Native Overlay Diff true.'
   id: fs-overlay-native-diff
   title: Fast layer diffs with overlay
   track: fs
   kind: defect
-  state: next
+  state: done
   plain: With overlay, c/storage's native-diff probe fails ("opaque flag erroneously copied up"), so it computes layer diffs the slow way.
 - outcome: mixed
   evidence:

@@ -93,7 +93,7 @@ gantt
     Nil dereference in gofer invalidation :fs_disown_children_nil_deref, 2026-11-27, 2026-11-27
     Host-folder writes keep the old mtime :fs_host_folder_mtime_resolution, 2026-11-27, 2026-11-27
     Layer store unreadable after restart :fs_layer_store_corrupt_after_restart, 2026-11-27, 2026-11-27
-    Overlay with a host-folder upper layer :active, fs_overlay_upper_on_host_folder, 2026-11-27, 2026-11-27
+    Overlay with a host-folder upper layer :fs_overlay_upper_on_host_folder, 2026-11-27, 2026-11-27
     Fast layer diffs with overlay :fs_overlay_native_diff, 2026-11-27, 2026-11-27
     Empty file read during a replace :fs_layers_empty_on_slow_host, 2026-11-27, 2026-11-27
     section net - network

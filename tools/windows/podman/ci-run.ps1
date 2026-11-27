@@ -1,11 +1,13 @@
 # Runs as the standard CI user: starts the engine in runsc and the acceptance test against it.
-param([Parameter(Mandatory)][string]$Root, [string]$StorageDriver = 'vfs', [string]$Only = 'all', [string]$FsMode = 'default')
+param([Parameter(Mandatory)][string]$Root, [string]$StorageDriver = 'overlay', [string]$Only = 'all', [string]$FsMode = 'default')
 $ErrorActionPreference = 'Continue'
+# The storage driver is overlay (ADR 0021); a "-vfs" suffix on a mode (native-vfs, rewrite-vfs) selects vfs. A "-overlay" suffix (native-overlay)
+# is still accepted.
+if ($FsMode -like '*-vfs') { $FsMode = $FsMode -replace '-vfs$', ''; $StorageDriver = 'vfs' }
+if ($FsMode -like '*-overlay') { $FsMode = $FsMode -replace '-overlay$', ''; $StorageDriver = 'overlay' }
 # Engine settings of the platform under test (ADR 0020): rewrite mode also keeps AVX-512 visible.
 if ($FsMode -eq 'native') { $env:WINSTUB_FSMODE = 'native' }
 if ($FsMode -eq 'native-replace') { $env:WINSTUB_FSMODE = 'native'; $env:WINSTUB_REPLACE_STALLED = '1' }
-# Native filesystem mode with the overlay storage driver (kernel overlay in the Sentry on the host-folder storage).
-if ($FsMode -eq 'native-overlay') { $env:WINSTUB_FSMODE = 'native'; $StorageDriver = 'overlay'; $env:ENGINE_NO_FUSE_OVERLAYFS = '1' }
 # Step 5 diagnostics (docs/results/2r-step5-overlay.md): native mode plus a probe in the build (state of /dev/null and the mounts when apt fails);
 # native-diag adds the runsc strace of the file system calls of the whole sandbox (large logs).
 if ($FsMode -eq 'native-probe' -or $FsMode -eq 'native-diag') { $env:WINSTUB_FSMODE = 'native'; $env:ACC_STEP5_PROBE = '1' }
@@ -39,9 +41,15 @@ $steps = if ($Only -and $Only -ne 'all') { [int[]]($Only -split "[, ]+" | Where-
 $sock = (Get-Content "$work\engine\sock.path" -ErrorAction SilentlyContinue)
 $purl = 'unix://' + ($sock -replace '^[A-Za-z]:', '' -replace '\\', '/')
 & $podman --url $purl info --format '{{.Host.NetworkBackend}} {{.Host.NetworkBackendInfo.Package}} {{.Version.Version}} rootless={{.Host.Security.Rootless}} cgroup={{.Host.CgroupManager}}'
+# Storage driver and c/storage's native-diff probe result (docs/results/2s-overlay-default.md).
+$graph = & $podman --url $purl info --format '{{.Store.GraphDriverName}}: {{.Store.GraphStatus}}'
+"graph: $graph"
+$nativeDiffFail = $StorageDriver -eq 'overlay' -and "$graph" -notmatch 'Native Overlay Diff:\s*true'
+if ($nativeDiffFail) { Write-Host 'native overlay diff is not true' }
 & "$repo\test\e2e\podman-acceptance\run.ps1" -Podman $podman -Docker $docker -PodmanUrl $purl -Pipe podman-ci -ShareDir "$work\share" `
   -Only $steps -EngineCtl $ctl -TtyDrive "$Root\bin\ttydrive.exe" -ResultsDir "$work\results"
 $rc = $LASTEXITCODE
+if ($rc -eq 0 -and $nativeDiffFail) { $rc = 1 }
 "acceptance seconds: $([int]((Get-Date) - $acceptStart).TotalSeconds)"
 try { & $ctl -Action stop } catch { }
 exit $rc
