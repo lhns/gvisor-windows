@@ -104,10 +104,7 @@ static void fragmented(const char *dir, const char *src) {
     snprintf(name, sizeof name, "run of a fragmented copy, stride %d", strides[k]);
     char why[128];
     snprintf(why, sizeof why, "status %d, output %.*s", WIFEXITED(stt) ? WEXITSTATUS(stt) : -1, n > 0 ? n : 0, out);
-    report(name, WIFEXITED(stt) && WEXITSTATUS(stt) == 0 && !strcmp(out, "A
-B
-C
-"), why);
+    report(name, WIFEXITED(stt) && WEXITSTATUS(stt) == 0 && !strcmp(out, "A\nB\nC\n"), why);
   }
 }
 int main(int argc, char **argv) {
