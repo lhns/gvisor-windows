@@ -23,6 +23,7 @@ func TestRenameReplaceProbe(t *testing.T) {
 		holdDelete  bool // a handle with DELETE access on the target stays open
 		readTarget  bool // a read handle on the target stays open
 		writeTarget bool // a handle with write access stays open
+		byIDAccess  uint32 // a handle opened by file ID with this access stays open
 		pinTarget   bool // the target is pinned (a guest file descriptor is open)
 		setupTarget func(a Attr)
 	}
@@ -34,6 +35,11 @@ func TestRenameReplaceProbe(t *testing.T) {
 		{name: "posix-replace-after-chmod", class: ntClassRenameEx, flags: renameReplace | renamePosix, setupTarget: func(a Attr) { fs.SetAttr(a.ID, SetAttr{HasMode: true, Mode: 0o600}) }},
 		{name: "posix-replace-read-handle-open", class: ntClassRenameEx, flags: renameReplace | renamePosix, readTarget: true},
 		{name: "posix-replace-write-handle-open", class: ntClassRenameEx, flags: renameReplace | renamePosix, writeTarget: true},
+		{name: "byid-read-attr", class: ntClassRenameEx, flags: renameReplace | renamePosix, byIDAccess: fileReadAttributes},
+		{name: "byid-data", class: ntClassRenameEx, flags: renameReplace | renamePosix, byIDAccess: fileReadData | fileWriteData | fileReadAttributes | fileWriteAttributes},
+		{name: "byid-data+ea", class: ntClassRenameEx, flags: renameReplace | renamePosix, byIDAccess: fileReadData | fileWriteData | fileReadAttributes | fileWriteAttributes | fileReadEA | fileWriteEA},
+		{name: "byid-data+delete", class: ntClassRenameEx, flags: renameReplace | renamePosix, byIDAccess: fileReadData | fileWriteData | fileReadAttributes | fileWriteAttributes | deleteAccess},
+		{name: "byid-all", class: ntClassRenameEx, flags: renameReplace | renamePosix, byIDAccess: fileReadData | fileWriteData | fileReadAttributes | fileWriteAttributes | fileReadEA | fileWriteEA | deleteAccess},
 		{name: "posix-replace-pinned", class: ntClassRenameEx, flags: renameReplace | renamePosix, pinTarget: true},
 		{name: "plain-replace-pinned", class: ntClassRenameEx, flags: renameReplace, pinTarget: true},
 		{name: "posix-replace-delete-handle-open", class: ntClassRenameEx, flags: renameReplace | renamePosix, holdDelete: true},
@@ -64,6 +70,13 @@ func TestRenameReplaceProbe(t *testing.T) {
 		}
 		if v.writeTarget {
 			held, _ = openChild(sh, dname, fileReadData|fileWriteData|fileReadAttributes|fileWriteAttributes|deleteAccess, 0)
+		}
+		if v.byIDAccess != 0 {
+			var herr error
+			held, herr = ntOpenByID(fs.root, dst.ID, v.byIDAccess, shareAll, windows.FILE_NON_DIRECTORY_FILE)
+			if herr != nil {
+				t.Logf("open by id: %v", herr)
+			}
 		}
 		if v.pinTarget {
 			if err := fs.Pin(dst.ID); err != nil {
