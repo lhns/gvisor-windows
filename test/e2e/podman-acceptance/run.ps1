@@ -93,7 +93,14 @@ function Step4 { $L = & $tmpl 4; '' | Set-Content $L; $ok = $true; $d = ''
   Report 4 'interactive-tty' $ok $(if ($d) { $d } else { 'ok' }) }
 function Step5 { $L = & $tmpl 5; '' | Set-Content $L
   $b = Join-Path $ResultsDir 'build'; New-Item -ItemType Directory -Force $b | Out-Null
-  "FROM $DEBIAN`nRUN apt-get update && apt-get install -y --no-install-recommends file curl`nRUN file /bin/ls && curl --version | head -1`n" | Set-Content (Join-Path $b 'Containerfile') -Encoding ascii
+  $apt = 'apt-get update && apt-get install -y --no-install-recommends file curl'
+  $cf = "FROM $DEBIAN`nRUN $apt`nRUN file /bin/ls && curl --version | head -1`n"
+  if ($env:ACC_STEP5_PROBE) {
+    # Diagnostics (docs/results/2r-step5-overlay.md): what /dev/null and the mounts look like in the build container, as root and as _apt, and again when apt fails.
+    $state = 'id; stat /dev/null; ls -la /dev | head -20; grep -E " /dev| /tmp| / " /proc/self/mountinfo; su -s /bin/sh _apt -c "id; echo x > /dev/null && echo apt-null-ok"'
+    $cf = "FROM $DEBIAN`nRUN $state`nRUN ($apt) || { echo PROBE-AFTER-FAILURE; $state; ls -la /tmp /var/cache/apt/archives /var/cache/apt/archives/partial | head -60; for f in /tmp/apt-dpkg-install-*/*; do ls -la `$f; stat -L `$f; done 2>&1 | head -40; exit 1; }`nRUN file /bin/ls && curl --version | head -1`n"
+  }
+  $cf | Set-Content (Join-Path $b 'Containerfile') -Encoding ascii
   $ok = (Pm @('build', '-t', 'acc-build', $b) $L) -eq 0
   Report 5 'build-apt' $ok (LastLines $L) }
 function Step6 { $L = & $tmpl 6; '' | Set-Content $L; $ok = $true; $d = ''

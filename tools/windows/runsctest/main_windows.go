@@ -93,6 +93,8 @@ func main() {
 		{"fsstress", testFsStress},
 		{"aptrename", testAptRename},
 		{"mountkeep", testMountKeep},
+		{"devnull", testDevNull},
+		{"ovlsub", testOvlSub},
 		{"cfr", testCfr},
 		{"debian", testDebian},
 		{"gogc", testGoGC},
@@ -114,7 +116,7 @@ func main() {
 	}
 	failed := 0
 	for _, t := range tests {
-		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "strace" || t.name == "restart" || t.name == "aptrename" || t.name == "mountkeep" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec" || t.name == "sockfs" || t.name == "fsstress" || t.name == "cfr" || t.name == "debian" || t.name == "gogc")) {
+		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "strace" || t.name == "restart" || t.name == "aptrename" || t.name == "mountkeep" || t.name == "devnull" || t.name == "ovlsub" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec" || t.name == "sockfs" || t.name == "fsstress" || t.name == "cfr" || t.name == "debian" || t.name == "gogc")) {
 			continue
 		}
 		start := time.Now()
@@ -673,23 +675,63 @@ func testAptRename() error {
 	return nil
 }
 
-// testMountKeep: a tmpfs mounted on a directory of a host folder survives changes made to the folder from
-// Windows, enough of them to overflow the change stream (the container /dev and /tmp vanished in the Podman acceptance).
-func testMountKeep() error {
-	dir := filepath.Join(*workDir, "mountkeep")
+// testDevNull runs test/guests/devnull: an unprivileged uid (after setgroups/setgid/setuid and exec) opens a mknod'd
+// /dev/null on a tmpfs mounted in a host folder, and apt's download-rename-symlink-stat pattern, in a loop
+// (docs/results/2r-step5-overlay.md).
+func testDevNull() error {
+	dir := filepath.Join(*workDir, "devnull")
 	_ = os.RemoveAll(dir)
-	must(os.MkdirAll(filepath.Join(dir, "flood"), 0o755))
+	must(os.MkdirAll(dir, 0o755))
 	extraMounts = []map[string]any{{"destination": "/w", "type": "bind", "source": dir, "options": []string{"rbind", "rw"}}}
-	extraCaps = []string{"CAP_SYS_ADMIN", "CAP_DAC_OVERRIDE", "CAP_CHOWN", "CAP_FOWNER"}
+	extraCaps = []string{"CAP_SYS_ADMIN", "CAP_MKNOD", "CAP_DAC_OVERRIDE", "CAP_CHOWN", "CAP_FOWNER", "CAP_SETUID", "CAP_SETGID"}
 	defer func() { extraMounts, extraCaps = nil, nil }()
-	stop := make(chan struct{})
+	// Windows changes the folder while the loop runs (the engine's storage changes under a build); an overflow of the
+	// change stream used to drop the container's /dev mount, which left /dev/null a file only root could open.
+	stopFlood := startFlood(dir)
+	defer stopFlood()
+	r, err := runsc("devnull", []string{"/bin/devnull", "/w/dn", strconv.Itoa(*stressIters)}, nil)
+	if err != nil {
+		return err
+	}
+	fmt.Print(r.stdout)
+	if r.code != 0 {
+		return fmt.Errorf("devnull exit %d, stderr %q", r.code, r.stderr)
+	}
+	return nil
+}
+
+// testOvlSub runs test/guests/ovlsub: the Sentry's overlay with layers on a host folder, whiteouts as character
+// devices 0:0, RemoveAll of a directory they empty (c/storage's overlay probe; docs/results/2r-step5-overlay.md).
+func testOvlSub() error {
+	dir := filepath.Join(*workDir, "ovlsub")
+	_ = os.RemoveAll(dir)
+	must(os.MkdirAll(dir, 0o755))
+	extraMounts = []map[string]any{{"destination": "/w", "type": "bind", "source": dir, "options": []string{"rbind", "rw"}}}
+	extraCaps = []string{"CAP_SYS_ADMIN", "CAP_MKNOD", "CAP_DAC_OVERRIDE", "CAP_CHOWN", "CAP_FOWNER"}
+	defer func() { extraMounts, extraCaps = nil, nil }()
+	r, err := runsc("ovlsub", []string{"/bin/ovlsub", "/w/ov"}, nil)
+	if err != nil {
+		return err
+	}
+	fmt.Print(r.stdout)
+	if r.code != 0 {
+		return fmt.Errorf("ovlsub exit %d, stderr %q", r.code, r.stderr)
+	}
+	return nil
+}
+
+// startFlood creates and deletes many files in dir/flood from Windows until the returned function is called, which
+// overflows the change stream of the host folder the sandbox watches.
+func startFlood(dir string) (stop func()) {
+	must(os.MkdirAll(filepath.Join(dir, "flood"), 0o755))
+	stopCh := make(chan struct{})
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		flood := filepath.Join(dir, "flood")
 		for round := 0; ; round++ {
 			select {
-			case <-stop:
+			case <-stopCh:
 				return
 			default:
 			}
@@ -701,9 +743,24 @@ func testMountKeep() error {
 			}
 		}
 	}()
+	return func() {
+		close(stopCh)
+		<-done
+	}
+}
+
+// testMountKeep: a tmpfs mounted on a directory of a host folder survives changes made to the folder from
+// Windows, enough of them to overflow the change stream (the container /dev and /tmp vanished in the Podman acceptance).
+func testMountKeep() error {
+	dir := filepath.Join(*workDir, "mountkeep")
+	_ = os.RemoveAll(dir)
+	must(os.MkdirAll(filepath.Join(dir, "flood"), 0o755))
+	extraMounts = []map[string]any{{"destination": "/w", "type": "bind", "source": dir, "options": []string{"rbind", "rw"}}}
+	extraCaps = []string{"CAP_SYS_ADMIN", "CAP_DAC_OVERRIDE", "CAP_CHOWN", "CAP_FOWNER"}
+	defer func() { extraMounts, extraCaps = nil, nil }()
+	stopFlood := startFlood(dir)
 	r, err := runsc("mountkeep", []string{"/bin/mountkeep", "/w", "20"}, nil)
-	close(stop)
-	<-done
+	stopFlood()
 	if err != nil {
 		return err
 	}

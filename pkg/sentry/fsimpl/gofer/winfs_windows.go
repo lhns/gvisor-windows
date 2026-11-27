@@ -551,10 +551,26 @@ func (i *winInode) hostOpenCreate(name string, accessFlags uint32, mode linux.Fi
 }
 
 func (i *winInode) hostGetDirentsLocked(recordDirent func(name string, key inoKey, dType uint8)) error {
-	return i.host.ReadDir(i.id, func(d winhost.Dirent) bool {
-		recordDirent(d.Name, inoKey{ino: d.ID.Ino(), devMajor: uint32(d.ID.Vol >> 32), devMinor: uint32(d.ID.Vol)}, d.Type)
+	var all []winhost.Dirent
+	err := i.host.ReadDir(i.id, func(d winhost.Dirent) bool {
+		all = append(all, d)
 		return true
 	})
+	if err != nil {
+		return err
+	}
+	for _, d := range all {
+		if d.Type == 0 {
+			// An emulated special file (device, fifo, socket): its type is in the metadata stream, which the
+			// listing does not read. The overlay recognises whiteouts by DT_CHR, and DT_UNKNOWN made it list
+			// them as files (c/storage's overlay probe: "unlinkat merged/subdir: directory not empty").
+			if a, err := i.host.Lookup(i.id, d.Name); err == nil {
+				d.Type = uint8(a.Mode & linux.S_IFMT >> 12)
+			}
+		}
+		recordDirent(d.Name, inoKey{ino: d.ID.Ino(), devMajor: uint32(d.ID.Vol >> 32), devMinor: uint32(d.ID.Vol)}, d.Type)
+	}
+	return nil
 }
 
 func (i *winInode) hostReadlink() (string, error) { return i.host.Readlink(i.id) }

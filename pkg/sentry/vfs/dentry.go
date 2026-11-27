@@ -16,10 +16,12 @@ package vfs
 
 import (
 	"math"
+	"runtime/debug"
 
 	"gvisor.dev/gvisor/pkg/atomicbitops"
 	"gvisor.dev/gvisor/pkg/context"
 	"gvisor.dev/gvisor/pkg/errors/linuxerr"
+	"gvisor.dev/gvisor/pkg/log"
 	"gvisor.dev/gvisor/pkg/refs"
 	"gvisor.dev/gvisor/pkg/sync"
 )
@@ -271,6 +273,8 @@ func (vfs *VirtualFilesystem) InvalidateDentry(ctx context.Context, d *Dentry) [
 	d.dead = true
 	d.mu.Unlock()
 	if d.isMounted() {
+		// gvisor-windows diagnostics: a mount that vanishes under a container (docs/results/2r-step5-overlay.md).
+		log.Warningf("vfs: invalidating a dentry with a mount on it; stack: %s", debug.Stack())
 		return vfs.forgetDeadMountpoint(ctx, d)
 	}
 	return nil

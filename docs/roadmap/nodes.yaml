@@ -2622,12 +2622,13 @@
 - outcome: unrated
   evidence:
   - docs/adr/0002-what-done-means.md
+  - docs/results/2r-step5-overlay.md
   verdict_quote: ''
   headline: ''
   depends_on: &id013 []
   replaced_by: &id014 []
   start: '2026-11-27'
-  end: ''
+  end: '2026-11-27'
   folded: &id015 []
   overview: false
   lane: windows-ci
@@ -2635,19 +2636,21 @@
   title: Overlay with a host-folder upper layer
   track: fs
   kind: defect
-  state: next
+  state: done
   plain: 'Podman uses the slow vfs storage driver because native overlay with its upper layer on a Windows folder fails c/storage''s probe: removing a directory in the merged view returns "directory not
     empty".'
-  notes: 'Fixed when: STORAGE_DRIVER=overlay passes the acceptance 8 of 8 in native mode.'
+  notes: 'Fixed: the host-folder backend returned DT_UNKNOWN for device nodes, so the overlay missed whiteouts; native overlay passes all 10 steps 4 of 4 (acceptance default stays vfs until more runs).
+    Open: native-diff probe fails (opaque flag copied up).'
 - outcome: unrated
   evidence:
   - docs/results/5-podman-windows.md
+  - docs/results/2r-step5-overlay.md
   verdict_quote: ''
   headline: ''
   depends_on: *id013
   replaced_by: *id014
   start: '2026-11-27'
-  end: ''
+  end: '2026-11-27'
   folded: *id015
   overview: false
   lane: windows-ci
@@ -2655,7 +2658,7 @@
   title: Rare permission error on /dev/null
   track: workloads
   kind: defect
-  state: next
+  state: done
   plain: 'Intermittently, apt''s unprivileged _apt user gets "cannot create /dev/null: Permission denied" inside a build container, so step 5 fails; dpkg''s "cannot stat" of an extracted .deb also still
     shows up rarely.'
-  notes: 'Fixed when: a native step-5 loop of 30 runs passes with no failure.'
+  notes: 'Not reproduced on current windows: step 5 passed 80 of 80 native runs; the failures were on heads before the mount-keeping and atomic-replace fixes. A devnull guest test guards it.'
