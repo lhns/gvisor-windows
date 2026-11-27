@@ -2,7 +2,7 @@
 name: windows-profile
 on:
   push:
-    branches: [sentry-profile]
+    branches: [sentry-profile, platform-next]
     paths: ["pkg/sentry/**", "runsc/**", "tools/windows/runsctest/**", "tools/windows/sentryguest/**", "test/guests/t/**", ".github/workflows/windows-profile.yml"]
   workflow_dispatch:
 jobs:
