@@ -1297,12 +1297,12 @@ func TestShareReadOnlySection(t *testing.T) {
 	file := &sectionFile{bytesFile{data: unsafe.Slice((*byte)(unsafe.Pointer(view)), imgSize)}, sec}
 
 	a := &asm{base: textBase}
-	touch := a.emit(0x48, 0x8b, 0x07) // L: mov rax,[rdi]
-	a.emit(0x48, 0x01, 0xc3)          // add rbx,rax
+	touch := a.emit(0x48, 0x8b, 0x07)          // L: mov rax,[rdi]
+	a.emit(0x48, 0x01, 0xc3)                   // add rbx,rax
 	a.emit(0x48, 0x81, 0xc7, 0x00, 0x10, 0, 0) // add rdi,4096
-	a.emit(0x48, 0xff, 0xc9)          // dec rcx
-	a.emit(0x75, 0xee)                // jnz L
-	a.emit(0x48, 0x89, 0xdf)          // mov rdi,rbx
+	a.emit(0x48, 0xff, 0xc9)                   // dec rcx
+	a.emit(0x75, 0xee)                         // jnz L
+	a.emit(0x48, 0x89, 0xdf)                   // mov rdi,rbx
 	a.emit(0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05)
 
 	h := newHarness(t)

@@ -100,13 +100,13 @@ func New(opts platform.Options) (*Platform, error) {
 	return &Platform{
 		spinLimit: envInt("WINSTUB_SPINLIMIT", runtime.NumCPU()),
 		maxTokens: int32(envInt("WINSTUB_TOKENS", max(1, runtime.NumCPU()/2))),
-		xmask:    stubasm.XSaveMask(),
-		fpSize:   int(fpSize),
-		stubPath: f.Name(),
-		image:    stubasm.Image(),
-		ntSet:    uint64(pNtSetEvent.Addr()),
-		ntWait:   uint64(pNtWaitSingle.Addr()),
-		ntTerm:   uint64(pNtTerminateThread.Addr()),
+		xmask:     stubasm.XSaveMask(),
+		fpSize:    int(fpSize),
+		stubPath:  f.Name(),
+		image:     stubasm.Image(),
+		ntSet:     uint64(pNtSetEvent.Addr()),
+		ntWait:    uint64(pNtWaitSingle.Addr()),
+		ntTerm:    uint64(pNtTerminateThread.Addr()),
 	}, nil
 }
 

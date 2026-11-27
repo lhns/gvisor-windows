@@ -121,13 +121,14 @@ type addressSpace struct {
 	edges     map[uint64]edge
 
 	createMu  sync.Mutex // serializes thread creation
+	capReq    chan *capReq
 	lastEvent atomic.Value
 	// diagnostics: threads ended with TerminateThread instead of by themselves
 	nTermFallback atomic.Uint32
-	tmu       sync.Mutex
-	byTid     map[uint32]*thread
-	slots     [stubasm.MaxThreads]*thread
-	freeSlots []int
+	tmu           sync.Mutex
+	byTid         map[uint32]*thread
+	slots         [stubasm.MaxThreads]*thread
+	freeSlots     []int
 
 	holesDone atomic.Bool
 }
@@ -137,6 +138,7 @@ func newAddressSpace(p *Platform) *addressSpace {
 		p: p, loopDone: make(chan struct{}), started: make(chan error, 1),
 		vcur: stubasm.Veneers, siteCache: map[uint64]siteInfo{}, restartAt: map[uint64]uint64{},
 		ud2Sites: map[uint64]bool{}, byTid: map[uint32]*thread{}, edges: map[uint64]edge{},
+		capReq: make(chan *capReq, 256),
 	}
 }
 
