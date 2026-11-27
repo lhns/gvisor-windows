@@ -54,7 +54,7 @@ jobs:
           docker run --rm -v "$PWD:/w" -w /w alpine:3.20 sh -c             'apk add --no-cache gcc musl-dev >/dev/null && gcc -O1 -fstack-protector-all -o out/hello_musl test/guests/hello.c && cp -L /lib/ld-musl-x86_64.so.1 out/ld-musl'
           R=root
           mkdir -p $R/bin $R/lib $R/lib64 $R/t
-          cp out/clonesys out/clonesys_ns out/hello_dyn out/hello_dyn_nopie out/dlopen_glibc out/exec out/signals out/threads out/threads_dyn out/gostress out/gopodman out/hello_musl $R/bin/
+          cp out/clonesys out/clonesys_ns out/hello_dyn out/hello_dyn_nopie out/dlopen_glibc out/exec out/signals out/clocks out/threads out/threads_dyn out/gostress out/gopodman out/hello_musl $R/bin/
           cp out/libplug.so $R/lib/
           cp out/ld-musl $R/lib/ld-musl-x86_64.so.1
           ln -s ld-musl-x86_64.so.1 $R/lib/libc.musl-x86_64.so.1
@@ -117,6 +117,7 @@ jobs:
             @{n='sig_eintr'; a=@('/bin/signals','eintr'); out="eintr ok${nl}"; code=0},
             @{n='sig_child'; a=@('/bin/signals','child'); out="child ok${nl}"; code=0},
             @{n='sig_group'; a=@('/bin/signals','group'); out="group ok${nl}"; code=0},
+            @{n='clocks'; a=@('/bin/clocks'); noout=$true; code=0},
             @{n='threads_static'; a=@('/bin/threads'); out="threads: counter=160000 idsum=28 main_tls=1${nl}"; code=0},
             @{n='threads_dyn'; a=@('/bin/threads_dyn'); out="threads: counter=160000 idsum=28 main_tls=1${nl}"; code=0},
             @{n='go_stress'; a=@('/bin/gostress'); out="gostress ok: ticks=20 sum=507500 spun=true procs=4${nl}"; code=0}
@@ -131,7 +132,8 @@ jobs:
             "##### leg $leg" | Tee-Object -Append -FilePath guests-$leg.txt
             foreach ($c in $cases) {
               "===== $($c.n)" | Tee-Object -Append -FilePath guests-$leg.txt
-              $a = @("-check", "-out=$($c.out)", "-code=$($c.code)", "-timeout=120s")
+              $a = @("-code=$($c.code)", "-timeout=120s")
+              if (-not $c.noout) { $a += "-check", "-out=$($c.out)" }
               if ($c.tar) { $a += "-tar=out/rootfs.tar"; $a += $c.a } else { $a += "out/$($c.n)" }
               & ./sentryguest.exe @a 2>&1 | Tee-Object -Append -FilePath guests-$leg.txt
               "exit: $LASTEXITCODE" | Tee-Object -Append -FilePath guests-$leg.txt

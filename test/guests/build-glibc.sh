@@ -24,6 +24,7 @@ gcc -O1 -o $O/dlopen_glibc $G/dlopen.c -ldl
 gcc -static -no-pie -O1 -o $O/exec $G/exec.c
 gcc -static -no-pie -O1 -pthread -o $O/signals $G/signals.c
 gcc -static -no-pie -O1 -pthread -o $O/threads $G/threads.c
+gcc -static -no-pie -O1 -pthread -o $O/clocks $G/clocks.c
 gcc -O1 -pthread -o $O/threads_dyn $G/threads.c
 mkdir -p $O/glibclibs
 for b in $O/hello_dyn $O/dlopen_glibc $O/threads_dyn; do
