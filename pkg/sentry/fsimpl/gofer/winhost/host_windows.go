@@ -3,6 +3,7 @@
 package winhost
 
 import (
+	"gvisor.dev/gvisor/pkg/log"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -762,7 +763,11 @@ func renameHandle(h windows.Handle, full string, replace bool) error {
 	for i, c := range name {
 		*(*uint16)(unsafe.Pointer(&b[hdr+2*i])) = c
 	}
-	err := setInfo(h, classRenameEx, unsafe.Pointer(&b[0]), uint32(size))
+	raw := windows.SetFileInformationByHandle(h, classRenameEx, (*byte)(unsafe.Pointer(&b[0])), uint32(size))
+	err := toErrno(raw)
+	if err == unix.EINVAL {
+		log.Warningf("winhost: rename to %q (%d chars, replace %v) refused: %v", full, len(full), replace, raw)
+	}
 	if err == unix.EACCES && replace {
 		// Replacing a read-only file needs the flag that ignores the attribute;
 		// it is not asked for first because it needs more rights.
