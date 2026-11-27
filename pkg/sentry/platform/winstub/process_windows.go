@@ -538,7 +538,11 @@ func (as *addressSpace) onException(ev *debugEvent, ctx *ctxBuf, seenBP *bool) u
 	}
 	excAddr := ev.u64(32)
 	if traceOn {
-		Trace("exception %#x at %#x (thread %d)", code, excAddr, t.idx)
+		if code == excAccessViolation {
+			Trace("exception %#x at %#x (thread %d) kind %d addr %#x %s", code, excAddr, t.idx, ev.u64(48), ev.u64(56), as.viewDesc(ev.u64(56)))
+		} else {
+			Trace("exception %#x at %#x (thread %d)", code, excAddr, t.idx)
+		}
 	}
 	t.stopMu.Lock()
 	defer t.stopMu.Unlock()

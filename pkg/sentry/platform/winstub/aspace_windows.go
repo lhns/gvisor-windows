@@ -153,6 +153,8 @@ type addressSpace struct {
 	freeSlots                            []int
 
 	holesDone atomic.Bool
+
+	lastScanNS int64 // trace: time of the last scan lookup
 }
 
 func newAddressSpace(p *Platform) *addressSpace {
@@ -440,6 +442,10 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 	}
 	sf, isSec := f.(SectionFile)
 	lo, hi := uint64(addr), uint64(addr)+fr.Length()
+	if traceOn {
+		t0 := qpc()
+		defer func() { Trace("MapFile %#x-%#x %v sec %v %T %.3fms", lo, hi, at, isSec, f, float64(qpc()-t0)/1e6) }()
+	}
 	if lo < stubasm.GuestMin || hi > stubasm.GuestMax || hi < lo {
 		return errOutOfRange
 	}
@@ -502,7 +508,9 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 		return nil
 	}
 	if content != nil {
+		t1 := qpc()
 		st := as.patchText(content, lo, hi)
+		t2 := qpc()
 		debugf("text %#x-%#x: %+v (fs veneers: %d of %d bytes)", lo, hi, st, as.fcur-stubasm.FSVeneers, stubasm.FSVeneersSize)
 		ps, err := as.newPrivate(content)
 		if err != nil {
@@ -512,6 +520,9 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 		if err := as.mapView(v); err != nil {
 			as.unrefPriv(ps)
 			return err
+		}
+		if traceOn {
+			Trace("text %#x-%#x: patch %.3fms (scan %.3fms) section %.3fms %+v", lo, hi, float64(t2-t1)/1e6, float64(as.lastScanNS)/1e6, float64(qpc()-t2)/1e6, st)
 		}
 		return nil
 	}
@@ -1013,6 +1024,17 @@ func (as *addressSpace) writeText(v *view, addr uint64, b []byte) error {
 	copy(unsafe.Slice((*byte)(ptr(m+uintptr(off-base))), len(b)), b)
 	pUnmapViewOfFile.Call(m)
 	return nil
+}
+
+// viewDesc describes the view at a for the trace.
+func (as *addressSpace) viewDesc(a uint64) string {
+	as.mu.Lock()
+	defer as.mu.Unlock()
+	v := as.findView(a)
+	if v == nil {
+		return "unmapped"
+	}
+	return fmt.Sprintf("view %#x-%#x prot %d priv %v wx %v/%v", v.lo, v.hi, v.prot, v.priv != nil, v.wx, v.wxPriv)
 }
 
 // mapped reports whether a lies in a view (to tell SEGV_ACCERR from SEGV_MAPERR).

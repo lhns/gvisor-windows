@@ -139,6 +139,30 @@ jobs:
             }
           }
           exit $fail
+      - name: vDSO without traps
+        if: always() && (env.ONLY == '' || contains(env.ONLY, 'vdso'))
+        shell: pwsh
+        run: |
+          # clock_gettime, gettimeofday, time and getcpu through the vDSO must not reach
+          # the Sentry as system calls: the Sentry's counters may show only the guest's
+          # own direct calls (test/guests/vdso.c).
+          . tools/windows/ci/leg.ps1
+          $fail = 0
+          foreach ($leg in $env:LEGS -split '[, ]+' | Where-Object { $_ }) {
+            Set-Leg $leg -KeepAvx512
+            $o = & ./sentryguest.exe -profstats -timeout=120s out/vdso 2>&1 | Out-String
+            "===== vdso $leg" | Tee-Object -Append -FilePath vdso.txt
+            $o | Tee-Object -Append -FilePath vdso.txt
+            if ($o -notmatch 'vdso ok' -or $o -notmatch 'direct syscalls: clock_gettime=(\d+) gettimeofday=(\d+) time=(\d+) getcpu=(\d+)') { "FAILED: vdso guest in leg $leg"; $fail = 1; continue }
+            $direct = [ordered]@{clock_gettime=[int]$Matches[1]; gettimeofday=[int]$Matches[2]; time=[int]$Matches[3]; getcpu=[int]$Matches[4]}
+            foreach ($k in $direct.Keys) {
+              $n = 0
+              if ($o -match "PROFSTATS $k +(\d+)") { $n = [int]$Matches[1] }
+              if ($n -gt $direct[$k] + 10) { "FAILED: $k trapped $($n - $direct[$k]) times beyond the guest's $($direct[$k]) direct calls (leg $leg)"; $fail = 1 }
+              else { "VDSO $leg ${k}: $n system calls, $($direct[$k]) of them direct" }
+            }
+          }
+          exit $fail
       - name: Podman-shaped stress
         if: always() && env.ONLY == ''
         shell: pwsh
@@ -243,4 +267,5 @@ jobs:
             podman.txt
             hang.txt
             diag.txt
+            vdso.txt
           if-no-files-found: ignore

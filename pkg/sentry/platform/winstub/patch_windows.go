@@ -139,7 +139,9 @@ const (
 // of a range, see reseam); the sites inside are left alone and no patch overlaps them.
 func (as *addressSpace) patchCode(code []byte, base uint64, from, skip, zone, stop int, keep []rng) (siteStats, *scanResult) {
 	var st siteStats
+	t0 := qpc()
 	scan := as.p.scans.scan(code, from, as.p.fsRewrite)
+	as.lastScanNS = qpc() - t0
 	st.pairs = scan.pairs
 	cl := claims{fixed: keep}
 	if skip > 0 {
