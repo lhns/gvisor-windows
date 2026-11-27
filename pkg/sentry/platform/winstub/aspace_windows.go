@@ -726,11 +726,11 @@ func (as *addressSpace) patchText(content []byte, lo, hi uint64) siteStats {
 	if len(pre) > 0 {
 		buf, bufBase = append(append([]byte(nil), pre...), content...), lo-uint64(len(pre))
 	}
-	zone := 0 // a range that begins a mapping begins at an instruction
+	zone := 0
 	if len(pre) > 0 {
 		zone = zoneContext
-	} else if from == 0 && as.findView(lo-1) != nil {
-		zone = zoneNoContext // text is mapped just below, but not seen: the instruction boundary is unknown
+	} else if from == 0 {
+		zone = zoneNoContext // the range may begin inside an instruction (the piece below may be mapped later)
 	}
 	st, scan := as.patchCode(buf, bufBase, from, len(pre), zone)
 	if len(pre) > 0 {

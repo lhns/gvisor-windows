@@ -17,6 +17,7 @@
 package winstub
 
 import (
+	"bytes"
 	"fmt"
 	"encoding/binary"
 	"math/rand"
@@ -37,6 +38,7 @@ const (
 
 // fsGuest is code full of %fs accesses; it reports results with syscall 500.
 type fsGuest struct {
+	start     uint64
 	code      []byte
 	faultInsn uint64
 }
@@ -44,6 +46,8 @@ type fsGuest struct {
 func buildFSGuest(base uint64) *fsGuest {
 	a := &asm{base: base}
 	g := &fsGuest{}
+	a.emit(bytes.Repeat([]byte{0x90}, 64)...) // (the sites in the first bytes of a text range are handled by the debugger)
+	g.start = a.pc()
 	report := func(src ...byte) {
 		a.emit(src...)                // mov rdi,<src>
 		a.emit(0xb8, 0xf4, 1, 0, 0)   // mov eax,500
@@ -104,7 +108,7 @@ func TestFSInstructions(t *testing.T) {
 			h.mapAt(mm, tlsBase, h.pages(tlsData(), 1), rw)
 			c := h.p.NewContext(pkgcontext.Background())
 			defer c.Release()
-			ac := newAC(base, 0x700000+4*pageSz-64)
+			ac := newAC(g.start, 0x700000+4*pageSz-64)
 			r := &ac.StateData().Regs
 			r.Fs_base = tlsBase
 			for i, want := range []uint64{0x1111, 0x2222, 0x3333, 0x15, 0x1234, 0xaabbccddeeff11aa} {
@@ -144,6 +148,7 @@ func TestFSInterrupt(t *testing.T) {
 	mm := h.newMM()
 	const base = 0xC00000
 	a := &asm{base: base}
+	a.emit(bytes.Repeat([]byte{0x90}, 64)...) // (the sites in the first bytes of a text range are handled by the debugger)
 	loop := a.emit(0x64, 0x48, 0x8b, 0x04, 0x25, 0x28, 0, 0, 0) // mov %fs:0x28,%rax
 	a.emit(0x64, 0x48, 0x01, 0x0c, 0x25, 0x40, 0, 0, 0)         // add %rcx,%fs:0x40
 	a.emit(0x48, 0xff, 0xc1)                                    // inc %rcx
@@ -206,6 +211,7 @@ func TestFSSpeed(t *testing.T) {
 	const iters = 5_000_000
 	build := func(load ...byte) (code []byte) {
 		a := &asm{base: base}
+		a.emit(bytes.Repeat([]byte{0x90}, 64)...) // (the sites in the first bytes of a text range are handled by the debugger)
 		a.emit(append([]byte{0xb9}, le32(iters)...)...) // mov $iters,%ecx
 		loop := a.emit(load...)
 		a.emit(0xff, 0xc9) // dec %ecx
@@ -218,7 +224,7 @@ func TestFSSpeed(t *testing.T) {
 	defer c.Release()
 	run := func(name string, at uint64, code []byte) time.Duration {
 		h.mapAt(mm, at, h.pages(code, 1), rx)
-		ac := newAC(at, 0)
+		ac := newAC(at+64, 0)
 		r := &ac.StateData().Regs
 		r.Fs_base, r.Rdx = tlsBase, tlsBase
 		start := time.Now()
