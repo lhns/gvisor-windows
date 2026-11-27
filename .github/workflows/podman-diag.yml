@@ -4,7 +4,7 @@
 name: podman-diag
 on:
   push:
-    branches: [podman-sentry-gaps-2]
+    branches: [podman-sentry-gaps-2, podman-build]
     paths: ["pkg/**", "runsc/**", "tools/windows/podman/**", ".github/workflows/podman-diag.yml"]
   workflow_dispatch:
 env:
