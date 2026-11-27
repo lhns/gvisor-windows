@@ -52,7 +52,7 @@ jobs:
           for ($i = 1; $i -le $reps; $i++) {
             & tools/windows/ci/run-as-standard-user.ps1 `
               -Program C:\ci\bin\runsctest.exe `
-              -Arguments @('-fsmode', $env:WINSTUB_FSMODE, '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work',"C:\ci\work\std-stress$i",'-only','fsstress','-stress-iters',$iters,'-stress-workers',$workers,'-stress-strace','-timeout','900s') `
+              -Arguments @('-fsmode', $env:WINSTUB_FSMODE, '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work',"C:\ci\work\std-stress$i",'-only','fsstress','-stress-iters',$iters,'-stress-workers',$workers,'-timeout','900s') `
               -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 1800
             if ($LASTEXITCODE -ne 0) { $fail++ }
           }
