@@ -109,7 +109,7 @@ def main():
         if finished:
             continue
         text = open(log, 'rb').read().decode('utf-8', 'replace')
-        found = re.findall(r'(?m)^(panic: .*|fatal error: .*|unexpected fault address.*|Exception .*|sentryguest: FAIL.*)', text)
+        found = re.findall(r'(?m)^(panic: .*|fatal error: .*|unexpected fault address.*|Exception .*|runtime: GetQueuedCompletionStatusEx.*|sentryguest: FAIL.*)', text)
         tail = esc((('panic: ' if False else '') + (found[-1] + chr(10) if found else '') + text[-2500:]).encode('utf-8'))
         if not saw_start and 'sentryguest: FAIL' in open(log, 'rb').read().decode('utf-8', 'replace'):
             no_start += 1

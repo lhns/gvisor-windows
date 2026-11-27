@@ -46,6 +46,14 @@ type processMemoryCounters struct {
 	PeakPagefileUsage          uintptr
 }
 
+// dumpGoroutines writes the stacks of all goroutines to stderr.
+func dumpGoroutines() {
+	buf := make([]byte, 8<<20)
+	n := runtime.Stack(buf, true)
+	nl := string(rune(10))
+	fmt.Fprint(os.Stderr, "STALL goroutine dump ("+fmt.Sprint(runtime.NumGoroutine())+" goroutines):"+nl+string(buf[:n])+nl+"STALL end"+nl)
+}
+
 // monitorHandles prints, every interval, the number of handles of this
 // process (and of goroutines, and the memory in use) to stderr. A count that
 // grows with the number of guest processes is a leak.
