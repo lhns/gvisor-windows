@@ -37,6 +37,7 @@ flowchart TB
     platform_no_fsgsbase_fallback["▶ Support CPUs without<br/>FSGSBASE"]
     platform_rare_hang_under_exec_load>"⚠ Rare hang under<br/>heavy exec load"]
     platform_unsupported_errno>"⚠ Unsupported platform<br/>calls return errnos"]
+    platform_avx512_state_lost>"⚠ AVX-512 state lost<br/>across stops"]
     platform_own_vdso["⛔ Own vDSO for clock<br/>calls"]
     platform_64k_mapping_conflicts["⏸ Handle 64 KB mapping<br/>conflicts"]
     platform_busybox_on_windows["✔ Run busybox under<br/>the Sentry"]
@@ -74,12 +75,15 @@ flowchart TB
     platform_split_syscall_unpatched ~~~ platform_no_fsgsbase_fallback
     platform_map_files_without_sections ~~~ platform_rare_hang_under_exec_load
     platform_veneer_address_in_child ~~~ platform_unsupported_errno
-    platform_no_fsgsbase_fallback ~~~ platform_own_vdso
-    platform_rare_hang_under_exec_load ~~~ platform_64k_mapping_conflicts
-    platform_unsupported_errno ~~~ platform_busybox_on_windows
+    platform_no_fsgsbase_fallback ~~~ platform_avx512_state_lost
+    platform_rare_hang_under_exec_load ~~~ platform_own_vdso
+    platform_unsupported_errno ~~~ platform_64k_mapping_conflicts
+    platform_avx512_state_lost ~~~ platform_busybox_on_windows
     platform_own_vdso ~~~ platform_hardware_acceleration
     platform_64k_mapping_conflicts ~~~ platform_binary_translation_fallback
     platform_busybox_on_windows ~~~ platform_recycle_stubs
+    platform_hardware_acceleration ~~~ platform_recycle_stubs
+    platform_binary_translation_fallback ~~~ platform_recycle_stubs
     platform_trap_cost -.-> platform_veh_on_guest_stack_unsafe
     platform_tls_register -.-> platform_veh_on_guest_stack_unsafe
     platform_trap_cost --> platform_exception_stack
@@ -107,7 +111,7 @@ flowchart TB
     platform_winstub --> platform_hardware_acceleration
     platform_debug_event_cost --> platform_binary_translation_fallback
     platform_no_fsgsbase_fallback --> platform_recycle_stubs
-    linkStyle 37,38 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    linkStyle 40,41 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -128,7 +132,7 @@ flowchart TB
     class platform_fs_base_repair unrated
     class platform_fast_process_start vsucc
     class platform_no_fsgsbase_fallback inprog
-    class platform_rare_hang_under_exec_load,platform_unsupported_errno finding
+    class platform_rare_hang_under_exec_load,platform_unsupported_errno,platform_avx512_state_lost finding
     class platform_own_vdso,platform_recycle_stubs blocked
     class platform_64k_mapping_conflicts,platform_hardware_acceleration,platform_binary_translation_fallback parked
 ```
@@ -173,6 +177,7 @@ flowchart TB
 | `platform-rare-hang-under-exec-load` | Rare hang under heavy exec load | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/1h-platform-share.md; docs/results/1i-profile.md |
 | `platform-unsupported-errno` | Unsupported platform calls return errnos | defect | windows-ci | in-progress | unrated | 2026-11-27 |  |  |  |  |  | docs/results/4-syscall-tests.md |
 | `platform-recycle-stubs` | Reuse stub processes across exec | feature | windows-ci | blocked | unrated |  |  | platform-no-fsgsbase-fallback |  |  |  | docs/results/1i-profile.md |
+| `platform-avx512-state-lost` | AVX-512 state lost across stops | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/5-podman-windows.md |
 
 ### Details per node
 
@@ -212,6 +217,7 @@ flowchart TB
 | `platform-rare-hang-under-exec-load` | Rare hang under heavy exec load |  |  | A guest that forks many children hangs now and then: about 1 in 50 gopodman runs, and 9 in 48 fork+exec loops through runsc.exe with the exclusive root cache (2 in 48 with the shared cache); the shell waits in wait4 with no child task. | Fixed when: the gopodman hunt step passes 200 runs in a row; suggested: capture threads with a request flag the stub polls instead of SuspendThread. |  |  |  |  |
 | `platform-unsupported-errno` | Unsupported platform calls return errnos |  |  | arch_prctl(ARCH_SET_GS) and ptrace preparation return a raw error from the platform instead of an errno, so the Sentry panics with "Unknown syscall 158". | Fixed when: arch_prctl_test fails cleanly (EPERM or ENOTSUP) instead of crashing the Sentry. |  |  |  |  |
 | `platform-recycle-stubs` | Reuse stub processes across exec |  |  | Each fork+exec starts two stub processes at about 10 ms each; recycling a stub on release and execve and mapping memory up front would cut process start further. | Done when: the 100x fork+exec loop through runsc.exe is at least 4x faster than the 3.47 s baseline in docs/results/3b. |  |  |  |  |
+| `platform-avx512-state-lost` | AVX-512 state lost across stops |  |  | Podman's Go GC crashed in its AVX-512 scan, likely because vector or opmask state is lost across a fault or interrupt; AVX-512 is hidden from guests as a workaround. | Fixed when: a guest keeps zmm and k registers across syscalls, faults and interrupts on an AVX-512 runner, and the CPUID workaround in runsc/boot/loader.go is removed. |  |  |  |  |
 
 ### Folded items per node
 

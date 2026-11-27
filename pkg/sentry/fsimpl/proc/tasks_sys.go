@@ -851,7 +851,8 @@ var _ vfs.WritableDynamicBytesSource = (*portRange)(nil)
 // Generate implements vfs.DynamicBytesSource.Generate.
 func (pr *portRange) Generate(ctx context.Context, buf *bytes.Buffer) error {
 	start, end := pr.stack.PortRange()
-	_, err := fmt.Fprintf(buf, "%d %d\n", start, end)
+	// Linux separates the two numbers with a tab; pasta does not parse a space.
+	_, err := fmt.Fprintf(buf, "%d\t%d\n", start, end)
 	return err
 }
 

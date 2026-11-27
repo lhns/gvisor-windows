@@ -48,6 +48,7 @@ gantt
     Veneer addresses differ after clone :platform_veneer_address_in_child, 2026-11-27, 2026-11-27
     Rare hang under heavy exec load :platform_rare_hang_under_exec_load, 2026-11-27, 2026-11-27
     Unsupported platform calls return errnos :active, platform_unsupported_errno, 2026-11-27, 2026-11-27
+    AVX-512 state lost across stops :platform_avx512_state_lost, 2026-11-27, 2026-11-27
     section sentry - sentry
     Recover faults in Go :sentry_go_fault_recovery, 2026-11-26, 2026-11-26
     Sentry builds for Windows :sentry_windows_build, 2026-11-26, 2026-11-26
@@ -77,6 +78,7 @@ gantt
     Deletes fail for standard users :fs_standard_user_delete_rights, 2026-11-26, 2026-11-26
     Case-sensitive names without admin :fs_case_sensitivity_without_admin, 2026-11-26, 2026-11-27
     Unix sockets on host folders :fs_unix_sockets_on_host_folders, 2026-11-27, 2026-11-27
+    Copied library reads as too short :fs_copied_file_too_short, 2026-11-27, 2026-11-27
     section net - network
     Netstack to Windows sockets :net_netstack_windows_link, 2026-11-26, 2026-11-26
     Publish guest ports on localhost :net_port_forwarding, 2026-11-26, 2026-11-26
@@ -98,6 +100,8 @@ gantt
     conmon sees no data on its sync pipe :workloads_conmon_sync_pipe, 2026-11-26, 2026-11-27
     Overlay mounts with userxattr rejected :workloads_overlay_userxattr, 2026-11-26, 2026-11-27
     Second attach-socket failure :workloads_conmon_attach_second_cause, 2026-11-27, 2026-11-27
+    Interactive TTY through the Windows cli… :workloads_tty_through_windows_client, 2026-11-27, 2026-11-27
+    Isolation step failed once :workloads_isolation_flake, 2026-11-27, 2026-11-27
     section research - research
     Pick gVisor as the base :research_gvisor_base, 2026-11-17, 2026-11-26
     Revive LKL or nommu UML :crit, research_lkl_nommu, 2026-11-26, 2026-11-26

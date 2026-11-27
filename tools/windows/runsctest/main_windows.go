@@ -567,7 +567,7 @@ func rootfsOptions() string {
 // testSockfs is the reproducer for conmon's attach socket (Podman: "dial unixpacket
 // /proc/self/fd/N: connect: connection refused"): test/guests/unixsock binds a
 // SOCK_SEQPACKET socket and connects to it directly and through /proc/self/fd, on tmpfs
-// (control) and on a host-folder bind mount. It prints, it does not fail.
+// (control) and on a host-folder bind mount. It fails if any step does.
 func testSockfs() error {
 	dir := filepath.Join(*workDir, "sockfs")
 	_ = os.RemoveAll(dir)
@@ -580,6 +580,11 @@ func testSockfs() error {
 			return err
 		}
 		fmt.Println("sockfs on", where, r.stdout, r.code, r.stderr)
+		for _, want := range []string{"bind+listen: Success", "child direct: Success", "child proc-fd: Success", "accepted and read from the child: Success", "parent direct: Success"} {
+			if !strings.Contains(r.stdout, want) {
+				return fmt.Errorf("sockfs on %s: %q missing; stdout %q", where, want, r.stdout)
+			}
+		}
 	}
 	return nil
 }
