@@ -58,8 +58,43 @@ static int removetree(const char *dir) {
   return rmdir(dir);
 }
 
+// c/storage's pattern: layers.json is replaced by rename of a temporary file while another process
+// reads it; the file must never be missing or empty.
+static void replace_container(const char *base, int n) {
+  char p[1024], q[1024], tok[64];
+  snprintf(q, sizeof q, "%s/layers.json", base);
+  put(q, "0");
+  snprintf(p, sizeof p, "%s/.tmp-layers.json", base);
+  for (int i = 1; i <= n; i++) {
+    snprintf(tok, sizeof tok, "%d", i);
+    if (put(p, tok) || rename(p, q)) { fail("replace", i, q); break; }
+  }
+  snprintf(p, sizeof p, "%s/replace.done", base);
+  put(p, "x");
+}
+
+static void replace_engine(const char *base) {
+  char p[1024], q[1024], b[64];
+  snprintf(q, sizeof q, "%s/layers.json", base);
+  snprintf(p, sizeof p, "%s/replace.done", base);
+  long reads = 0;
+  while (access(p, F_OK)) {
+    int fd = open(q, O_RDONLY);
+    if (fd < 0) { if (errno == ENOENT && reads == 0) { usleep(100); continue; } fail("layers-open", (int)reads, q); }
+    else {
+      ssize_t r = read(fd, b, sizeof b);
+      close(fd);
+      if (r <= 0) { errno = 0; fail("layers-empty", (int)reads, q); }
+    }
+    reads++;
+  }
+  unlink(p);
+  printf("engine: %ld reads of layers.json during the replacements\n", reads);
+}
+
 static void container(const char *base, int rounds) {
   who = "container";
+  replace_container(base, rounds * 10);
   char lists[900], partial[900], p[1024], q[1024], tok[64], name[256];
   // A long name, as apt's: the path of lists/partial/NAME is well over 180 characters.
   for (int i = 0; i < rounds; i++) {
@@ -93,6 +128,7 @@ static void container(const char *base, int rounds) {
 
 static void engine(const char *base, int rounds) {
   who = "engine";
+  replace_engine(base);
   char p[1024], lists[900];
   for (int i = 0; i < rounds; i++) {
     snprintf(p, sizeof p, "%s/r%d.done", base, i);
