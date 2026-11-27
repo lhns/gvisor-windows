@@ -44,18 +44,3 @@ jobs:
         run: GOOS=windows CGO_ENABLED=0 go build -p 2 ./runsc/boot/...
       - name: runsc for Linux
         run: GOOS=linux CGO_ENABLED=0 go build -p 2 ./runsc/...
-  upstream-dryrun:
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - run: bash .github/scripts/upstream-merge.sh
-        env:
-          DRY_RUN: '1'
-          BASE_BRANCH: ${{ github.ref_name }}
-          GH_TOKEN: ${{ github.token }}

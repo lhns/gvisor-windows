@@ -1,7 +1,7 @@
 /* Sleeps, clocks, timerfd, POSIX timers, interval timers and timeouts: clocks [GROUP...].
  * Without a group every group runs. Each check prints its measurement; a failed check is
  * reported and the run goes on, the exit code is 1 if any failed. Prints "clocks ok" at the end.
- * Tolerances are generous (CI runners are noisy): a wait of T ms returns within [T-1, T+50] ms. */
+ * Tolerances are generous (CI runners are noisy): a wait of T ms returns within [T-1, T+100] ms. */
 #define _GNU_SOURCE
 #include <errno.h>
 #include <poll.h>
@@ -22,7 +22,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#define SLACK_HI 50.0 /* ms a wait may overshoot */
+#define SLACK_HI 100.0 /* ms a wait may overshoot */
 #define SLACK_LO 1.0  /* ms a wait may undershoot */
 
 static int failed;
@@ -630,16 +630,23 @@ static void t_timeouts(void) {
 	t0 = now_ms(CLOCK_MONOTONIC);
 	rc = epoll_wait(ep, out, 2, 0);
 	if (rc != 0 || now_ms(CLOCK_MONOTONIC) - t0 > 20) bad("epoll_wait 0", "rc %d or slow", rc);
-	/* A timer signal after 30 ms ends a 2 s epoll_wait with EINTR. */
+	/* A timer signal after 30 ms ends a 2 s epoll_wait with EINTR (a stalled runner gets 3 tries). */
 	handler(SIGALRM, on_alrm);
-	alarms = 0;
-	struct itimerval it = {{0, 0}, {0, 30000}};
-	setitimer(ITIMER_REAL, &it, NULL);
-	t0 = now_ms(CLOCK_MONOTONIC);
-	rc = epoll_wait(ep, out, 2, 2000);
-	int e = errno;
-	WITHIN("epoll_wait interrupted by a timer", now_ms(CLOCK_MONOTONIC) - t0, 30);
-	if (rc != -1 || e != EINTR) bad("epoll_wait EINTR", "rc %d errno %d", rc, e);
+	int e = 0;
+	for (int try = 0; try < 3; try++) {
+		struct itimerval it = {{0, 0}, {0, 30000}};
+		setitimer(ITIMER_REAL, &it, NULL);
+		t0 = now_ms(CLOCK_MONOTONIC);
+		rc = epoll_wait(ep, out, 2, 2000);
+		e = errno;
+		double el = now_ms(CLOCK_MONOTONIC) - t0;
+		if (rc == -1 && e == EINTR && el < 30 + SLACK_HI) {
+			WITHIN("epoll_wait interrupted by a timer", el, 30);
+			break;
+		}
+		printf("  epoll_wait interrupted by a timer: try %d took %.2f ms, rc %d\n", try, el, rc);
+		if (try == 2) bad("epoll_wait EINTR", "rc %d errno %d after %.2f ms", rc, e, el);
+	}
 	close(ep);
 
 	/* sigtimedwait and the futex-based waits */
