@@ -601,6 +601,7 @@ func testStrace() error {
 	if err != nil {
 		return err
 	}
+	fmt.Println("strace stderr:", r.stderr, "stdout:", r.stdout)
 	fmt.Println("strace log bytes:", len(b), "lines:", strings.Count(string(b), string(rune(10))))
 	if !strings.Contains(string(b), "exit_group") || !strings.Contains(string(b), "write(") {
 		tail := string(b)
