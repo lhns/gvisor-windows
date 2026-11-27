@@ -41,6 +41,7 @@ package overlay
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 	"sync/atomic"
 
@@ -326,7 +327,11 @@ func (fstype FilesystemType) GetFilesystem(ctx context.Context, vfsObj *vfs.Virt
 				return nil, nil, linuxerr.EINVAL
 			}
 		}
-		if upperFSName == "9p" && !userXattr {
+		// gvisor-windows: a host folder on Windows (winhost) stores xattrs itself
+		// and allows trusted.*, so it keeps trusted.overlay.* like Linux. With
+		// userxattr, a lower layer's trusted.overlay.opaque (c/storage's
+		// native-diff probe) was an ordinary xattr and copied up.
+		if upperFSName == "9p" && !userXattr && runtime.GOOS != "windows" {
 			// Neither the gofer nor sentry processes have the capabilities to set
 			// trusted xattrs on the host filesystem. Setting `trusted.overlay.*`
 			// xattrs requires CAP_SYS_ADMIN in the root user namespace. So enable
