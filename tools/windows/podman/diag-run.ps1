@@ -17,7 +17,7 @@ P pull mirror.gcr.io/library/alpine:3.20
 P pull mirror.gcr.io/library/debian:12-slim
 "=== ld.so of the debian layer from the host folder and from tmpfs" | Tee-Object -Append $log
 P create --name d1 mirror.gcr.io/library/debian:12-slim /bin/echo hi
-$sh = Get-Content "$PSScriptRoot\ldtest.sh" -Raw
+$sh = (Get-Content "$PSScriptRoot\ldtest.sh" -Raw) -replace "`r", ""
 P run --rm -v /var/lib/containers/storage:/s mirror.gcr.io/library/alpine:3.20 sh -c $sh
 "=== start d1" | Tee-Object -Append $log
 P start -a d1
