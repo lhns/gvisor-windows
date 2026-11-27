@@ -39,5 +39,5 @@ Run the bundled guest (a static glibc program that prints a line and exits with 
 
 To get a shell in the same root folder: edit `bundle\config.json`, set `process.args` to
 `["/bin/sh"]` and `process.terminal` to true, and run the same command.
-Needs a 64-bit Windows with FSGSBASE (any CPU since Ivy Bridge); no administrator rights.
+Needs 64-bit Windows 10 or later and no administrator rights. CPUs without FSGSBASE or XSAVE use a slower rewrite mode automatically; Podman passes only on CPUs with FSGSBASE so far.
 '@ | Set-Content -Encoding ascii "$Out\README.md"
