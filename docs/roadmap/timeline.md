@@ -88,6 +88,7 @@ gantt
     Nil dereference in gofer invalidation :fs_disown_children_nil_deref, 2026-11-27, 2026-11-27
     Host-folder writes keep the old mtime :fs_host_folder_mtime_resolution, 2026-11-27, 2026-11-27
     Layer store unreadable after restart :fs_layer_store_corrupt_after_restart, 2026-11-27, 2026-11-27
+    Overlay with a host-folder upper layer :fs_overlay_upper_on_host_folder, 2026-11-27, 2026-11-27
     section net - network
     Netstack to Windows sockets :net_netstack_windows_link, 2026-11-26, 2026-11-26
     Publish guest ports on localhost :net_port_forwarding, 2026-11-26, 2026-11-26
@@ -113,6 +114,7 @@ gantt
     Isolation step failed once :workloads_isolation_flake, 2026-11-27, 2026-11-27
     Volume data lost across engine restart :workloads_volume_lost_on_restart, 2026-11-27, 2026-11-27
     buildah picks rootless isolation :workloads_buildah_thinks_rootless, 2026-11-27, 2026-11-27
+    Rare permission error on /dev/null :workloads_dev_null_eacces, 2026-11-27, 2026-11-27
     section research - research
     Pick gVisor as the base :research_gvisor_base, 2026-11-17, 2026-11-26
     Revive LKL or nommu UML :crit, research_lkl_nommu, 2026-11-26, 2026-11-26

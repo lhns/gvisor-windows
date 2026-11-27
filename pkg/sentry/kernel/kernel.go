@@ -691,7 +691,7 @@ func (k *Kernel) Init(args InitKernelArgs) error {
 	}
 	defer nsfsFilesystem.DecRef(ctx)
 	k.nsfsMount = k.vfs.NewDisconnectedMount(nsfsFilesystem, nil, &vfs.MountOptions{Internal: true})
-	k.rootUserNamespace.SetInode(nsfs.NewInode(ctx, k.nsfsMount, k.rootUserNamespace))
+	k.rootUserNamespace.SetInode(nsfs.NewInodeWithIno(ctx, k.nsfsMount, k.rootUserNamespace, nsfs.InitUserNsIno))
 	k.rootNetworkNamespace.SetInode(nsfs.NewInode(ctx, k.nsfsMount, k.rootNetworkNamespace))
 	k.rootIPCNamespace.SetInode(nsfs.NewInode(ctx, k.nsfsMount, k.rootIPCNamespace))
 	k.rootUTSNamespace.SetInode(nsfs.NewInode(ctx, k.nsfsMount, k.rootUTSNamespace))

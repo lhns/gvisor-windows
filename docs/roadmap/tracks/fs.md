@@ -25,6 +25,7 @@ flowchart TB
     fs_disown_children_nil_deref>"✔ Nil dereference in<br/>gofer invalidation"]
     fs_host_folder_mtime_resolution>"✔ Host-folder writes<br/>keep the old mtime"]
     fs_layer_store_corrupt_after_restart>"✔ Layer store<br/>unreadable after<br/>restart"]
+    fs_overlay_upper_on_host_folder>"⚠ Overlay with a host-<br/>folder upper layer"]
     fs_persistent_storage_impl["⛔ Storage that<br/>survives restarts"]
     fs_persistent_image_storage ~~~ fs_change_notifications
     fs_windows_directfs ~~~ fs_linux_metadata_on_ntfs
@@ -40,7 +41,10 @@ flowchart TB
     fs_case_sensitivity_without_admin ~~~ fs_disown_children_nil_deref
     fs_unix_sockets_on_host_folders ~~~ fs_host_folder_mtime_resolution
     fs_copied_file_too_short ~~~ fs_layer_store_corrupt_after_restart
-    fs_disown_children_nil_deref ~~~ fs_persistent_storage_impl
+    fs_disown_children_nil_deref ~~~ fs_overlay_upper_on_host_folder
+    fs_host_folder_mtime_resolution ~~~ fs_persistent_storage_impl
+    fs_layer_store_corrupt_after_restart ~~~ fs_persistent_storage_impl
+    fs_overlay_upper_on_host_folder ~~~ fs_persistent_storage_impl
     fs_windows_directfs --> fs_change_notifications
     fs_windows_directfs --> fs_linux_metadata_on_ntfs
     fs_windows_directfs --> fs_handles_do_not_block_users
@@ -63,6 +67,7 @@ flowchart TB
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class fs_persistent_image_storage,fs_attribute_cache mixed
     class fs_windows_directfs,fs_change_notifications,fs_linux_metadata_on_ntfs,fs_handles_do_not_block_users,fs_root_filesystem_source,fs_safe_save_keeps_metadata,fs_flaky_negative_cache_test,fs_standard_user_delete_rights,fs_case_sensitivity_without_admin,fs_unix_sockets_on_host_folders,fs_copied_file_too_short,fs_disown_children_nil_deref,fs_host_folder_mtime_resolution,fs_layer_store_corrupt_after_restart succ
+    class fs_overlay_upper_on_host_folder finding
     class fs_persistent_storage_impl blocked
 ```
 <!-- END GENERATED: track-fs -->
@@ -92,6 +97,7 @@ flowchart TB
 | `fs-disown-children-nil-deref` | Nil dereference in gofer invalidation | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/1k-platform-next.md |
 | `fs-host-folder-mtime-resolution` | Host-folder writes keep the old mtime | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
 | `fs-layer-store-corrupt-after-restart` | Layer store unreadable after restart | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
+| `fs-overlay-upper-on-host-folder` | Overlay with a host-folder upper layer | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/adr/0002-what-done-means.md |
 
 ### Details per node
 
@@ -117,6 +123,7 @@ flowchart TB
 | `fs-disown-children-nil-deref` | Nil dereference in gofer invalidation |  |  | The Sentry panics with a nil dereference in gofer dentry.disownAllChildrenForInvalidation during the bench test in rewrite-mode CI legs. | Fixed: negative (nil) child entries are skipped during invalidation; bench passed 29 of 30 legs, the miss was the stuck-stub hang. |  |  |  |  |
 | `fs-host-folder-mtime-resolution` | Host-folder writes keep the old mtime |  |  | On host folders 45-60% of consecutive writes report the same mtime as the previous one (tmpfs: none), which can hide changes from tools that compare mtimes. | Fixed: the Sentry records the time of each guest write and reports max(host, last write); 0 repeated mtimes over 20000 writes. |  |  |  |  |
 | `fs-layer-store-corrupt-after-restart` | Layer store unreadable after restart |  |  | After a failed apt build, a layer directory (.../var/cache/apt/archives) cannot be removed ("directory not empty") although the Sentry lists it as empty; c/storage retries that removal on every load and fails the whole store, so steps 9-10 fail after the restart. | Fixed with atomic replace of layers.json/images.json (pins switch to by-name handles at replace time) and the graceful engine stop. |  |  |  |  |
+| `fs-overlay-upper-on-host-folder` | Overlay with a host-folder upper layer |  |  | Podman uses the slow vfs storage driver because native overlay with its upper layer on a Windows folder fails c/storage's probe: removing a directory in the merged view returns "directory not empty". | Fixed when: STORAGE_DRIVER=overlay passes the acceptance 8 of 8 in native mode. |  |  |  |  |
 
 ### Folded items per node
 

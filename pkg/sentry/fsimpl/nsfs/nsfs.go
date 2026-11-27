@@ -119,13 +119,26 @@ func (i *Inode) Keep() bool {
 
 // NewInode creates a new nsfs inode.
 func NewInode(ctx context.Context, mnt *vfs.Mount, namespace vfs.Namespace) *Inode {
+	return NewInodeWithIno(ctx, mnt, namespace, 0)
+}
+
+// InitUserNsIno is the inode number Linux gives the initial user namespace
+// (USER_NS_INIT_INO). Programs such as containers/storage compare
+// /proc/self/ns/user against it to decide whether they run rootless.
+const InitUserNsIno = 0xEFFFFFFD
+
+// NewInodeWithIno is NewInode with a fixed inode number (0 allocates one).
+func NewInodeWithIno(ctx context.Context, mnt *vfs.Mount, namespace vfs.Namespace, ino uint64) *Inode {
 	fs := mnt.Filesystem().Impl().(*filesystem)
+	if ino == 0 {
+		ino = fs.Filesystem.NextIno()
+	}
 	creds := auth.CredentialsFromContext(ctx)
 	i := &Inode{
 		namespace: namespace,
 		mnt:       mnt,
 	}
-	i.InodeAttrs.Init(ctx, creds, linux.UNNAMED_MAJOR, fs.devMinor, fs.Filesystem.NextIno(), nsfsMode)
+	i.InodeAttrs.Init(ctx, creds, linux.UNNAMED_MAJOR, fs.devMinor, ino, nsfsMode)
 	i.InitRefs()
 	return i
 }

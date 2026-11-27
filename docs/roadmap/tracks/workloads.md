@@ -24,7 +24,8 @@ flowchart TB
     workloads_tty_through_windows_client>"✔ Interactive TTY<br/>through the Windows<br/>client"]
     workloads_isolation_flake>"✔ Isolation step<br/>failed once"]
     workloads_volume_lost_on_restart>"✔ Volume data lost<br/>across engine restart"]
-    workloads_buildah_thinks_rootless>"⚠ buildah picks<br/>rootless isolation"]
+    workloads_buildah_thinks_rootless>"✔ buildah picks<br/>rootless isolation"]
+    workloads_dev_null_eacces>"⚠ Rare permission<br/>error on /dev/null"]
     workloads_podman_on_windows[/"⛔ Podman passes on<br/>Windows"/]
     workloads_podman_probe[/"✔ Probe Podman inside<br/>the sandbox"/]
     workloads_podman_harness["▶ Serve Podman to<br/>Windows clients"]
@@ -43,9 +44,10 @@ flowchart TB
     workloads_conmon_sync_pipe ~~~ workloads_isolation_flake
     workloads_conmon_attach_second_cause ~~~ workloads_volume_lost_on_restart
     workloads_tty_through_windows_client ~~~ workloads_buildah_thinks_rootless
-    workloads_isolation_flake ~~~ workloads_podman_on_windows
-    workloads_volume_lost_on_restart ~~~ workloads_podman_probe
+    workloads_isolation_flake ~~~ workloads_dev_null_eacces
+    workloads_volume_lost_on_restart ~~~ workloads_podman_on_windows
     workloads_buildah_thinks_rootless ~~~ workloads_podman_probe
+    workloads_dev_null_eacces ~~~ workloads_podman_harness
     workloads_podman_on_windows ~~~ workloads_podman_harness
     workloads_podman_probe ~~~ workloads_podman_harness
     workloads_acceptance_test --> workloads_podman_on_gvisor_linux
@@ -63,7 +65,7 @@ flowchart TB
     workloads_volume_lost_on_restart --> workloads_podman_on_windows
     workloads_buildah_thinks_rootless --> workloads_podman_on_windows
     workloads_podman_probe --> workloads_podman_harness
-    linkStyle 21 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    linkStyle 22 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -80,8 +82,8 @@ flowchart TB
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class workloads_acceptance_test,workloads_acceptance_test_windows,workloads_podman_api_named_pipe,workloads_podman_probe unrated
     class workloads_podman_on_gvisor_linux,workloads_strict_bar_linux,workloads_end_to_end_speed mixed
-    class workloads_gvisor_bridge_netlink,workloads_gvisor_port_publishing,workloads_gvisor_cgroupfs_readonly,workloads_overlay_userxattr,workloads_conmon_sync_pipe,workloads_conmon_attach_second_cause,workloads_tty_through_windows_client,workloads_isolation_flake,workloads_volume_lost_on_restart succ
-    class workloads_buildah_thinks_rootless finding
+    class workloads_gvisor_bridge_netlink,workloads_gvisor_port_publishing,workloads_gvisor_cgroupfs_readonly,workloads_overlay_userxattr,workloads_conmon_sync_pipe,workloads_conmon_attach_second_cause,workloads_tty_through_windows_client,workloads_isolation_flake,workloads_volume_lost_on_restart,workloads_buildah_thinks_rootless succ
+    class workloads_dev_null_eacces finding
     class workloads_podman_on_windows blocked
     class workloads_podman_harness inprog
 ```
@@ -111,7 +113,8 @@ flowchart TB
 | `workloads-tty-through-windows-client` | Interactive TTY through the Windows client | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
 | `workloads-isolation-flake` | Isolation step failed once | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
 | `workloads-volume-lost-on-restart` | Volume data lost across engine restart | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
-| `workloads-buildah-thinks-rootless` | buildah picks rootless isolation | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/5-podman-windows.md |
+| `workloads-buildah-thinks-rootless` | buildah picks rootless isolation | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/adr/0002-what-done-means.md |
+| `workloads-dev-null-eacces` | Rare permission error on /dev/null | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/5-podman-windows.md |
 
 ### Details per node
 
@@ -136,7 +139,8 @@ flowchart TB
 | `workloads-tty-through-windows-client` | Interactive TTY through the Windows client |  |  | The Windows podman client says "The input device is not a TTY" inside the ConPTY test driver, so the interactive step cannot type into the container. | Fixed in the harness: ttydrive now sets STARTF_USESTDHANDLES with NULL handles so the child gets the pseudoconsole; step 4 passed 7 of 7 runs. |  |  |  |  |
 | `workloads-isolation-flake` | Isolation step failed once |  |  | Remaining acceptance flakes: step 3 sometimes loses the race between --rm cleanup and attach (podman remote, widened by sandbox slowness), and step 10 once timed out with the engine and a new Go helper idle for 123 s, which looks like the stuck process start. | Fixed: change-stream overflow invalidated dentries with mounts on them, which unmounted container /dev and /tmp; invalidation now keeps mounted dentries. |  |  |  |  |
 | `workloads-volume-lost-on-restart` | Volume data lost across engine restart |  |  | In 2 of 5 complete native runs, the named volume written before the engine restart is empty afterwards (step 9). | Harness cause: an old static_dir workaround put libpod's database on a tmpfs. The database now lives on the storage folder; a runsc restart test is required. |  |  |  |  |
-| `workloads-buildah-thinks-rootless` | buildah picks rootless isolation |  |  | Without BUILDAH_ISOLATION=oci every build fails in pasta, because buildah resolves the default isolation to rootless inside the sandbox, although euid, uid_map and capabilities all look rootful. | Fixed when: the BUILDAH_ISOLATION=oci workaround is removed and builds still use OCI isolation. |  |  |  |  |
+| `workloads-buildah-thinks-rootless` | buildah picks rootless isolation |  |  | Without BUILDAH_ISOLATION=oci every build fails in pasta, because buildah resolves the default isolation to rootless inside the sandbox, although euid, uid_map and capabilities all look rootful. | Fixed in the Sentry: the root user namespace now has Linux's fixed inode 0xEFFFFFFD in /proc/self/ns/user, which c/storage checks; BUILDAH_ISOLATION=oci removed, native 8 of 8 with all 10 steps. |  |  |  |  |
+| `workloads-dev-null-eacces` | Rare permission error on /dev/null |  |  | Intermittently, apt's unprivileged _apt user gets "cannot create /dev/null: Permission denied" inside a build container, so step 5 fails; dpkg's "cannot stat" of an extracted .deb also still shows up rarely. | Fixed when: a native step-5 loop of 30 runs passes with no failure. |  |  |  |  |
 
 ### Folded items per node
 
