@@ -120,6 +120,7 @@ func copyIn(dst []byte, src uintptr) (int, error) {
 		return 0, nil
 	}
 
+	ensureFaultStack() // gvisor-windows: room for the exception dispatcher on this stack
 	fault, sig := memcpy(uintptr(unsafe.Pointer(&dst[0])), src, toCopy)
 	if sig == 0 {
 		return len(dst), nil
@@ -160,6 +161,7 @@ func copyOut(dst uintptr, src []byte) (int, error) {
 		return 0, nil
 	}
 
+	ensureFaultStack() // gvisor-windows: room for the exception dispatcher on this stack
 	fault, sig := memcpy(dst, uintptr(unsafe.Pointer(&src[0])), toCopy)
 	if sig == 0 {
 		return len(src), nil
@@ -203,6 +205,7 @@ func copyN(dst, src uintptr, toCopy uintptr) (uintptr, error) {
 		return 0, nil
 	}
 
+	ensureFaultStack() // gvisor-windows: room for the exception dispatcher on this stack
 	fault, sig := memcpy(dst, src, toCopy)
 	if sig == 0 {
 		return toCopy, nil
@@ -254,6 +257,7 @@ func zeroOut(dst uintptr, toZero uintptr) (uintptr, error) {
 		return 0, nil
 	}
 
+	ensureFaultStack() // gvisor-windows: room for the exception dispatcher on this stack
 	fault, sig := memclr(dst, toZero, true)
 	if sig == 0 {
 		return toZero, nil
@@ -285,6 +289,7 @@ func SwapUint32(ptr unsafe.Pointer, new uint32) (uint32, error) {
 	if addr := uintptr(ptr); addr&3 != 0 {
 		return 0, AlignmentError{addr, 4}
 	}
+	ensureFaultStack() // gvisor-windows: room for the exception dispatcher on this stack
 	old, sig := swapUint32(ptr, new)
 	return old, errorFromFaultSignal(uintptr(ptr), sig)
 }
@@ -296,6 +301,7 @@ func SwapUint64(ptr unsafe.Pointer, new uint64) (uint64, error) {
 	if addr := uintptr(ptr); addr&7 != 0 {
 		return 0, AlignmentError{addr, 8}
 	}
+	ensureFaultStack() // gvisor-windows: room for the exception dispatcher on this stack
 	old, sig := swapUint64(ptr, new)
 	return old, errorFromFaultSignal(uintptr(ptr), sig)
 }
@@ -307,6 +313,7 @@ func CompareAndSwapUint32(ptr unsafe.Pointer, old, new uint32) (uint32, error) {
 	if addr := uintptr(ptr); addr&3 != 0 {
 		return 0, AlignmentError{addr, 4}
 	}
+	ensureFaultStack() // gvisor-windows: room for the exception dispatcher on this stack
 	prev, sig := compareAndSwapUint32(ptr, old, new)
 	return prev, errorFromFaultSignal(uintptr(ptr), sig)
 }
@@ -319,6 +326,7 @@ func LoadUint32(ptr unsafe.Pointer) (uint32, error) {
 	if addr := uintptr(ptr); addr&3 != 0 {
 		return 0, AlignmentError{addr, 4}
 	}
+	ensureFaultStack() // gvisor-windows: room for the exception dispatcher on this stack
 	val, sig := loadUint32(ptr)
 	return val, errorFromFaultSignal(uintptr(ptr), sig)
 }

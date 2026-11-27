@@ -42,6 +42,7 @@ func addrOfCheckXstate() uintptr
 
 // CheckXstate verifies that xstate can be restored by the xrstor instruction.
 func CheckXstate(state *byte) error {
+	ensureFaultStack() // gvisor-windows: room for the exception dispatcher on this stack
 	_, sig, _, _ := checkXstate(uintptr(unsafe.Pointer(state)))
 	return errorFromFaultSignal(uintptr(unsafe.Pointer(state)), sig)
 }

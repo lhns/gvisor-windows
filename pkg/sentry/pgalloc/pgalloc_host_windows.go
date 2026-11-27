@@ -263,6 +263,7 @@ func (f *MemoryFile) decommit(fr memmap.FileRange, release bool) {
 	})
 }
 
+// go vet "possible misuse" here and in hostResident: addr and chunk.mapping are VirtualAlloc/MapViewOfFile memory, not Go memory.
 func discardOrClear(addr, length uintptr) {
 	bs := unsafe.Slice((*byte)(unsafe.Pointer(addr)), length)
 	r, _, _ := procDiscardVirtualMem.Call(addr, length)
