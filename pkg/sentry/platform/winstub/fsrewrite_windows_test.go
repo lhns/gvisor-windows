@@ -303,22 +303,28 @@ func TestFSReturnIntoWindow(t *testing.T) {
 
 // TestFSFaultUnderJump: a displaced instruction that is not the %fs one faults
 // where it lies under the bytes of the jump that replaced its window. The
-// platform must report an address a signal handler can return to with a plain
-// ret: the window start, when the instructions before it can run again, else
-// the planner must not put a faulting instruction there (docs/results/1s-veneers.md).
+// platform must report an address a signal handler can return to: with a
+// plain ret, and through sigreturn after repairing the fault in the context.
+// That is the window start when the instructions before it can run again and
+// write nothing it reads; otherwise the planner must not put a faulting
+// instruction there (docs/results/1s-veneers.md).
 func TestFSFaultUnderJump(t *testing.T) {
 	const base, stackAt, dataAt = 0xC00000, 0x700000, 0x3000000
 	cases := []struct {
 		name     string
 		fs       []byte
 		rollBack bool   // rewrite mode reports the window start
-		r8       uint64 // after the handler's ret
+		repair   bool   // the handler sets rbx in the context and sigreturns (else: maps the page, ret)
+		r8       uint64 // after the handler
 	}{
-		// mov %fs:(%rdx),%r8 reads only rdx: it can run again.
-		{"reexecutable", []byte{0x64, 0x4c, 0x8b, 0x02}, true, 0x2222},
+		// mov %fs:(%rdx),%r8 reads only rdx and the load does not read r8: it can run again.
+		{"reexecutable", []byte{0x64, 0x4c, 0x8b, 0x02}, true, false, 0x2222},
 		// add %fs:(%rdx),%r8 cannot (it reads what it writes): no window puts the
 		// load under the jump.
-		{"not reexecutable", []byte{0x64, 0x4c, 0x03, 0x02}, false, 0x2222 + 5},
+		{"not reexecutable", []byte{0x64, 0x4c, 0x03, 0x02}, false, false, 0x2222 + 5},
+		// mov %fs:(%rdx),%rbx writes the load's base: a handler that repairs rbx
+		// and resumes at the window start would load it again and fault forever.
+		{"repair", []byte{0x64, 0x48, 0x8b, 0x1a}, false, true, 5},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -327,10 +333,10 @@ func TestFSFaultUnderJump(t *testing.T) {
 			a := &asm{base: base}
 			a.emit(bytes.Repeat([]byte{0x90}, 64)...) // (the sites in the first bytes of a text range are handled by the debugger)
 			fsInsn := a.emit(tc.fs...)
-			load := a.emit(0x48, 0x8b, 0x13)               // mov (%rbx),%rdx: faults, under the jump of [fs; load]
+			load := a.emit(0x48, 0x8b, 0x13)                  // mov (%rbx),%rdx: faults, under the jump of [fs; load]
 			report := a.emit(0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05) // mov $500,%eax; syscall
-			a.emit(0xeb, byte(256-int(a.pc()+2-report)))       // (never run: makes report a branch target)
-			retInsn := a.emit(0xc3)                            // the "handler": ret
+			a.emit(0xeb, byte(256-int(a.pc()+2-report)))      // (never run: makes report a branch target)
+			retInsn := a.emit(0xc3)                           // the "handler": ret
 			for _, minLen := range []int{5, 7} {
 				wins, _ := FSWindows(a.b, minLen)
 				under := false
@@ -352,9 +358,13 @@ func TestFSFaultUnderJump(t *testing.T) {
 			ac := newAC(fsInsn, stackAt+pageSz-64)
 			r := &ac.StateData().Regs
 			r.Fs_base, r.Rdx, r.R8, r.Rbx = tlsBase, 8, 5, dataAt
+			faultAt := uint64(dataAt)
+			if tc.repair {
+				faultAt = 0x2222 // (rbx comes from the TLS word at 8)
+			}
 			res := h.sw(c, mm, ac)
-			if res.err != platform.ErrContextSignal || res.si.Addr() != dataAt {
-				t.Fatalf("want the fault of the load, got %v %+v", res.err, res.si)
+			if res.err != platform.ErrContextSignal || res.si.Addr() != faultAt {
+				t.Fatalf("want the fault of the load at %#x, got %v %+v", faultAt, res.err, res.si)
 			}
 			want := load
 			if h.p.fsRewrite && tc.rollBack {
@@ -364,19 +374,24 @@ func TestFSFaultUnderJump(t *testing.T) {
 				t.Fatalf("fault at rip %#x, want %#x (the %%fs instruction %#x, the load %#x)", r.Rip, want, fsInsn, load)
 			}
 			h.mapAt(mm, dataAt, h.pages(le64(0x4444), 1), rw)
-			// The handler's call: push the reported pc, continue at the handler.
-			r.Rsp -= 8
-			st, err := h.mf.MapInternal(sfr, hostarch.ReadWrite)
-			if err != nil {
-				t.Fatal(err)
+			if tc.repair {
+				r.Rbx = dataAt // the handler's repair; sigreturn resumes at the reported rip
+			} else {
+				// The handler's call: push the reported pc, continue at the handler.
+				r.Rsp -= 8
+				st, err := h.mf.MapInternal(sfr, hostarch.ReadWrite)
+				if err != nil {
+					t.Fatal(err)
+				}
+				binary.LittleEndian.PutUint64(st.Head().ToSlice()[r.Rsp-stackAt:], r.Rip)
+				r.Rip = retInsn
 			}
-			binary.LittleEndian.PutUint64(st.Head().ToSlice()[r.Rsp-stackAt:], r.Rip)
-			r.Rip = retInsn
-			if nr := h.syscall(c, mm, ac); nr != 500 {
-				t.Fatalf("after the ret: syscall %d at %#x, want 500", nr, r.Rip)
+			res = h.sw(c, mm, ac)
+			if res.err != nil || r.Orig_rax != 500 {
+				t.Fatalf("after the handler: %v %+v at %#x, want syscall 500", res.err, res.si, r.Rip)
 			}
 			if r.Rdx != 0x4444 || r.R8 != tc.r8 {
-				t.Errorf("after the ret: rdx %#x (want 0x4444), r8 %#x (want %#x: the %%fs instruction ran once)", r.Rdx, r.R8, tc.r8)
+				t.Errorf("after the handler: rdx %#x (want 0x4444), r8 %#x (want %#x: the %%fs instruction ran once)", r.Rdx, r.R8, tc.r8)
 			}
 		})
 	}

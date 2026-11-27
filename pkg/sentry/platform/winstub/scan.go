@@ -275,7 +275,7 @@ func gpr(r x86asm.Reg) (int, bool) {
 // reported (a signal handler returning there with a plain ret would run the
 // jump's bytes). A thread stopped at such an instruction (a fault, an interrupt)
 // is reported at the window start instead when the instructions before it can
-// run again (reexec: they only write registers that none of them reads) and it
+// run again (reexec: they only write registers that none of them reads, nor it) and it
 // left nothing half done (precise; not so for string instructions, gathers, or a
 // relocated rip-relative load, which takes two instructions in the veneer).
 // Otherwise the instruction must not fault (noFault), and interrupts wait until
@@ -344,6 +344,21 @@ func effects(in x86asm.Inst, x *ins) {
 		x86asm.OUTSB, x86asm.OUTSW, x86asm.OUTSD:
 		x.precise = false
 	}
+	switch {
+	case in.Op == x86asm.MOV, in.Op == x86asm.MOVZX, in.Op == x86asm.MOVSX, in.Op == x86asm.MOVSXD, in.Op == x86asm.LEA, strings.HasPrefix(name, "SET"):
+	default:
+		rd |= wr // (the destination is read too: add, inc, cmov, ...)
+	}
+	switch in.Op {
+	case x86asm.PUSH, x86asm.POP, x86asm.PUSHF, x86asm.POPF, x86asm.CALL, x86asm.RET, x86asm.LEAVE, x86asm.ENTER,
+		x86asm.MUL, x86asm.DIV, x86asm.IDIV, x86asm.CBW, x86asm.CWDE, x86asm.CDQE, x86asm.CWD, x86asm.CDQ, x86asm.CQO,
+		x86asm.CMPXCHG, x86asm.CMPXCHG8B, x86asm.CMPXCHG16B, x86asm.XLATB, x86asm.CPUID, x86asm.RDTSC, x86asm.LAHF, x86asm.SAHF:
+		rd = 0xFFFF // (registers it reads without naming them: assume all)
+	case x86asm.IMUL:
+		if in.Args[1] == nil {
+			rd = 0xFFFF
+		}
+	}
 	x.rd, x.wr = rd, wr
 }
 
@@ -367,7 +382,10 @@ func siteEffects(code []byte, win []ins) {
 
 // rollsBack reports whether a thread stopped at list[k] (k > a) of the window
 // list[a..] may be reported at the window start instead: list[k] left nothing
-// half done and list[a..k-1] can run again (see effects).
+// half done, list[a..k-1] can run again (see effects), and list[k] reads no
+// register they write. (A signal handler that repairs a register list[k] uses
+// and returns through sigreturn resumes at the window start; were that register
+// written there, the repair would be undone and the fault come back forever.)
 func rollsBack(list []ins, a, k int) bool {
 	if !list[k].precise {
 		return false
@@ -379,7 +397,7 @@ func rollsBack(list []ins, a, k int) bool {
 		}
 		rd, wr = rd|list[i].rd, wr|list[i].wr
 	}
-	return rd&wr == 0
+	return rd&wr == 0 && list[k].rd&wr == 0
 }
 
 // ripClass recognizes `mov (%rip-relative),%reg` and `lea (%rip-relative),%reg`,

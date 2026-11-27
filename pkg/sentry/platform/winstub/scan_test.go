@@ -168,10 +168,11 @@ func TestScanFS(t *testing.T) {
 		t.Fatalf("report %+v: want 6 instructions, 1 unsupported", rep)
 	}
 	// the lone 3-byte one has neighbours that are not copyable: none. The 4-byte
-	// one after mov $8,%ecx starts under the far jump's 7 bytes, where a fault of
-	// it is reported at the window start: the mov can run again (rollsBack).
+	// one after mov $8,%ecx has a window only with the near jump: under the far
+	// jump's 7 bytes a fault of it would be reported at the window start, and the
+	// mov writes its base (rollsBack).
 	wantNear := FSClassCount{Direct: 2, Window: 2, None: 1}
-	wantFar := FSClassCount{Direct: 2, Window: 2, None: 1}
+	wantFar := FSClassCount{Direct: 2, Window: 1, None: 2}
 	if rep.Near != wantNear || rep.Far != wantFar {
 		t.Errorf("near %+v, far %+v, want %+v, %+v", rep.Near, rep.Far, wantNear, wantFar)
 	}
