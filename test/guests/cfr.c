@@ -69,6 +69,47 @@ static long rawread(const char *path) {
   return n;
 }
 
+
+// A copy whose page cache is cut into pieces by earlier reads, then run: the Sentry maps such a
+// file's text in several ranges (one per cached piece), and a `syscall` instruction at the edge of
+// a range must still be patched.
+static void fragmented(const char *dir, const char *src) {
+  static const int strides[] = {4096, 12288, 65536, 262144};
+  for (unsigned k = 0; k < sizeof strides / sizeof strides[0]; k++) {
+    char dst[256], name[64];
+    snprintf(dst, sizeof dst, "%s/frag%u", dir, k);
+    unlink(dst);
+    copy(src, dst, 0);
+    int fd = open(dst, O_RDONLY);
+    struct stat st;
+    fstat(fd, &st);
+    char b;
+    for (off_t o = st.st_size / 2; o < st.st_size; o += strides[k]) pread(fd, &b, 1, o);
+    for (off_t o = 0; o < st.st_size / 2; o += strides[k]) pread(fd, &b, 1, o);
+    close(fd);
+    int pfd[2];
+    pipe(pfd);
+    pid_t p = fork();
+    if (p == 0) {
+      dup2(pfd[1], 1);
+      close(pfd[0]);
+      execl(dst, "sh", "-c", "echo A; echo B | cat; ls / >/dev/null; echo C", (char *)NULL);
+      _exit(127);
+    }
+    close(pfd[1]);
+    char out[64] = {0};
+    int n = read(pfd[0], out, sizeof out - 1);
+    int stt;
+    waitpid(p, &stt, 0);
+    snprintf(name, sizeof name, "run of a fragmented copy, stride %d", strides[k]);
+    char why[128];
+    snprintf(why, sizeof why, "status %d, output %.*s", WIFEXITED(stt) ? WEXITSTATUS(stt) : -1, n > 0 ? n : 0, out);
+    report(name, WIFEXITED(stt) && WEXITSTATUS(stt) == 0 && !strcmp(out, "A
+B
+C
+"), why);
+  }
+}
 int main(int argc, char **argv) {
   char dst[256], why[128];
   for (int touch = 0; touch < 2; touch++) {
@@ -104,5 +145,6 @@ int main(int argc, char **argv) {
     snprintf(name, sizeof name, "exec of the copy touch=%d", touch);
     report(name, WIFEXITED(stt) && WEXITSTATUS(stt) == 0, "exit status");
   }
+  fragmented(argv[1], argv[2]);
   return fails ? 1 : 0;
 }
