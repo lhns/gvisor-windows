@@ -2,7 +2,7 @@
 name: windows-profile
 on:
   push:
-    branches: [sentry-profile, platform-next]
+    branches: [sentry-profile, platform-next, platform-stability]
     paths: ["pkg/sentry/**", "runsc/**", "tools/windows/runsctest/**", "tools/windows/sentryguest/**", "test/guests/t/**", ".github/workflows/windows-profile.yml"]
   workflow_dispatch:
 jobs:
@@ -177,7 +177,8 @@ jobs:
               $o = C:\ci\bin\runsctest.exe -timeout 16s -runsc C:\ci\bin\runsc.exe -rootfs C:\ci\work\rootfs -work C:\ci\work\w-hang-$mode-$i -only forkexec 2>&1 | Out-String
               if ($o -match 'PASS forkexec') { $pass++ } else {
                 $hang++
-                "FAILED $mode $i" ; ($o -split "`n" | Select-Object -Last 60) -join "`n"
+                "FAILED $mode $i" ; ($o -split "`n" | Select-Object -First 40) -join "`n"
+                $o | Out-File -Encoding utf8 out\hang\out-$mode-$i.txt
                 New-Item -ItemType Directory -Force out\hang | Out-Null
                 Copy-Item C:\ci\work\w-hang-$mode-$i\logs\*.log out\hang\$mode-$i.log -ErrorAction SilentlyContinue
               }
