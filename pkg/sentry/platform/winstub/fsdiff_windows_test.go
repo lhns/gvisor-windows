@@ -24,12 +24,14 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"gvisor.dev/gvisor/pkg/abi/linux"
 	pkgcontext "gvisor.dev/gvisor/pkg/context"
 	"gvisor.dev/gvisor/pkg/cpuid"
 	"gvisor.dev/gvisor/pkg/hostarch"
 	"gvisor.dev/gvisor/pkg/safemem"
+	"gvisor.dev/gvisor/pkg/sentry/platform"
 	"gvisor.dev/gvisor/pkg/sentry/arch"
 	"gvisor.dev/gvisor/pkg/sentry/memmap"
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/stubasm"
@@ -50,7 +52,7 @@ const (
 	fdArea    = 0x900000
 	fdAreaLen = 0x20000
 	fdStack   = 0x700000
-	fdCaseMax = 192 // bytes reserved for a case in the text
+	fdCaseMax = 256 // bytes reserved for a case in the text
 )
 
 type fdOp struct {
@@ -148,6 +150,7 @@ type fdGen struct {
 	ops  []fdOp
 	bmi  bool
 	data uint64 // the words the rip-relative neighbours load
+	loop bool   // cases run in a loop: nothing may change the registers of the address
 }
 
 // insn encodes a random instruction with the memory operand m (placed already)
@@ -224,6 +227,15 @@ func (g *fdGen) insn(m fdMem) (code []byte, used []int) {
 	}
 	if o.kind == 'b' && !needREX && reg >= 8 {
 		needREX = true
+	}
+	if g.loop && o.ext < 0 {
+		eff := reg
+		if byteRegNoREX {
+			eff = reg - 4
+		}
+		if eff == m.base || eff == m.index {
+			return g.insn(m) // the instruction would change its own address
+		}
 	}
 	var rex byte
 	if needREX {
@@ -335,7 +347,8 @@ func (g *fdGen) mem() fdMem {
 // gpr returns a register other than rsp.
 func (g *fdGen) gpr() int {
 	for {
-		if x := g.r.Intn(16); x != 4 {
+		// (in a loop the address registers must not be changed by the implicit uses of rax, rcx and rdx)
+		if x := g.r.Intn(16); x != 4 && !(g.loop && x <= 2) {
 			return x
 		}
 	}
@@ -514,13 +527,39 @@ func (g *fdGen) build(pc uint64) *fdCase {
 		if m.index >= 0 {
 			keep[m.index] = true
 		}
+		after := map[int]bool{4: true}
+		ctr := -1
+		if g.loop {
+			for _, x := range r.Perm(4) {
+				if !keep[12+x] {
+					ctr = 12 + x
+					break
+				}
+			}
+			if ctr < 0 {
+				continue
+			}
+			keep[ctr] = true
+			after[ctr] = true
+			if m.base >= 0 {
+				after[m.base] = true
+			}
+			if m.index >= 0 {
+				after[m.index] = true
+			}
+			c.regs[ctr] = uint64(30000 + r.Intn(30000))
+		}
 		var code []byte
 		for n := r.Intn(4); n > 0; n-- {
 			code = append(code, g.neighbour(pc+uint64(len(code)), keep)...)
 		}
 		code = append(code, insn...)
 		for n := r.Intn(4); n > 0; n-- {
-			code = append(code, g.neighbour(pc+uint64(len(code)), map[int]bool{4: true})...)
+			code = append(code, g.neighbour(pc+uint64(len(code)), after)...)
+		}
+		if ctr >= 0 { // sub $1,%ctr; jnz start
+			code = append(code, 0x48|byte(ctr>>3), 0x83, 0xE8|byte(ctr&7), 1, 0x0F, 0x85)
+			code = binary.LittleEndian.AppendUint32(code, uint32(int32(-(len(code) + 4))))
 		}
 		// pushfq; mov %rax,-8(%rsp); mov %rcx,-0x10(%rsp); mov %r11,-0x18(%rsp); mov $500,%eax; syscall
 		code = append(code, 0x9C, 0x48, 0x89, 0x44, 0x24, 0xF8, 0x48, 0x89, 0x4C, 0x24, 0xF0, 0x4C, 0x89, 0x5C, 0x24, 0xE8,
@@ -580,7 +619,7 @@ func hwGet(r *linux.PtraceRegs) [16]uint64 { return hwRegs(r) }
 
 // runCases runs the cases on a platform made with the given mode and returns
 // their results.
-func runCases(t *testing.T, mode string, textBase uint64, cases []*fdCase, offs []uint64, textCode []byte, areaInit []byte, dataInit []byte) []fdResult {
+func runCases(t *testing.T, mode string, interrupt bool, textBase uint64, cases []*fdCase, offs []uint64, textCode []byte, areaInit []byte, dataInit []byte) []fdResult {
 	t.Helper()
 	t.Setenv("WINSTUB_FSMODE", mode)
 	h := newHarness(t)
@@ -597,6 +636,12 @@ func runCases(t *testing.T, mode string, textBase uint64, cases []*fdCase, offs 
 	c := h.p.NewContext(pkgcontext.Background())
 	defer func() { c.Release() }()
 	res := make([]fdResult, len(cases))
+	nIntr := 0
+	defer func() {
+		if interrupt {
+			t.Logf("FSDIFF %s: %d interrupts", mode, nIntr)
+		}
+	}()
 	for i, cs := range cases {
 		// fresh memory for every case
 		fdWrite(t, h, area, areaInit)
@@ -613,7 +658,36 @@ func runCases(t *testing.T, mode string, textBase uint64, cases []*fdCase, offs 
 			binary.LittleEndian.PutUint64(fp[512:], binary.LittleEndian.Uint64(fp[512:])|3) // (x87 and SSE state are in use: xrstor must load them)
 		}
 		c.FullStateChanged()
-		rr := h.sw(c, mm, ac)
+		var rr result
+		if !interrupt {
+			rr = h.sw(c, mm, ac)
+		} else {
+			// Interrupts land all over the loop, in veneers too: the guest is resumed from
+			// the registers it is given back, as the Sentry does after a signal.
+			stop := make(chan struct{})
+			done := make(chan struct{})
+			go func(c platform.Context) {
+				defer close(done)
+				rnd := rand.New(rand.NewSource(int64(i)))
+				for {
+					select {
+					case <-stop:
+						return
+					case <-time.After(time.Duration(10+rnd.Intn(200)) * time.Microsecond):
+						c.Interrupt()
+					}
+				}
+			}(c)
+			for {
+				rr = h.sw(c, mm, ac)
+				if rr.err != platform.ErrContextInterrupt {
+					break
+				}
+				nIntr++
+			}
+			close(stop)
+			<-done
+		}
 		if rr.err != nil || ac.StateData().Regs.Orig_rax != 500 {
 			why := fmt.Sprintf("%v", rr.err)
 			if rr.si != nil {
@@ -644,7 +718,15 @@ func runCases(t *testing.T, mode string, textBase uint64, cases []*fdCase, offs 
 	return res
 }
 
-func TestFSDifferential(t *testing.T) {
+func TestFSDifferential(t *testing.T) { fsDifferential(t, false, 3000) }
+
+// TestFSDifferentialInterrupt runs each case as a loop of tens of thousands of
+// iterations, and interrupts the rewritten one over and over: the thread is stopped
+// in all places of the veneers and put back as the Sentry does after a signal; the
+// final state must be that of the uninterrupted native run.
+func TestFSDifferentialInterrupt(t *testing.T) { fsDifferential(t, true, 100) }
+
+func fsDifferential(t *testing.T, loop bool, n int) {
 	if !stubasm.HasFSGSBASE() {
 		t.Skip("native mode needs FSGSBASE")
 	}
@@ -652,14 +734,13 @@ func TestFSDifferential(t *testing.T) {
 	if s := os.Getenv("FSDIFF_SEED"); s != "" {
 		fmt.Sscan(s, &seed)
 	}
-	n := 1500
 	if s := os.Getenv("FSDIFF_N"); s != "" {
 		fmt.Sscan(s, &n)
 	}
 	bmi := cpuid.HostFeatureSet().HasFeature(cpuid.X86FeatureBMI2) && cpuid.HostFeatureSet().HasFeature(cpuid.X86FeatureBMI1)
 	for _, textBase := range []uint64{fdText, fdFar} {
 		t.Run(fmt.Sprintf("text %#x", textBase), func(t *testing.T) {
-			g := &fdGen{r: rand.New(rand.NewSource(seed)), ops: fdOps(), bmi: bmi, data: textBase - 0x100000}
+			g := &fdGen{r: rand.New(rand.NewSource(seed)), ops: fdOps(), bmi: bmi, data: textBase - 0x100000, loop: loop}
 			cases := make([]*fdCase, n)
 			offs := make([]uint64, n)
 			text := bytes.Repeat([]byte{0x90}, 64)
@@ -676,8 +757,8 @@ func TestFSDifferential(t *testing.T) {
 			g.r.Read(dataInit)
 			areaInit := make([]byte, fdAreaLen)
 			g.r.Read(areaInit)
-			nat := runCases(t, "native", textBase, cases, offs, text, areaInit, dataInit)
-			rew := runCases(t, "rewrite", textBase, cases, offs, text, areaInit, dataInit)
+			nat := runCases(t, "native", false, textBase, cases, offs, text, areaInit, dataInit)
+			rew := runCases(t, "rewrite", loop, textBase, cases, offs, text, areaInit, dataInit)
 			bad := 0
 			for i := range cases {
 				a, b := nat[i], rew[i]
