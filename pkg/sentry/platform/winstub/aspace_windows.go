@@ -284,6 +284,7 @@ func (as *addressSpace) removeRange(lo, hi uint64) error {
 	if i == j {
 		return nil
 	}
+	as.purgeSites(lo, hi)
 	for k, e := range as.edges {
 		if k > lo && k <= hi {
 			e.tail0f = false
@@ -800,4 +801,32 @@ func (as *addressSpace) isUD2Site(a uint64) bool {
 	as.mu.Lock()
 	defer as.mu.Unlock()
 	return as.ud2Sites[a]
+}
+
+// purgeSites forgets what was recorded about the patched text in [lo,hi): the
+// addresses the Sentry may hand back inside patched windows (restartAt), the
+// unpatched sites, and the saved last bytes of the pieces ending there. They would
+// redirect or mis-decode whatever is mapped there next. (The slot and veneer
+// caches stay: they are keyed by the content.)
+func (as *addressSpace) purgeSites(lo, hi uint64) {
+	for k := range as.restartAt {
+		if k >= lo && k < hi {
+			delete(as.restartAt, k)
+		}
+	}
+	for k := range as.ud2Sites {
+		if k >= lo && k < hi {
+			delete(as.ud2Sites, k)
+		}
+	}
+	for k := range as.fsUD2 {
+		if k >= lo && k < hi {
+			delete(as.fsUD2, k)
+		}
+	}
+	for k := range as.tails {
+		if k > lo && k <= hi {
+			delete(as.tails, k)
+		}
+	}
 }
