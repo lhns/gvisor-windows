@@ -741,6 +741,19 @@ func scanText(code []byte, from int, wantFS bool) *scanResult {
 			isTgt[x.tgt/64] |= 1 << (x.tgt % 64)
 		}
 	}
+	// The instruction after padding, a return or an unconditional jump is probably the
+	// entry of a function that other ranges call (Debian's __read_nocancel begins after
+	// 10 bytes of nop padding; a window across the padding made the call land in the
+	// jump's filler and skip the syscall). Only branches inside the range are seen
+	// above, so these count as targets too.
+	for i := 1; i < len(list); i++ {
+		switch list[i-1].op {
+		case x86asm.NOP, x86asm.RET, x86asm.JMP, x86asm.LRET, x86asm.IRET:
+			if list[i-1].off+list[i-1].n == list[i].off && list[i].off < len(code) {
+				isTgt[list[i].off/64] |= 1 << (list[i].off % 64)
+			}
+		}
+	}
 	for s, x := range list {
 		isFS := x.cls == clsFS || x.cls == clsFSBad
 		if x.op != x86asm.SYSCALL && !(wantFS && isFS) {

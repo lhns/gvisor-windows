@@ -243,6 +243,7 @@ func (as *addressSpace) patchImm(code []byte, base uint64, list []ins, s int, tg
 	// back by 2 (to the syscall instruction, now the middle of the jump): send it to
 	// the table entry instead, which re-enters the trampoline with the number.
 	as.restartAt[a] = entry
+	debugf("imm site %#x: syscall %d via entry %#x", a, sysno, entry)
 	cl.add(pv.off, x.off+x.n)
 	st.imm++
 	return true
@@ -312,6 +313,7 @@ func (as *addressSpace) patchReloc(code []byte, base uint64, list []ins, s int, 
 			ss = append(ss, list[k].off, list[k].n)
 		}
 		debugf("reloc site %#x: list(off,n) %v s=%d window %d..%d len %d (taken: %v)", base+uint64(x.off), ss, s, bestA, bestB, bestL, cl.l)
+		debugf("reloc site %#x bytes % x", base+uint64(x.off), code[list[0].off:list[len(list)-1].off+list[len(list)-1].n])
 	}
 	if bestA < 0 {
 		bestA, bestB, bestL = search(3)

@@ -83,3 +83,43 @@ func TestSeamRedecode(t *testing.T) {
 		}
 	}
 }
+
+// TestEntryAfterPadding: a function that begins after nop padding is called from another
+// piece of text (a branch the scan of its own piece cannot see). The syscall in it must
+// not sit in a patch window that the call lands inside of (Debian's __read_nocancel).
+func TestEntryAfterPadding(t *testing.T) {
+	for _, lowFirst := range []bool{true, false} {
+		t.Run(fmt.Sprintf("low first %v", lowFirst), func(t *testing.T) {
+			h := newHarness(t)
+			mm := h.newMM()
+			lo := make([]byte, pageSz)
+			hi := make([]byte, pageSz)
+			for i := range lo {
+				lo[i], hi[i] = 0x90, 0x90
+			}
+			// low: call entry; mov $500,%eax; syscall
+			rel := uint32(pageSz + 11 - 5)
+			copy(lo, []byte{0xe8, byte(rel), byte(rel >> 8), byte(rel >> 16), byte(rel >> 24), 0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05})
+			// high: ret; 10 bytes of padding; entry: xor %eax,%eax; syscall; cmp $-4096,%rax; ja +1; ret
+			copy(hi, []byte{0xc3, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0, 0, 0, 0, 0, 0x31, 0xc0, 0x0f, 0x05, 0x48, 0x3d, 0, 0xf0, 0xff, 0xff, 0x77, 0x01, 0xc3})
+			a, b := h.pages(lo, 1), h.pages(hi, 1)
+			if lowFirst {
+				h.mapAt(mm, textBase, a, rx)
+				h.mapAt(mm, textBase+pageSz, b, rx)
+			} else {
+				h.mapAt(mm, textBase+pageSz, b, rx)
+				h.mapAt(mm, textBase, a, rx)
+			}
+			h.mapAt(mm, tlsBase, h.pages(nil, 1), rw)
+			cx := h.p.NewContext(pkgcontext.Background())
+			defer cx.Release()
+			ac := newAC(textBase, tlsBase+pageSz-64)
+			if nr := h.syscall(cx, mm, ac); nr != 0 {
+				t.Fatalf("syscall %d, want 0 (the call must reach the xor and the syscall)", nr)
+			}
+			if nr := h.syscall(cx, mm, ac); nr != 500 {
+				t.Fatalf("syscall %d, want 500", nr)
+			}
+		})
+	}
+}

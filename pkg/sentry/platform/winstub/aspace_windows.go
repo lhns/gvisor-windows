@@ -928,7 +928,8 @@ func (as *addressSpace) reseam(lo uint64, orig, tail []byte, exact, straddle boo
 	if !exact {
 		zone = zoneContext
 	}
-	as.patchCode(buf, lo-uint64(len(tail)), 0, len(tail), zone, len(tail)+end, keep)
+	rst, _ := as.patchCode(buf, lo-uint64(len(tail)), 0, len(tail), zone, len(tail)+end, keep)
+	debugf("reseam %#x: tail % x | head % x | patched %+v exact %v", lo, tail[max(0, len(tail)-16):], orig[:24], rst, exact)
 	fix := append([]byte(nil), buf[len(tail):len(tail)+end]...)
 	if straddle {
 		fix[0] = 0x0B
