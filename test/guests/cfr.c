@@ -74,7 +74,7 @@ static long rawread(const char *path) {
 // file's text in several ranges (one per cached piece), and a `syscall` instruction at the edge of
 // a range must still be patched.
 static void fragmented(const char *dir, const char *src) {
-  static const int strides[] = {4096, 12288, 65536, 262144};
+  static const int strides[] = {0, 4096, 12288, 65536, 262144};
   for (unsigned k = 0; k < sizeof strides / sizeof strides[0]; k++) {
     char dst[256], name[64];
     snprintf(dst, sizeof dst, "%s/frag%u", dir, k);
@@ -84,8 +84,8 @@ static void fragmented(const char *dir, const char *src) {
     struct stat st;
     fstat(fd, &st);
     char b;
-    for (off_t o = st.st_size / 2; o < st.st_size; o += strides[k]) pread(fd, &b, 1, o);
-    for (off_t o = 0; o < st.st_size / 2; o += strides[k]) pread(fd, &b, 1, o);
+    for (off_t o = st.st_size / 2; strides[k] && o < st.st_size; o += strides[k]) pread(fd, &b, 1, o);
+    for (off_t o = 0; strides[k] && o < st.st_size / 2; o += strides[k]) pread(fd, &b, 1, o);
     close(fd);
     int pfd[2];
     pipe(pfd);
