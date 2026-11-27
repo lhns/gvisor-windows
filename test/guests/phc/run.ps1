@@ -25,6 +25,7 @@ foreach ($c in $Cases) {
       process = @{terminal = $false; user = @{uid = 0; gid = 0}; args = @($args0.Split(' ')); env = @('PATH=/bin', 'HOME=/'); cwd = '/'}
       root = @{path = $rootfs; readonly = $false}
       hostname = 'phc'
+      annotations = @{'dev.gvisor.windows.rootfs-options' = 'file-mode=0755'}
       mounts = $mounts
       linux = @{namespaces = @(@{type = 'pid'}, @{type = 'network'}, @{type = 'ipc'}, @{type = 'uts'}, @{type = 'mount'})}}
     $cfg | ConvertTo-Json -Depth 8 | Set-Content -Encoding ascii (Join-Path $b 'config.json')
