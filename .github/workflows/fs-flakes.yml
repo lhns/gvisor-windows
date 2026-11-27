@@ -22,6 +22,7 @@ jobs:
           gcc -static -no-pie -O1 -Wall -o out/mountkeep test/guests/mountkeep.c
           gcc -static -no-pie -O1 -Wall -o out/devnull test/guests/devnull.c
           gcc -static -no-pie -O1 -Wall -o out/ovlsub test/guests/ovlsub.c
+          gcc -static -no-pie -O1 -Wall -o out/ovlopaque test/guests/ovlopaque.c
       - uses: actions/upload-artifact@v4
         with: {name: fsstress-guest, path: out}
   stress:
@@ -79,6 +80,14 @@ jobs:
             -Program C:\ci\bin\runsctest.exe `
             -Arguments @('-fsmode', $env:WINSTUB_FSMODE, '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-ovl','-only','ovlsub','-timeout','300s') `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 600
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Overlay on a host folder, opaque flag not copied up (c/storage native-diff probe)
+        shell: pwsh
+        run: |
+          & tools/windows/ci/run-as-standard-user.ps1 `
+            -Program C:\ciinunsctest.exe `
+            -Arguments @('-fsmode', $env:WINSTUB_FSMODE, '-runsc','C:\ciinunsc.exe','-rootfs','C:\ci\workootfs','-work','C:\ci\work\std-opq','-only','ovlopaque','-timeout','300s') `
+            -GrantPath C:\ciin -WritablePath C:\ci\work -TimeoutSeconds 600
           if ($LASTEXITCODE -ne 0) { exit 1 }
       - name: Unprivileged /dev/null and dpkg's symlink pattern as a standard user
         shell: pwsh
