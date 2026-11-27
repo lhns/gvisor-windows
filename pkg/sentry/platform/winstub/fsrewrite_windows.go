@@ -144,7 +144,7 @@ func (as *addressSpace) fsWindow(code []byte, base uint64, win []ins, a, b, s, m
 		j = binary.LittleEndian.AppendUint32(j, uint32(va))
 	}
 	for len(j) < wlen {
-		j = append(j, 0x90)
+		j = append(j, 0xCC) // (planFSWindow: the other instruction starts are here)
 	}
 	copy(code[w0off:], j)
 	cl.add(w0off, w0off+wlen)
@@ -157,6 +157,25 @@ func (as *addressSpace) fsWindow(code []byte, base uint64, win []ins, a, b, s, m
 		}
 	}
 	return true
+}
+
+// windowResume handles the int3 a thread hits when it enters a patched %fs
+// window at one of its inner instruction starts, which the platform reports
+// as the thread's address when it stops inside the veneer (fsFix) and which a
+// signal handler may return to with a plain ret: the thread continues in the
+// veneer at that instruction.
+func (as *addressSpace) windowResume(t *thread, ctx *ctxBuf, a uint64) bool {
+	as.mu.Lock()
+	target, ok := as.restartAt[a]
+	as.mu.Unlock()
+	if !ok || a < stubasm.GuestMin {
+		return false
+	}
+	if b, ok := as.readStub(a, 1); !ok || b[0] != 0xCC {
+		return false
+	}
+	*ctx.u64(ctxRipOff) = target
+	return ctx.set(t.hThread)
 }
 
 // fsUD2At returns the original bytes of a %fs instruction left as ud2 at a.
