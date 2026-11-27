@@ -345,8 +345,12 @@ func TestSyscallsFaultsInterrupt(t *testing.T) {
 	if r.Rip != g.udAfter {
 		t.Fatalf("ud2 site resume at %#x, want %#x", r.Rip, g.udAfter)
 	}
-	if mm.mmaps != 2 {
-		t.Errorf("hole reservations = %d, want 2", mm.mmaps)
+	want := 2
+	if h.p.fsRewrite {
+		want = 3 // and the %fs veneer area
+	}
+	if mm.mmaps != want {
+		t.Errorf("hole reservations = %d, want %d", mm.mmaps, want)
 	}
 }
 
@@ -1040,13 +1044,13 @@ func TestMemoryRelease(t *testing.T) {
 		t.Fatalf("Allocate: %v", err)
 	}
 	fillRange(t, h.mf, fr, 0x5a)
-	h.mapAt(mm, 0x10000000, fr, rw)
+	h.mapAt(mm, 0x80000000, fr, rw)
 	c1, w1 := memState()
 	t.Logf("RELEASE allocated, touched and mapped 1 GB in %v: commit %d -> %d MB, working set %d -> %d MB", time.Since(t0).Round(time.Millisecond), c0, c1, w0, w1)
 	if c1 < c0+900 || w1 < w0+900 {
 		t.Fatalf("the allocation did not show up: commit %d -> %d, working set %d -> %d", c0, c1, w0, w1)
 	}
-	mm.as.Unmap(0x10000000, size)
+	mm.as.Unmap(0x80000000, size)
 	h.mf.DecRef(fr)
 	t1 := time.Now()
 	var c2, w2 uint64
