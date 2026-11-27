@@ -172,6 +172,9 @@ func bundle(name string, args []string, terminal bool) string {
 			{"path": "/dev/urandom", "type": "c", "major": 1, "minor": 9, "fileMode": 438},
 		}},
 	}
+	if len(extraCaps) > 0 {
+		spec["process"].(map[string]any)["capabilities"] = map[string]any{"bounding": extraCaps, "effective": extraCaps, "permitted": extraCaps, "inheritable": extraCaps}
+	}
 	b, err := json.MarshalIndent(spec, "", "  ")
 	must(err)
 	must(os.WriteFile(filepath.Join(dir, "config.json"), b, 0o644))
@@ -325,6 +328,9 @@ func testPublish() error {
 }
 
 var extraMounts []map[string]any
+
+// extraCaps, when set, are the capabilities of the guest process (the default has no CAP_SYS_ADMIN).
+var extraCaps []string
 
 // testHostfs is the reproducer for the rename and rmdir failures Podman's
 // storage hits on a host-folder bind mount ("rename .tmp-images.json
@@ -609,7 +615,8 @@ func testFsStress() error {
 	_ = os.RemoveAll(dir)
 	must(os.MkdirAll(dir, 0o755))
 	extraMounts = []map[string]any{{"destination": "/w", "type": "bind", "source": dir, "options": []string{"rbind", "rw"}}}
-	defer func() { extraMounts = nil }()
+	extraCaps = []string{"CAP_SYS_ADMIN", "CAP_MKNOD", "CAP_DAC_OVERRIDE", "CAP_CHOWN", "CAP_FOWNER"}
+	defer func() { extraMounts, extraCaps = nil, nil }()
 	bad := 0
 	for _, where := range []string{"/tmp/fs", "/w/fs"} {
 		r, err := runsc("fsstress", []string{"/bin/fsstress", where, strconv.Itoa(*stressWorkers), strconv.Itoa(*stressIters)}, nil)
