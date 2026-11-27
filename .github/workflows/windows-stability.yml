@@ -52,9 +52,9 @@ jobs:
             $env:WINSTUB_SPARES = $sp
             $t = @()
             for ($i = 0; $i -lt 7; $i++) {
-              $o = C:\ciinunsctest.exe -timeout 60s -runsc C:\ciinunsc.exe -rootfs C:\ci\workootfs -work C:\ci\work	-$sp-$i -only forkexec 2>&1 | Out-String
+              $o = C:\ci\bin\runsctest.exe -timeout 60s -runsc C:\ci\bin\runsc.exe -rootfs C:\ci\work\rootfs -work C:\ci\work\t-$sp-$i -only forkexec 2>&1 | Out-String
               if ($o -match 'RESULT forkexec_wall ([0-9.]+)') { $t += [double]$Matches[1] } else { "no time in run $i of spares=$sp"; $o }
-              Remove-Item -Recurse -Force C:\ci\work	-$sp-$i -ErrorAction SilentlyContinue
+              Remove-Item -Recurse -Force C:\ci\work\t-$sp-$i -ErrorAction SilentlyContinue
             }
             $m = ($t | Sort-Object)[[int]($t.Count / 2)]
             "FORKEXEC ${{ matrix.mode }} spares=$sp median=$m s of 100 (runs: $($t -join ' '))"
