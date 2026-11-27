@@ -1,14 +1,14 @@
 # 1s: %fs veneer capacity and faults under the jump
 
-Verdict: the debugger path already carries far under 1% of `%fs` executions in rewrite mode (python3 18 of 1,367,377, netavark 7 to 10 of about 17,000), so defect 1 needed no new veneer area; a stop of a displaced instruction under the jump of a window is now reported at the window start when its predecessors can run again, and the planner keeps every other faulting instruction out from under the jump.
+Verdict: the debugger path already carries far under 1% of `%fs` executions in rewrite mode (python3 18 of 1,367,419, netavark 10 of 17,596), so defect 1 needed no new veneer area; a stop of a displaced instruction under the jump of a window is now reported at the window start when its predecessors can run again, and the planner keeps every other faulting instruction out from under the jump.
 
 ## Defect 1: veneer capacity, far libraries
 
 ### Measured
 
-New counters under `GVISOR_PROFSTATS=1` (process-wide `profkeys`, so they survive recycled stubs): every `%fs` site by outcome (veneer with a 5- or 7-byte jump, or debugger and why), and every debugger run by reason. The total of `%fs` executions is the debugger count of the same workload with `WINSTUB_FSUD2=1` (every `%fs` instruction through the debugger). Job `fs-share` of `windows-profile` (Debian trixie with python3 3.13 and netavark 1.14, under `sentryguest`); it now fails at 1% or more.
+New counters under `GVISOR_PROFSTATS=1` (process-wide `profkeys`, so they survive recycled stubs): every `%fs` site by outcome (veneer with a 5- or 7-byte jump, or debugger and why), and every debugger run by reason. The total of `%fs` executions is the debugger count of the same workload with `WINSTUB_FSUD2=1` (every `%fs` instruction through the debugger). Job `fs-share` of `windows-profile` (Debian trixie's python3 and netavark 1.14, under `sentryguest`); it now fails at 1% or more.
 
-| workload (rewrite mode) | debugger runs | all %fs executions | share | debugger sites |
+| workload (rewrite mode) | debugger runs | all %fs executions | share | debugger sites, summed over the processes patched |
 |--|--|--|--|--|
 | `python3 py.py 1000` (json, re loop) | 18 | 1,367,377 | 0.0013% | 173 (68 with libraries near) |
 | `python3 -c pass` | 18 | 261,890 | 0.007% | 173 |
@@ -16,7 +16,7 @@ New counters under `GVISOR_PROFSTATS=1` (process-wide `profkeys`, so they surviv
 
 Run 46063676341 (this branch's planner, with and without the library placement below); the final code gives the same counts in both rewrite legs (run 46067983533: python3 18 of 1,367,419, start-up 18 of 261,889, netavark 10 of 17,596 in rewrite; rewrite-fxsave the same within a few executions). The baseline is this branch with the defect-2 planner, not unmodified `windows`; the planner changes the far debugger sites of libc by 15 (below), which start-up touches at most once each.
 
-- The 18 debugger runs of python3 are all start-up: the loop adds none. They are "no window of 7 bytes" sites in libc, mapped high.
+- The 18 debugger runs of python3 are all start-up: the loop adds none. They are "no window of 7 bytes" sites, i.e. in the high-mapped libraries (the executable is a PIE, loaded near).
 - Capacity: no site fell back for "veneer area full"; the 7,895 sites of a python3 process fit in the 32 MiB area (`FSBig`) with room to spare. The ~7,000-slot limit predates that area.
 - netavark is a PIE and loads at `0x1000_0000` + up to 256 MiB, within rel32 reach of the veneers: its own text is near (fsscan near-N 71, not far-N 780). Only its libraries are far.
 - What was measured: Debian's netavark standalone under `sentryguest` with the platform's network stack (the first setup succeeds; later ones fail on an existing default route, after the netlink work), not the Podman image's netavark inside the engine.
@@ -42,6 +42,8 @@ A window's first instructions are replaced by the jump (5 or 7 bytes). A thread 
 
 Semantic change: a fault in such a window is reported with the right fault address and registers, but with a pc up to 6 bytes before the faulting instruction, at an instruction that runs again. A handler that decodes the instruction at the pc (rather than returning, retrying or unwinding) sees a different instruction there. Faults of TLS accesses and of the few instructions displaced with them are rare; the alternative was a pc a handler cannot return to.
 
+A handler that repairs the fault through the context and returns with `sigreturn` resumes at the window start, so the instructions before the faulting one run again: if the handler changed a register they write (repairing `rax` in `[mov %fs:..,%rax; mov (%rax),%rdx]`), it is overwritten and the access faults again, every time; natively the retry succeeds. Before, sigreturn resumed exactly and only a plain `ret` broke. A narrower rule would roll back only when the faulting instruction reads no register the instructions before it write (it costs windows such as the far one of `TestScanFS`); not built.
+
 ### Cost in sites (fsscan, Ubuntu binaries; debugger sites near / far)
 
 | binary | before (46060216179) | after (46062800012) |
@@ -63,7 +65,7 @@ Effects are computed only for the instructions around `%fs` sites (decoded again
 
 ## Interrupt retry
 
-`interrupt` refuses a thread it cannot capture exactly (starting up, waking from its reply wait, in stub code, under a jump that does not roll back); the waiting Sentry thread retried after `time.Sleep(50 us)`, which lasts 0.5 ms or more on Windows. It now yields (`runtime.Gosched`) for the first 64 retries.
+`interrupt` refuses a thread it cannot capture exactly (starting up, waking from its reply wait, in stub code, under a jump that does not roll back); the waiting Sentry thread retried after `time.Sleep(50 us)` (a Windows timer wait, likely longer than asked; not measured). It now yields (`runtime.Gosched`) for the first 64 retries. Not measured either way; it does not explain a 212 ms interrupt (a thread is under a jump for a few instructions).
 
 ## Checks on the final code
 
