@@ -26,7 +26,7 @@ Runs a static Linux program that prints a line and exits with 7 (`$LASTEXITCODE`
 
     powershell -NoProfile -ExecutionPolicy Bypass -File .\podman-engine.ps1 start
 
-The engine (Podman inside runsc.exe) listens on the named pipe `\.\pipe\podman-gvisor` and on a unix socket in the data
+The engine (Podman inside runsc.exe) listens on the named pipe `\\.\pipe\podman-gvisor` and on a unix socket in the data
 folder, both for the current user only. It answers about a minute after the start. `status` shows both ways to connect.
 Pass `-Share D:\work` to let containers bind-mount from that folder (it appears as `/mnt/d/work`).
 

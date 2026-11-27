@@ -43,7 +43,9 @@ function Stop-Engine {
     if ($p) {
       # SIGTERM first (runsc kill reaches init through the control pipe of `run`), so podman closes its store the way
       # the Linux harness's `pkill`/`docker stop` lets it; a hard kill is the fallback.
+      $ea = $ErrorActionPreference; $ErrorActionPreference = 'Continue'   # Windows PowerShell 5.1 turns native stderr into errors
       & $Runsc kill "podman-$Name" TERM *> $null
+      $ErrorActionPreference = $ea
       if (-not $p.WaitForExit(60000)) { Write-Host 'start-engine: no exit 60 s after SIGTERM, killing'; & taskkill /PID $p.Id /T /F *> $null; $p.WaitForExit(30000) | Out-Null }
     }
     Remove-Item $pidFile -Force
@@ -158,7 +160,9 @@ function Start-Engine {
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     while ((Get-Date) -lt $deadline) {
       if ($p.HasExited) { throw "runsc exited with $($p.ExitCode); see $logs" }
+      $ea = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
       & $Podman --url (UnixUrl $sock) version *> $null
+      $ErrorActionPreference = $ea
       if ($LASTEXITCODE -eq 0) { Write-Host 'start-engine: engine answers'; Copy-Item (Join-Path $storage 'engine-env.txt') $logs -ErrorAction SilentlyContinue; return }
       Start-Sleep -Seconds 3
     }

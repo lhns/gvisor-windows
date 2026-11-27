@@ -32,7 +32,7 @@ try {
     Engine 'status'
     if ($LASTEXITCODE -ne 0) { Fail 'status says the engine is not running' }
     $sock = Get-Content (Join-Path $env:LOCALAPPDATA 'gvisor-windows\engine\sock.path')
-    $url = 'unix://' + ($sock -replace '^[A-Za-z]:', '' -replace '\', '/')
+    $url = 'unix://' + ($sock -replace '^[A-Za-z]:', '' -replace '\\', '/')
     & $Podman system connection add --default gvisor $url
     if ($LASTEXITCODE -ne 0) { Fail 'podman system connection add' }
     & $Podman version

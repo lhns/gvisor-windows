@@ -4,7 +4,7 @@
 
 .DESCRIPTION
   Wraps lib\start-engine.ps1 (the harness script of the Podman acceptance) with end-user defaults:
-  engine state and image storage under %LOCALAPPDATA%\gvisor-windows, pipe \.\pipe\podman-gvisor,
+  engine state and image storage under %LOCALAPPDATA%\gvisor-windows, pipe \\.\pipe\podman-gvisor,
   no diagnostics. Needs no administrator rights; works in Windows PowerShell 5.1 and PowerShell 7.
 
 .PARAMETER Action   start | stop | status (default status)
@@ -36,7 +36,7 @@ function Show-Connect {
   $sockFile = Join-Path $engine 'sock.path'
   if (Test-Path $sockFile) {
     # The podman client dials a unix socket (a drive letter does not survive its url parsing).
-    $url = 'unix://' + ((Get-Content $sockFile) -replace '^[A-Za-z]:', '' -replace '\', '/')
+    $url = 'unix://' + ((Get-Content $sockFile) -replace '^[A-Za-z]:', '' -replace '\\', '/')
     Write-Host "  podman:  podman system connection add --default gvisor $url"
   }
   Write-Host "  docker:  `$env:DOCKER_HOST = 'npipe:////./pipe/$pipe'"
@@ -63,6 +63,6 @@ switch ($Action) {
   }
   'status' {
     $id = Get-EnginePid
-    if ($id) { Write-Host "podman-engine: running (pid $id), pipe \.\pipe\$pipe"; Show-Connect } else { Write-Host 'podman-engine: not running'; exit 1 }
+    if ($id) { Write-Host "podman-engine: running (pid $id), pipe \\.\pipe\$pipe"; Show-Connect } else { Write-Host 'podman-engine: not running'; exit 1 }
   }
 }
