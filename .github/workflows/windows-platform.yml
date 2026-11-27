@@ -24,14 +24,24 @@ jobs:
         env: {WINSTUB_DEBUG: "1"}
         run: |
           $fail = 0
-          foreach ($t in 'TestSyscallsFaultsInterrupt','TestExecuteFault','TestUnmapAndRemap','TestNewThreadsAndSpeed','TestForkedAddressSpace','TestWriteExecute','TestFPState','TestSyscallLatency','TestStubStart','TestStubStartExperiment','TestDecodeAllMatchesSerial','TestSplitSyscall','TestInterruptStorm','TestMapNonSectionFile','TestMemoryRelease','TestSplitSyscallAfterUnmap','TestSplitSyscallWX','TestOversubscribed') {
+          foreach ($t in 'TestSyscallsFaultsInterrupt','TestExecuteFault','TestUnmapAndRemap','TestNewThreadsAndSpeed','TestForkedAddressSpace','TestWriteExecute','TestFPState','TestSyscallLatency','TestStubStart','TestStubStartExperiment','TestDecodeAllMatchesSerial','TestSplitSyscall','TestInterruptStorm','TestMapNonSectionFile','TestMemoryRelease','TestSplitSyscallAfterUnmap','TestSplitSyscallWX','TestOversubscribed','TestShareReadOnlySection','TestManyThreads','TestVeneerSurvivesNewAddressSpace') {
             "===== $t" | Tee-Object -Append -FilePath ../../../../tests.txt
             $a = @(("-test.run=^" + $t + [char]36), "-test.v=true", "-test.timeout=3m"); & ../../../../winstub.test.exe @a 2>&1 | Tee-Object -Append -FilePath ../../../../tests.txt
             "exit: $LASTEXITCODE" | Tee-Object -Append -FilePath ../../../../tests.txt
             if ($LASTEXITCODE -ne 0) { $fail = 1 }
           }
           exit $fail
+      - name: Spin policy matrix
+        if: always()
+        continue-on-error: true
+        shell: pwsh
+        working-directory: pkg/sentry/platform/winstub
+        env: {WINSTUB_MATRIX: "1"}
+        run: |
+          $a = @("-test.run=^TestPolicyMatrix$", "-test.v=true", "-test.timeout=10m")
+          & ../../../../winstub.test.exe @a 2>&1 | Select-String "MATRIX" | Tee-Object -Append -FilePath ../../../../tuning.txt
       - name: Oversubscription, with and without the spin limit
+        if: always()
         continue-on-error: true
         shell: pwsh
         working-directory: pkg/sentry/platform/winstub
@@ -43,6 +53,7 @@ jobs:
             & ../../../../winstub.test.exe @a 2>&1 | Select-String "OVERSUB|LATENCY" | Tee-Object -Append -FilePath ../../../../tuning.txt
           }
       - name: Spin tuning
+        if: always()
         continue-on-error: true
         shell: pwsh
         working-directory: pkg/sentry/platform/winstub

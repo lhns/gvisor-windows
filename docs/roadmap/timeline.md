@@ -44,7 +44,8 @@ gantt
     Start guest processes fast :platform_fast_process_start, 2026-11-26, 2026-11-26
     Syscalls split across mappings :platform_split_syscall_unpatched, 2026-11-26, 2026-11-26
     Map files not in the memory file :platform_map_files_without_sections, 2026-11-26, 2026-11-26
-    Veneer addresses differ after clone :active, platform_veneer_address_in_child, 2026-11-27, 2026-11-27
+    Veneer addresses differ after clone :platform_veneer_address_in_child, 2026-11-27, 2026-11-27
+    Rare hang under heavy exec load :platform_rare_hang_under_exec_load, 2026-11-27, 2026-11-27
     section sentry - sentry
     Recover faults in Go :sentry_go_fault_recovery, 2026-11-26, 2026-11-26
     Sentry builds for Windows :sentry_windows_build, 2026-11-26, 2026-11-26

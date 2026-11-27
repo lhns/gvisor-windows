@@ -68,14 +68,17 @@ const (
 
 	Veneers     uint64 = 0x110000 // displaced instructions of relocated syscall sites
 	VeneersSize uint64 = 0x70000
+	// Veneers whose syscall returns inside them live in the upper part, at
+	// addresses chosen platform-wide (the same in every address space).
+	VeneersShared uint64 = 0x148000
 
 	AreaLo uint64 = TrapPtrs // the low stub area is one section of this range
 	AreaHi uint64 = Veneers + VeneersSize
 
 	// Per-thread regions: a view of a per-process control section (not guest memory).
 	CtlBase      uint64 = 0x6FFF_8000_0000
-	ThreadRegion uint64 = 0x8000 // page, xsave area (at XsaveOff), stub stack
-	MaxThreads          = 128
+	ThreadRegion uint64 = 0x4000 // page, xsave area (at XsaveOff), stub stack
+	MaxThreads          = 1024
 	XsaveOff            = 0x1000
 	XsaveSize           = 0x1000
 	CtlSize      uint64 = ThreadRegion * uint64(MaxThreads)
@@ -101,6 +104,9 @@ const (
 	PgMode    = 0x78  // uint32: 0 return from a syscall, 1 restore the full context
 	PgFlags   = 0x80  // rflags restored in mode 1
 	PgXMask   = 0x88  // uint64: the xsave feature mask (XCR0 without AMX)
+	PgRunning = 0x9C  // uint32: the thread has left ntdll's start-up and entered threadEntry
+	PgWaits   = 0x98  // uint32: how often the stub's wait for a reply returned (diagnostics)
+	PgNtTerm  = 0x90  // ntdll!NtTerminateThread; mode 2 on a reply makes the thread end itself
 	PgRegs    = 0x100 // 16 qwords in hardware order: rax rcx rdx rbx rsp rbp rsi rdi r8..r15
 	PgRepair  = 0x200 // per-thread %fs repair code
 )

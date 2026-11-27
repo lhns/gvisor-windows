@@ -1241,3 +1241,265 @@ func TestOversubscribed(t *testing.T) {
 		t.Errorf("probe p99 %v", lat[n*99/100])
 	}
 }
+
+// sectionFile is a file whose pages are a read-only file mapping, like an erofs
+// image.
+type sectionFile struct {
+	bytesFile
+	h windows.Handle
+}
+
+func (s *sectionFile) ReadOnlySection() windows.Handle { return s.h }
+
+func availPhysMB() uint64 {
+	var m struct {
+		length               uint32
+		memoryLoad           uint32
+		totalPhys, availPhys uint64
+		totalPF, availPF     uint64
+		totalVirt, availVirt uint64
+		availExt             uint64
+	}
+	m.length = uint32(unsafe.Sizeof(m))
+	windows.NewLazySystemDLL("kernel32.dll").NewProc("GlobalMemoryStatusEx").Call(uintptr(unsafe.Pointer(&m)))
+	return m.availPhys >> 20
+}
+
+// TestShareReadOnlySection maps a read-only image section into 20 address spaces
+// whose guests read all of it, with and without sharing, and compares the memory.
+func TestShareReadOnlySection(t *testing.T) {
+	const imgSize, procs = 16 << 20, 20
+	f, err := os.CreateTemp("", "winstub-image-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+	defer f.Close()
+	img := make([]byte, imgSize)
+	var want uint64
+	for p := 0; p < imgSize/pageSz; p++ {
+		binary.LittleEndian.PutUint64(img[p*pageSz:], uint64(p)+1)
+		want += uint64(p) + 1
+	}
+	if _, err := f.Write(img); err != nil {
+		t.Fatal(err)
+	}
+	sec, err := windows.CreateFileMapping(windows.Handle(f.Fd()), nil, windows.PAGE_READONLY, 0, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer windows.CloseHandle(sec)
+	view, err := windows.MapViewOfFile(sec, windows.FILE_MAP_READ, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer windows.UnmapViewOfFile(view)
+	file := &sectionFile{bytesFile{data: unsafe.Slice((*byte)(unsafe.Pointer(view)), imgSize)}, sec}
+
+	a := &asm{base: textBase}
+	touch := a.emit(0x48, 0x8b, 0x07) // L: mov rax,[rdi]
+	a.emit(0x48, 0x01, 0xc3)          // add rbx,rax
+	a.emit(0x48, 0x81, 0xc7, 0x00, 0x10, 0, 0) // add rdi,4096
+	a.emit(0x48, 0xff, 0xc9)          // dec rcx
+	a.emit(0x75, 0xee)                // jnz L
+	a.emit(0x48, 0x89, 0xdf)          // mov rdi,rbx
+	a.emit(0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05)
+
+	h := newHarness(t)
+	for _, share := range []bool{true, false} {
+		shareReadOnly = share
+		runtime.GC()
+		c0, _ := memState()
+		p0 := availPhysMB()
+		var mapT, runT time.Duration
+		var mms []*testMM
+		for i := 0; i < procs; i++ {
+			mm := h.newMM()
+			mms = append(mms, mm)
+			h.mapAt(mm, textBase, h.pages(a.b, 1), rx)
+			t0 := time.Now()
+			if err := mm.as.MapFile(0x4000000, file, memmap.FileRange{Start: 0, End: imgSize}, hostarch.Read, false); err != nil {
+				t.Fatalf("MapFile: %v", err)
+			}
+			mapT += time.Since(t0)
+			c := h.p.NewContext(pkgcontext.Background())
+			ac := newAC(touch, 0)
+			ac.StateData().Regs.Rdi, ac.StateData().Regs.Rcx = 0x4000000, imgSize/pageSz
+			t1 := time.Now()
+			if nr := h.syscall(c, mm, ac); nr != 500 || ac.StateData().Regs.Rdi != want {
+				t.Fatalf("share=%v: syscall %d, sum %d, want %d", share, nr, ac.StateData().Regs.Rdi, want)
+			}
+			runT += time.Since(t1)
+			c.Release()
+		}
+		c1, _ := memState()
+		p1 := availPhysMB()
+		t.Logf("SHARE share=%v: %d address spaces each mapping and reading %d MiB: MapFile %v each, read %v each; system commit +%d MB, available physical memory -%d MB",
+			share, procs, imgSize>>20, (mapT / procs).Round(time.Microsecond), (runT / procs).Round(time.Microsecond), int64(c1)-int64(c0), int64(p0)-int64(p1))
+		for _, mm := range mms {
+			mm.as.Release()
+		}
+	}
+	shareReadOnly = true
+}
+
+// TestPolicyMatrix compares the spin policies at several thread counts: `threads`
+// busy contexts in a syscall loop plus one probe context whose round trips are
+// timed one by one.
+func TestPolicyMatrix(t *testing.T) {
+	if os.Getenv("WINSTUB_MATRIX") == "" {
+		t.Skip("set WINSTUB_MATRIX=1")
+	}
+	h := newHarness(t)
+	g := buildGuest()
+	mm := h.newMM()
+	h.setup(mm, g)
+	defer func(p int) { spinPolicy = p }(spinPolicy)
+	names := map[int]string{policyAdaptive: "adaptive", policyLimit: "limit", policyAlways: "always", policyTokens: "tokens"}
+	for _, pol := range []int{policyAlways, policyLimit, policyAdaptive, policyTokens} {
+		spinPolicy = pol
+		for _, threads := range []int{1, 2, 4, 8, 16, 32} {
+			const dur = 1500 * time.Millisecond
+			counts := make([]int, threads)
+			stop := make(chan struct{})
+			var wg sync.WaitGroup
+			for w := 0; w < threads; w++ {
+				wg.Add(1)
+				go func(w int) {
+					defer wg.Done()
+					c := h.p.NewContext(pkgcontext.Background())
+					defer c.Release()
+					ac := newAC(g.loop, 0)
+					for {
+						select {
+						case <-stop:
+							return
+						default:
+						}
+						if _, _, err := c.Switch(pkgcontext.Background(), mm, ac, -1); err != nil {
+							return
+						}
+						counts[w]++
+					}
+				}(w)
+			}
+			var lat []time.Duration
+			probe := h.p.NewContext(pkgcontext.Background())
+			pac := newAC(g.loop, 0)
+			end := time.Now().Add(dur)
+			for time.Now().Before(end) {
+				t0 := qpc()
+				if _, _, err := probe.Switch(pkgcontext.Background(), mm, pac, -1); err != nil {
+					t.Fatalf("probe: %v", err)
+				}
+				lat = append(lat, time.Duration(qpc()-t0))
+			}
+			close(stop)
+			wg.Wait()
+			probe.Release()
+			sort.Slice(lat, func(i, j int) bool { return lat[i] < lat[j] })
+			total, lo, hi := len(lat), len(lat), len(lat)
+			if threads > 0 {
+				total, lo, hi = 0, counts[0], counts[0]
+			}
+			for _, c := range counts {
+				total += c
+				lo, hi = min(lo, c), max(hi, c)
+			}
+			n := len(lat)
+			t.Logf("MATRIX %-8s threads=%2d: %7.0f k syscalls/s; per thread min/mean/max %d/%d/%d; probe p50 %v p99 %v p99.9 %v max %v",
+				names[pol], threads, float64(total+n)/dur.Seconds()/1000, lo, total/threads, hi, lat[n/2], lat[n*99/100], lat[n*999/1000], lat[n-1])
+		}
+	}
+}
+
+// TestManyThreads keeps 600 guest threads alive in one address space.
+func TestManyThreads(t *testing.T) {
+	h := newHarness(t)
+	g := buildGuest()
+	mm := h.newMM()
+	h.setup(mm, g)
+	const n = 600
+	ctxs := make([]platform.Context, n)
+	acs := make([]*arch.Context64, n)
+	var wg sync.WaitGroup
+	errs := make(chan error, n)
+	for i := 0; i < n; i++ {
+		ctxs[i] = h.p.NewContext(pkgcontext.Background())
+		acs[i] = newAC(g.loop, 0)
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			for r := 0; r < 3; r++ {
+				if _, _, err := ctxs[i].Switch(pkgcontext.Background(), mm, acs[i], -1); err != nil {
+					errs <- fmt.Errorf("thread %d round %d: %v", i, r, err)
+					return
+				}
+			}
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
+	}
+	for _, c := range ctxs {
+		c.Release()
+	}
+	// the slots come back
+	c := h.p.NewContext(pkgcontext.Background())
+	defer c.Release()
+	if nr := h.syscall(c, mm, newAC(g.loop, 0)); nr != 39 {
+		t.Fatalf("syscall %d", nr)
+	}
+}
+
+// TestVeneerSurvivesNewAddressSpace: a clone child with a new address space
+// resumes at the return address of its parent's syscall; that must also be valid
+// when the site was patched with a veneer (a syscall behind register moves).
+func TestVeneerSurvivesNewAddressSpace(t *testing.T) {
+	a := &asm{base: textBase}
+	// no displaced instruction after the syscall: it returns into the text
+	noPost := a.emit(0xbf, 41, 0, 0, 0) // mov edi,41
+	a.emit(0x48, 0x89, 0xf8)            // mov rax,rdi
+	a.emit(0x0f, 0x05)                  // syscall
+	a.emit(0x48, 0x89, 0xc7)            // mov rdi,rax
+	a.emit(0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05)
+	// a site that needs an instruction after it: xor eax,eax; syscall; mov rdi,rax
+	// at a branch target behind a jump
+	a.emit(0xeb, 0x00) // jmp +0
+	withPost := a.emit(0x31, 0xc0)
+	a.emit(0x0f, 0x05)
+	a.emit(0x48, 0x89, 0xc7) // mov rdi,rax
+	a.emit(0xb8, 0xf5, 1, 0, 0, 0x0f, 0x05)
+	for _, c := range []struct {
+		name  string
+		start uint64
+		nr    uint64
+		next  uint64
+	}{{"returns into the text", noPost, 41, 500}, {"returns into the veneer", withPost, 0, 501}} {
+		t.Run(c.name, func(t *testing.T) {
+			h := newHarness(t)
+			mm1, mm2 := h.newMM(), h.newMM()
+			fr := h.pages(a.b, 1)
+			h.mapAt(mm1, textBase, fr, rx)
+			c1 := h.p.NewContext(pkgcontext.Background())
+			defer c1.Release()
+			ac1 := newAC(c.start, 0)
+			if nr := h.syscall(c1, mm1, ac1); nr != c.nr {
+				t.Fatalf("syscall %d, want %d", nr, c.nr)
+			}
+			t.Logf("rip after the syscall: %#x", ac1.StateData().Regs.Rip)
+			// the child: another address space, text patched on its own
+			h.mapAt(mm2, textBase, fr, rx)
+			c2 := h.p.NewContext(pkgcontext.Background())
+			defer c2.Release()
+			ac2 := newAC(0, 0)
+			ac2.StateData().Regs = ac1.StateData().Regs
+			ac2.StateData().Regs.Rax = 77
+			if nr := h.syscall(c2, mm2, ac2); nr != c.next || ac2.StateData().Regs.Rdi != 77 {
+				t.Fatalf("child: syscall %d rdi %d, want %d 77", nr, ac2.StateData().Regs.Rdi, c.next)
+			}
+		})
+	}
+}

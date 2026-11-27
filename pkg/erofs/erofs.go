@@ -234,6 +234,9 @@ func (d *Dirent) Nid() uint64 {
 type Image struct {
 	src   *os.File `state:"nosave"`
 	bytes []byte   `state:"nosave"`
+	// gvisor-windows: section is the handle of the file mapping behind bytes
+	// (0 elsewhere); the Windows platform maps it into stub processes.
+	section uintptr `state:"nosave"`
 	sb    SuperBlock
 }
 
@@ -250,11 +253,11 @@ func OpenImage(src *os.File) (*Image, error) {
 	if err != nil {
 		return nil, err
 	}
-	i.bytes, err = mapImage(i.src, stat.Size()) // gvisor-windows: per-OS mapping
+	i.bytes, i.section, err = mapImage(i.src, stat.Size()) // gvisor-windows: per-OS mapping
 	if err != nil {
 		return nil, err
 	}
-	cu.Add(func() { unmapImage(i.bytes) })
+	cu.Add(func() { unmapImage(i.bytes); closeSection(i.section) })
 
 	if err := i.initSuperBlock(); err != nil {
 		return nil, err
@@ -266,7 +269,14 @@ func OpenImage(src *os.File) (*Image, error) {
 // Close closes the image.
 func (i *Image) Close() {
 	unmapImage(i.bytes)
+	closeSection(i.section)
 	i.src.Close()
+}
+
+// Section returns the Windows file-mapping handle behind the image's bytes (0 on
+// other systems). Offsets in the section are offsets in the image.
+func (i *Image) Section() uintptr {
+	return i.section
 }
 
 // SuperBlock returns a copy of the image's superblock.

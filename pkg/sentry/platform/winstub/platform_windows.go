@@ -53,13 +53,18 @@ type Platform struct {
 	platform.NoCPUNumbers
 
 	scans         scanCache
+	veneers       veneerRegistry
 	active        atomic.Int32 // contexts inside Switch
+	tokens        atomic.Int32 // spinning tokens held (policyTokens)
+	maxTokens     int32
+	denied        atomic.Int32 // contexts that found no token free since the last handover
 	spinLimit     int          // spin only while active <= spinLimit (WINSTUB_SPINLIMIT)
 	xmask         uint64
 	fpSize        int
 	stubPath      string
 	image         []byte
 	ntSet, ntWait uint64
+	ntTerm        uint64
 }
 
 // New creates the platform.
@@ -71,6 +76,9 @@ func New(opts platform.Options) (*Platform, error) {
 		return nil, err
 	}
 	if err := pNtWaitSingle.Find(); err != nil {
+		return nil, err
+	}
+	if err := pNtTerminateThread.Find(); err != nil {
 		return nil, err
 	}
 	if !cpuid.HostFeatureSet().UseXsave() {
@@ -91,12 +99,14 @@ func New(opts platform.Options) (*Platform, error) {
 	}
 	return &Platform{
 		spinLimit: envInt("WINSTUB_SPINLIMIT", runtime.NumCPU()),
+		maxTokens: int32(envInt("WINSTUB_TOKENS", max(1, runtime.NumCPU()/2))),
 		xmask:    stubasm.XSaveMask(),
 		fpSize:   int(fpSize),
 		stubPath: f.Name(),
 		image:    stubasm.Image(),
 		ntSet:    uint64(pNtSetEvent.Addr()),
 		ntWait:   uint64(pNtWaitSingle.Addr()),
+		ntTerm:   uint64(pNtTerminateThread.Addr()),
 	}, nil
 }
 

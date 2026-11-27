@@ -17,6 +17,8 @@
 package winstub
 
 import (
+	"syscall"
+	"os"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -47,7 +49,108 @@ type winContext struct {
 	needRestore bool
 	needPull    bool
 	nreq        int
-	spin        bool
+
+	// Spinning policy state (see decideSpin). spin: the Sentry side spins while
+	// it waits for the next request; ctlScore and stubScore: how often spinning
+	// on each side paid off recently (adaptive policy).
+	spin      bool
+	hasToken  bool
+	uses      int
+	cooldown  int
+	ctlScore  int
+	stubScore int
+	nwaits    int
+}
+
+// Spin policies, WINSTUB_POLICY.
+const (
+	policyAdaptive = iota // per context, from whether spinning paid off recently
+	policyLimit           // while no more contexts run than there are CPUs
+	policyAlways
+	policyTokens // a few contexts at a time hold a spinning token
+)
+
+var spinPolicy = func() int {
+	switch os.Getenv("WINSTUB_POLICY") {
+	case "limit":
+		return policyLimit
+	case "always":
+		return policyAlways
+	case "tokens":
+		return policyTokens
+	}
+	return policyTokens
+}()
+
+const maxScore = 6
+
+// decideSpin chooses, before the context runs, whether the Sentry side and the
+// stub spin while they wait for each other, and sets the stub's spin budget.
+//
+// Spinning pays when the other side answers within a few microseconds, and costs
+// a CPU when it does not: with more runnable threads than CPUs the spinners keep
+// the thread that has the work from running. The adaptive policy keeps a score
+// per side and context: a wait that ended during the spin raises it, one that had
+// to sleep lowers it faster; at zero the side does not spin, except for one wait
+// in eight that probes whether spinning would work again.
+func (c *winContext) decideSpin(t *thread) {
+	p := t.as.p
+	n := p.active.Add(1)
+	spinSentry, spinStub := true, true
+	switch spinPolicy {
+	case policyLimit:
+		spinSentry = int(n) <= p.spinLimit
+		spinStub = spinSentry
+	case policyTokens:
+		if c.cooldown > 0 {
+			c.cooldown--
+		} else if !c.hasToken && p.tokens.Add(1) <= p.maxTokens {
+			c.hasToken, c.uses = true, 0
+		} else if !c.hasToken {
+			p.tokens.Add(-1)
+			p.denied.Add(1)
+		}
+		spinSentry, spinStub = c.hasToken, c.hasToken
+		if c.hasToken {
+			// Hand the token over after a while, but only if someone asked.
+			if c.uses++; c.uses > tokenUses {
+				c.uses = 0
+				if p.denied.Swap(0) > 0 {
+					c.releaseToken(p)
+					c.cooldown = 32
+				}
+			}
+		}
+	case policyAdaptive:
+		c.nwaits++
+		probe := c.nwaits&7 == 0
+		spinSentry = c.ctlScore > 0 || probe
+		spinStub = c.stubScore > 0 || probe
+	}
+	c.spin = spinSentry
+	if spinStub {
+		*t.u64(stubasm.PgSpins) = uint64(stubSpin)
+	} else {
+		*t.u64(stubasm.PgSpins) = 1 // the stub counts down from this: 0 would spin 2^64 times
+	}
+}
+
+// tokenUses is how many round trips a context spins before it hands its token
+// to another.
+const tokenUses = 1000
+
+func (c *winContext) releaseToken(p *Platform) {
+	if c.hasToken {
+		c.hasToken = false
+		p.tokens.Add(-1)
+	}
+}
+
+func scoreUpdate(score int, paidOff bool) int {
+	if paidOff {
+		return min(score+1, maxScore)
+	}
+	return max(score-3, 0)
 }
 
 const eflagsUser = 0x246 // what a Linux syscall leaves in r11
@@ -77,15 +180,8 @@ func (c *winContext) Switch(ctx pkgcontext.Context, mm platform.MemoryManager, a
 		c.needRestore = false
 	}
 	c.needPull = true
-	// Spin only while no more contexts are running than there are CPUs to spin
-	// on: with more, the spinners keep the thread that has work from running.
-	c.spin = int(t.as.p.active.Add(1)) <= t.as.p.spinLimit
+	c.decideSpin(t)
 	defer t.as.p.active.Add(-1)
-	if c.spin {
-		*t.u64(stubasm.PgSpins) = uint64(stubSpin)
-	} else {
-		*t.u64(stubasm.PgSpins) = 1 // the stub counts down from this: 0 would spin 2^64 times
-	}
 	if err := c.resume(t, ac); err != nil {
 		return nil, hostarch.NoAccess, &platform.ContextError{Err: err, Errno: unix.EAGAIN}
 	}
@@ -163,8 +259,18 @@ func (c *winContext) resume(t *thread, ac *arch.Context64) error {
 	t.parked = false
 	t.mu.Unlock()
 	atomic.StoreUint32(t.u32(0), 2)
+	t.nReply.Add(1)
 	if atomic.LoadUint32(t.u32(stubasm.PgStubSlp)) != 0 {
-		pSetEvent.Call(t.evReply)
+		t.nSet.Add(1)
+		// The stub's spin ended before we answered: it sleeps on the event.
+		c.stubScore = scoreUpdate(c.stubScore, false)
+		c.releaseToken(t.as.p)
+		if r, _, e := pSetEvent.Call(t.evReply); r == 0 {
+			t.nSetFail.Add(1)
+			t.lastSetErr.Store(uint32(e.(syscall.Errno)))
+		}
+	} else {
+		c.stubScore = scoreUpdate(c.stubScore, true)
 	}
 	return nil
 }
@@ -194,6 +300,13 @@ func loadRegs(t *thread, r *arch.Registers, syscall bool) {
 func (c *winContext) wait(t *thread) (request, error) {
 	as := t.as
 	sleep := t.u32(stubasm.PgCtlSlp)
+	slept := false
+	defer func() {
+		c.ctlScore = scoreUpdate(c.ctlScore, !slept)
+		if slept {
+			c.releaseToken(t.as.p)
+		}
+	}()
 	for {
 		spins := ctlSpin
 		if !c.spin {
@@ -221,6 +334,7 @@ func (c *winContext) wait(t *thread) (request, error) {
 			atomic.StoreUint32(sleep, 0)
 			continue
 		}
+		slept = true
 		pWaitSingle.Call(t.evReq, infinite)
 		atomic.StoreUint32(sleep, 0)
 	}
@@ -271,6 +385,9 @@ func (c *winContext) FullStateChanged() {
 
 // Release implements platform.Context.Release.
 func (c *winContext) Release() {
+	if c.t != nil {
+		c.releaseToken(c.t.as.p)
+	}
 	if traceOn && c.nreq > 0 {
 		Trace("ctx %p: release after %d requests", c, c.nreq)
 	}
@@ -282,13 +399,20 @@ func (c *winContext) Release() {
 }
 
 // PrepareSleep implements platform.Context.PrepareSleep.
-func (c *winContext) PrepareSleep() {}
+func (c *winContext) PrepareSleep() { c.sleeping() }
 
 // PrepareUninterruptibleSleep implements platform.Context.PrepareUninterruptibleSleep.
-func (c *winContext) PrepareUninterruptibleSleep() {}
+func (c *winContext) PrepareUninterruptibleSleep() { c.sleeping() }
 
 // PrepareStop implements platform.Context.PrepareStop.
-func (c *winContext) PrepareStop() {}
+func (c *winContext) PrepareStop() { c.sleeping() }
+
+// sleeping gives up the spinning token of a context that is about to block.
+func (c *winContext) sleeping() {
+	if c.t != nil {
+		c.releaseToken(c.t.as.p)
+	}
+}
 
 // PrepareExecve implements platform.Context.PrepareExecve.
 func (c *winContext) PrepareExecve() {}

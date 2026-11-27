@@ -40,10 +40,11 @@ jobs:
           gcc -static -no-pie -O1 -pthread -o out/threads $G/threads.c
           gcc -O1 -pthread -o out/threads_dyn $G/threads.c
           (cd $G/gostress && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $GITHUB_WORKSPACE/out/gostress .)
+          (cd $G/gopodman && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $GITHUB_WORKSPACE/out/gopodman .)
           docker run --rm -v "$PWD:/w" -w /w alpine:3.20 sh -c             'apk add --no-cache gcc musl-dev >/dev/null && gcc -O1 -fstack-protector-all -o out/hello_musl test/guests/hello.c && cp -L /lib/ld-musl-x86_64.so.1 out/ld-musl'
           R=root
           mkdir -p $R/bin $R/lib $R/lib64 $R/t
-          cp out/clonesys out/clonesys_ns out/hello_dyn out/hello_dyn_nopie out/dlopen_glibc out/exec out/signals out/threads out/threads_dyn out/gostress out/hello_musl $R/bin/
+          cp out/clonesys out/clonesys_ns out/hello_dyn out/hello_dyn_nopie out/dlopen_glibc out/exec out/signals out/threads out/threads_dyn out/gostress out/gopodman out/hello_musl $R/bin/
           cp out/libplug.so $R/lib/
           cp out/ld-musl $R/lib/ld-musl-x86_64.so.1
           ln -s ld-musl-x86_64.so.1 $R/lib/libc.musl-x86_64.so.1
@@ -90,9 +91,9 @@ jobs:
             @{n='gospin_go'; out="gospin ok${nl}"; code=0},
             @{n='jit_glibc'; out="jit1 ok${nl}jit2 ok${nl}jit3 ok${nl}"; code=0}
           )
-          # Known platform defect (docs/results/5-podman-windows.md): reported, not counted.
+          # clone() through a register-number site (veneer): the child resumes at the return address.
           $known = @(@{n='clonesys'; a=@('/bin/clonesys'); out="child${nl}parent: child exited 3${nl}"; code=0}, @{n='clonesys_ns'; a=@('/bin/clonesys','ns'); out="child${nl}parent: child exited 3${nl}"; code=0})
-          foreach ($k in $known) { $k.tar = $true; $k.known = $true }
+          foreach ($k in $known) { $k.tar = $true }
           $hello = "hello from glibc: argc=1 tv=5 work=10 heap=ok${nl}"
           $tcases = @(
             @{n='dyn_glibc'; a=@('/bin/hello_dyn'); out=$hello; code=7},
@@ -128,6 +129,32 @@ jobs:
             if ($LASTEXITCODE -ne 0 -and -not $c.known) { $fail = 1 }
           }
           exit $fail
+      - name: Podman-shaped stress
+        shell: pwsh
+        run: |
+          $fail = 0
+          foreach ($pol in 'tokens', 'limit', 'always') {
+            $env:WINSTUB_POLICY = $pol
+            "===== gopodman, spin policy $pol" | Tee-Object -Append -FilePath podman.txt
+            $o = & ./sentryguest.exe "-tar=out/rootfs.tar" "-timeout=60s" /bin/gopodman 2>&1 | Out-String
+            $o | Tee-Object -Append -FilePath podman.txt
+            if ($o -notmatch 'gopodman ok' -or $LASTEXITCODE -ne 0) { "FAILED with policy $pol"; $fail = 1 }
+          }
+          exit $fail
+      - name: Hunt for hangs (limit policy)
+        timeout-minutes: 15
+        if: always()
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          foreach ($pol in 'limit') {
+            $env:WINSTUB_POLICY = $pol
+            for ($i = 0; $i -lt 40; $i++) {
+              $o = & ./sentryguest.exe "-tar=out/rootfs.tar" "-timeout=20s" /bin/gopodman 2>&1 | Out-String
+              if ($o -notmatch 'gopodman ok') { "===== $pol run $i hung or failed" | Tee-Object -Append -FilePath hang.txt; $o | Tee-Object -Append -FilePath hang.txt }
+              else { "$pol run $i ok" | Tee-Object -Append -FilePath hang.txt }
+            }
+          }
       - name: Timing
         continue-on-error: true
         shell: pwsh
@@ -153,4 +180,4 @@ jobs:
           }
       - uses: actions/upload-artifact@v4
         if: always()
-        with: {name: sentry-guests-output, path: "guests.txt\ntrace.txt\ntiming.txt"}
+        with: {name: sentry-guests-output, path: "guests.txt\ntrace.txt\ntiming.txt\npodman.txt\nhang.txt"}

@@ -29,10 +29,13 @@ sleep: \
 	MOVQ 0x70(R11), AX \
 	CALL AX \
 	BYTE $0x65; BYTE $0x4C; BYTE $0x8B; BYTE $0x1C; BYTE $0x25; LONG $0x28 \
+	INCL 0x98(R11) \
 	JMP  sleep \
 woke: \
 	MOVL $0, 0x54(R11) \
 done: \
+	CMPL 0x78(R11), $2 \
+	JEQ  die \
 	MOVL $0, 0(R11) \
 	MOVL 0x88(R11), AX \
 	MOVL 0x8C(R11), DX \
@@ -58,6 +61,13 @@ done: \
 	MOVQ 0x18(R11), CX \
 	MOVL $0x246, R11 \
 	JMP  CX \
+die: \
+	MOVQ 0x38(R11), SP \
+	MOVQ $-2, CX \
+	XORL DX, DX \
+	MOVQ 0x90(R11), AX \
+	CALL AX \
+	BYTE $0x0F; BYTE $0x0B \
 full: \
 	MOVQ 0x38(R11), SP \
 	MOVQ 0x18(R11), AX \
@@ -133,6 +143,7 @@ TEXT ·trampWait(SB),NOSPLIT|NOFRAME,$0-0
 TEXT ·threadEntry(SB),NOSPLIT|NOFRAME,$0-0
 	MOVQ CX, R11
 	BYTE $0x65; BYTE $0x4C; BYTE $0x89; BYTE $0x1C; BYTE $0x25; LONG $0x28
+	MOVL $1, 0x9C(R11)
 	MOVL 0x88(R11), AX
 	MOVL 0x8C(R11), DX
 	BYTE $0x49; BYTE $0x0F; BYTE $0xAE; BYTE $0xAB; LONG $0x1000

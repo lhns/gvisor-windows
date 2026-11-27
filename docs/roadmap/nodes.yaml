@@ -454,6 +454,7 @@
   - workloads-conmon-sync-pipe
   - workloads-overlay-userxattr
   - fs-case-sensitivity-without-admin
+  - platform-rare-hang-under-exec-load
   replaced_by: []
   lane: windows-ci
   start: ''
@@ -1339,21 +1340,22 @@
   title: Support CPUs without FSGSBASE
   track: platform
   kind: feature
-  state: parked
+  state: next
   outcome: unrated
   evidence: []
   verdict_quote: ''
   headline: ''
   depends_on:
-  - platform-binary-translation-fallback
+  - platform-veneer-address-in-child
   replaced_by: []
   lane: windows-ci
   start: ''
   end: ''
   folded: []
   overview: false
-  plain: On CPUs or VMs without the instruction to set the register, rewrite the guest's %fs accesses instead.
-  notes: 'Done when: a glibc program runs on a machine without FSGSBASE.'
+  plain: On CPUs or VMs without the instruction to set the thread-local register (like the dev VM), rewrite every %fs-prefixed guest instruction into a veneer that reads the base from per-thread storage;
+    chosen automatically by CPUID.
+  notes: 'Done when: forced rewrite mode passes the guest suites and the Podman workflow on windows-latest, and runsc.exe runs busybox on the dev VM.'
 - id: workloads-bar-host-network
   title: Does host networking meet the bar
   track: workloads
@@ -2066,22 +2068,23 @@
 - outcome: unrated
   evidence:
   - docs/results/5-podman-windows.md
+  - docs/results/1h-platform-share.md
   verdict_quote: ''
   headline: ''
   depends_on: []
   replaced_by: []
   start: '2026-11-27'
-  end: ''
+  end: '2026-11-27'
   folded: []
   overview: false
   id: platform-veneer-address-in-child
   title: Veneer addresses differ after clone
   track: platform
   kind: defect
-  state: in-progress
+  state: done
   lane: windows-ci
   plain: A syscall through a relocated veneer returns into the veneer; after clone into a new address space the veneers sit elsewhere, so the child resumes on a zero page and crashes.
-  notes: 'Fixed when: test/guests/clonesys.c (clonesys, clonesys_ns) passes and podman run starts a container.'
+  notes: 'Fixed: patch windows end at the syscall where possible, other veneers get a platform-wide address per site; clonesys cases are required.'
 - outcome: unrated
   evidence:
   - docs/results/3b-runsc-speed-lifecycle.md
@@ -2102,3 +2105,22 @@
   - workloads-end-to-end-speed
   plain: Creating a file on tmpfs costs about 1 ms and a fork+exec 32 ms on Windows; find where the time goes (syscall round trips, page faults, debug events, Sentry work) and fix the top causes.
   notes: 'Done when: a profile is written up and untar of 20k files on tmpfs and fork+exec are each at least 4x faster than today.'
+- outcome: unrated
+  evidence:
+  - docs/results/1h-platform-share.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-27'
+  end: ''
+  folded: []
+  overview: false
+  id: platform-rare-hang-under-exec-load
+  title: Rare hang under heavy exec load
+  track: platform
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: 'A multithreaded guest that forks many children hangs in about 1 of 50 runs: the debugger loop and an interrupt capture the same thread at once.'
+  notes: 'Fixed when: the gopodman hunt step passes 200 runs in a row; suggested: capture threads with a request flag the stub polls instead of SuspendThread.'

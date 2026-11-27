@@ -220,6 +220,10 @@ func main() {
 	select {
 	case <-done:
 	case <-time.After(*timeout):
+		winstub.DumpState(os.Stderr)
+		var buf bytes.Buffer
+		pprof.Lookup("goroutine").WriteTo(&buf, 2)
+		fmt.Fprintf(os.Stderr, "%s\n", buf.String())
 		fail("the guest did not exit within %v", *timeout)
 	}
 	tRun := time.Since(t1)

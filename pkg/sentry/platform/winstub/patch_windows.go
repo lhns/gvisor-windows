@@ -357,34 +357,45 @@ func (as *addressSpace) patchReloc(code []byte, base uint64, list []ins, s int, 
 	if !near(a) {
 		minLen = 7 // out of rel32 reach: jmp *abs32 through a table slot
 	}
-	bestA, bestB, bestL := -1, -1, 1<<30
-	for ia := s; ia >= 0 && ia >= s-3; ia-- {
-		if ia < s && !contig(ia+1) {
-			break
-		}
-		for ib := s; ib < len(list) && ib <= s+3; ib++ {
-			if ib > s && !contig(ib) {
+	// The best window ends with the syscall itself (nothing displaced after it):
+	// the syscall then returns into the original text, which is the same in every
+	// address space. Only if no such window exists, instructions after the syscall
+	// are displaced and the return address is inside the veneer.
+	search := func(maxPost int) (bestA, bestB, bestL int) {
+		bestA, bestB, bestL = -1, -1, 1<<30
+		for ia := s; ia >= 0 && ia >= s-3; ia-- {
+			if ia < s && !contig(ia+1) {
 				break
 			}
-			l := list[ib].off + list[ib].n - list[ia].off
-			if l < minLen {
-				continue
-			}
-			ok := true
-			for k := ia; k <= ib; k++ {
-				if k != s && (list[k].cls == clsNever || (list[k].cls == clsLastOnly && k != ib)) {
-					ok = false
+			for ib := s; ib < len(list) && ib <= s+maxPost; ib++ {
+				if ib > s && !contig(ib) {
 					break
 				}
-				if k > ia && tgt[k] {
-					ok = false
-					break
+				l := list[ib].off + list[ib].n - list[ia].off
+				if l < minLen {
+					continue
 				}
-			}
-			if ok && l < bestL {
-				bestA, bestB, bestL = ia, ib, l
+				ok := true
+				for k := ia; k <= ib; k++ {
+					if k != s && (list[k].cls == clsNever || (list[k].cls == clsLastOnly && k != ib)) {
+						ok = false
+						break
+					}
+					if k > ia && tgt[k] {
+						ok = false
+						break
+					}
+				}
+				if ok && l < bestL {
+					bestA, bestB, bestL = ia, ib, l
+				}
 			}
 		}
+		return
+	}
+	bestA, bestB, bestL := search(0)
+	if bestA < 0 {
+		bestA, bestB, bestL = search(3)
 	}
 	if bestA < 0 {
 		return false
@@ -398,9 +409,22 @@ func (as *addressSpace) patchReloc(code []byte, base uint64, list []ins, s int, 
 	for k := s + 1; k <= bestB; k++ {
 		post = append(post, code[list[k].off:list[k].off+list[k].n]...)
 	}
+	// A veneer with displaced instructions after the syscall is where the
+	// syscall returns to, and a forked child resumes there: it is placed at an
+	// address that depends only on the site, the same in every address space.
+	// Veneers without them are only entered from the text, and need no such
+	// promise.
 	vlen := uint64(len(pre)+23+len(post)+23+15) &^ 15
-	if va+vlen > stubasm.Veneers+stubasm.VeneersSize {
-		return false
+	if len(post) > 0 {
+		va = as.p.sharedVeneer(w0, code[list[bestA].off:list[bestA].off+bestL], vlen)
+		if va == 0 {
+			return false
+		}
+	} else {
+		vlen = uint64(len(pre)+23+15) &^ 15
+		if va+vlen > stubasm.VeneersShared {
+			return false
+		}
 	}
 	var j []byte
 	if minLen == 5 {
@@ -422,18 +446,25 @@ func (as *addressSpace) patchReloc(code []byte, base uint64, list []ins, s int, 
 		j = append(j, 0x90)
 	}
 	postAddr := va + uint64(len(pre)) + 23
+	if len(post) == 0 {
+		postAddr = wEnd
+	}
 	v := append([]byte(nil), pre...)
 	v = append(v, 0x48, 0xB9) // movabs $post,%rcx
 	v = binary.LittleEndian.AppendUint64(v, postAddr)
 	v = append(v, 0x49, 0xBB) // movabs $tramp,%r11
 	v = binary.LittleEndian.AppendUint64(v, stubasm.StubCode+stubasm.OffTramp)
 	v = append(v, 0x41, 0xFF, 0xE3) // jmp *%r11
-	v = append(v, post...)
-	v = append(v, 0x49, 0xBB) // movabs $end,%r11
-	v = binary.LittleEndian.AppendUint64(v, wEnd)
-	v = append(v, 0x41, 0xFF, 0xE3)
+	if len(post) > 0 {
+		v = append(v, post...)
+		v = append(v, 0x49, 0xBB) // movabs $end,%r11
+		v = binary.LittleEndian.AppendUint64(v, wEnd)
+		v = append(v, 0x41, 0xFF, 0xE3)
+	}
 	as.areaWrite(va, v)
-	as.vcur += vlen
+	if len(post) == 0 {
+		as.vcur += vlen
+	}
 	copy(code[list[bestA].off:], j)
 	// A restarted syscall re-enters the trampoline from the veneer; the registers
 	// before the syscall (rax in particular) are restored by the Sentry.
@@ -453,4 +484,44 @@ func classify(in x86asm.Inst) uint8 {
 		return clsLastOnly
 	}
 	return clsOK
+}
+
+// veneerRegistry hands out the addresses of the veneers that a syscall returns
+// into. A clone child with a new address space starts at the return address of
+// its parent, so every address space must put the veneer of a site at the same
+// address: the address is chosen per (site address, displaced bytes) once, for
+// the whole platform. The space is not reclaimed.
+type veneerRegistry struct {
+	mu   sync.Mutex
+	next uint64
+	m    map[veneerKey]uint64
+}
+
+type veneerKey struct {
+	addr uint64
+	hash [32]byte
+}
+
+// sharedVeneer returns the address of the veneer for the window at addr with
+// the given original bytes, allocating vlen bytes for it on first use; 0 if the
+// shared area is full.
+func (p *Platform) sharedVeneer(addr uint64, window []byte, vlen uint64) uint64 {
+	k := veneerKey{addr: addr, hash: sha256.Sum256(window)}
+	r := &p.veneers
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if va, ok := r.m[k]; ok {
+		return va
+	}
+	if r.m == nil {
+		r.m = map[veneerKey]uint64{}
+		r.next = stubasm.VeneersShared
+	}
+	if r.next+vlen > stubasm.Veneers+stubasm.VeneersSize {
+		return 0
+	}
+	va := r.next
+	r.next += vlen
+	r.m[k] = va
+	return va
 }

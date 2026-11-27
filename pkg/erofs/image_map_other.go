@@ -10,8 +10,11 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func mapImage(f *os.File, size int64) ([]byte, error) {
-	return unix.Mmap(int(f.Fd()), 0, int(size), unix.PROT_READ, unix.MAP_SHARED)
+func mapImage(f *os.File, size int64) ([]byte, uintptr, error) {
+	b, err := unix.Mmap(int(f.Fd()), 0, int(size), unix.PROT_READ, unix.MAP_SHARED)
+	return b, 0, err
 }
 
 func unmapImage(b []byte) { unix.Munmap(b) }
+
+func closeSection(uintptr) {}

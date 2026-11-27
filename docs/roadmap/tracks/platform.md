@@ -33,13 +33,14 @@ flowchart TB
     platform_fast_process_start["✔ Start guest<br/>processes fast"]
     platform_split_syscall_unpatched>"✔ Syscalls split<br/>across mappings"]
     platform_map_files_without_sections>"✔ Map files not in the<br/>memory file"]
-    platform_veneer_address_in_child>"⚠ Veneer addresses<br/>differ after clone"]
+    platform_veneer_address_in_child>"✔ Veneer addresses<br/>differ after clone"]
+    platform_rare_hang_under_exec_load>"⚠ Rare hang under<br/>heavy exec load"]
     platform_own_vdso["⛔ Own vDSO for clock<br/>calls"]
     platform_64k_mapping_conflicts["⏸ Handle 64 KB mapping<br/>conflicts"]
     platform_busybox_on_windows["✔ Run busybox under<br/>the Sentry"]
     platform_hardware_acceleration["⏸ Use hardware<br/>acceleration when<br/>available"]
+    platform_no_fsgsbase_fallback["○ Support CPUs without<br/>FSGSBASE"]
     platform_binary_translation_fallback["⏸ Binary translation<br/>as a fallback"]
-    platform_no_fsgsbase_fallback["⏸ Support CPUs without<br/>FSGSBASE"]
     platform_elf_alignment_survey ~~~ platform_tls_register
     platform_trap_cost ~~~ platform_restricted_stub
     platform_4k_section_views ~~~ platform_zpoline_hooks
@@ -68,14 +69,15 @@ flowchart TB
     platform_retire_prototype ~~~ platform_split_syscall_unpatched
     platform_memory_release ~~~ platform_map_files_without_sections
     platform_fast_process_start ~~~ platform_veneer_address_in_child
-    platform_split_syscall_unpatched ~~~ platform_own_vdso
-    platform_map_files_without_sections ~~~ platform_64k_mapping_conflicts
-    platform_veneer_address_in_child ~~~ platform_busybox_on_windows
+    platform_split_syscall_unpatched ~~~ platform_rare_hang_under_exec_load
+    platform_map_files_without_sections ~~~ platform_own_vdso
+    platform_veneer_address_in_child ~~~ platform_64k_mapping_conflicts
+    platform_rare_hang_under_exec_load ~~~ platform_busybox_on_windows
     platform_own_vdso ~~~ platform_hardware_acceleration
-    platform_64k_mapping_conflicts ~~~ platform_binary_translation_fallback
+    platform_64k_mapping_conflicts ~~~ platform_no_fsgsbase_fallback
     platform_busybox_on_windows ~~~ platform_binary_translation_fallback
-    platform_hardware_acceleration ~~~ platform_no_fsgsbase_fallback
-    platform_binary_translation_fallback ~~~ platform_no_fsgsbase_fallback
+    platform_hardware_acceleration ~~~ platform_binary_translation_fallback
+    platform_no_fsgsbase_fallback ~~~ platform_binary_translation_fallback
     platform_trap_cost -.-> platform_veh_on_guest_stack_unsafe
     platform_tls_register -.-> platform_veh_on_guest_stack_unsafe
     platform_trap_cost --> platform_exception_stack
@@ -100,9 +102,9 @@ flowchart TB
     platform_static_guest_from_memory --> platform_fast_process_start
     platform_stub_controller --> platform_own_vdso
     platform_winstub --> platform_hardware_acceleration
+    platform_veneer_address_in_child --> platform_no_fsgsbase_fallback
     platform_debug_event_cost --> platform_binary_translation_fallback
-    platform_binary_translation_fallback --> platform_no_fsgsbase_fallback
-    linkStyle 36,37 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    linkStyle 37,38 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -117,14 +119,15 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class platform_elf_alignment_survey,platform_trap_cost,platform_4k_section_views,platform_exception_stack,platform_veh_on_guest_stack_unsafe,platform_debug_event_cost,platform_faults_per_exec,platform_stub_controller,platform_page_verification,platform_syscall_fast_path,platform_controller_wakeups,platform_winstub,platform_fp_state,platform_static_guest_from_memory,platform_retire_prototype,platform_memory_release,platform_split_syscall_unpatched,platform_map_files_without_sections,platform_busybox_on_windows succ
+    class platform_elf_alignment_survey,platform_trap_cost,platform_4k_section_views,platform_exception_stack,platform_veh_on_guest_stack_unsafe,platform_debug_event_cost,platform_faults_per_exec,platform_stub_controller,platform_page_verification,platform_syscall_fast_path,platform_controller_wakeups,platform_winstub,platform_fp_state,platform_static_guest_from_memory,platform_retire_prototype,platform_memory_release,platform_split_syscall_unpatched,platform_map_files_without_sections,platform_veneer_address_in_child,platform_busybox_on_windows succ
     class platform_tls_register,platform_restricted_stub,platform_syscall_site_survey mixed
     class platform_zpoline_hooks dead
     class platform_fs_base_repair unrated
     class platform_fast_process_start vsucc
-    class platform_veneer_address_in_child finding
+    class platform_rare_hang_under_exec_load finding
     class platform_own_vdso blocked
-    class platform_64k_mapping_conflicts,platform_hardware_acceleration,platform_binary_translation_fallback,platform_no_fsgsbase_fallback parked
+    class platform_64k_mapping_conflicts,platform_hardware_acceleration,platform_binary_translation_fallback parked
+    class platform_no_fsgsbase_fallback next
 ```
 <!-- END GENERATED: track-platform -->
 
@@ -148,7 +151,7 @@ flowchart TB
 | `platform-hardware-acceleration` | Use hardware acceleration when available | feature | windows-ci | parked | unrated |  |  | platform-winstub |  |  |  |  |
 | `platform-zpoline-hooks` | Hook syscalls like zpoline | experiment | windows-local | abandoned | dead-end | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/0b-windows.md |
 | `platform-fs-base-repair` | Restore the TLS register after switches | feature | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 | platform-stub-controller |  |  |  | docs/results/1a-stub-prototype.md |
-| `platform-no-fsgsbase-fallback` | Support CPUs without FSGSBASE | feature | windows-ci | parked | unrated |  |  | platform-binary-translation-fallback |  |  |  |  |
+| `platform-no-fsgsbase-fallback` | Support CPUs without FSGSBASE | feature | windows-ci | next | unrated |  |  | platform-veneer-address-in-child |  |  |  |  |
 | `platform-exception-stack` | Check what exceptions do to stacks | experiment | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-trap-cost |  |  |  | docs/results/0b-windows.md |
 | `platform-static-guest-from-memory` | Run a static guest from memory | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-winstub, sentry-fault-recovery, platform-fs-base-repair, platform-fp-state |  |  |  | docs/results/1d-static-guest.md |
 | `platform-veh-on-guest-stack-unsafe` | Exceptions overwrite guest stacks | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 | platform-exception-stack |  |  |  | docs/results/0b-windows.md; docs/adr/0010-guest-faults-via-the-debugger-syscalls-via-patching.md |
@@ -163,7 +166,8 @@ flowchart TB
 | `platform-fast-process-start` | Start guest processes fast | feature | windows-ci | done | very-successful | 2026-11-26 | 2026-11-26 | platform-static-guest-from-memory |  |  | about 380 ms to 42 ms | docs/results/1e-platform-perf.md |
 | `platform-split-syscall-unpatched` | Syscalls split across mappings | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/1c-windows-platform.md; docs/results/1e-platform-perf.md |
 | `platform-map-files-without-sections` | Map files not in the memory file | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/1g-platform-memory.md; docs/adr/0016-memory-file-on-extent-sections.md |
-| `platform-veneer-address-in-child` | Veneer addresses differ after clone | defect | windows-ci | in-progress | unrated | 2026-11-27 |  |  |  |  |  | docs/results/5-podman-windows.md |
+| `platform-veneer-address-in-child` | Veneer addresses differ after clone | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/results/1h-platform-share.md |
+| `platform-rare-hang-under-exec-load` | Rare hang under heavy exec load | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/1h-platform-share.md |
 
 ### Details per node
 
@@ -184,7 +188,7 @@ flowchart TB
 | `platform-hardware-acceleration` | Use hardware acceleration when available |  |  | Where the Windows Hypervisor Platform is enabled, a second platform could run guests in a hardware VM, chosen automatically like runsc's autoplatform. | Done when: a WHPX platform is picked automatically when available and falls back to stub processes. |  |  |  |  |
 | `platform-zpoline-hooks` | Hook syscalls like zpoline | A standard user cannot map memory below 0x10000, so zpoline's trampoline at address 0 cannot be ported to Windows and syscall sites must be rewritten to traps or jumps instead. |  | Rewriting each syscall into a call to a trampoline at address 0 cannot work on Windows. |  |  |  |  |  |
 | `platform-fs-base-repair` | Restore the TLS register after switches |  |  | The stub sets the guest thread-local register on every return to the guest; losses from preemption arrive as debug events and the Sentry restores it. | Done in the prototype: repair via a per-thread trampoline from the debug event. A genuine null dereference costs 20 repair events before it is reported. |  |  |  |  |
-| `platform-no-fsgsbase-fallback` | Support CPUs without FSGSBASE |  |  | On CPUs or VMs without the instruction to set the register, rewrite the guest's %fs accesses instead. | Done when: a glibc program runs on a machine without FSGSBASE. |  |  |  |  |
+| `platform-no-fsgsbase-fallback` | Support CPUs without FSGSBASE |  |  | On CPUs or VMs without the instruction to set the thread-local register (like the dev VM), rewrite every %fs-prefixed guest instruction into a veneer that reads the base from per-thread storage; chosen automatically by CPUID. | Done when: forced rewrite mode passes the guest suites and the Podman workflow on windows-latest, and runsc.exe runs busybox on the dev VM. |  |  |  |  |
 | `platform-exception-stack` | Check what exceptions do to stacks | A VEH on the guest stack is not safe |  | Windows writes exception data onto the faulting thread stack; check whether that destroys data Linux code keeps there, and what happens on unmapped stacks. | Done when: S7 results are in docs/results/0b-windows.md. |  |  |  |  |
 | `platform-static-guest-from-memory` | Run a static guest from memory | The real Sentry on a hosted Windows runner runs static asm, glibc (static and PIE), fork, Go and JIT guests from an in-memory tmpfs with correct output and exit codes |  | Thinnest end-to-end slice: the Sentry on Windows runs one embedded static program from its own memory filesystem, without host files, network or threads. | Done when: a static hello-world and a static program that forks and execs run under the Sentry in Windows CI. |  |  |  |  |
 | `platform-veh-on-guest-stack-unsafe` | Exceptions overwrite guest stacks |  |  | Windows writes about 3 KB of exception data below the faulting thread stack pointer, so in-process handlers can corrupt Linux code; faults must go to the Sentry as debugger instead. |  |  |  |  |  |
@@ -199,7 +203,8 @@ flowchart TB
 | `platform-fast-process-start` | Start guest processes fast | A free window for the Windows loader plus cached, parallel scanning cut a glibc hello from about 380 ms to 42 ms and fork + wait to about 10 ms extra | about 380 ms to 42 ms | A guest process takes 280-560 ms to start through the Sentry, against 18 ms for a bare stub; profile the gap and keep a pool of ready stubs. | Done when: static glibc hello starts and exits through the Sentry in under 50 ms median on windows-latest, and fork+waitpid adds under 50 ms; the profile is written up. |  |  |  |  |
 | `platform-split-syscall-unpatched` | Syscalls split across mappings |  |  | A syscall instruction whose two bytes fall into two separately mapped ranges is not found by the scan, so it would reach the Windows kernel. | Fixed when: a test guest with a syscall straddling two MapFile ranges is patched and served correctly. |  |  |  |  |
 | `platform-map-files-without-sections` | Map files not in the memory file |  |  | The platform can only map pages of the Sentry memory file; erofs image pages (and any other memmap.File) make the guest fault on its first instruction. | Fixed when: runsc run boots busybox from an erofs image root (mkfs.erofs --all-root) on windows-latest. |  |  |  |  |
-| `platform-veneer-address-in-child` | Veneer addresses differ after clone |  |  | A syscall through a relocated veneer returns into the veneer; after clone into a new address space the veneers sit elsewhere, so the child resumes on a zero page and crashes. | Fixed when: test/guests/clonesys.c (clonesys, clonesys_ns) passes and podman run starts a container. |  |  |  |  |
+| `platform-veneer-address-in-child` | Veneer addresses differ after clone |  |  | A syscall through a relocated veneer returns into the veneer; after clone into a new address space the veneers sit elsewhere, so the child resumes on a zero page and crashes. | Fixed: patch windows end at the syscall where possible, other veneers get a platform-wide address per site; clonesys cases are required. |  |  |  |  |
+| `platform-rare-hang-under-exec-load` | Rare hang under heavy exec load |  |  | A multithreaded guest that forks many children hangs in about 1 of 50 runs: the debugger loop and an interrupt capture the same thread at once. | Fixed when: the gopodman hunt step passes 200 runs in a row; suggested: capture threads with a request flag the stub polls instead of SuspendThread. |  |  |  |  |
 
 ### Folded items per node
 

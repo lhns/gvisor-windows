@@ -74,6 +74,8 @@ type thread struct {
 	evReply uintptr        // the Sentry signals it after a reply
 	hThread uintptr
 	tid     uint32
+	// diagnostics: replies sent, SetEvent calls made for them
+	nReply, nSet, nSetFail, lastSetErr atomic.Uint32
 
 	// stopMu serializes stopping the thread (debug event handler, interrupt).
 	stopMu sync.Mutex
@@ -104,9 +106,15 @@ func (as *addressSpace) slot(idx int) *thread {
 	addr := stubasm.CtlBase + uint64(idx)*stubasm.ThreadRegion
 	t := &thread{as: as, idx: idx, addr: addr,
 		page: unsafe.Add(as.ctlView, uint64(idx)*stubasm.ThreadRegion)}
+	// The control section is reserved, not committed; commit this slot (shared
+	// by all views of the section, so the stub sees it too).
+	if _, err := windows.VirtualAlloc(uintptr(t.page), uintptr(stubasm.ThreadRegion), windows.MEM_COMMIT, windows.PAGE_READWRITE); err != nil {
+		panic(fmt.Sprintf("winstub: cannot commit a thread slot: %v", err))
+	}
 	t.evReq, t.evReply = newEvent(), newEvent()
 	*t.u64(stubasm.PgNtSet) = as.p.ntSet
 	*t.u64(stubasm.PgNtWait) = as.p.ntWait
+	*t.u64(stubasm.PgNtTerm) = as.p.ntTerm
 	*t.u64(stubasm.PgHReq) = uint64(dupInto(as.h, t.evReq))
 	*t.u64(stubasm.PgHReply) = uint64(dupInto(as.h, t.evReply))
 	*t.u64(stubasm.PgStkTop) = addr + stubasm.ThreadRegion - 0x100
@@ -139,16 +147,43 @@ func (as *addressSpace) allocThread() (*thread, error) {
 	t.started, t.parked, t.lastKind = false, false, reqSyscall
 	t.req = request{}
 	*t.u32(0), *t.u32(stubasm.PgStubSlp), *t.u32(stubasm.PgCtlSlp), *t.u32(stubasm.PgMode) = 0, 0, 0, 0
+	*t.u32(stubasm.PgRunning) = 0
+	pResetEvent.Call(t.evReq) // no stale signal from the previous thread of the slot
+	pResetEvent.Call(t.evReply)
 	return t, nil
 }
 
 // freeThread terminates a thread and returns its slot.
 func (as *addressSpace) freeThread(t *thread) {
 	as.tmu.Lock()
-	defer as.tmu.Unlock()
-	if t.started && !as.dead.Load() {
-		pTerminateThread.Call(t.hThread, 0)
+	h := t.hThread
+	terminate := t.started && !as.dead.Load() && h != 0
+	as.tmu.Unlock()
+	if terminate {
+		// A thread waiting for its reply ends itself when answered with mode 2: it
+		// leaves no ntdll lock behind, which TerminateThread may.
+		if t.state() == 1 {
+			*t.u32(stubasm.PgMode) = 2
+			atomic.StoreUint32(t.u32(0), 2)
+			if atomic.LoadUint32(t.u32(stubasm.PgStubSlp)) != 0 {
+				pSetEvent.Call(t.evReply)
+			}
+			if r, _, _ := pWaitSingle.Call(h, 2000); r != 0 {
+				pTerminateThread.Call(h, 0)
+			}
+		} else {
+			as.nTermFallback.Add(1)
+		pTerminateThread.Call(h, 0)
+		}
+		// TerminateThread is asynchronous. Until the thread is gone it may still
+		// be waiting on the slot's reply event, and would take the wake-up meant
+		// for the next thread of the slot. (Not under tmu: the thread's exit
+		// waits for the debugger loop to continue its EXIT_THREAD event, and the
+		// loop takes tmu.)
+		pWaitSingle.Call(h, 5000)
 	}
+	as.tmu.Lock()
+	defer as.tmu.Unlock()
 	if t.hThread != 0 {
 		pCloseHandle.Call(t.hThread)
 		t.hThread = 0
@@ -162,6 +197,20 @@ func (as *addressSpace) freeThread(t *thread) {
 
 // startThread creates the Windows thread of t; it begins at the page's registers.
 func (as *addressSpace) startThread(t *thread) error {
+	// One thread is created at a time, and the next only after this one runs the
+	// stub's entry code: several threads starting at once in a process under a
+	// debugger sometimes never get past their start.
+	as.createMu.Lock()
+	defer as.createMu.Unlock()
+	created := false
+	defer func() {
+		for i := 0; created && i < 5000 && atomic.LoadUint32(t.u32(stubasm.PgRunning)) == 0; i++ {
+			if as.dead.Load() {
+				return
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}()
 	var tid uint32
 	const createSuspended = 4
 	h, err := call(pCreateRemoteThr, as.h, 0, 0, uintptr(stubasm.StubCode+stubasm.OffThreadEnt), uintptr(t.addr), createSuspended, uintptr(unsafe.Pointer(&tid)))
@@ -177,6 +226,7 @@ func (as *addressSpace) startThread(t *thread) error {
 		return fmt.Errorf("ResumeThread: %v", e)
 	}
 	Trace("thread %d started (tid %d)", t.idx, tid)
+	created = true
 	return nil
 }
 
@@ -189,6 +239,7 @@ func (as *addressSpace) startThread(t *thread) error {
 func (p *Platform) newAS() (*addressSpace, error) {
 	Trace("as: start")
 	as := newAddressSpace(p)
+	registerAS(as)
 	go as.debugLoop()
 	if err := <-as.started; err != nil {
 		<-as.loopDone
@@ -236,8 +287,12 @@ func (as *addressSpace) start() error {
 		return fail(err)
 	}
 	Trace("start: placeholders reserved")
-	section := func(size uint64) (uintptr, unsafe.Pointer, error) {
-		s, err := call(pCreateMapping, ^uintptr(0), 0, pageExecRW, uintptr(size>>32), uintptr(size&0xFFFFFFFF), 0)
+	section := func(size uint64, reserve bool) (uintptr, unsafe.Pointer, error) {
+		prot := uintptr(pageExecRW)
+		if reserve {
+			prot |= secReserveAttr // pages are committed when a thread slot is first used
+		}
+		s, err := call(pCreateMapping, ^uintptr(0), 0, prot, uintptr(size>>32), uintptr(size&0xFFFFFFFF), 0)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -248,10 +303,10 @@ func (as *addressSpace) start() error {
 		return s, ptr(b), nil
 	}
 	var err error
-	if as.areaSec, as.areaView, err = section(stubasm.AreaHi - stubasm.AreaLo); err != nil {
+	if as.areaSec, as.areaView, err = section(stubasm.AreaHi-stubasm.AreaLo, false); err != nil {
 		return fail(fmt.Errorf("stub area: %w", err))
 	}
-	if as.ctlSec, as.ctlView, err = section(stubasm.CtlSize); err != nil {
+	if as.ctlSec, as.ctlView, err = section(stubasm.CtlSize, true); err != nil {
 		return fail(fmt.Errorf("control area: %w", err))
 	}
 	Trace("start: sections created")
@@ -310,6 +365,7 @@ func (as *addressSpace) debugLoop() {
 		}
 		status := uint32(dbgContinue)
 		exited := false
+		as.lastEvent.Store(fmt.Sprintf("handling event %d tid %d code %#x", ev.code(), ev.tid(), ev.u32(16)))
 		if traceOn && ev.code() != 1 {
 			name := ""
 			if h := uintptr(ev.u64(16)); (ev.code() == 6 || ev.code() == 3) && h != 0 {
@@ -334,7 +390,8 @@ func (as *addressSpace) debugLoop() {
 		case 5: // EXIT_PROCESS
 			exited = true
 		}
-		pContinueDebug.Call(uintptr(ev.pid()), uintptr(ev.tid()), uintptr(status))
+		cr, _, ce := pContinueDebug.Call(uintptr(ev.pid()), uintptr(ev.tid()), uintptr(status))
+		as.lastEvent.Store(fmt.Sprintf("continued event %d tid %d code %#x (status %#x, ContinueDebugEvent ok=%v err=%v)", ev.code(), ev.tid(), ev.u32(16), status, cr != 0, ce))
 		if exited {
 			as.markDead()
 			return
@@ -383,14 +440,23 @@ func (as *addressSpace) onException(ev *debugEvent, ctx *ctxBuf, seenBP *bool) u
 	t.mu.Lock()
 	parked := t.parked
 	t.mu.Unlock()
-	if parked {
-		return dbgContinue // an interrupt got the thread first
-	}
 	// A stale event for a thread that was moved away meanwhile.
 	if !ctx.get(t.hThread, ctxControlInt) {
 		return dbgContinue
 	}
 	rip := *ctx.u64(ctxRipOff)
+	if parked {
+		// An interrupt captured the thread (saved its registers and redirected
+		// it) while this event was pending. The event may resume the thread with
+		// the context it had when it faulted, undoing the redirect: if the thread
+		// still is at the faulting instruction, redirect it again. Its registers
+		// are in the page already.
+		if rip == excAddr {
+			*ctx.u64(ctxRipOff) = stubasm.StubCode + stubasm.OffTrampPark
+			ctx.set(t.hThread)
+		}
+		return dbgContinue
+	}
 	if rip != excAddr && code != excBreakpoint && code != excSingleStep {
 		return dbgContinue
 	}
@@ -508,6 +574,19 @@ func (as *addressSpace) interrupt(t *thread) bool {
 	defer t.stopMu.Unlock()
 	if t.state() == 1 || !t.started {
 		return true // a request is already there
+	}
+	// A thread still in ntdll's start-up (waiting for the debugger to continue its
+	// CREATE_THREAD event, running the loader) is left alone: suspending it there
+	// can wedge it for good.
+	if atomic.LoadUint32(t.u32(stubasm.PgRunning)) == 0 {
+		return false
+	}
+	// A thread that has just been answered is waking up from its wait in the
+	// kernel (or still asleep in it): suspending it there loses the wake-up
+	// often enough to hang the guest. Only a thread that has gone through the
+	// whole reply path (state 0) and runs guest code is captured.
+	if t.state() == 2 || atomic.LoadUint32(t.u32(stubasm.PgStubSlp)) != 0 {
+		return false
 	}
 	t.mu.Lock()
 	if t.parked {

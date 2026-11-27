@@ -218,3 +218,13 @@ func dupInto(proc, h uintptr) uintptr {
 	pDuplicateHandle.Call(^uintptr(0), h, proc, uintptr(unsafe.Pointer(&d)), 0, 0, 2)
 	return d
 }
+
+const secReserveAttr = 0x4000000 // SEC_RESERVE
+
+var pGetExitCode = k32.NewProc("GetExitCodeThread")
+
+var pResetEvent = k32.NewProc("ResetEvent")
+
+var pNtTerminateThread = ntd.NewProc("NtTerminateThread")
+
+var pQueryThreadCycle = k32.NewProc("QueryThreadCycleTime")
