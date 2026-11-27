@@ -94,8 +94,6 @@ type thread struct {
 	dyn *fsVenInfo
 
 	lastRepairRIP uint64
-	lastRepair    time.Time
-	repairN       int
 }
 
 func (t *thread) u64(off int) *uint64 { return (*uint64)(unsafe.Add(t.page, off)) }
@@ -613,20 +611,17 @@ func (as *addressSpace) readStub(a uint64, n int) ([]byte, bool) {
 // loses the base when Windows deschedules the thread. The thread continues in
 // its repair routine, which reloads the base and returns to the instruction.
 func (as *addressSpace) repairFS(t *thread, ctx *ctxBuf, rip uint64) bool {
-	now := time.Now()
 	// The base is lost whenever Windows deschedules the thread, and every debug
 	// event of the process stops all its threads, so under a storm of events (a
-	// Go collector with workers on all CPUs) one instruction can be repaired many
-	// times in a row. Only a long run of repairs of the same instruction in quick
-	// succession means a genuine fault at a low address (it costs a fraction of a
-	// second to report one).
-	if rip == t.lastRepairRIP && now.Sub(t.lastRepair) < 20*time.Millisecond {
-		t.repairN++
-	} else {
-		t.repairN = 0
-	}
-	t.lastRepairRIP, t.lastRepair = rip, now
-	if t.repairN >= 2000 {
+	// Go collector with workers on all CPUs) one instruction can be repaired any
+	// number of times. The routine compares the CPU's base with the expected one
+	// each time: a fault with the right base is the guest's own, and when the same
+	// instruction has faulted so three times in a row it is reported.
+	if rip != t.lastRepairRIP {
+		t.lastRepairRIP = rip
+		*t.u64(stubasm.PgEqualN) = 0
+	} else if *t.u64(stubasm.PgEqualN) >= 3 {
+		*t.u64(stubasm.PgEqualN) = 0
 		return false
 	}
 	*t.u64(stubasm.PgRetRIP) = rip
