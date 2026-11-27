@@ -20,6 +20,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
+	"log"
 	"os"
 	"sort"
 	"unsafe"
@@ -37,6 +38,9 @@ import (
 
 // fsForceUD2 (WINSTUB_FSUD2=1, a diagnostic) leaves every %fs instruction to the debugger path.
 var fsForceUD2 = os.Getenv("WINSTUB_FSUD2") != ""
+
+// fsLog (WINSTUB_FSLOG=1) logs the threads moved out of veneers.
+var fsLog = os.Getenv("WINSTUB_FSLOG") != ""
 
 // fsVenInfo describes a veneer in the address space.
 type fsVenInfo struct {

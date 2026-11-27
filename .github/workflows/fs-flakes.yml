@@ -65,7 +65,7 @@ jobs:
           for ($i = 1; $i -le 3; $i++) {
             & tools/windows/ci/run-as-standard-user.ps1 `
               -Program C:\ci\bin\runsctest.exe `
-              -Arguments @('-fsmode', $env:WINSTUB_FSMODE, $(if ($env:FSUD2) { '-fsud2' } else { '-fsmode=' + $env:WINSTUB_FSMODE }), '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work',"C:\ci\work\std-apt$i",'-only','aptrename','-stress-iters','200','-timeout','600s') `
+              -Arguments @('-fsmode', $env:WINSTUB_FSMODE, $(if ($env:FSUD2) { '-fsud2' } else { '-fsmode=' + $env:WINSTUB_FSMODE }), '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work',"C:\ci\work\std-apt$i",'-only','aptrename','-fslog','-stress-iters','200','-timeout','600s') `
               -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 900
             if ($LASTEXITCODE -ne 0) { $fail++ }
           }
