@@ -43,7 +43,6 @@ jobs:
           h=test/e2e/podman-acceptance/harness
           sudo mkdir -p /tmp/root/etc/containers /tmp/root/run /tmp/root/tmp /tmp/root/var/lib/containers
           sudo cp $h/containers.conf /tmp/root/etc/containers/containers.conf
-          sudo sed -i '/^\[engine\]/a static_dir = "/run/podman-static"' /tmp/root/etc/containers/containers.conf
           sudo sed 's/^driver = .*/driver = "vfs"/' $h/storage.conf | sudo tee /tmp/root/etc/containers/storage.conf >/dev/null
           # Marker that makes Podman ask the gateway to expose published ports (libpod/networking_machine.go);
           # the windows-nat gateway answers at gateway.containers.internal (10.0.2.2:80).
