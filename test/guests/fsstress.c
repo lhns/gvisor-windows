@@ -138,6 +138,7 @@ static void mtimes(void) {
   }
   close(fd);
   unlink(p);
+  if (same || back || future) { errno = 0; fail("E:mtime", 0, "mtime of consecutive writes must increase and not be in the future"); }
   printf("mtime on %s: %ld writes, %ld with the same mtime as the previous, %ld backwards, %ld in the future, smallest step %ld ns\n", base, n, same, back, future, minstep);
   fflush(stdout);
 }

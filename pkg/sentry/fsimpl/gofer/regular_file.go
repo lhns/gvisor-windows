@@ -234,6 +234,9 @@ func (fd *regularFileFD) pwrite(ctx context.Context, src usermem.IOSequence, off
 		// file_update_time(). This is d.touchCMtime(), but without locking
 		// d.inode.metadataMu (recursively).
 		d.touchCMtimeLocked()
+	} else if n, ok := d.inode.impl.(interface{ noteWrite(now int64) }); ok {
+		// gvisor-windows: NTFS gives consecutive writes the same LastWriteTime.
+		n.noteWrite(d.inode.fs.clock.Now().Nanoseconds())
 	}
 
 	rw := getDentryReadWriter(ctx, d, offset)
