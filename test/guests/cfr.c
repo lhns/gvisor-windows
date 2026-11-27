@@ -98,7 +98,8 @@ static void fragmented(const char *dir, const char *src) {
     }
     close(pfd[1]);
     char out[64] = {0};
-    int n = read(pfd[0], out, sizeof out - 1);
+    int n = 0, r;
+    while (n < (int)sizeof out - 1 && (r = read(pfd[0], out + n, sizeof out - 1 - n)) > 0) n += r;
     int stt;
     waitpid(p, &stt, 0);
     snprintf(name, sizeof name, "run of a fragmented copy, stride %d", strides[k]);
