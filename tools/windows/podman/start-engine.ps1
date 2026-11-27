@@ -27,6 +27,7 @@ param(
   [string]$Share,                                 # Windows folder to expose to the engine
   [string]$StorageDriver = 'vfs',
   [switch]$StaticOnTmpfs,
+  [switch]$Quiet,                                 # end-user run: no --debug logs, engine-env probe or hang dump
   [string]$Podman,                                # podman.exe, to wait for the engine
   [int]$TimeoutSeconds = 300
 )
@@ -43,7 +44,7 @@ function Stop-Engine {
       # SIGTERM first (runsc kill reaches init through the control pipe of `run`), so podman closes its store the way
       # the Linux harness's `pkill`/`docker stop` lets it; a hard kill is the fallback.
       & $Runsc kill "podman-$Name" TERM *> $null
-      if (-not $p.WaitForExit(60000)) { Write-Host 'start-engine: no exit 60 s after SIGTERM, killing'; $p.Kill($true); $p.WaitForExit(30000) | Out-Null }
+      if (-not $p.WaitForExit(60000)) { Write-Host 'start-engine: no exit 60 s after SIGTERM, killing'; & taskkill /PID $p.Id /T /F *> $null; $p.WaitForExit(30000) | Out-Null }
     }
     Remove-Item $pidFile -Force
   }
@@ -104,6 +105,7 @@ function Start-Engine {
   $probe = '{ grep -E "^(Uid|Gid|NoNewPrivs|Seccomp|Cap)" /proc/self/status; echo uid_map; cat /proc/self/uid_map; echo gid_map; cat /proc/self/gid_map; echo cap_last_cap; cat /proc/sys/kernel/cap_last_cap; readlink /proc/self/ns/user; stat -L -c %i /proc/self/ns/user; echo env; env | sort; } > /var/lib/containers/engine-env.txt 2>&1; '
   # The overlay driver falls back to fuse-overlayfs when it is in the image; its FUSE daemon cannot run in the sandbox, so a run that wants the
   # Sentry's overlay removes it from the engine's writable root (ENGINE_NO_FUSE_OVERLAYFS=1; the image keeps it, as the Linux harness image does).
+  if ($Quiet) { $probe = '' }
   if ($env:ENGINE_NO_FUSE_OVERLAYFS) { $probe += 'rm -f /usr/bin/fuse-overlayfs /usr/sbin/fuse-overlayfs; ' }
   $spec = [ordered]@{
     ociVersion = '1.0.2'
@@ -141,11 +143,12 @@ function Start-Engine {
   & icacls $sockDir /inheritance:r /grant:r "$($env:USERNAME):(OI)(CI)F" /Q | Out-Null
   $sock = Join-Path $sockDir 'podman.sock'
   $sock | Set-Content (Join-Path $Work 'sock.path')
-  $args = @('--debug', "--debug-log=$logs\", '--network=windows-nat', '--overlay2=root:memory', '--in-sandbox-cgroup=v2', "--pipe-forward=8888:$pipe", "--unix-forward=8888:$sock") + @($env:RUNSC_EXTRA_FLAGS -split ' ' | Where-Object { $_ }) + @('run', '-bundle', $bundle, "podman-$Name")
+  $debugFlags = if ($Quiet) { @() } else { @('--debug', "--debug-log=$logs\") }
+  $args = $debugFlags + @('--network=windows-nat', '--overlay2=root:memory', '--in-sandbox-cgroup=v2', "--pipe-forward=8888:$pipe", "--unix-forward=8888:$sock") + @($env:RUNSC_EXTRA_FLAGS -split ' ' | Where-Object { $_ }) + @('run', '-bundle', $bundle, "podman-$Name")
   $stamp = Get-Date -Format "HHmmss"
   # A sandbox still alive after 6 minutes (an acceptance takes about 5) writes the stacks of its goroutines and the
   # winstub state (hang hunt, runsc/winrunsc); the file is uploaded with the logs.
-  $env:RUNSC_HANG_DUMP = (Join-Path $logs "hang-$stamp.txt") + ":360"
+  if (-not $Quiet) { $env:RUNSC_HANG_DUMP = (Join-Path $logs "hang-$stamp.txt") + ":360" }
   $p = Start-Process -FilePath $Runsc -ArgumentList $args -PassThru -WindowStyle Hidden `
     -RedirectStandardOutput (Join-Path $logs "engine-$stamp.out") -RedirectStandardError (Join-Path $logs "engine-$stamp.err")
   $p.Id | Set-Content $pidFile

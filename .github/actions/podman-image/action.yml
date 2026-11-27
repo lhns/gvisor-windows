@@ -1,0 +1,16 @@
+name: podman-image
+description: podman.erofs, the root of the Podman engine, built from quay.io/podman/stable (cached on the version and the harness files).
+inputs:
+  podman-version: {description: "Podman version of the quay.io/podman/stable image", required: true}
+runs:
+  using: composite
+  steps:
+    # The image depends only on the podman version, the harness files and the build script (bump v3 to rebuild).
+    - uses: actions/cache@v4
+      id: cache
+      with:
+        path: podman.erofs
+        key: podman-erofs-v3-${{ inputs.podman-version }}-${{ hashFiles('test/e2e/podman-acceptance/harness/**', 'tools/windows/podman/build-image.sh') }}
+    - if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: tools/windows/podman/build-image.sh '${{ inputs.podman-version }}' podman.erofs
