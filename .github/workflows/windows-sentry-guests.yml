@@ -21,24 +21,11 @@ jobs:
           gcc -nostdlib -static -no-pie -o out/hello_asm $G/hello.S
           gcc -nostdlib -static -no-pie -o out/bench_asm $G/bench.S
           gcc -nostdlib -static -no-pie -o out/getpid_asm $G/getpid.S
-          gcc -static -no-pie -O1 -fstack-protector-all -o out/hello_glibc $G/hello.c
-          gcc -static-pie -O1 -fstack-protector-all -o out/hello_glibc_pie $G/hello.c
-          gcc -static -no-pie -O1 -o out/fork_glibc $G/fork.c
-          gcc -static -no-pie -O1 -o out/jit_glibc $G/jit.c
-          gcc -static -no-pie -O1 -o out/clonesys $G/clonesys.c
-          gcc -static -no-pie -O1 -o out/clonesys_ns $G/clonesys.c
+          docker run --rm -v "$PWD:/w" -w /w debian:bookworm sh -c 'apt-get update -qq && apt-get install -y -qq gcc libc6-dev >/dev/null && sh test/guests/build-glibc.sh out all'
           (cd $G/gohello && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $GITHUB_WORKSPACE/out/hello_go .)
           (cd $G/gospin && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $GITHUB_WORKSPACE/out/gospin_go .)
           # Dynamic, exec, shell, signal and thread guests run from a root filesystem tar.
           sudo apt-get update -qq && sudo apt-get install -y busybox-static
-          gcc -O1 -fstack-protector-all -o out/hello_dyn $G/hello.c
-          gcc -O1 -no-pie -o out/hello_dyn_nopie $G/hello.c
-          gcc -O1 -shared -fPIC -o out/libplug.so $G/plug.c
-          gcc -O1 -o out/dlopen_glibc $G/dlopen.c -ldl
-          gcc -static -no-pie -O1 -o out/exec $G/exec.c
-          gcc -static -no-pie -O1 -pthread -o out/signals $G/signals.c
-          gcc -static -no-pie -O1 -pthread -o out/threads $G/threads.c
-          gcc -O1 -pthread -o out/threads_dyn $G/threads.c
           (cd $G/gostress && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $GITHUB_WORKSPACE/out/gostress .)
           (cd $G/gopodman && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $GITHUB_WORKSPACE/out/gopodman .)
           docker run --rm -v "$PWD:/w" -w /w alpine:3.20 sh -c             'apk add --no-cache gcc musl-dev >/dev/null && gcc -O1 -fstack-protector-all -o out/hello_musl test/guests/hello.c && cp -L /lib/ld-musl-x86_64.so.1 out/ld-musl'
@@ -48,12 +35,10 @@ jobs:
           cp out/libplug.so $R/lib/
           cp out/ld-musl $R/lib/ld-musl-x86_64.so.1
           ln -s ld-musl-x86_64.so.1 $R/lib/libc.musl-x86_64.so.1
-          cp /bin/busybox $R/bin/busybox
+          docker run --rm -v "$PWD:/w" -w /w debian:bookworm sh -c 'apt-get update -qq && apt-get install -y -qq busybox-static >/dev/null && cp /bin/busybox out/busybox'
+          cp out/busybox $R/bin/busybox
           for a in sh cat wc sort uniq grep sed sleep kill true false echo printf; do ln -s busybox $R/bin/$a; done
-          for b in out/hello_dyn out/dlopen_glibc out/threads_dyn; do
-            ldd $b | grep -o '/[^ ]*' | while read l; do cp --parents -L "$l" $R/; done
-          done
-          cp --parents -L /lib/x86_64-linux-gnu/libm.so.6 /lib/x86_64-linux-gnu/libgcc_s.so.1 $R/
+          cp -a out/glibclibs/. $R/
           cp $G/t/*.sh $R/t/
           find $R | sort | head -60
           tar -C $R -cf out/rootfs.tar .

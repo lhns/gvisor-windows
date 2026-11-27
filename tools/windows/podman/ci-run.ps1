@@ -1,6 +1,11 @@
 # Runs as the standard CI user: starts the engine in runsc and the acceptance test against it.
-param([Parameter(Mandatory)][string]$Root, [string]$StorageDriver = 'vfs', [string]$Only = 'all')
+param([Parameter(Mandatory)][string]$Root, [string]$StorageDriver = 'vfs', [string]$Only = 'all', [string]$FsMode = 'default')
 $ErrorActionPreference = 'Continue'
+# Engine settings of the platform under test (ADR 0020): rewrite mode also keeps AVX-512 visible.
+if ($FsMode -eq 'native') { $env:WINSTUB_FSMODE = 'native' }
+if ($FsMode -eq 'rewrite') { $env:WINSTUB_FSMODE = 'rewrite'; $env:WINSTUB_KEEP_AVX512 = '1' }
+"fsmode=$FsMode WINSTUB_FSMODE=$env:WINSTUB_FSMODE WINSTUB_KEEP_AVX512=$env:WINSTUB_KEEP_AVX512"
+$acceptStart = Get-Date
 $repo = (Resolve-Path "$PSScriptRoot\..\..\..").Path
 $work = "$Root\std"; New-Item -ItemType Directory -Force $work, "$work\share" | Out-Null
 $podman = (Get-ChildItem "$Root\tools" -Recurse -Filter podman.exe | Select-Object -First 1).FullName
@@ -24,5 +29,6 @@ $purl = 'unix://' + ($sock -replace '^[A-Za-z]:', '' -replace '\\', '/')
 & "$repo\test\e2e\podman-acceptance\run.ps1" -Podman $podman -Docker $docker -PodmanUrl $purl -Pipe podman-ci -ShareDir "$work\share" `
   -Only $steps -EngineCtl $ctl -TtyDrive "$Root\bin\ttydrive.exe" -ResultsDir "$work\results"
 $rc = $LASTEXITCODE
+"acceptance seconds: $([int]((Get-Date) - $acceptStart).TotalSeconds)"
 try { & $ctl -Action stop } catch { }
 exit $rc

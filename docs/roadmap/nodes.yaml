@@ -464,6 +464,8 @@
   - fs-copied-file-too-short
   - workloads-tty-through-windows-client
   - workloads-isolation-flake
+  - platform-rewrite-mode-slow-engine
+  - workloads-volume-lost-on-restart
   replaced_by: []
   lane: windows-ci
   start: ''
@@ -2137,6 +2139,7 @@
   end: ''
   folded:
   - Debug loop no longer waits forever after TerminateProcess; unverified because CI did not reproduce the hang (2026-11-27, commit d5e97d844)
+  - 'Bounded anchor waits, thread restart and stub abandonment: 98 of 100 pass with the exclusive cache, 16 of 16 shared (2026-11-27, commit 0c354f20)'
   overview: false
   id: platform-rare-hang-under-exec-load
   title: Rare hang under heavy exec load
@@ -2145,7 +2148,8 @@
   state: in-progress
   lane: windows-ci
   plain: 'A guest that forks many children hangs now and then: about 1 in 50 gopodman runs, and 9 in 48 fork+exec loops through runsc.exe with the exclusive root cache (2 in 48 with the shared cache); the
-    shell waits in wait4 with no child task. Syscall-test runs show the same root: a stub process that never finishes starting (one thread in a kernel wait), and newAS/Release wait forever on it.'
+    shell waits in wait4 with no child task. Syscall-test runs show the same root: a stub process that never finishes starting (one thread in a kernel wait), and newAS/Release wait forever on it. The Podman
+    engine also hangs in vforkStop (2 of 8 runs): the vfork child never gets its new address space.'
   notes: 'Fixed when: the gopodman hunt step passes 200 runs in a row; suggested: capture threads with a request flag the stub polls instead of SuspendThread.'
 - outcome: unrated
   evidence:
@@ -2299,8 +2303,8 @@
   kind: defect
   state: next
   lane: windows-ci
-  plain: 'The engine dies in about 1 run in 4: Go GC SIGSEGV at 0xfffffffffffffff8 (Go %fs:-8 with a zero base) in its AVX-512 path. Guests run CPUID natively, so hiding AVX-512 in the Sentry cannot work;
-    the zero base points at a missed %fs repair in native mode.'
+  plain: 'Podman''s Go GC crashed at 0xfffffffffffffff8; a likely cause was found: a straddling instruction at a text-piece start swallowed Go''s mov %fs:-8 load, now fixed. AVX-512 stays hidden until repeated
+    acceptance runs are clean.'
   notes: 'Fixed when: a guest keeps zmm and k registers across syscalls, faults and interrupts on an AVX-512 runner, and the CPUID workaround in runsc/boot/loader.go is removed.'
 - outcome: unrated
   evidence:
@@ -2363,22 +2367,24 @@
 - outcome: unrated
   evidence:
   - docs/results/1j-no-fsgsbase.md
+  - docs/results/1k-platform-next.md
   verdict_quote: ''
   headline: ''
   depends_on: []
   replaced_by: []
   start: '2026-11-27'
-  end: ''
+  end: '2026-11-27'
   folded: []
   overview: false
   id: platform-avx-on-non-avx-cpu
   title: glibc runs AVX code on a non-AVX CPU
   track: platform
   kind: defect
-  state: next
+  state: done
   lane: windows-local
   plain: On the dev VM a static glibc hello dies with SIGILL on vmovd (AVX) in start-up code, although the CPU has no AVX; busybox runs fine.
-  notes: 'Fixed when: the hello and glibc guests run on the dev VM in rewrite plus fxsave mode.'
+  notes: 'Not a platform bug: the runner''s static glibc runs AVX in init_cpu_features; guests are now built in debian:bookworm. Found on the way: text pieces starting inside an instruction were decoded
+    from garbage, now decoded with the tail of the piece below.'
 - outcome: unrated
   evidence:
   - docs/results/1j-no-fsgsbase.md
@@ -2398,3 +2404,59 @@
   lane: windows-ci
   plain: python3 with libpython and libc needs about 8500 %fs veneers against room for about 7000, and 24% of far %fs sites in Rust PIE binaries such as netavark fall back to the 100 us debugger path.
   notes: 'Fixed when: python3 and netavark run in rewrite mode with under 1% of %fs executions on the debugger path.'
+- outcome: unrated
+  evidence: &id004
+  - docs/results/5-podman-windows.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: &id005 []
+  replaced_by: &id006 []
+  start: '2026-11-27'
+  end: ''
+  folded: &id007 []
+  overview: false
+  id: platform-rewrite-mode-slow-engine
+  title: Podman engine stalls in rewrite mode
+  track: platform
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: With %fs rewriting, the Podman engine answers version after 29-52 s instead of 2 s and then goes silent; no acceptance run completed in 8 tries.
+  notes: 'Fixed when: the acceptance completes in rewrite mode at native speed in 8 of 8 runs.'
+- outcome: unrated
+  evidence: *id004
+  verdict_quote: ''
+  headline: ''
+  depends_on: *id005
+  replaced_by: *id006
+  start: '2026-11-27'
+  end: ''
+  folded: *id007
+  overview: false
+  id: workloads-volume-lost-on-restart
+  title: Volume data lost across engine restart
+  track: workloads
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: In 2 of 5 complete native runs, the named volume written before the engine restart is empty afterwards (step 9).
+  notes: 'Fixed when: step 9 passes in 8 of 8 runs.'
+- outcome: unrated
+  evidence:
+  - docs/results/1k-platform-next.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-27'
+  end: ''
+  folded: []
+  overview: false
+  id: fs-disown-children-nil-deref
+  title: Nil dereference in gofer invalidation
+  track: fs
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: The Sentry panics with a nil dereference in gofer dentry.disownAllChildrenForInvalidation during the bench test in rewrite-mode CI legs.
+  notes: 'Fixed when: the runsc bench test passes in all three CI legs 10 times in a row.'

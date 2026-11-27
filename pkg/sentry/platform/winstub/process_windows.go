@@ -206,18 +206,38 @@ func (as *addressSpace) freeThread(t *thread) {
 func (as *addressSpace) startThread(t *thread) error {
 	// One thread is created at a time, and the next only after this one runs the
 	// stub's entry code: several threads starting at once in a process under a
-	// debugger sometimes never get past their start.
+	// debugger sometimes never get past their start. A thread that still has not
+	// run after three seconds is replaced (it sits in ntdll's start-up, before any
+	// stub code, so ending it leaves nothing behind that matters).
 	as.createMu.Lock()
 	defer as.createMu.Unlock()
-	created := false
-	defer func() {
-		for i := 0; created && i < 5000 && atomic.LoadUint32(t.u32(stubasm.PgRunning)) == 0; i++ {
+	for try := 0; ; try++ {
+		if err := as.createThread(t); err != nil {
+			return err
+		}
+		for i := 0; i < 3000 && atomic.LoadUint32(t.u32(stubasm.PgRunning)) == 0; i++ {
 			if as.dead.Load() {
-				return
+				return nil
 			}
 			time.Sleep(time.Millisecond)
 		}
-	}()
+		if atomic.LoadUint32(t.u32(stubasm.PgRunning)) != 0 || try >= 3 {
+			return nil
+		}
+		debugf("thread %d (tid %d) never started; replacing it", t.idx, t.tid)
+		as.nThreadReplaced.Add(1)
+		h := t.hThread
+		pTerminateThread.Call(h, 0)
+		pWaitSingle.Call(h, 5000)
+		as.tmu.Lock()
+		delete(as.byTid, t.tid)
+		as.tmu.Unlock()
+		pCloseHandle.Call(h)
+		t.hThread = 0
+	}
+}
+
+func (as *addressSpace) createThread(t *thread) error {
 	var tid uint32
 	const createSuspended = 4
 	h, err := call(pCreateRemoteThr, as.h, 0, 0, uintptr(stubasm.StubCode+stubasm.OffThreadEnt), uintptr(t.addr), createSuspended, uintptr(unsafe.Pointer(&tid)))
@@ -233,7 +253,6 @@ func (as *addressSpace) startThread(t *thread) error {
 		return fmt.Errorf("ResumeThread: %v", e)
 	}
 	Trace("thread %d started (tid %d)", t.idx, tid)
-	created = true
 	return nil
 }
 
@@ -256,7 +275,7 @@ func (p *Platform) newAS() (*addressSpace, error) {
 	// Wait for the anchor thread to reach its wait: Windows finishes initializing
 	// the process on it, and CreateRemoteThread needs that.
 	anchor := as.slots[0]
-	deadline := time.Now().Add(30 * time.Second)
+	deadline := time.Now().Add(5 * time.Second) // (NewAddressSpace tries again)
 	for atomic.LoadUint32(anchor.u32(stubasm.PgStubSlp)) == 0 {
 		if as.dead.Load() || time.Now().After(deadline) {
 			as.Release()
@@ -395,6 +414,7 @@ func (as *addressSpace) debugLoop() {
 			as.markDead()
 			return
 		}
+		as.nEvents.Add(1)
 		status := uint32(dbgContinue)
 		exited := false
 		as.lastEvent.Store(fmt.Sprintf("handling event %d tid %d code %#x", ev.code(), ev.tid(), ev.u32(16)))
