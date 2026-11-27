@@ -21,8 +21,9 @@ flowchart TB
     sentry_netpoll_failure>"✔ Sentry stalls after<br/>many socket tests"]
     sentry_fchmod_std_stream>"✔ fchmod on a standard<br/>stream fails"]
     sentry_pasta_in_sandbox>"✔ pasta networking<br/>inside the sandbox"]
+    sentry_waitgroup_panic>"⚠ One-off negative<br/>WaitGroup panic"]
     sentry_event_loop_iocp["⏸ Event waiting on<br/>IOCP"]
-    sentry_timers_and_clocks["⛔ Timers and clocks on<br/>Windows"]
+    sentry_timers_and_clocks["○ Timers and clocks on<br/>Windows"]
     sentry_go_fault_recovery ~~~ sentry_unix_shim
     sentry_unix_shim ~~~ sentry_windows_build
     sentry_windows_build ~~~ sentry_memory_file_sections
@@ -34,8 +35,8 @@ flowchart TB
     sentry_threads_and_signals ~~~ sentry_netpoll_failure
     sentry_dynamic_elf_and_exec ~~~ sentry_fchmod_std_stream
     sentry_profile_small_file_path ~~~ sentry_pasta_in_sandbox
-    sentry_netpoll_failure ~~~ sentry_event_loop_iocp
-    sentry_fchmod_std_stream ~~~ sentry_timers_and_clocks
+    sentry_netpoll_failure ~~~ sentry_waitgroup_panic
+    sentry_fchmod_std_stream ~~~ sentry_event_loop_iocp
     sentry_pasta_in_sandbox ~~~ sentry_timers_and_clocks
     sentry_go_fault_recovery --> sentry_unix_shim
     sentry_unix_shim --> sentry_windows_build
@@ -61,8 +62,9 @@ flowchart TB
     class sentry_go_fault_recovery,sentry_unix_shim,sentry_fault_recovery,sentry_host_stdio_and_tty,sentry_threads_and_signals,sentry_dynamic_elf_and_exec,sentry_netpoll_failure,sentry_fchmod_std_stream,sentry_pasta_in_sandbox succ
     class sentry_windows_build,sentry_memory_file_sections unrated
     class sentry_profile_small_file_path mixed
+    class sentry_waitgroup_panic finding
     class sentry_event_loop_iocp parked
-    class sentry_timers_and_clocks blocked
+    class sentry_timers_and_clocks next
 ```
 <!-- END GENERATED: track-sentry -->
 
@@ -75,7 +77,7 @@ flowchart TB
 | `sentry-windows-build` | Sentry builds for Windows | feature | none | done | unrated | 2026-11-26 | 2026-11-26 | sentry-unix-shim, sentry-go-fault-recovery |  |  |  | docs/results/1b-windows-build.md; docs/results/1b-sentry-host-basics.md |
 | `sentry-memory-file-sections` | Guest memory on Windows sections | feature | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 | sentry-windows-build, platform-4k-section-views, ops-syscall-test-strategy |  |  |  | docs/results/1b-sentry-host-basics.md; docs/adr/0013-memory-file-on-reserved-sections.md; docs/results/1c-windows-platform.md |
 | `sentry-event-loop-iocp` | Event waiting on IOCP | feature | windows-ci | parked | unrated |  |  | sentry-windows-build, ops-syscall-test-strategy |  |  |  |  |
-| `sentry-timers-and-clocks` | Timers and clocks on Windows | feature | windows-ci | blocked | unrated |  |  | sentry-windows-build, ops-syscall-test-strategy |  |  |  |  |
+| `sentry-timers-and-clocks` | Timers and clocks on Windows | feature | windows-ci | next | unrated |  |  | sentry-windows-build, ops-syscall-test-strategy |  |  |  |  |
 | `sentry-fault-recovery` | Port fault recovery to Windows | feature | none | done | successful | 2026-11-26 | 2026-11-26 | sentry-windows-build, sentry-go-fault-recovery |  |  | 1.3 us per fault | docs/results/1b-sentry-host-basics.md |
 | `sentry-host-stdio-and-tty` | Guest terminal and stdio | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | sentry-windows-build |  |  |  | docs/results/3-runsc-boot.md; docs/adr/0017-runsc-run-boots-in-process.md |
 | `sentry-threads-and-signals` | Guest threads and signals | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-winstub |  |  |  | docs/results/1f-exec-signals.md |
@@ -85,6 +87,7 @@ flowchart TB
 | `sentry-netpoll-failure` | Sentry stalls after many socket tests | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/4-syscall-tests.md |
 | `sentry-fchmod-std-stream` | fchmod on a standard stream fails | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
 | `sentry-pasta-in-sandbox` | pasta networking inside the sandbox | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
+| `sentry-waitgroup-panic` | One-off negative WaitGroup panic | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/0b-windows.md |
 
 ### Details per node
 
@@ -104,6 +107,7 @@ flowchart TB
 | `sentry-netpoll-failure` | Sentry stalls after many socket tests |  |  | After a few hundred socket test cases in one kernel the Sentry dies with "fatal error: runtime: netpoll failed" or stalls; about 1,700 syscall-test cases fail only because of this. | Cause found: not a handle leak or the netpoller; a stub process that never starts (about 1 per 100-1500 guest processes) leaves the Sentry waiting forever in newAS/Release. Moved to the platform hang defect. |  |  |  |  |
 | `sentry-fchmod-std-stream` | fchmod on a standard stream fails |  |  | conmon logs "Failed to chmod stderr" and container logs are lost, so the compose check cannot read them. | Fixed: pipefs refused every mode change with EPERM; it now keeps the mode like Linux. fchmod test required in windows-runsc. |  |  |  |  |
 | `sentry-pasta-in-sandbox` | pasta networking inside the sandbox |  |  | buildah RUN uses pasta, which fails: /proc/sys/net/ipv4/ip_local_port_range is missing and switching into the namespace returns EPERM. | ip_local_port_range now printed with a tab; the setns EPERM is pasta dropping its capabilities, not a Sentry bug. Builds use BUILDAH_ISOLATION=oci. |  |  |  |  |
+| `sentry-waitgroup-panic` | One-off negative WaitGroup panic |  |  | A "negative WaitGroup counter" panic seen once in safecopy tests is not explained by stack overrun and did not recur in 1600 runs. | Fixed when: the cause is found, or it does not recur in a month of nightly runs. |  |  |  |  |
 
 ### Folded items per node
 

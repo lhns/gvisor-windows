@@ -332,3 +332,9 @@ Verdict: the engine now stops gracefully and survives without the GODEBUG line (
 - **Acceptance x8 on the final state (run 45973673020): all 10 steps passed in all 8 runs; no rename fallback in any engine log.**
 - Not reproduced by scripts: the `cannot stat ... apt-dpkg-install-*` error of dpkg (absolute symlinks to archives with `%3a` created and resolved from the guest work), and an `EINVAL` of a long NT path (renames now go through NtSetInformationFile and retry relative to the directory; neither was needed in these runs).
 - `aptrename` crashes with `free(): invalid size` in rewrite mode only (native passes): a platform defect, as with `fsstress` before.
+
+## Eleventh round: the bar in native mode (2026-11-27)
+
+On `windows` with atomic replace, mount-safe invalidation, graceful stop and the init user-namespace inode, native mode passed all ten steps in 8 of 8 runs twice (run 45976796134, and 45985526511 without `BUILDAH_ISOLATION`), and step 5 alone in 80 of 80 runs. Buildah's rootless choice came from `/proc/self/ns/user` not having Linux's fixed inode 0xEFFFFFFD. Rewrite mode still fails step 5 (glibc heap errors) and sometimes engine start (an unrewritten `%fs` site in sqlite).
+
+Verdict: an unmodified Podman 6.2.0 engine passes all ten acceptance steps on gVisor on Windows as a standard user in native mode, 8 of 8 runs twice, under the conditions listed in ADR 0002; CPUs without FSGSBASE (rewrite mode) do not pass yet.

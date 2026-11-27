@@ -44,7 +44,8 @@ flowchart TB
     platform_rewrite_glibc_init_crash>"✔ Static glibc crashes<br/>at start in rewrite<br/>mode"]
     platform_unrewritten_fs_in_library>"⚠ Unrewritten %fs site<br/>in a library"]
     platform_rewrite_heap_corruption>"⚠ glibc heap errors in<br/>rewrite mode"]
-    platform_own_vdso["⛔ Own vDSO for clock<br/>calls"]
+    platform_exception_dispatch_depth[/"✔ Measure exception<br/>stack use"/]
+    platform_own_vdso["○ Own vDSO for clock<br/>calls"]
     platform_64k_mapping_conflicts["⏸ Handle 64 KB mapping<br/>conflicts"]
     platform_busybox_on_windows["✔ Run busybox under<br/>the Sentry"]
     platform_hardware_acceleration["⏸ Use hardware<br/>acceleration when<br/>available"]
@@ -88,14 +89,14 @@ flowchart TB
     platform_avx_on_non_avx_cpu ~~~ platform_rewrite_glibc_init_crash
     platform_fs_veneer_capacity ~~~ platform_unrewritten_fs_in_library
     platform_rewrite_mode_slow_engine ~~~ platform_rewrite_heap_corruption
-    platform_rewrite_glibc_init_crash ~~~ platform_own_vdso
-    platform_unrewritten_fs_in_library ~~~ platform_64k_mapping_conflicts
-    platform_rewrite_heap_corruption ~~~ platform_busybox_on_windows
+    platform_rewrite_glibc_init_crash ~~~ platform_exception_dispatch_depth
+    platform_unrewritten_fs_in_library ~~~ platform_own_vdso
+    platform_rewrite_heap_corruption ~~~ platform_64k_mapping_conflicts
+    platform_exception_dispatch_depth ~~~ platform_busybox_on_windows
     platform_own_vdso ~~~ platform_hardware_acceleration
     platform_64k_mapping_conflicts ~~~ platform_binary_translation_fallback
     platform_busybox_on_windows ~~~ platform_recycle_stubs
     platform_hardware_acceleration ~~~ platform_recycle_stubs
-    platform_binary_translation_fallback ~~~ platform_recycle_stubs
     platform_trap_cost -.-> platform_veh_on_guest_stack_unsafe
     platform_tls_register -.-> platform_veh_on_guest_stack_unsafe
     platform_trap_cost --> platform_exception_stack
@@ -139,14 +140,13 @@ flowchart TB
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class platform_elf_alignment_survey,platform_trap_cost,platform_4k_section_views,platform_exception_stack,platform_veh_on_guest_stack_unsafe,platform_debug_event_cost,platform_faults_per_exec,platform_stub_controller,platform_page_verification,platform_syscall_fast_path,platform_controller_wakeups,platform_winstub,platform_fp_state,platform_static_guest_from_memory,platform_retire_prototype,platform_memory_release,platform_split_syscall_unpatched,platform_map_files_without_sections,platform_veneer_address_in_child,platform_rare_hang_under_exec_load,platform_unsupported_errno,platform_avx512_state_lost,platform_avx_on_non_avx_cpu,platform_rewrite_mode_slow_engine,platform_rewrite_glibc_init_crash,platform_busybox_on_windows succ
-    class platform_tls_register,platform_restricted_stub,platform_syscall_site_survey,platform_no_fsgsbase_fallback mixed
+    class platform_tls_register,platform_restricted_stub,platform_syscall_site_survey,platform_no_fsgsbase_fallback,platform_exception_dispatch_depth mixed
     class platform_zpoline_hooks dead
     class platform_fs_base_repair unrated
     class platform_fast_process_start vsucc
     class platform_fs_veneer_capacity,platform_unrewritten_fs_in_library,platform_rewrite_heap_corruption finding
-    class platform_own_vdso blocked
+    class platform_own_vdso,platform_recycle_stubs next
     class platform_64k_mapping_conflicts,platform_hardware_acceleration,platform_binary_translation_fallback parked
-    class platform_recycle_stubs next
 ```
 <!-- END GENERATED: track-platform -->
 
@@ -163,7 +163,7 @@ flowchart TB
 | `platform-stub-controller` | Stub and controller prototype | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | ops-phase0-go-no-go, platform-trap-cost, platform-4k-section-views, platform-tls-register, platform-restricted-stub, platform-exception-stack, platform-debug-event-cost, platform-syscall-site-survey, platform-faults-per-exec |  |  |  | docs/results/1a-stub-prototype.md; docs/adr/0011-stub-process-design.md; docs/adr/0012-eager-patching-and-non-blocking-debug-events.md |
 | `platform-page-verification` | Scan code pages for syscalls | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-stub-controller |  |  |  | docs/results/1a-stub-prototype.md |
 | `platform-syscall-fast-path` | Patch syscall sites into jumps | experiment | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-stub-controller |  |  | 0.00% of executed syscalls on the ud2 path | docs/results/1a-stub-prototype.md |
-| `platform-own-vdso` | Own vDSO for clock calls | feature | windows-ci | blocked | unrated |  |  | platform-stub-controller |  |  |  |  |
+| `platform-own-vdso` | Own vDSO for clock calls | feature | windows-ci | next | unrated |  |  | platform-stub-controller |  |  |  |  |
 | `platform-64k-mapping-conflicts` | Handle 64 KB mapping conflicts | feature | windows-ci | parked | unrated |  |  | sentry-memory-file-sections, platform-elf-alignment-survey |  |  |  |  |
 | `platform-winstub` | Windows platform for the Sentry | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-stub-controller, sentry-memory-file-sections, ops-syscall-test-strategy, platform-controller-wakeups |  |  |  | docs/results/1c-windows-platform.md |
 | `platform-busybox-on-windows` | Run busybox under the Sentry | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-winstub, sentry-timers-and-clocks, sentry-fault-recovery, sentry-host-stdio-and-tty, fs-root-filesystem-source, platform-fs-base-repair, platform-static-guest-from-memory, sentry-dynamic-elf-and-exec, runsc-windows-boot |  |  |  | docs/results/3-runsc-boot.md; docs/results/1f-exec-signals.md |
@@ -196,6 +196,7 @@ flowchart TB
 | `platform-rewrite-glibc-init-crash` | Static glibc crashes at start in rewrite mode | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/results/1l-platform-stability.md |
 | `platform-unrewritten-fs-in-library` | Unrewritten %fs site in a library | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/5-podman-windows.md; docs/results/1m-platform-repair.md |
 | `platform-rewrite-heap-corruption` | glibc heap errors in rewrite mode | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/5-podman-windows.md |
+| `platform-exception-dispatch-depth` | Measure exception stack use | experiment | windows-ci | done | mixed | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/0b-windows.md |
 
 ### Details per node
 
@@ -242,6 +243,7 @@ flowchart TB
 | `platform-rewrite-glibc-init-crash` | Static glibc crashes at start in rewrite mode |  |  | The static glibc fsstress guest dies with SIGSEGV in libc init right after set_tid_address in rewrite mode, every run; native mode runs it. | Fixed: a %fs instruction straddling two text pieces ran natively; it is now run by the debugger from a veneer. |  |  |  |  |
 | `platform-unrewritten-fs-in-library` | Unrewritten %fs site in a library |  |  | In rewrite mode the engine once died at start with SIGSEGV addr=0x28 during a cgo call, which looks like a %fs:0x28 stack-canary access with a zero base in a shared library. | Reopened: rewrite runs still die at engine start with SIGSEGV addr=0x28 in cgo sqlite3_exec_no_args (2 of 8). Fixed when: the FS TRIPWIRE names the site, it is patched, and rewrite mode starts the engine 8 of 8. |  |  |  |  |
 | `platform-rewrite-heap-corruption` | glibc heap errors in rewrite mode |  |  | In rewrite mode, aptrename dies with free(): invalid size and apt inside builds with segfaults or double free; native mode runs them, so a %fs veneer likely computes or clobbers something wrong. | Fixed when: aptrename and the acceptance build step pass in rewrite mode. |  |  |  |  |
+| `platform-exception-dispatch-depth` | Measure exception stack use | Dispatch writes 4512 bytes below RSP on every AVX-512 runner CPU whatever the thread dirtied (clean, ymm and zmm/k state all the same) |  | How far below the stack pointer Windows writes when it delivers an exception on AVX-512 CPUs, against what Go reserves; safecopy keeps its stack headroom helper. |  |  |  |  |  |
 
 ### Folded items per node
 

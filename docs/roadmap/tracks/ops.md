@@ -13,7 +13,7 @@ flowchart TB
     ops_syscall_tests_on_windows["✔ gVisor syscall tests<br/>on Windows"]
     ops_ci_build_once["✔ Build once, run<br/>suites on demand"]
     ops_upstream_merges["○ Merge upstream<br/>gVisor regularly"]
-    ops_portable_packaging["⛔ Portable zip, no<br/>installer"]
+    ops_portable_packaging["○ Portable zip, no<br/>installer"]
     ops_windows_ci_standard_user ~~~ ops_upstream_merges
     ops_syscall_tests_on_windows ~~~ ops_portable_packaging
     ops_ci_build_once ~~~ ops_portable_packaging
@@ -34,8 +34,7 @@ flowchart TB
     class ops_windows_ci_standard_user succ
     class ops_syscall_tests_on_windows mixed
     class ops_ci_build_once unrated
-    class ops_upstream_merges next
-    class ops_portable_packaging blocked
+    class ops_upstream_merges,ops_portable_packaging next
 ```
 <!-- END GENERATED: track-ops -->
 
@@ -53,8 +52,8 @@ flowchart TB
 | `ops-syscall-test-strategy` | Choose how to run gVisor's tests | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0009-running-gvisors-tests.md |
 | `ops-syscall-tests-on-windows` | gVisor syscall tests on Windows | feature | windows-ci | done | mixed | 2026-11-26 | 2026-11-27 | ops-syscall-test-strategy, platform-static-guest-from-memory |  |  | 83.6% | docs/results/4-syscall-tests.md |
 | `ops-upstream-merges` | Merge upstream gVisor regularly | tooling | linux-ci | next | unrated |  |  |  |  |  |  |  |
-| `ops-portable-packaging` | Portable zip, no installer | feature | windows-ci | blocked | unrated |  |  | runsc-container-on-windows |  |  |  |  |
-| `ops-run-on-a-work-machine` | Try it on a real work machine | owner-decision | owner | blocked | n/a |  |  | workloads-podman-on-windows |  |  |  |  |
+| `ops-portable-packaging` | Portable zip, no installer | feature | windows-ci | next | unrated |  |  | runsc-container-on-windows |  |  |  |  |
+| `ops-run-on-a-work-machine` | Try it on a real work machine | owner-decision | owner | next | n/a |  |  |  |  |  |  |  |
 | `ops-ci-build-once` | Build once, run suites on demand | tooling | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/6-ci.md |
 
 ### Details per node
@@ -71,11 +70,13 @@ flowchart TB
 | `ops-syscall-tests-on-windows` | gVisor syscall tests on Windows | 83.6% of the cases that pass on Linux pass (11298 of 14620, 138 of 256 binaries complete) | 83.6% | gVisor's own syscall test suite runs against the Windows port to show which Linux calls work. | Done when: the suite runs in CI on Windows and its pass rate is published. |  |  |  |  |
 | `ops-upstream-merges` | Merge upstream gVisor regularly |  |  | Regularly take in upstream gVisor's Go branch so the port does not drift. | Done when: a scheduled workflow merges upstream/go into windows or opens an issue on conflict. |  |  |  |  |
 | `ops-portable-packaging` | Portable zip, no installer |  |  | Ship runsc for Windows as a zip or per-user installer that needs no admin. | Done when: a release zip runs from a user folder on a clean Windows machine. |  |  |  |  |
-| `ops-run-on-a-work-machine` | Try it on a real work machine |  |  | All evidence comes from GitHub hosted Windows images; the owner runs runsc.exe once on a work machine to check FSGSBASE and whether security software tolerates the generated stub being debugged. | Done when: the owner reports the result of one run of the published artifact. |  |  |  |  |
+| `ops-run-on-a-work-machine` | Try it on a real work machine |  |  | All evidence comes from GitHub hosted Windows images; the owner runs runsc.exe once on a work machine to check FSGSBASE and whether security software tolerates the generated stub being debugged. | Ready: download the runsc-windows artifact of the latest ci run on windows and run its README command. Done when: the owner reports the result of one run. |  |  |  |  |
 | `ops-ci-build-once` | Build once, run suites on demand |  |  | One ci.yml builds runsc.exe and the test binaries once and calls every Windows suite; worker branches start no runs and dispatch only what they need; heavy repeats run nightly. About 62 to 40 job-minutes per push. | Next lever: merge the 16 small Linux acceptance jobs. Also uploads a runsc-windows package (runsc.exe, hello bundle, README) for trying it on a work machine. |  |  |  |  |
 
 ### Folded items per node
 
 - `ops-syscall-tests-on-windows`: gVisor syscall tests on Windows
   - Linux runsc 81.5%, Windows with network 77.3% of 14620 cases (2026-11-27, commit 63612b2a1)
+- `ops-portable-packaging`: Portable zip, no installer
+  - CI uploads a runsc-windows package (runsc.exe, hello bundle, README) on each push to windows (2026-11-27, commit 20ac3fb3b)
 <!-- END GENERATED: table-ops -->

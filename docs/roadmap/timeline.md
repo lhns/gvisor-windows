@@ -55,6 +55,7 @@ gantt
     Static glibc crashes at start in rewrit… :platform_rewrite_glibc_init_crash, 2026-11-27, 2026-11-27
     Unrewritten %fs site in a library :platform_unrewritten_fs_in_library, 2026-11-27, 2026-11-27
     glibc heap errors in rewrite mode :platform_rewrite_heap_corruption, 2026-11-27, 2026-11-27
+    Measure exception stack use :platform_exception_dispatch_depth, 2026-11-27, 2026-11-27
     section sentry - sentry
     Recover faults in Go :sentry_go_fault_recovery, 2026-11-26, 2026-11-26
     Sentry builds for Windows :sentry_windows_build, 2026-11-26, 2026-11-26
@@ -68,6 +69,7 @@ gantt
     Sentry stalls after many socket tests :sentry_netpoll_failure, 2026-11-27, 2026-11-27
     fchmod on a standard stream fails :sentry_fchmod_std_stream, 2026-11-27, 2026-11-27
     pasta networking inside the sandbox :sentry_pasta_in_sandbox, 2026-11-27, 2026-11-27
+    One-off negative WaitGroup panic :sentry_waitgroup_panic, 2026-11-27, 2026-11-27
     section fs - files
     Compatibility layer, not security bound… :fs_compat_layer_not_boundary, 2026-11-26, 2026-11-26
     Test persistent image storage :fs_persistent_image_storage, 2026-11-26, 2026-11-26
@@ -77,6 +79,7 @@ gantt
     Files stay editable on Windows :fs_handles_do_not_block_users, 2026-11-26, 2026-11-26
     Choose the persistent storage :fs_persistent_storage_choice, 2026-11-26, 2026-11-26
     Root filesystem from an erofs image :fs_root_filesystem_source, 2026-11-26, 2026-11-26
+    Storage that survives restarts :fs_persistent_storage_impl, 2026-11-27, 2026-11-27
     Editor safe-saves keep Linux metadata :fs_safe_save_keeps_metadata, 2026-11-26, 2026-11-26
     Bring container images onto NTFS :fs_rootfs_import, 2026-11-26, 2026-11-26
     Faster stat walks on host folders :fs_attribute_cache, 2026-11-26, 2026-11-26
@@ -88,7 +91,8 @@ gantt
     Nil dereference in gofer invalidation :fs_disown_children_nil_deref, 2026-11-27, 2026-11-27
     Host-folder writes keep the old mtime :fs_host_folder_mtime_resolution, 2026-11-27, 2026-11-27
     Layer store unreadable after restart :fs_layer_store_corrupt_after_restart, 2026-11-27, 2026-11-27
-    Overlay with a host-folder upper layer :fs_overlay_upper_on_host_folder, 2026-11-27, 2026-11-27
+    Overlay with a host-folder upper layer :active, fs_overlay_upper_on_host_folder, 2026-11-27, 2026-11-27
+    Fast layer diffs with overlay :fs_overlay_native_diff, 2026-11-27, 2026-11-27
     section net - network
     Netstack to Windows sockets :net_netstack_windows_link, 2026-11-26, 2026-11-26
     Publish guest ports on localhost :net_port_forwarding, 2026-11-26, 2026-11-26
@@ -97,8 +101,9 @@ gantt
     section workloads - workloads
     Write the Podman acceptance test :workloads_acceptance_test, 2026-11-26, 2026-11-26
     Podman on gVisor on Linux :workloads_podman_on_gvisor_linux, 2026-11-26, 2026-11-26
+    Podman passes on Windows :workloads_podman_on_windows, 2026-11-27, 2026-11-27
     Acceptance test for Windows :workloads_acceptance_test_windows, 2026-11-26, 2026-11-26
-    Serve Podman to Windows clients :active, workloads_podman_harness, 2026-11-26, 2026-11-27
+    Serve Podman to Windows clients :workloads_podman_harness, 2026-11-26, 2026-11-27
     Bridge networking fails in gVisor :workloads_gvisor_bridge_netlink, 2026-11-26, 2026-11-26
     Port publishing untested in gVisor :workloads_gvisor_port_publishing, 2026-11-26, 2026-11-26
     Does host networking meet the bar :workloads_bar_host_network, 2026-11-26, 2026-11-26
@@ -114,7 +119,8 @@ gantt
     Isolation step failed once :workloads_isolation_flake, 2026-11-27, 2026-11-27
     Volume data lost across engine restart :workloads_volume_lost_on_restart, 2026-11-27, 2026-11-27
     buildah picks rootless isolation :workloads_buildah_thinks_rootless, 2026-11-27, 2026-11-27
-    Rare permission error on /dev/null :workloads_dev_null_eacces, 2026-11-27, 2026-11-27
+    Rare permission error opening the null… :workloads_dev_null_eacces, 2026-11-27, 2026-11-27
+    Podman on CPUs without FSGSBASE :workloads_podman_without_fsgsbase, 2026-11-27, 2026-11-27
     section research - research
     Pick gVisor as the base :research_gvisor_base, 2026-11-17, 2026-11-26
     Revive LKL or nommu UML :crit, research_lkl_nommu, 2026-11-26, 2026-11-26
@@ -136,5 +142,5 @@ gantt
     Build once, run suites on demand :ops_ci_build_once, 2026-11-27, 2026-11-27
 ```
 
-Not shown (no `start`): `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-hardware-acceleration`, `platform-binary-translation-fallback`, `platform-recycle-stubs`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `fs-persistent-storage-impl`, `workloads-podman-on-windows`, `ops-upstream-merges`, `ops-portable-packaging`, `ops-run-on-a-work-machine`
+Not shown (no `start`): `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-hardware-acceleration`, `platform-binary-translation-fallback`, `platform-recycle-stubs`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `ops-upstream-merges`, `ops-portable-packaging`, `ops-run-on-a-work-machine`
 <!-- END GENERATED: timeline -->

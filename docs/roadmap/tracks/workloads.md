@@ -25,10 +25,11 @@ flowchart TB
     workloads_isolation_flake>"✔ Isolation step<br/>failed once"]
     workloads_volume_lost_on_restart>"✔ Volume data lost<br/>across engine restart"]
     workloads_buildah_thinks_rootless>"✔ buildah picks<br/>rootless isolation"]
-    workloads_dev_null_eacces>"✔ Rare permission<br/>error on /dev/null"]
-    workloads_podman_on_windows[/"⛔ Podman passes on<br/>Windows"/]
+    workloads_podman_on_windows[/"✔ Podman passes on<br/>Windows"/]
+    workloads_dev_null_eacces>"✔ Rare permission<br/>error opening the null<br/>device"]
+    workloads_podman_without_fsgsbase["⛔ Podman on CPUs<br/>without FSGSBASE"]
     workloads_podman_probe[/"✔ Probe Podman inside<br/>the sandbox"/]
-    workloads_podman_harness["▶ Serve Podman to<br/>Windows clients"]
+    workloads_podman_harness["✔ Serve Podman to<br/>Windows clients"]
     workloads_acceptance_test ~~~ workloads_podman_on_gvisor_linux
     workloads_acceptance_test ~~~ workloads_acceptance_test_windows
     workloads_acceptance_test ~~~ workloads_gvisor_bridge_netlink
@@ -44,11 +45,12 @@ flowchart TB
     workloads_conmon_sync_pipe ~~~ workloads_isolation_flake
     workloads_conmon_attach_second_cause ~~~ workloads_volume_lost_on_restart
     workloads_tty_through_windows_client ~~~ workloads_buildah_thinks_rootless
-    workloads_isolation_flake ~~~ workloads_dev_null_eacces
-    workloads_volume_lost_on_restart ~~~ workloads_podman_on_windows
-    workloads_buildah_thinks_rootless ~~~ workloads_podman_probe
-    workloads_dev_null_eacces ~~~ workloads_podman_harness
-    workloads_podman_on_windows ~~~ workloads_podman_harness
+    workloads_isolation_flake ~~~ workloads_podman_on_windows
+    workloads_volume_lost_on_restart ~~~ workloads_dev_null_eacces
+    workloads_buildah_thinks_rootless ~~~ workloads_dev_null_eacces
+    workloads_podman_on_windows ~~~ workloads_podman_without_fsgsbase
+    workloads_dev_null_eacces ~~~ workloads_podman_probe
+    workloads_podman_without_fsgsbase ~~~ workloads_podman_harness
     workloads_podman_probe ~~~ workloads_podman_harness
     workloads_acceptance_test --> workloads_podman_on_gvisor_linux
     workloads_podman_on_gvisor_linux -.-> workloads_gvisor_port_publishing
@@ -64,8 +66,9 @@ flowchart TB
     workloads_isolation_flake --> workloads_podman_on_windows
     workloads_volume_lost_on_restart --> workloads_podman_on_windows
     workloads_buildah_thinks_rootless --> workloads_podman_on_windows
+    workloads_podman_on_windows --> workloads_podman_without_fsgsbase
     workloads_podman_probe --> workloads_podman_harness
-    linkStyle 22 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    linkStyle 23 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -80,11 +83,10 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class workloads_acceptance_test,workloads_acceptance_test_windows,workloads_podman_api_named_pipe,workloads_podman_probe unrated
+    class workloads_acceptance_test,workloads_acceptance_test_windows,workloads_podman_api_named_pipe,workloads_podman_probe,workloads_podman_harness unrated
     class workloads_podman_on_gvisor_linux,workloads_strict_bar_linux,workloads_end_to_end_speed mixed
-    class workloads_gvisor_bridge_netlink,workloads_gvisor_port_publishing,workloads_gvisor_cgroupfs_readonly,workloads_overlay_userxattr,workloads_conmon_sync_pipe,workloads_conmon_attach_second_cause,workloads_tty_through_windows_client,workloads_isolation_flake,workloads_volume_lost_on_restart,workloads_buildah_thinks_rootless,workloads_dev_null_eacces succ
-    class workloads_podman_on_windows blocked
-    class workloads_podman_harness inprog
+    class workloads_gvisor_bridge_netlink,workloads_gvisor_port_publishing,workloads_gvisor_cgroupfs_readonly,workloads_overlay_userxattr,workloads_conmon_sync_pipe,workloads_conmon_attach_second_cause,workloads_tty_through_windows_client,workloads_isolation_flake,workloads_volume_lost_on_restart,workloads_buildah_thinks_rootless,workloads_podman_on_windows,workloads_dev_null_eacces succ
+    class workloads_podman_without_fsgsbase blocked
 ```
 <!-- END GENERATED: track-workloads -->
 
@@ -95,9 +97,9 @@ flowchart TB
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `workloads-acceptance-test` | Write the Podman acceptance test | tooling | linux-ci | done | unrated | 2026-11-26 | 2026-11-26 | research-gvisor-base |  |  |  | test/e2e/podman-acceptance/run.sh; docs/results/0a-linux.md |
 | `workloads-podman-on-gvisor-linux` | Podman on gVisor on Linux | experiment | linux-ci | done | mixed | 2026-11-26 | 2026-11-26 | workloads-acceptance-test |  | workloads-gvisor-bridge-netlink, workloads-gvisor-port-publishing |  | docs/results/0a-linux.md |
-| `workloads-podman-on-windows` | Podman passes on Windows | experiment | windows-ci | blocked | unrated |  |  | runsc-container-on-windows, workloads-acceptance-test-windows, net-port-forwarding, fs-persistent-storage-choice, fs-change-notifications, fs-linux-metadata-on-ntfs, net-bridge-networking, workloads-gvisor-cgroupfs-readonly, net-nftables-thread-safety, platform-split-syscall-unpatched, workloads-podman-api-named-pipe, fs-standard-user-delete-rights, workloads-conmon-sync-pipe, workloads-overlay-userxattr, fs-case-sensitivity-without-admin, platform-rare-hang-under-exec-load, sentry-netpoll-failure, fs-unix-sockets-on-host-folders, workloads-conmon-attach-second-cause, sentry-fchmod-std-stream, sentry-pasta-in-sandbox, platform-avx512-state-lost, fs-copied-file-too-short, workloads-tty-through-windows-client, workloads-isolation-flake, platform-rewrite-mode-slow-engine, workloads-volume-lost-on-restart, platform-rewrite-glibc-init-crash, fs-host-folder-mtime-resolution, fs-layer-store-corrupt-after-restart, platform-unrewritten-fs-in-library, workloads-buildah-thinks-rootless |  |  |  |  |
+| `workloads-podman-on-windows` | Podman passes on Windows | experiment | windows-ci | done | successful | 2026-11-27 | 2026-11-27 | runsc-container-on-windows, workloads-acceptance-test-windows, net-port-forwarding, fs-persistent-storage-choice, fs-change-notifications, fs-linux-metadata-on-ntfs, net-bridge-networking, workloads-gvisor-cgroupfs-readonly, net-nftables-thread-safety, platform-split-syscall-unpatched, workloads-podman-api-named-pipe, fs-standard-user-delete-rights, workloads-conmon-sync-pipe, workloads-overlay-userxattr, fs-case-sensitivity-without-admin, platform-rare-hang-under-exec-load, sentry-netpoll-failure, fs-unix-sockets-on-host-folders, workloads-conmon-attach-second-cause, sentry-fchmod-std-stream, sentry-pasta-in-sandbox, platform-avx512-state-lost, fs-copied-file-too-short, workloads-tty-through-windows-client, workloads-isolation-flake, platform-rewrite-mode-slow-engine, workloads-volume-lost-on-restart, platform-rewrite-glibc-init-crash, fs-host-folder-mtime-resolution, fs-layer-store-corrupt-after-restart, workloads-buildah-thinks-rootless |  |  | All ten Podman steps pass, native mode | docs/results/5-podman-windows.md; docs/adr/0002-what-done-means.md |
 | `workloads-acceptance-test-windows` | Acceptance test for Windows | tooling | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 | workloads-acceptance-test |  |  |  | docs/results/5-podman-windows.md |
-| `workloads-podman-harness` | Serve Podman to Windows clients | tooling | windows-ci | in-progress | unrated | 2026-11-26 |  | runsc-container-on-windows, net-port-forwarding, workloads-podman-probe |  |  |  | docs/results/5-podman-windows.md |
+| `workloads-podman-harness` | Serve Podman to Windows clients | tooling | windows-ci | done | unrated | 2026-11-26 | 2026-11-27 | runsc-container-on-windows, net-port-forwarding, workloads-podman-probe |  |  |  | docs/results/5-podman-windows.md |
 | `workloads-gvisor-bridge-netlink` | Bridge networking fails in gVisor | defect | linux-ci | done | unrated | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/0a-linux.md; docs/results/0c-linux-strict-bar.md; docs/results/1n-bridge-networking.md |
 | `workloads-gvisor-port-publishing` | Port publishing untested in gVisor | defect | linux-ci | done | unrated | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/0a-linux.md; docs/results/1n-bridge-networking.md |
 | `workloads-bar-host-network` | Does host networking meet the bar | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0004-phase-0-results.md |
@@ -113,7 +115,8 @@ flowchart TB
 | `workloads-isolation-flake` | Isolation step failed once | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
 | `workloads-volume-lost-on-restart` | Volume data lost across engine restart | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
 | `workloads-buildah-thinks-rootless` | buildah picks rootless isolation | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/adr/0002-what-done-means.md |
-| `workloads-dev-null-eacces` | Rare permission error on /dev/null | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/results/2r-step5-overlay.md |
+| `workloads-dev-null-eacces` | Rare permission error opening the null device | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/results/2r-step5-overlay.md |
+| `workloads-podman-without-fsgsbase` | Podman on CPUs without FSGSBASE | feature | windows-ci | blocked | unrated | 2026-11-27 |  | workloads-podman-on-windows, platform-unrewritten-fs-in-library, platform-rewrite-heap-corruption |  |  |  | docs/results/5-podman-windows.md |
 
 ### Details per node
 
@@ -121,9 +124,9 @@ flowchart TB
 |---|---|---|---|---|---|---|---|---|---|
 | `workloads-acceptance-test` | Write the Podman acceptance test |  |  | One test of ten steps defines when Podman counts as working: pull, run, build, mounts, ports, compose, restart, isolation. | Done when: the test exists under test/e2e/podman-acceptance and passes against native Podman on Linux. |  |  |  |  |
 | `workloads-podman-on-gvisor-linux` | Podman on gVisor on Linux | passes all 10 acceptance steps when containers use host networking, the store is on a host directory (kernel overlayfs or vfs) and runsc runs with `--in-sandbox-cgroup=v2`; with the default bridge network netavark fails on its netlink socket, so only steps 1, 2 and 5 pass |  | Run the acceptance test on stock gVisor on Linux; whatever fails there is a gap in gVisor itself, not in the port. | Done when: the acceptance test ran against Podman inside runsc and docs/results/0a-linux.md records each step. |  |  |  |  |
-| `workloads-podman-on-windows` | Podman passes on Windows |  |  | The bar for enough features: an unmodified Podman engine passes the acceptance test on gVisor on Windows. | Done when: all 10 acceptance steps pass in CI on windows-latest as a standard user. |  |  |  |  |
+| `workloads-podman-on-windows` | Podman passes on Windows | an unmodified Podman 6.2.0 engine passes all ten acceptance steps on gVisor on Windows as a standard user in native mode, 8 of 8 runs twice, under the conditions listed in ADR 0002 | All ten Podman steps pass, native mode | The bar for enough features: an unmodified Podman engine passes the acceptance test on gVisor on Windows. | Native mode (CPUs with FSGSBASE), runs 45976796134 and 45985526511. CPUs without FSGSBASE are the follow-up node. |  |  |  |  |
 | `workloads-acceptance-test-windows` | Acceptance test for Windows |  |  | The ten acceptance steps written for Windows, driving the stock Podman and docker clients. | Done when: a PowerShell twin of the test runs the same ten steps and reports each one. |  |  |  |  |
-| `workloads-podman-harness` | Serve Podman to Windows clients |  |  | The test harness runs the Podman engine on runsc and exposes its API to the stock Windows clients. | Engine runs on runsc.exe with the erofs podman image; step 1 passes. Gap list in docs/results/5-podman-windows.md. |  |  |  |  |
+| `workloads-podman-harness` | Serve Podman to Windows clients |  |  | The test harness runs the Podman engine on runsc and exposes its API to the stock Windows clients. | Engine on runsc.exe with the erofs podman image, graceful stop, stock Windows clients over a named pipe; the remaining differences from a stock service are listed in ADR 0002. |  |  |  |  |
 | `workloads-gvisor-bridge-netlink` | Bridge networking fails in gVisor |  |  | netavark dies on setsockopt(NETLINK_DUMP_STRICT_CHK) (ENOPROTOOPT) and then on RTM_SETLINK with NLM_F_CREATE (EINVAL); nftables (NETLINK_NETFILTER) is only enabled by a test-only flag. | Open gap in gVisor itself. Fixed when: the acceptance test passes with the default bridge network on stock runsc. |  |  |  |  |
 | `workloads-gvisor-port-publishing` | Port publishing untested in gVisor |  |  | Publishing container ports with -p and service-name lookup in compose never worked or were never exercised inside gVisor. | Fixed when: -p and compose service names pass inside stock runsc. |  |  |  |  |
 | `workloads-bar-host-network` | Does host networking meet the bar |  |  | Decided: host networking is only an interim state; -p and compose service names are required. |  |  |  |  |  |
@@ -139,7 +142,8 @@ flowchart TB
 | `workloads-isolation-flake` | Isolation step failed once |  |  | Remaining acceptance flakes: step 3 sometimes loses the race between --rm cleanup and attach (podman remote, widened by sandbox slowness), and step 10 once timed out with the engine and a new Go helper idle for 123 s, which looks like the stuck process start. | Fixed: change-stream overflow invalidated dentries with mounts on them, which unmounted container /dev and /tmp; invalidation now keeps mounted dentries. |  |  |  |  |
 | `workloads-volume-lost-on-restart` | Volume data lost across engine restart |  |  | In 2 of 5 complete native runs, the named volume written before the engine restart is empty afterwards (step 9). | Harness cause: an old static_dir workaround put libpod's database on a tmpfs. The database now lives on the storage folder; a runsc restart test is required. |  |  |  |  |
 | `workloads-buildah-thinks-rootless` | buildah picks rootless isolation |  |  | Without BUILDAH_ISOLATION=oci every build fails in pasta, because buildah resolves the default isolation to rootless inside the sandbox, although euid, uid_map and capabilities all look rootful. | Fixed in the Sentry: the root user namespace now has Linux's fixed inode 0xEFFFFFFD in /proc/self/ns/user, which c/storage checks; BUILDAH_ISOLATION=oci removed, native 8 of 8 with all 10 steps. |  |  |  |  |
-| `workloads-dev-null-eacces` | Rare permission error on /dev/null |  |  | Intermittently, apt's unprivileged _apt user gets "cannot create /dev/null: Permission denied" inside a build container, so step 5 fails; dpkg's "cannot stat" of an extracted .deb also still shows up rarely. | Not reproduced on current windows: step 5 passed 80 of 80 native runs; the failures were on heads before the mount-keeping and atomic-replace fixes. A devnull guest test guards it. |  |  |  |  |
+| `workloads-dev-null-eacces` | Rare permission error opening the null device |  |  | Intermittently, apt's unprivileged _apt user gets "cannot create /dev/null: Permission denied" inside a build container, so step 5 fails; dpkg's "cannot stat" of an extracted .deb also still shows up rarely. | Not reproduced on current windows: step 5 passed 80 of 80 native runs; the failures were on heads before the mount-keeping and atomic-replace fixes. A devnull guest test guards it. |  |  |  |  |
+| `workloads-podman-without-fsgsbase` | Podman on CPUs without FSGSBASE |  |  | The same acceptance in rewrite mode, which older CPUs and this development VM need because they cannot set the %fs base from user mode. | Done when: podman-windows modes=rewrite,rewrite-fxsave passes all 10 steps 8 of 8. |  |  |  |  |
 
 ### Folded items per node
 

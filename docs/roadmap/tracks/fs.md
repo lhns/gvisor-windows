@@ -20,13 +20,14 @@ flowchart TB
     fs_flaky_negative_cache_test>"✔ Flaky negative-cache<br/>test on host folders"]
     fs_standard_user_delete_rights>"✔ Deletes fail for<br/>standard users"]
     fs_case_sensitivity_without_admin>"✔ Case-sensitive names<br/>without admin"]
+    fs_persistent_storage_impl["✔ Storage that<br/>survives restarts"]
     fs_unix_sockets_on_host_folders>"✔ Unix sockets on host<br/>folders"]
     fs_copied_file_too_short>"✔ Copied library reads<br/>as too short"]
     fs_disown_children_nil_deref>"✔ Nil dereference in<br/>gofer invalidation"]
     fs_host_folder_mtime_resolution>"✔ Host-folder writes<br/>keep the old mtime"]
     fs_layer_store_corrupt_after_restart>"✔ Layer store<br/>unreadable after<br/>restart"]
-    fs_overlay_upper_on_host_folder>"✔ Overlay with a host-<br/>folder upper layer"]
-    fs_persistent_storage_impl["⛔ Storage that<br/>survives restarts"]
+    fs_overlay_upper_on_host_folder>"⚠ Overlay with a host-<br/>folder upper layer"]
+    fs_overlay_native_diff>"⚠ Fast layer diffs<br/>with overlay"]
     fs_persistent_image_storage ~~~ fs_change_notifications
     fs_windows_directfs ~~~ fs_linux_metadata_on_ntfs
     fs_windows_directfs ~~~ fs_handles_do_not_block_users
@@ -36,15 +37,15 @@ flowchart TB
     fs_root_filesystem_source ~~~ fs_flaky_negative_cache_test
     fs_safe_save_keeps_metadata ~~~ fs_standard_user_delete_rights
     fs_attribute_cache ~~~ fs_case_sensitivity_without_admin
-    fs_flaky_negative_cache_test ~~~ fs_unix_sockets_on_host_folders
-    fs_standard_user_delete_rights ~~~ fs_copied_file_too_short
-    fs_case_sensitivity_without_admin ~~~ fs_disown_children_nil_deref
+    fs_flaky_negative_cache_test ~~~ fs_persistent_storage_impl
+    fs_standard_user_delete_rights ~~~ fs_unix_sockets_on_host_folders
+    fs_case_sensitivity_without_admin ~~~ fs_copied_file_too_short
+    fs_persistent_storage_impl ~~~ fs_disown_children_nil_deref
     fs_unix_sockets_on_host_folders ~~~ fs_host_folder_mtime_resolution
     fs_copied_file_too_short ~~~ fs_layer_store_corrupt_after_restart
     fs_disown_children_nil_deref ~~~ fs_overlay_upper_on_host_folder
-    fs_host_folder_mtime_resolution ~~~ fs_persistent_storage_impl
-    fs_layer_store_corrupt_after_restart ~~~ fs_persistent_storage_impl
-    fs_overlay_upper_on_host_folder ~~~ fs_persistent_storage_impl
+    fs_host_folder_mtime_resolution ~~~ fs_overlay_native_diff
+    fs_layer_store_corrupt_after_restart ~~~ fs_overlay_native_diff
     fs_windows_directfs --> fs_change_notifications
     fs_windows_directfs --> fs_linux_metadata_on_ntfs
     fs_windows_directfs --> fs_handles_do_not_block_users
@@ -66,8 +67,9 @@ flowchart TB
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class fs_persistent_image_storage,fs_attribute_cache mixed
-    class fs_windows_directfs,fs_change_notifications,fs_linux_metadata_on_ntfs,fs_handles_do_not_block_users,fs_root_filesystem_source,fs_safe_save_keeps_metadata,fs_flaky_negative_cache_test,fs_standard_user_delete_rights,fs_case_sensitivity_without_admin,fs_unix_sockets_on_host_folders,fs_copied_file_too_short,fs_disown_children_nil_deref,fs_host_folder_mtime_resolution,fs_layer_store_corrupt_after_restart,fs_overlay_upper_on_host_folder succ
-    class fs_persistent_storage_impl blocked
+    class fs_windows_directfs,fs_change_notifications,fs_linux_metadata_on_ntfs,fs_handles_do_not_block_users,fs_root_filesystem_source,fs_safe_save_keeps_metadata,fs_flaky_negative_cache_test,fs_standard_user_delete_rights,fs_case_sensitivity_without_admin,fs_unix_sockets_on_host_folders,fs_copied_file_too_short,fs_disown_children_nil_deref,fs_host_folder_mtime_resolution,fs_layer_store_corrupt_after_restart succ
+    class fs_persistent_storage_impl unrated
+    class fs_overlay_upper_on_host_folder,fs_overlay_native_diff finding
 ```
 <!-- END GENERATED: track-fs -->
 
@@ -84,7 +86,7 @@ flowchart TB
 | `fs-handles-do-not-block-users` | Files stay editable on Windows | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | fs-windows-directfs |  |  |  | docs/results/2-windows-directfs.md |
 | `fs-persistent-storage-choice` | Choose the persistent storage | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 | fs-persistent-image-storage, fs-windows-directfs |  |  |  | docs/adr/0007-persistent-storage-in-a-windows-folder.md |
 | `fs-root-filesystem-source` | Root filesystem from an erofs image | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | fs-windows-directfs, fs-rootfs-import |  |  |  | docs/results/2b-fs-rootfs-and-changes.md; docs/adr/0015-sandbox-rootfs-as-erofs-image.md |
-| `fs-persistent-storage-impl` | Storage that survives restarts | feature | windows-ci | blocked | unrated |  |  | fs-persistent-storage-choice |  |  |  |  |
+| `fs-persistent-storage-impl` | Storage that survives restarts | feature | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 | fs-persistent-storage-choice |  |  |  | docs/results/5-podman-windows.md |
 | `fs-safe-save-keeps-metadata` | Editor safe-saves keep Linux metadata | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/2b-fs-rootfs-and-changes.md |
 | `fs-rootfs-import` | Bring container images onto NTFS | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0015-sandbox-rootfs-as-erofs-image.md |
 | `fs-attribute-cache` | Faster stat walks on host folders | feature | windows-ci | done | mixed | 2026-11-26 | 2026-11-26 | fs-change-notifications |  |  | 1 us per file | docs/results/2c-fs-speed.md |
@@ -96,7 +98,8 @@ flowchart TB
 | `fs-disown-children-nil-deref` | Nil dereference in gofer invalidation | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/1k-platform-next.md |
 | `fs-host-folder-mtime-resolution` | Host-folder writes keep the old mtime | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
 | `fs-layer-store-corrupt-after-restart` | Layer store unreadable after restart | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
-| `fs-overlay-upper-on-host-folder` | Overlay with a host-folder upper layer | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/adr/0002-what-done-means.md; docs/results/2r-step5-overlay.md |
+| `fs-overlay-upper-on-host-folder` | Overlay with a host-folder upper layer | defect | windows-ci | in-progress | unrated | 2026-11-27 |  |  |  |  |  | docs/adr/0002-what-done-means.md; docs/results/2r-step5-overlay.md |
+| `fs-overlay-native-diff` | Fast layer diffs with overlay | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/2r-step5-overlay.md |
 
 ### Details per node
 
@@ -110,7 +113,7 @@ flowchart TB
 | `fs-handles-do-not-block-users` | Files stay editable on Windows | a Windows folder is served to the Sentry as a Linux filesystem with no gofer, by file ID through short-lived share-all handles with Linux metadata in an NTFS stream |  | The Sentry holds Windows file handles only briefly, so editors and git can still rename and delete files. | Done when: git checkout and an editor save on Windows succeed while a guest has the folder open. |  |  |  |  |
 | `fs-persistent-storage-choice` | Choose the persistent storage |  |  | Decided: persistent data lives as real files in a Windows folder, with Linux metadata in an NTFS stream. | Done when: an ADR records the choice with the measurements from Phase 0. |  |  |  |  |
 | `fs-root-filesystem-source` | Root filesystem from an erofs image | a read-only erofs image built from OCI images (alpine, podman) mounts on Windows under a memory overlay in under 40 ms with every type, mode, owner, device node, hard link and symlink correct |  | The guest's root filesystem comes from an unpacked OCI bundle directory on Windows. | Done as a library (pkg/sentry/fsimpl/rootfs); wiring into runsc boot belongs to Boot runsc on Windows. |  |  |  |  |
-| `fs-persistent-storage-impl` | Storage that survives restarts |  |  | Implement the chosen writable filesystem so data inside the sandbox outlives a restart. | Done when: files and image layers written in the guest are there after the sandbox restarts. |  |  |  |  |
+| `fs-persistent-storage-impl` | Storage that survives restarts |  |  | Implement the chosen writable filesystem so data inside the sandbox outlives a restart. | Image layers and volumes live on a Windows folder through the host-folder backend; acceptance step 9 (restart) passes 8 of 8. |  |  |  |  |
 | `fs-safe-save-keeps-metadata` | Editor safe-saves keep Linux metadata |  |  | An editor's safe-save replaces the file, which drops its metadata stream, so the guest falls back to the mount defaults for mode and owner. | Fixed for the running sandbox (metadata remembered per name in memory); replacements while no sandbox runs still lose it. |  |  |  |  |
 | `fs-rootfs-import` | Bring container images onto NTFS |  |  | Decided: the sandbox root is a read-only erofs image with an overlay on top; persistent data such as Podman storage lives in Windows folders. | Done when: an ADR records the choice, after reading how gVisor opens erofs images and which mode a file without a metadata stream reports. |  |  |  |  |
 | `fs-attribute-cache` | Faster stat walks on host folders | a watched host folder now answers a repeated stat walk of 20000 files from cache at 1 us per file (native 22-30 us) | 1 us per file | A git-status-like walk of 20000 files takes 1.2-2.4 s through the host folder; an attribute cache fed by the change watcher would bring stat near native. | Done when: a 20000-file stat walk through the backend is within 2x of native on windows-latest. |  |  |  |  |
@@ -122,7 +125,8 @@ flowchart TB
 | `fs-disown-children-nil-deref` | Nil dereference in gofer invalidation |  |  | The Sentry panics with a nil dereference in gofer dentry.disownAllChildrenForInvalidation during the bench test in rewrite-mode CI legs. | Fixed: negative (nil) child entries are skipped during invalidation; bench passed 29 of 30 legs, the miss was the stuck-stub hang. |  |  |  |  |
 | `fs-host-folder-mtime-resolution` | Host-folder writes keep the old mtime |  |  | On host folders 45-60% of consecutive writes report the same mtime as the previous one (tmpfs: none), which can hide changes from tools that compare mtimes. | Fixed: the Sentry records the time of each guest write and reports max(host, last write); 0 repeated mtimes over 20000 writes. |  |  |  |  |
 | `fs-layer-store-corrupt-after-restart` | Layer store unreadable after restart |  |  | After a failed apt build, a layer directory (.../var/cache/apt/archives) cannot be removed ("directory not empty") although the Sentry lists it as empty; c/storage retries that removal on every load and fails the whole store, so steps 9-10 fail after the restart. | Fixed with atomic replace of layers.json/images.json (pins switch to by-name handles at replace time) and the graceful engine stop. |  |  |  |  |
-| `fs-overlay-upper-on-host-folder` | Overlay with a host-folder upper layer |  |  | Podman uses the slow vfs storage driver because native overlay with its upper layer on a Windows folder fails c/storage's probe: removing a directory in the merged view returns "directory not empty". | Fixed: the host-folder backend returned DT_UNKNOWN for device nodes, so the overlay missed whiteouts; native overlay passes all 10 steps 4 of 4 (acceptance default stays vfs until more runs). Open: native-diff probe fails (opaque flag copied up). |  |  |  |  |
+| `fs-overlay-upper-on-host-folder` | Overlay with a host-folder upper layer |  |  | Podman uses the slow vfs storage driver because native overlay with its upper layer on a Windows folder fails c/storage's probe: removing a directory in the merged view returns "directory not empty". | Cause fixed: device nodes came back as DT_UNKNOWN, hiding whiteouts; native overlay passed all 10 steps 4 of 4 (run 45992758965). Fixed when: native-overlay passes 8 of 8, then the acceptance default can switch by a new ADR. |  |  |  |  |
+| `fs-overlay-native-diff` | Fast layer diffs with overlay |  |  | With overlay, c/storage's native-diff probe fails ("opaque flag erroneously copied up"), so it computes layer diffs the slow way. | Fixed when: podman info reports Native Overlay Diff true. |  |  |  |  |
 
 ### Folded items per node
 

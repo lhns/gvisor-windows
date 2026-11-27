@@ -433,11 +433,13 @@
   title: Podman passes on Windows
   track: workloads
   kind: experiment
-  state: blocked
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  state: done
+  outcome: successful
+  evidence:
+  - docs/results/5-podman-windows.md
+  - docs/adr/0002-what-done-means.md
+  verdict_quote: an unmodified Podman 6.2.0 engine passes all ten acceptance steps on gVisor on Windows as a standard user in native mode, 8 of 8 runs twice, under the conditions listed in ADR 0002
+  headline: All ten Podman steps pass, native mode
   depends_on:
   - runsc-container-on-windows
   - workloads-acceptance-test-windows
@@ -469,16 +471,15 @@
   - platform-rewrite-glibc-init-crash
   - fs-host-folder-mtime-resolution
   - fs-layer-store-corrupt-after-restart
-  - platform-unrewritten-fs-in-library
   - workloads-buildah-thinks-rootless
   replaced_by: []
   lane: windows-ci
-  start: ''
-  end: ''
+  start: '2026-11-27'
+  end: '2026-11-27'
   folded: []
   overview: true
   plain: 'The bar for enough features: an unmodified Podman engine passes the acceptance test on gVisor on Windows.'
-  notes: 'Done when: all 10 acceptance steps pass in CI on windows-latest as a standard user.'
+  notes: Native mode (CPUs with FSGSBASE), runs 45976796134 and 45985526511. CPUs without FSGSBASE are the follow-up node.
 - id: runsc-container-on-windows
   title: Run a container with runsc
   track: runsc
@@ -603,7 +604,7 @@
   title: Own vDSO for clock calls
   track: platform
   kind: feature
-  state: blocked
+  state: next
   outcome: unrated
   evidence: []
   verdict_quote: ''
@@ -764,7 +765,7 @@
   title: Timers and clocks on Windows
   track: sentry
   kind: feature
-  state: blocked
+  state: next
   outcome: unrated
   evidence: []
   verdict_quote: ''
@@ -1093,7 +1094,7 @@
   title: Portable zip, no installer
   track: ops
   kind: feature
-  state: blocked
+  state: next
   outcome: unrated
   evidence: []
   verdict_quote: ''
@@ -1104,7 +1105,8 @@
   lane: windows-ci
   start: ''
   end: ''
-  folded: []
+  folded:
+  - CI uploads a runsc-windows package (runsc.exe, hello bundle, README) on each push to windows (2026-11-27, commit 20ac3fb3b)
   overview: false
   plain: Ship runsc for Windows as a zip or per-user installer that needs no admin.
   notes: 'Done when: a release zip runs from a user folder on a clean Windows machine.'
@@ -1199,26 +1201,27 @@
   title: Storage that survives restarts
   track: fs
   kind: feature
-  state: blocked
+  state: done
   outcome: unrated
-  evidence: []
+  evidence:
+  - docs/results/5-podman-windows.md
   verdict_quote: ''
   headline: ''
   depends_on:
   - fs-persistent-storage-choice
   replaced_by: []
   lane: windows-ci
-  start: ''
-  end: ''
+  start: '2026-11-27'
+  end: '2026-11-27'
   folded: []
   overview: false
   plain: Implement the chosen writable filesystem so data inside the sandbox outlives a restart.
-  notes: 'Done when: files and image layers written in the guest are there after the sandbox restarts.'
+  notes: Image layers and volumes live on a Windows folder through the host-folder backend; acceptance step 9 (restart) passes 8 of 8.
 - id: workloads-podman-harness
   title: Serve Podman to Windows clients
   track: workloads
   kind: tooling
-  state: in-progress
+  state: done
   outcome: unrated
   evidence:
   - docs/results/5-podman-windows.md
@@ -1231,7 +1234,7 @@
   replaced_by: []
   lane: windows-ci
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-27'
   folded:
   - Podman 6.2.0 pulls and stores images on a Windows folder; steps 1-2 pass (2026-11-26, commit 61c8b8f92)
   - Runtime -p via the forwarder expose API works as a standard user (2026-11-26, commit 61c8b8f92)
@@ -1242,7 +1245,7 @@
   - 'Native: steps 1-4 and 6-8 pass 8 of 8; steps 9-10 fail only after a failed build left an undeletable layer directory (2026-11-27, commit 8b655ef58)'
   overview: false
   plain: The test harness runs the Podman engine on runsc and exposes its API to the stock Windows clients.
-  notes: Engine runs on runsc.exe with the erofs podman image; step 1 passes. Gap list in docs/results/5-podman-windows.md.
+  notes: Engine on runsc.exe with the erofs podman image, graceful stop, stock Windows clients over a named pipe; the remaining differences from a stock service are listed in ADR 0002.
 - id: platform-hardware-acceleration
   title: Use hardware acceleration when available
   track: platform
@@ -2009,12 +2012,11 @@
   title: Try it on a real work machine
   track: ops
   kind: owner-decision
-  state: blocked
+  state: next
   lane: owner
-  depends_on:
-  - workloads-podman-on-windows
+  depends_on: []
   plain: All evidence comes from GitHub hosted Windows images; the owner runs runsc.exe once on a work machine to check FSGSBASE and whether security software tolerates the generated stub being debugged.
-  notes: 'Done when: the owner reports the result of one run of the published artifact.'
+  notes: 'Ready: download the runsc-windows artifact of the latest ci run on windows and run its README command. Done when: the owner reports the result of one run.'
 - outcome: unrated
   evidence:
   - docs/results/5-podman-windows.md
@@ -2628,7 +2630,7 @@
   depends_on: &id013 []
   replaced_by: &id014 []
   start: '2026-11-27'
-  end: '2026-11-27'
+  end: ''
   folded: &id015 []
   overview: false
   lane: windows-ci
@@ -2636,11 +2638,11 @@
   title: Overlay with a host-folder upper layer
   track: fs
   kind: defect
-  state: done
+  state: in-progress
   plain: 'Podman uses the slow vfs storage driver because native overlay with its upper layer on a Windows folder fails c/storage''s probe: removing a directory in the merged view returns "directory not
     empty".'
-  notes: 'Fixed: the host-folder backend returned DT_UNKNOWN for device nodes, so the overlay missed whiteouts; native overlay passes all 10 steps 4 of 4 (acceptance default stays vfs until more runs).
-    Open: native-diff probe fails (opaque flag copied up).'
+  notes: 'Cause fixed: device nodes came back as DT_UNKNOWN, hiding whiteouts; native overlay passed all 10 steps 4 of 4 (run 45992758965). Fixed when: native-overlay passes 8 of 8, then the acceptance
+    default can switch by a new ADR.'
 - outcome: unrated
   evidence:
   - docs/results/5-podman-windows.md
@@ -2655,10 +2657,89 @@
   overview: false
   lane: windows-ci
   id: workloads-dev-null-eacces
-  title: Rare permission error on /dev/null
+  title: Rare permission error opening the null device
   track: workloads
   kind: defect
   state: done
   plain: 'Intermittently, apt''s unprivileged _apt user gets "cannot create /dev/null: Permission denied" inside a build container, so step 5 fails; dpkg''s "cannot stat" of an extracted .deb also still
     shows up rarely.'
   notes: 'Not reproduced on current windows: step 5 passed 80 of 80 native runs; the failures were on heads before the mount-keeping and atomic-replace fixes. A devnull guest test guards it.'
+- outcome: unrated
+  evidence:
+  - docs/results/5-podman-windows.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - workloads-podman-on-windows
+  - platform-unrewritten-fs-in-library
+  - platform-rewrite-heap-corruption
+  replaced_by: []
+  start: '2026-11-27'
+  end: ''
+  folded: []
+  overview: false
+  lane: windows-ci
+  notes: 'Done when: podman-windows modes=rewrite,rewrite-fxsave passes all 10 steps 8 of 8.'
+  id: workloads-podman-without-fsgsbase
+  title: Podman on CPUs without FSGSBASE
+  track: workloads
+  kind: feature
+  state: blocked
+  plain: The same acceptance in rewrite mode, which older CPUs and this development VM need because they cannot set the %fs base from user mode.
+- outcome: unrated
+  evidence:
+  - docs/results/2r-step5-overlay.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-27'
+  end: ''
+  folded: []
+  overview: false
+  lane: windows-ci
+  notes: 'Fixed when: podman info reports Native Overlay Diff true.'
+  id: fs-overlay-native-diff
+  title: Fast layer diffs with overlay
+  track: fs
+  kind: defect
+  state: next
+  plain: With overlay, c/storage's native-diff probe fails ("opaque flag erroneously copied up"), so it computes layer diffs the slow way.
+- outcome: mixed
+  evidence:
+  - docs/results/0b-windows.md
+  verdict_quote: Dispatch writes 4512 bytes below RSP on every AVX-512 runner CPU whatever the thread dirtied (clean, ymm and zmm/k state all the same)
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-27'
+  end: '2026-11-27'
+  folded: []
+  overview: false
+  lane: windows-ci
+  notes: ''
+  id: platform-exception-dispatch-depth
+  title: Measure exception stack use
+  track: platform
+  kind: experiment
+  state: done
+  plain: How far below the stack pointer Windows writes when it delivers an exception on AVX-512 CPUs, against what Go reserves; safecopy keeps its stack headroom helper.
+- outcome: unrated
+  evidence:
+  - docs/results/0b-windows.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-27'
+  end: ''
+  folded: []
+  overview: false
+  lane: windows-ci
+  notes: 'Fixed when: the cause is found, or it does not recur in a month of nightly runs.'
+  id: sentry-waitgroup-panic
+  title: One-off negative WaitGroup panic
+  track: sentry
+  kind: defect
+  state: next
+  plain: A "negative WaitGroup counter" panic seen once in safecopy tests is not explained by stack overrun and did not recur in 1600 runs.
