@@ -19,7 +19,6 @@ package winstub
 import (
 	"syscall"
 	"os"
-	"runtime"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -312,7 +311,6 @@ func (c *winContext) wait(t *thread) (request, error) {
 	as := t.as
 	sleep := t.u32(stubasm.PgCtlSlp)
 	slept := false
-	refused := 0
 	defer func() {
 		c.ctlScore = scoreUpdate(c.ctlScore, !slept)
 		if slept {
@@ -337,14 +335,7 @@ func (c *winContext) wait(t *thread) (request, error) {
 		}
 		if c.intrPending.Load() {
 			if !as.interrupt(t) {
-				// The thread is somewhere it cannot be captured for a few
-				// instructions (under a veneer's jump, in the stub's code):
-				// yield first, since a timer sleep on Windows lasts 0.5 ms or more.
-				if refused++; refused < 64 {
-					runtime.Gosched()
-				} else {
-					time.Sleep(50 * time.Microsecond)
-				}
+				time.Sleep(50 * time.Microsecond)
 			}
 			continue
 		}
