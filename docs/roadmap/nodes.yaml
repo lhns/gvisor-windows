@@ -470,6 +470,7 @@
   - fs-host-folder-mtime-resolution
   - fs-layer-store-corrupt-after-restart
   - platform-unrewritten-fs-in-library
+  - workloads-buildah-thinks-rootless
   replaced_by: []
   lane: windows-ci
   start: ''
@@ -1237,6 +1238,8 @@
   - Steps 1, 2 and 7 pass; nginx published with -p answers on 127.0.0.1 (2026-11-27, commit 159f62dc1)
   - Eight of ten acceptance steps pass; tty and build remain (2026-11-27, commit 0f4d0b353)
   - 'Native: 7 of 8 runs pass every step but the build; no hangs or GC crashes in 16 runs (2026-11-27, commit 74e8f4a70)'
+  - Graceful engine stop via runsc kill TERM; GODEBUG and stale env workarounds removed; no GC crash or hang in 16 runs (2026-11-27, commit 8b655ef58)
+  - 'Native: steps 1-4 and 6-8 pass 8 of 8; steps 9-10 fail only after a failed build left an undeletable layer directory (2026-11-27, commit 8b655ef58)'
   overview: false
   plain: The test harness runs the Podman engine on runsc and exposes its API to the stock Windows clients.
   notes: Engine runs on runsc.exe with the erofs podman image; step 1 passes. Gap list in docs/results/5-podman-windows.md.
@@ -2533,9 +2536,9 @@
   kind: defect
   state: next
   lane: windows-ci
-  plain: After an engine restart c/storage reports the primary layer store as corrupted (layers.json written by rename on the storage folder), so all images are gone in 1 of 8 native and 2 of 8 rewrite
-    runs.
-  notes: 'Fixed when: step 9 passes 8 of 8 in both modes.'
+  plain: After a failed apt build, a layer directory (.../var/cache/apt/archives) cannot be removed ("directory not empty") although the Sentry lists it as empty; c/storage retries that removal on every
+    load and fails the whole store, so steps 9-10 fail after the restart.
+  notes: 'Not caused by the hard kill (stop is now graceful). Fixed when: rmdir of a directory emptied by RemoveAll succeeds on host folders and steps 9-10 pass 8 of 8.'
 - outcome: unrated
   evidence:
   - docs/results/5-podman-windows.md
@@ -2545,14 +2548,34 @@
   depends_on: *id010
   replaced_by: *id011
   start: '2026-11-27'
-  end: '2026-11-27'
+  end: ''
   folded: *id012
   overview: false
   id: platform-unrewritten-fs-in-library
   title: Unrewritten %fs site in a library
   track: platform
   kind: defect
-  state: done
+  state: next
   lane: windows-ci
   plain: In rewrite mode the engine once died at start with SIGSEGV addr=0x28 during a cgo call, which looks like a %fs:0x28 stack-canary access with a zero base in a shared library.
-  notes: Covered by the seam re-decode for %fs sites and an FS TRIPWIRE log that names any missed %fs site in rewrite mode; not seen since.
+  notes: 'Reopened: rewrite runs still die at engine start with SIGSEGV addr=0x28 in cgo sqlite3_exec_no_args (2 of 8). Fixed when: the FS TRIPWIRE names the site, it is patched, and rewrite mode starts
+    the engine 8 of 8.'
+- id: workloads-buildah-thinks-rootless
+  title: buildah picks rootless isolation
+  track: workloads
+  kind: defect
+  state: next
+  outcome: unrated
+  evidence:
+  - docs/results/5-podman-windows.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  lane: windows-ci
+  start: '2026-11-27'
+  end: ''
+  folded: []
+  overview: false
+  plain: Without BUILDAH_ISOLATION=oci every build fails in pasta, because buildah resolves the default isolation to rootless inside the sandbox, although euid, uid_map and capabilities all look rootful.
+  notes: 'Fixed when: the BUILDAH_ISOLATION=oci workaround is removed and builds still use OCI isolation.'

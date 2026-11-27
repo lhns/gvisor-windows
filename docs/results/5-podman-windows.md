@@ -293,3 +293,35 @@ Run https://github.com/lhns/gvisor-windows/actions/runs/45962927170, 8 runs per 
 - Rewrite run 1: `SIGSEGV addr=0x28` during cgo at engine start, which looks like a `%fs:0x28` (stack canary) access with a zero base in a library — an unrewritten `%fs` site.
 
 Verdict: with the hang fixes and the integrated build fixes, native mode passes every acceptance step except the build in 7 of 8 runs with no hangs or GC crashes, and the remaining failures are a corrupted layer store after restart, dpkg losing apt's archives on the storage folder, and one unrewritten %fs site in rewrite mode.
+
+## Tenth round (branch podman-bar: graceful stop, workarounds audit, 8 runs per mode)
+
+Runs: https://github.com/lhns/gvisor-windows/actions/runs/45969933641 (before merging `windows` 17a48255f; GODEBUG and `BUILDAH_ISOLATION` removed, so the build failed in pasta again) and https://github.com/lhns/gvisor-windows/actions/runs/45973373703 (podman-bar 09831c180 = merged `windows`; `BUILDAH_ISOLATION=oci` kept, no GODEBUG). Podman 6.2.0, standard user, 8 runs per mode.
+
+**Graceful stop.** `Stop-Engine` now runs `runsc kill podman-<name> TERM` and waits 60 s before it kills. `runsc run` now serves the control pipe (ADR 0019) for `state` and `kill`, so the signal reaches init (podman). The engine logs show `Invoking shutdown handler` at each restart. The Linux harness is not graceful either: `docker rm -f` kills, the native one uses `pkill` (SIGTERM).
+
+**The "primary layer store" failure (step 9 after restart) is not the hard kill.** Run 45962927170 native-3: the log `engine-081151.err` is the second boot. It starts in 2 s and answers `_ping` at once, but every `version` returns 500 from 08:11:55 until the harness gives up at 08:16:55 (the 08:16:58 answers are step 10, not a startup stall): `loading primary layer store data: error removing stale temp dir: unlinkat .../vfs/tempdirs/temp-dir-.../var/cache/apt/archives: directory not empty`. The same error is already in the first boot, in step 5: the failed build's `deleting build container ... removing temp dir failed: unlinkat .../apt/archives: directory not empty`. So a failed apt build leaves a layer directory that `RemoveAll` cannot delete (the directory lists as empty, the host says not empty: likely a file in delete-pending state, an open handle in the gofer, or a name readdir does not return), and c/storage retries that removal on every load and fails the whole store. Confirmed by 45973373703: graceful stop was in effect, and step 9 failed in exactly the 3 native runs whose step 5 ended with `deleting build container` (runs 2, 3, 6); the others passed step 9; in the first run of this round (build failing early in pasta, no layer dir) step 9 passed in all 16 runs. Owner: `fsimpl/gofer` / winhost (rmdir after RemoveAll on a host folder), reproducer: `apt-get install` in a debian container on the storage folder, then `rm -r` of the layer.
+
+**Workarounds audit** (engine setup vs `engine-runsc.sh`):
+| item | Windows | Linux harness | decision |
+|---|---|---|---|
+| GODEBUG avx512 off, `CONTAINER_NOGODEBUG=1` | set | not set | removed (the second is read by nothing) |
+| `CONTAINERS_CONF` | set | file + drop-in, no env | removed (same file at `/etc/containers/containers.conf`) |
+| capabilities | 38 caps, no BPF, PERFMON, CHECKPOINT_RESTORE | `--cap-add all` | all 41 now; engine sees `CapEff 000001ffffffdfff` (NET_RAW stripped by runsc, as on Linux) |
+| `BUILDAH_ISOLATION=oci` | set | not set | kept, see below |
+| storage driver vfs | vfs | overlay | kept: overlay on a host-folder mount is not supported by the Sentry (open) |
+| `--overlay2=root:memory`, `--in-sandbox-cgroup=v2`, sysfs/cgroup2/devpts mounts, `/var/tmp` tmpfs, resolv.conf, devices | set | docker provides them | needed by the missing runtime layer (no docker); not removable |
+| `--log-level=info`, `--debug`, hang dump | set | not set | diagnostics only |
+
+**Why buildah thinks it is rootless: not found.** `engine-env.txt` (new, from the engine's own process) shows euid 0, `uid_map = 0 0 4294967295`, `CapEff` with CAP_SYS_ADMIN, no `_CONTAINERS_*` variables, `NoNewPrivs 0`, `cap_last_cap 40`. Those are all the inputs of `unshare.IsRootless()` (c/storage: `_CONTAINERS_ROOTLESS_UID`/euid, `_CONTAINERS_USERNS_CONFIGURED`, CAP_SYS_ADMIN through capget, "4294967295" in uid_map) and all say rootful; capget in the Sentry is correct and the engine logs no "Failed to read CAP_SYS_ADMIN" warning. The client sends `isolation=0` (default) and `networkmode=0` (access log), so buildah's default resolves server side to OCIRootless, as pasta is only used for that isolation. Without `BUILDAH_ISOLATION` all 16 builds of 45969933641 failed with `pasta ... Couldn't switch to pasta namespaces`. Next step: run the engine with `--log-level=debug` and log buildah's isolation choice, or a Go probe calling `unshare.IsRootless()` in the sandbox.
+
+**Eight runs per mode on 09831c180 (45973373703).** Steps passing of 8:
+| step | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| native | 8 | 8 | 8 | 8 | 0 | 8 | 8 | 8 | 5 | 5 |
+| rewrite | 8 | 6 | 6 | 6 | 0 | 6 | 6 | 6 | 6 | 8 |
+Step times: native 2 s, pull 17 to 37 s, run 5 to 10 s, tty 20 s, bind 9 to 18 s, port 41 to 92 s, compose 14 to 44 s, restart 14 to 18 s (failing: 307 s timeout). Step 5 now reaches apt: native runs end in `dpkg: cannot stat '/tmp/apt-dpkg-install-.../*.deb'` (or the temp-dir error above); four rewrite runs die in `apt` with `Segmentation fault` (exit 139) or `double free or corruption` (134).
+- **No Go GC crash** (`ScanSpanPackedAVX512`) in 16 runs with the GODEBUG line gone, and no hang or hang dump. (The previous run, before the merge, also had none.)
+- **Rewrite runs 4 and 6: engine SIGSEGV addr=0x28 in cgo (`sqlite3_exec_no_args`) at start**, the unrewritten `%fs:0x28` site of round 9 (the same in 45969933641 run 7); steps 2 to 9 then fail with "cannot connect". 3 of 24 rewrite runs in the two sets, 0 of 16 native.
+
+Verdict: the engine now stops gracefully and survives without the GODEBUG line (no GC crash in 16 runs), but the restart failures come from a layer directory a failed apt build leaves behind and that the host folder will not delete (gofer/winhost, step 5's own failure family), and why buildah chooses rootless isolation is still unexplained (all its inputs look rootful), so `BUILDAH_ISOLATION=oci` stays.

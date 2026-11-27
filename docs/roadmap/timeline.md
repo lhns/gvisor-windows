@@ -111,6 +111,7 @@ gantt
     Interactive TTY through the Windows cli… :workloads_tty_through_windows_client, 2026-11-27, 2026-11-27
     Isolation step failed once :workloads_isolation_flake, 2026-11-27, 2026-11-27
     Volume data lost across engine restart :workloads_volume_lost_on_restart, 2026-11-27, 2026-11-27
+    buildah picks rootless isolation :workloads_buildah_thinks_rootless, 2026-11-27, 2026-11-27
     section research - research
     Pick gVisor as the base :research_gvisor_base, 2026-11-17, 2026-11-26
     Revive LKL or nommu UML :crit, research_lkl_nommu, 2026-11-26, 2026-11-26

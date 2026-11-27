@@ -39,7 +39,12 @@ $pipe = "podman-$Name"
 function Stop-Engine {
   if (Test-Path $pidFile) {
     $p = Get-Process -Id ([int](Get-Content $pidFile)) -ErrorAction SilentlyContinue
-    if ($p) { $p.Kill($true); $p.WaitForExit(30000) | Out-Null }
+    if ($p) {
+      # SIGTERM first (runsc kill reaches init through the control pipe of `run`), so podman closes its store the way
+      # the Linux harness's `pkill`/`docker stop` lets it; a hard kill is the fallback.
+      & $Runsc kill "podman-$Name" TERM *> $null
+      if (-not $p.WaitForExit(60000)) { Write-Host 'start-engine: no exit 60 s after SIGTERM, killing'; $p.Kill($true); $p.WaitForExit(30000) | Out-Null }
+    }
     Remove-Item $pidFile -Force
   }
 }
@@ -88,25 +93,25 @@ function Start-Engine {
   if ($Share) {
     $mounts += @{ destination = (Guest-Path $Share); type = 'bind'; source = (Resolve-Path $Share).Path; options = @('rbind', 'rw', 'case-sensitive') }
   }
+  # docker run --cap-add all, as the Linux harness (engine-runsc.sh): every capability, in the four sets.
   $caps = 'CAP_CHOWN', 'CAP_DAC_OVERRIDE', 'CAP_DAC_READ_SEARCH', 'CAP_FOWNER', 'CAP_FSETID', 'CAP_KILL', 'CAP_SETGID', 'CAP_SETUID', 'CAP_SETPCAP',
   'CAP_LINUX_IMMUTABLE', 'CAP_NET_BIND_SERVICE', 'CAP_NET_BROADCAST', 'CAP_NET_ADMIN', 'CAP_NET_RAW', 'CAP_IPC_LOCK', 'CAP_IPC_OWNER',
   'CAP_SYS_MODULE', 'CAP_SYS_RAWIO', 'CAP_SYS_CHROOT', 'CAP_SYS_PTRACE', 'CAP_SYS_PACCT', 'CAP_SYS_ADMIN', 'CAP_SYS_BOOT', 'CAP_SYS_NICE',
   'CAP_SYS_RESOURCE', 'CAP_SYS_TIME', 'CAP_SYS_TTY_CONFIG', 'CAP_MKNOD', 'CAP_LEASE', 'CAP_AUDIT_WRITE', 'CAP_AUDIT_CONTROL', 'CAP_SETFCAP',
-  'CAP_MAC_OVERRIDE', 'CAP_MAC_ADMIN', 'CAP_SYSLOG', 'CAP_WAKE_ALARM', 'CAP_BLOCK_SUSPEND', 'CAP_AUDIT_READ'
+  'CAP_MAC_OVERRIDE', 'CAP_MAC_ADMIN', 'CAP_SYSLOG', 'CAP_WAKE_ALARM', 'CAP_BLOCK_SUSPEND', 'CAP_AUDIT_READ',
+  'CAP_PERFMON', 'CAP_BPF', 'CAP_CHECKPOINT_RESTORE'
+  # What the engine's process sees (capabilities, user namespace, environment), for comparison with the Linux harness; podman logs it as engine-env.txt.
+  $probe = '{ grep -E "^(Uid|Gid|NoNewPrivs|Seccomp|Cap)" /proc/self/status; echo uid_map; cat /proc/self/uid_map; echo gid_map; cat /proc/self/gid_map; echo cap_last_cap; cat /proc/sys/kernel/cap_last_cap; readlink /proc/self/ns/user; echo env; env | sort; } > /var/lib/containers/engine-env.txt 2>&1; '
   $spec = [ordered]@{
     ociVersion = '1.0.2'
     process    = [ordered]@{
       terminal     = $false
       user         = @{ uid = 0; gid = 0 }
-      args         = @('sh', '-c', 'mkdir -p /run/podman /run/containers/storage; exec podman --log-level=info system service --time=0 tcp://0.0.0.0:8888')
-      env          = @('PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'HOME=/root', 'TERM=xterm', 'container=podman', $(if ($env:ENGINE_GODEBUG) { "GODEBUG=$env:ENGINE_GODEBUG" } else { 'CONTAINER_NOGODEBUG=1' }),
-        'CONTAINERS_STORAGE_CONF=/etc/containers/storage.conf', 'CONTAINERS_CONF=/etc/containers/containers.conf',
-        # Without it a build chooses buildah's rootless isolation (pasta networking, which fails as root: it drops
-        # its capabilities before setns, on real Linux too, docs/results/0c-linux-strict-bar.md); the OCI isolation uses netavark.
-        'BUILDAH_ISOLATION=oci',
-        # The guest sees the host's CPUID (no cpuid faulting on Windows), and the Go GC's AVX-512 scan loop crashes now
-        # and then (docs/results/5-podman-windows.md, round 5); Go leaves it out with this.
-        'GODEBUG=cpu.avx512f=off,cpu.avx512cd=off,cpu.avx512bw=off,cpu.avx512dq=off,cpu.avx512vl=off')
+      args         = @('sh', '-c', ($probe + 'mkdir -p /run/podman /run/containers/storage; exec podman --log-level=info system service --time=0 tcp://0.0.0.0:8888'))
+      env          = @('PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'HOME=/root', 'TERM=xterm', 'container=podman', 'CONTAINERS_STORAGE_CONF=/etc/containers/storage.conf',
+        # Still needed (round 10): without it the build picks buildah's rootless isolation (pasta fails as root); the
+        # inputs of c/storage's IsRootless() (euid, CapEff, uid_map, env) all look rootful in engine-env.txt, cause unknown.
+        'BUILDAH_ISOLATION=oci')
       cwd          = '/'
       capabilities = @{ bounding = $caps; effective = $caps; permitted = $caps; inheritable = $caps }
     }
@@ -149,7 +154,7 @@ function Start-Engine {
     while ((Get-Date) -lt $deadline) {
       if ($p.HasExited) { throw "runsc exited with $($p.ExitCode); see $logs" }
       & $Podman --url (UnixUrl $sock) version *> $null
-      if ($LASTEXITCODE -eq 0) { Write-Host 'start-engine: engine answers'; return }
+      if ($LASTEXITCODE -eq 0) { Write-Host 'start-engine: engine answers'; Copy-Item (Join-Path $storage 'engine-env.txt') $logs -ErrorAction SilentlyContinue; return }
       Start-Sleep -Seconds 3
     }
     throw "engine did not answer within $TimeoutSeconds s; see $logs"

@@ -24,6 +24,7 @@ flowchart TB
     workloads_tty_through_windows_client>"✔ Interactive TTY<br/>through the Windows<br/>client"]
     workloads_isolation_flake>"⚠ Isolation step<br/>failed once"]
     workloads_volume_lost_on_restart>"✔ Volume data lost<br/>across engine restart"]
+    workloads_buildah_thinks_rootless>"⚠ buildah picks<br/>rootless isolation"]
     workloads_podman_on_windows[/"⛔ Podman passes on<br/>Windows"/]
     workloads_podman_probe[/"✔ Probe Podman inside<br/>the sandbox"/]
     workloads_podman_harness["▶ Serve Podman to<br/>Windows clients"]
@@ -41,9 +42,10 @@ flowchart TB
     workloads_end_to_end_speed ~~~ workloads_tty_through_windows_client
     workloads_conmon_sync_pipe ~~~ workloads_isolation_flake
     workloads_conmon_attach_second_cause ~~~ workloads_volume_lost_on_restart
-    workloads_tty_through_windows_client ~~~ workloads_volume_lost_on_restart
+    workloads_tty_through_windows_client ~~~ workloads_buildah_thinks_rootless
     workloads_isolation_flake ~~~ workloads_podman_on_windows
     workloads_volume_lost_on_restart ~~~ workloads_podman_probe
+    workloads_buildah_thinks_rootless ~~~ workloads_podman_probe
     workloads_podman_on_windows ~~~ workloads_podman_harness
     workloads_podman_probe ~~~ workloads_podman_harness
     workloads_acceptance_test --> workloads_podman_on_gvisor_linux
@@ -59,8 +61,9 @@ flowchart TB
     workloads_tty_through_windows_client --> workloads_podman_on_windows
     workloads_isolation_flake --> workloads_podman_on_windows
     workloads_volume_lost_on_restart --> workloads_podman_on_windows
+    workloads_buildah_thinks_rootless --> workloads_podman_on_windows
     workloads_podman_probe --> workloads_podman_harness
-    linkStyle 20 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    linkStyle 21 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -78,7 +81,7 @@ flowchart TB
     class workloads_acceptance_test,workloads_acceptance_test_windows,workloads_podman_api_named_pipe,workloads_podman_probe unrated
     class workloads_podman_on_gvisor_linux,workloads_strict_bar_linux,workloads_end_to_end_speed mixed
     class workloads_gvisor_bridge_netlink,workloads_gvisor_port_publishing,workloads_gvisor_cgroupfs_readonly,workloads_overlay_userxattr,workloads_conmon_sync_pipe,workloads_conmon_attach_second_cause,workloads_tty_through_windows_client,workloads_volume_lost_on_restart succ
-    class workloads_isolation_flake finding
+    class workloads_isolation_flake,workloads_buildah_thinks_rootless finding
     class workloads_podman_on_windows blocked
     class workloads_podman_harness inprog
 ```
@@ -91,7 +94,7 @@ flowchart TB
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `workloads-acceptance-test` | Write the Podman acceptance test | tooling | linux-ci | done | unrated | 2026-11-26 | 2026-11-26 | research-gvisor-base |  |  |  | test/e2e/podman-acceptance/run.sh; docs/results/0a-linux.md |
 | `workloads-podman-on-gvisor-linux` | Podman on gVisor on Linux | experiment | linux-ci | done | mixed | 2026-11-26 | 2026-11-26 | workloads-acceptance-test |  | workloads-gvisor-bridge-netlink, workloads-gvisor-port-publishing |  | docs/results/0a-linux.md |
-| `workloads-podman-on-windows` | Podman passes on Windows | experiment | windows-ci | blocked | unrated |  |  | runsc-container-on-windows, workloads-acceptance-test-windows, net-port-forwarding, fs-persistent-storage-choice, fs-change-notifications, fs-linux-metadata-on-ntfs, net-bridge-networking, workloads-gvisor-cgroupfs-readonly, net-nftables-thread-safety, platform-split-syscall-unpatched, workloads-podman-api-named-pipe, fs-standard-user-delete-rights, workloads-conmon-sync-pipe, workloads-overlay-userxattr, fs-case-sensitivity-without-admin, platform-rare-hang-under-exec-load, sentry-netpoll-failure, fs-unix-sockets-on-host-folders, workloads-conmon-attach-second-cause, sentry-fchmod-std-stream, sentry-pasta-in-sandbox, platform-avx512-state-lost, fs-copied-file-too-short, workloads-tty-through-windows-client, workloads-isolation-flake, platform-rewrite-mode-slow-engine, workloads-volume-lost-on-restart, platform-rewrite-glibc-init-crash, fs-host-folder-mtime-resolution, fs-layer-store-corrupt-after-restart, platform-unrewritten-fs-in-library |  |  |  |  |
+| `workloads-podman-on-windows` | Podman passes on Windows | experiment | windows-ci | blocked | unrated |  |  | runsc-container-on-windows, workloads-acceptance-test-windows, net-port-forwarding, fs-persistent-storage-choice, fs-change-notifications, fs-linux-metadata-on-ntfs, net-bridge-networking, workloads-gvisor-cgroupfs-readonly, net-nftables-thread-safety, platform-split-syscall-unpatched, workloads-podman-api-named-pipe, fs-standard-user-delete-rights, workloads-conmon-sync-pipe, workloads-overlay-userxattr, fs-case-sensitivity-without-admin, platform-rare-hang-under-exec-load, sentry-netpoll-failure, fs-unix-sockets-on-host-folders, workloads-conmon-attach-second-cause, sentry-fchmod-std-stream, sentry-pasta-in-sandbox, platform-avx512-state-lost, fs-copied-file-too-short, workloads-tty-through-windows-client, workloads-isolation-flake, platform-rewrite-mode-slow-engine, workloads-volume-lost-on-restart, platform-rewrite-glibc-init-crash, fs-host-folder-mtime-resolution, fs-layer-store-corrupt-after-restart, platform-unrewritten-fs-in-library, workloads-buildah-thinks-rootless |  |  |  |  |
 | `workloads-acceptance-test-windows` | Acceptance test for Windows | tooling | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 | workloads-acceptance-test |  |  |  | docs/results/5-podman-windows.md |
 | `workloads-podman-harness` | Serve Podman to Windows clients | tooling | windows-ci | in-progress | unrated | 2026-11-26 |  | runsc-container-on-windows, net-port-forwarding, workloads-podman-probe |  |  |  | docs/results/5-podman-windows.md |
 | `workloads-gvisor-bridge-netlink` | Bridge networking fails in gVisor | defect | linux-ci | done | unrated | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/0a-linux.md; docs/results/0c-linux-strict-bar.md; docs/results/1n-bridge-networking.md |
@@ -108,6 +111,7 @@ flowchart TB
 | `workloads-tty-through-windows-client` | Interactive TTY through the Windows client | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
 | `workloads-isolation-flake` | Isolation step failed once | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/5-podman-windows.md |
 | `workloads-volume-lost-on-restart` | Volume data lost across engine restart | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
+| `workloads-buildah-thinks-rootless` | buildah picks rootless isolation | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/5-podman-windows.md |
 
 ### Details per node
 
@@ -132,6 +136,7 @@ flowchart TB
 | `workloads-tty-through-windows-client` | Interactive TTY through the Windows client |  |  | The Windows podman client says "The input device is not a TTY" inside the ConPTY test driver, so the interactive step cannot type into the container. | Fixed in the harness: ttydrive now sets STARTF_USESTDHANDLES with NULL handles so the child gets the pseudoconsole; step 4 passed 7 of 7 runs. |  |  |  |  |
 | `workloads-isolation-flake` | Isolation step failed once |  |  | Remaining acceptance flakes: step 3 sometimes loses the race between --rm cleanup and attach (podman remote, widened by sandbox slowness), and step 10 once timed out with the engine and a new Go helper idle for 123 s, which looks like the stuck process start. | Fixed when: step 10 passes 20 runs in a row, or the cause is found and fixed. |  |  |  |  |
 | `workloads-volume-lost-on-restart` | Volume data lost across engine restart |  |  | In 2 of 5 complete native runs, the named volume written before the engine restart is empty afterwards (step 9). | Harness cause: an old static_dir workaround put libpod's database on a tmpfs. The database now lives on the storage folder; a runsc restart test is required. |  |  |  |  |
+| `workloads-buildah-thinks-rootless` | buildah picks rootless isolation |  |  | Without BUILDAH_ISOLATION=oci every build fails in pasta, because buildah resolves the default isolation to rootless inside the sandbox, although euid, uid_map and capabilities all look rootful. | Fixed when: the BUILDAH_ISOLATION=oci workaround is removed and builds still use OCI isolation. |  |  |  |  |
 
 ### Folded items per node
 
@@ -143,6 +148,8 @@ flowchart TB
   - Steps 1, 2 and 7 pass; nginx published with -p answers on 127.0.0.1 (2026-11-27, commit 159f62dc1)
   - Eight of ten acceptance steps pass; tty and build remain (2026-11-27, commit 0f4d0b353)
   - Native: 7 of 8 runs pass every step but the build; no hangs or GC crashes in 16 runs (2026-11-27, commit 74e8f4a70)
+  - Graceful engine stop via runsc kill TERM; GODEBUG and stale env workarounds removed; no GC crash or hang in 16 runs (2026-11-27, commit 8b655ef58)
+  - Native: steps 1-4 and 6-8 pass 8 of 8; steps 9-10 fail only after a failed build left an undeletable layer directory (2026-11-27, commit 8b655ef58)
 - `workloads-conmon-sync-pipe`: conmon sees no data on its sync pipe
   - Cause 1 fixed: FIFO opens on host folders were rejected by policy, now in-Sentry named pipes (2026-11-27, commit 9ab48dea3)
 - `workloads-overlay-userxattr`: Overlay mounts with userxattr rejected

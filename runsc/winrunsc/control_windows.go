@@ -408,3 +408,46 @@ func (m *multi) String() string     { return strings.Join(*m, ",") }
 func (m *multi) Set(v string) error { *m = append(*m, v); return nil }
 
 var _ = config.NetworkNone
+
+// serveRunControl serves the control pipe for a container started with `run`,
+// so `runsc kill <id> TERM` can reach its init process (a graceful stop of an
+// engine started by a script). Only state and kill are answered.
+func serveRunControl(id string, l *boot.Loader) (io.Closer, error) {
+	sd, err := securityDescriptor()
+	if err != nil {
+		return nil, err
+	}
+	ln, err := winio.ListenPipe(`\\.\pipe\`+pipeName(id), &winio.PipeConfig{SecurityDescriptor: sd})
+	if err != nil {
+		return nil, err
+	}
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer c.Close()
+				var req request
+				if err := json.NewDecoder(c).Decode(&req); err != nil {
+					return
+				}
+				enc := json.NewEncoder(c)
+				switch req.Op {
+				case "state":
+					_ = enc.Encode(&response{OK: true, Status: "running"})
+				case "kill":
+					if err := l.Signal(int32(req.Signal)); err != nil {
+						_ = enc.Encode(&response{Err: err.Error()})
+						return
+					}
+					_ = enc.Encode(&response{OK: true})
+				default:
+					_ = enc.Encode(&response{Err: "run supports only state and kill"})
+				}
+			}()
+		}
+	}()
+	return ln, nil
+}

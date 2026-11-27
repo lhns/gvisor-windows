@@ -200,6 +200,13 @@ func runCmd(args []string) int {
 			return fatalf("%v", err)
 		}
 	}
+	if validID(id) {
+		if c, err := serveRunControl(id, l); err != nil {
+			log.Warningf("control pipe of %s: %v", id, err)
+		} else {
+			defer c.Close()
+		}
+	}
 	ws := l.WaitExit()
 	stdio.WaitDrained(5 * time.Second)
 	if ws.Signaled() {

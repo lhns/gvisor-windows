@@ -271,11 +271,8 @@ func killCmd(args []string) int {
 		}
 	}
 	id := fs.Arg(0)
-	st, err := loadState(id)
-	if err != nil {
-		return fatalf("%v", err)
-	}
-	if st.Status != "running" && st.Status != "created" {
+	// A container started with `run` has a control pipe but no state file.
+	if st, err := loadState(id); err == nil && st.Status != "running" && st.Status != "created" {
 		return fatalf("container %q is %s, not running", id, st.Status)
 	}
 	r, err := call(id, &request{Op: "kill", Signal: sig})
