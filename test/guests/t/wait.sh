@@ -2,7 +2,7 @@
 sh -c 'kill -TERM $$'; echo sig=$?
 # The shell reports the killed background job as "Terminated" or "<script>:
 # Terminated", depending on whether it reaps it before or inside wait: not shown.
-exec 3>&2 2>/dev/null
+exec 3>&2 2>/t/wait.err # (not /dev/null: the sentryguest root has no /dev)
 sleep 30 &
 p=$!
 kill $p
