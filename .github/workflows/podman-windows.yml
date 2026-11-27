@@ -80,8 +80,7 @@ jobs:
           New-Item -ItemType Directory -Force C:\ci\std\engine\storage | Out-Null
           & tools/windows/ci/run-as-standard-user.ps1 `
             -Program 'C:\Program Files\PowerShell\7\pwsh.exe' `
-            -Arguments '-NoProfile','-File',"$PWD\tools\windows\podman\ci-run.ps1",'-Root','C:\ci' `
-            -Environment @{ ACC_ONLY = '${{ github.event.inputs.only }}' } `
+            -Arguments '-NoProfile','-File',"$PWD\tools\windows\podman\ci-run.ps1",'-Root','C:\ci','-Only','${{ github.event.inputs.only || 'all' }}' `
             -GrantPath C:\ci\bin,C:\ci\tools,$PWD -WritablePath C:\ci\std -TimeoutSeconds 6000
       - name: Steps that must pass (grows with every fixed step)
         shell: pwsh
