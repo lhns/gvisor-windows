@@ -2242,17 +2242,17 @@
   depends_on: []
   replaced_by: []
   start: '2026-11-27'
-  end: ''
+  end: '2026-11-27'
   folded: []
   overview: false
   id: sentry-fchmod-std-stream
   title: fchmod on a standard stream fails
   track: sentry
   kind: defect
-  state: next
+  state: done
   lane: windows-ci
   plain: conmon logs "Failed to chmod stderr" and container logs are lost, so the compose check cannot read them.
-  notes: 'Fixed when: fchmod on the stdio of a guest started by runsc behaves like Linux and compose logs reach podman logs.'
+  notes: 'Fixed: pipefs refused every mode change with EPERM; it now keeps the mode like Linux. fchmod test required in windows-runsc.'
 - outcome: unrated
   evidence:
   - docs/results/5-podman-windows.md

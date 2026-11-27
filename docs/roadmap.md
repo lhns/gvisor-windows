@@ -195,7 +195,6 @@ flowchart TB
 | Timers and clocks on Windows | ⛔ blocked | The Sentry's clocks and timers run on Windows' high-resolution timers. |
 | Profile the slow file and exec path | ✔ done · mixed | Creating a file on tmpfs costs about 1 ms and a fork+exec 32 ms on Windows; find where the time goes (syscall round trips, page faults, debug events, Sentry work) and fix the top causes. |
 | Sentry dies with netpoll failed | ⚠ open | After a few hundred socket test cases in one kernel the Sentry dies with "fatal error: runtime: netpoll failed" or stalls; about 1,700 syscall-test cases fail only because of this. |
-| fchmod on a standard stream fails | ⚠ open | conmon logs "Failed to chmod stderr" and container logs are lost, so the compose check cannot read them. |
 | pasta networking inside the sandbox | ⚠ open | buildah RUN uses pasta, which fails: /proc/sys/net/ipv4/ip_local_port_range is missing and switching into the namespace returns EPERM. |
 | Compatibility layer, not security boundary | ✔ done · n/a | The sandbox may open the user's files directly with the user's rights; it isolates containers from each other, not from the user. |
 | Open Windows files directly | ✔ done · successful | The Sentry opens NTFS files itself for bind mounts, with its own caches, instead of going through a file protocol. |
@@ -228,7 +227,6 @@ flowchart TB
 - `sentry-netpoll-failure`: Sentry dies with netpoll failed
 - `fs-unix-sockets-on-host-folders`: Unix sockets on host folders
 - `workloads-conmon-attach-second-cause`: Second attach-socket failure
-- `sentry-fchmod-std-stream`: fchmod on a standard stream fails
 - `sentry-pasta-in-sandbox`: pasta networking inside the sandbox
 <!-- END GENERATED: ready-now -->
 
@@ -264,7 +262,7 @@ Generated on 2026-11-27.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 81 done, 7 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 82 done, 7 abandoned</summary>
 
 - `fs-attribute-cache`: Faster stat walks on host folders (✔ done · mixed). A git-status-like walk of 20000 files takes 1.2-2.4 s through the host folder; an attribute cache fed by the change watcher would bring stat near native.
   - Cold stat walk on a fresh mount is still about 4x native, 99-105 us per file (2026-11-26)
@@ -376,6 +374,7 @@ Generated on 2026-11-27.
 - `platform-veneer-address-in-child`: Veneer addresses differ after clone (✔ fixed). A syscall through a relocated veneer returns into the veneer; after clone into a new address space the veneers sit elsewhere, so the child resumes on a zero page and crashes.
 - `runsc-sandbox-lifecycle`: Start and stop sandboxes on Windows (✔ done · successful). runsc creates, starts, signals and deletes a sandbox process on Windows that outlives runsc.exe.
 - `runsc-windows-lifecycle-commands`: Container lifecycle commands on Windows (✔ done · successful). create, start, state, kill, delete, exec, ps and list need a sandbox process that outlives runsc.exe and a named control pipe; only run and version exist today.
+- `sentry-fchmod-std-stream`: fchmod on a standard stream fails (✔ fixed). conmon logs "Failed to chmod stderr" and container logs are lost, so the compose check cannot read them.
 - `sentry-profile-small-file-path`: Profile the slow file and exec path (✔ done · mixed). Creating a file on tmpfs costs about 1 ms and a fork+exec 32 ms on Windows; find where the time goes (syscall round trips, page faults, debug events, Sentry work) and fix the top causes.
   - Fork+exec only 1.7-2.1x faster with a pool of ready address spaces; stub creation is the floor (2026-11-27)
 - `workloads-conmon-sync-pipe`: conmon sees no data on its sync pipe (✔ fixed). Every podman run fails with "conmon bytes \"\": found \x00": conmon reads nothing from its sync pipe while creating the first container inside the sandbox on Windows.
@@ -394,7 +393,7 @@ Each track has its own page with its tree, node table and per-node details.
 
 - [runsc - runsc](roadmap/tracks/runsc.md): 6 nodes (6 done)
 - [platform - platform](roadmap/tracks/platform.md): 34 nodes (25 done, 2 in progress, 1 next, 2 blocked, 3 parked, 1 abandoned)
-- [sentry - sentry](roadmap/tracks/sentry.md): 14 nodes (9 done, 3 next, 1 blocked, 1 parked)
+- [sentry - sentry](roadmap/tracks/sentry.md): 14 nodes (10 done, 2 next, 1 blocked, 1 parked)
 - [fs - files](roadmap/tracks/fs.md): 16 nodes (14 done, 1 next, 1 blocked)
 - [net - network](roadmap/tracks/net.md): 4 nodes (4 done)
 - [workloads - workloads](roadmap/tracks/workloads.md): 16 nodes (13 done, 1 in progress, 1 next, 1 blocked)

@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	specs "github.com/opencontainers/runtime-spec/specs-go"
@@ -240,8 +241,8 @@ func newInstance(id, bundle string, terminal bool) (*instance, int) {
 		if err != nil {
 			return nil, fatalf("opening the debug log: %v", err)
 		}
-		defer f.Close()
-		log.SetTarget(log.GoogleEmitter{Writer: &log.Writer{Next: f}})
+		in.logFile = f // closed by the caller (closeLog), not when newInstance returns
+		log.SetTarget(log.GoogleEmitter{Writer: &log.Writer{Next: &reportingWriter{w: f}}})
 	}
 	log.Infof("runsc %s %s, %d CPUs, args %v", version.Version(), runtime.Version(), runtime.NumCPU(), os.Args)
 
@@ -385,3 +386,18 @@ func openDebugLog(path, id string) (*os.File, error) {
 type discard struct{}
 
 func (discard) Emit(int, log.Level, time.Time, string, ...any) {}
+
+// reportingWriter writes the debug log and tells stderr (once) if a write fails, so that a log
+// that stops is not silent.
+type reportingWriter struct {
+	w    *os.File
+	once sync.Once
+}
+
+func (r *reportingWriter) Write(p []byte) (int, error) {
+	n, err := r.w.Write(p)
+	if err != nil {
+		r.once.Do(func() { fmt.Fprintf(os.Stderr, "runsc: the debug log stopped: %v"+string(rune(10)), err) })
+	}
+	return n, err
+}

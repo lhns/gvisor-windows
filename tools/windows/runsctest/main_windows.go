@@ -61,6 +61,8 @@ func main() {
 		{"hello", testHello},
 		{"busybox", testBusybox},
 		{"stdin", testStdin},
+		{"fchmod", testFchmod},
+		{"strace", testStrace},
 		{"net", testNet},
 		{"publish", testPublish},
 		{"tty", testTTY},
@@ -86,7 +88,7 @@ func main() {
 	}
 	failed := 0
 	for _, t := range tests {
-		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec" || t.name == "sockfs")) {
+		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "strace" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec" || t.name == "sockfs")) {
 			continue
 		}
 		start := time.Now()
@@ -578,6 +580,35 @@ func testSockfs() error {
 			return err
 		}
 		fmt.Println("sockfs on", where, r.stdout, r.code, r.stderr)
+	}
+	return nil
+}
+
+// testFchmod: conmon changes the mode of its standard streams (pipes) and warns when that fails.
+func testFchmod() error {
+	r, err := runsc("fchmod", []string{"/bin/sh", "-c", "chmod 0777 /proc/self/fd/1 && chmod 0600 /proc/self/fd/1 && echo ok"}, nil)
+	return expect(r, err, "ok"+string(rune(10)), 0)
+}
+
+// testStrace: a run with --strace must leave a complete debug log (the log of the engine sandbox
+// of podman-diag stopped after nine lines).
+func testStrace() error {
+	r, err := runsc("strace", []string{"/bin/hello"}, nil, "--strace")
+	if err != nil || r.code != 7 {
+		return fmt.Errorf("hello: %v exit %d", err, r.code)
+	}
+	b, err := os.ReadFile(filepath.Join(*workDir, "logs", "strace.log"))
+	if err != nil {
+		return err
+	}
+	fmt.Println("strace stderr:", r.stderr, "stdout:", r.stdout)
+	fmt.Println("strace log bytes:", len(b), "lines:", strings.Count(string(b), string(rune(10))))
+	if !strings.Contains(string(b), "exit_group") || !strings.Contains(string(b), "write(") {
+		tail := string(b)
+		if len(tail) > 1500 {
+			tail = tail[len(tail)-1500:]
+		}
+		return fmt.Errorf("the strace log is incomplete (%d bytes), ends with %q", len(b), tail)
 	}
 	return nil
 }
