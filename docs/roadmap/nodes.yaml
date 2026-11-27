@@ -455,6 +455,7 @@
   - workloads-overlay-userxattr
   - fs-case-sensitivity-without-admin
   - platform-rare-hang-under-exec-load
+  - sentry-netpoll-failure
   replaced_by: []
   lane: windows-ci
   start: ''
@@ -1037,19 +1038,21 @@
   title: gVisor syscall tests on Windows
   track: ops
   kind: feature
-  state: in-progress
-  outcome: unrated
-  evidence: []
-  verdict_quote: ''
-  headline: ''
+  state: done
+  outcome: mixed
+  evidence:
+  - docs/results/4-syscall-tests.md
+  verdict_quote: 83.6% of the cases that pass on Linux pass (11298 of 14620, 138 of 256 binaries complete)
+  headline: 83.6%
   depends_on:
   - ops-syscall-test-strategy
   - platform-static-guest-from-memory
   replaced_by: []
   lane: windows-ci
   start: '2026-11-26'
-  end: ''
-  folded: []
+  end: '2026-11-27'
+  folded:
+  - Linux runsc 81.5%, Windows with network 77.3% of 14620 cases (2026-11-27, commit 63612b2a1)
   overview: false
   plain: gVisor's own syscall test suite runs against the Windows port to show which Linux calls work.
   notes: 'Done when: the suite runs in CI on Windows and its pass rate is published.'
@@ -1931,7 +1934,7 @@
   title: Flaky negative-cache test on host folders
   track: fs
   kind: defect
-  state: in-progress
+  state: done
   outcome: unrated
   evidence:
   - docs/results/1g-platform-memory.md
@@ -1941,7 +1944,7 @@
   replaced_by: []
   lane: windows-ci
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-27'
   folded: []
   overview: false
   plain: TestVFSNegativeCacheAndQuickChange failed once on windows-fs after passing on the previous head; a timing race in the change watcher or the test.
@@ -2049,22 +2052,23 @@
 - outcome: unrated
   evidence:
   - docs/results/5-podman-windows.md
+  - docs/results/2-windows-directfs.md
   verdict_quote: ''
   headline: ''
   depends_on: []
   replaced_by: []
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-27'
   folded: []
   overview: false
   id: fs-case-sensitivity-without-admin
   title: Case-sensitive names without admin
   track: fs
   kind: defect
-  state: in-progress
+  state: done
   lane: windows-ci
   plain: A standard user on the hosted runner cannot set per-directory case sensitivity (access denied), so Linux images with names differing only in case need another way, without an admin setup step.
-  notes: 'Fixed when: two names differing only in case coexist in a host folder as a standard user on windows-latest with no admin step, and Podman storage uses it.'
+  notes: 'Fixed: the backend grants the current user FILE_DELETE_CHILD on that one directory when the call is refused; the Podman workflow no longer has an admin step.'
 - outcome: unrated
   evidence:
   - docs/results/5-podman-windows.md
@@ -2124,3 +2128,41 @@
   lane: windows-ci
   plain: 'A multithreaded guest that forks many children hangs in about 1 of 50 runs: the debugger loop and an interrupt capture the same thread at once.'
   notes: 'Fixed when: the gopodman hunt step passes 200 runs in a row; suggested: capture threads with a request flag the stub polls instead of SuspendThread.'
+- outcome: unrated
+  evidence:
+  - docs/results/4-syscall-tests.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-27'
+  end: ''
+  folded: []
+  overview: false
+  id: sentry-netpoll-failure
+  title: Sentry dies with netpoll failed
+  track: sentry
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: 'After a few hundred socket test cases in one kernel the Sentry dies with "fatal error: runtime: netpoll failed" or stalls; about 1,700 syscall-test cases fail only because of this.'
+  notes: 'Fixed when: socket_filesystem_test and socket_abstract_test complete in one kernel on Windows; cause separated between Go''s IOCP netpoller and a host-handle leak per guest process.'
+- outcome: unrated
+  evidence:
+  - docs/results/4-syscall-tests.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-27'
+  end: ''
+  folded: []
+  overview: false
+  id: platform-unsupported-errno
+  title: Unsupported platform calls return errnos
+  track: platform
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: arch_prctl(ARCH_SET_GS) and ptrace preparation return a raw error from the platform instead of an errno, so the Sentry panics with "Unknown syscall 158".
+  notes: 'Fixed when: arch_prctl_test fails cleanly (EPERM or ENOTSUP) instead of crashing the Sentry.'

@@ -17,9 +17,9 @@ flowchart TB
     fs_root_filesystem_source["✔ Root filesystem from<br/>an erofs image"]
     fs_safe_save_keeps_metadata>"✔ Editor safe-saves<br/>keep Linux metadata"]
     fs_attribute_cache["✔ Faster stat walks on<br/>host folders"]
-    fs_flaky_negative_cache_test>"⚠ Flaky negative-cache<br/>test on host folders"]
+    fs_flaky_negative_cache_test>"✔ Flaky negative-cache<br/>test on host folders"]
     fs_standard_user_delete_rights>"✔ Deletes fail for<br/>standard users"]
-    fs_case_sensitivity_without_admin>"⚠ Case-sensitive names<br/>without admin"]
+    fs_case_sensitivity_without_admin>"✔ Case-sensitive names<br/>without admin"]
     fs_persistent_storage_impl["⛔ Storage that<br/>survives restarts"]
     fs_persistent_image_storage ~~~ fs_change_notifications
     fs_windows_directfs ~~~ fs_linux_metadata_on_ntfs
@@ -54,8 +54,7 @@ flowchart TB
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class fs_persistent_image_storage,fs_attribute_cache mixed
-    class fs_windows_directfs,fs_change_notifications,fs_linux_metadata_on_ntfs,fs_handles_do_not_block_users,fs_root_filesystem_source,fs_safe_save_keeps_metadata,fs_standard_user_delete_rights succ
-    class fs_flaky_negative_cache_test,fs_case_sensitivity_without_admin finding
+    class fs_windows_directfs,fs_change_notifications,fs_linux_metadata_on_ntfs,fs_handles_do_not_block_users,fs_root_filesystem_source,fs_safe_save_keeps_metadata,fs_flaky_negative_cache_test,fs_standard_user_delete_rights,fs_case_sensitivity_without_admin succ
     class fs_persistent_storage_impl blocked
 ```
 <!-- END GENERATED: track-fs -->
@@ -77,9 +76,9 @@ flowchart TB
 | `fs-safe-save-keeps-metadata` | Editor safe-saves keep Linux metadata | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/2b-fs-rootfs-and-changes.md |
 | `fs-rootfs-import` | Bring container images onto NTFS | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0015-sandbox-rootfs-as-erofs-image.md |
 | `fs-attribute-cache` | Faster stat walks on host folders | feature | windows-ci | done | mixed | 2026-11-26 | 2026-11-26 | fs-change-notifications |  |  | 1 us per file | docs/results/2c-fs-speed.md |
-| `fs-flaky-negative-cache-test` | Flaky negative-cache test on host folders | defect | windows-ci | in-progress | unrated | 2026-11-26 |  |  |  |  |  | docs/results/1g-platform-memory.md |
+| `fs-flaky-negative-cache-test` | Flaky negative-cache test on host folders | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-27 |  |  |  |  | docs/results/1g-platform-memory.md |
 | `fs-standard-user-delete-rights` | Deletes fail for standard users | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/5-podman-windows.md; docs/results/2c-fs-speed.md |
-| `fs-case-sensitivity-without-admin` | Case-sensitive names without admin | defect | windows-ci | in-progress | unrated | 2026-11-26 |  |  |  |  |  | docs/results/5-podman-windows.md |
+| `fs-case-sensitivity-without-admin` | Case-sensitive names without admin | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/results/2-windows-directfs.md |
 
 ### Details per node
 
@@ -99,7 +98,7 @@ flowchart TB
 | `fs-attribute-cache` | Faster stat walks on host folders | a watched host folder now answers a repeated stat walk of 20000 files from cache at 1 us per file (native 22-30 us) | 1 us per file | A git-status-like walk of 20000 files takes 1.2-2.4 s through the host folder; an attribute cache fed by the change watcher would bring stat near native. | Done when: a 20000-file stat walk through the backend is within 2x of native on windows-latest. |  |  |  |  |
 | `fs-flaky-negative-cache-test` | Flaky negative-cache test on host folders |  |  | TestVFSNegativeCacheAndQuickChange failed once on windows-fs after passing on the previous head; a timing race in the change watcher or the test. | Fixed when: the test passes 20 runs in a row on windows-latest. |  |  |  |  |
 | `fs-standard-user-delete-rights` | Deletes fail for standard users |  |  | On a host folder as a standard Windows user, rename over an existing file, rmdir and unlink fail with permission denied; Podman cannot extract layers or write images.json. | Fixed: Unlink asked for FILE_DELETE_CHILD on the parent, which a standard user with Modify lacks; DELETE on the child is enough. hostfs test now required. |  |  |  |  |
-| `fs-case-sensitivity-without-admin` | Case-sensitive names without admin |  |  | A standard user on the hosted runner cannot set per-directory case sensitivity (access denied), so Linux images with names differing only in case need another way, without an admin setup step. | Fixed when: two names differing only in case coexist in a host folder as a standard user on windows-latest with no admin step, and Podman storage uses it. |  |  |  |  |
+| `fs-case-sensitivity-without-admin` | Case-sensitive names without admin |  |  | A standard user on the hosted runner cannot set per-directory case sensitivity (access denied), so Linux images with names differing only in case need another way, without an admin setup step. | Fixed: the backend grants the current user FILE_DELETE_CHILD on that one directory when the call is refused; the Podman workflow no longer has an admin step. |  |  |  |  |
 
 ### Folded items per node
 

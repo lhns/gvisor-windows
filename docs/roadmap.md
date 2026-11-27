@@ -89,9 +89,9 @@ Owner calls are the purple shape. A decided owner call is drawn in the overview 
 ## Ratings
 
 <!-- BEGIN GENERATED: ratings -->
-0 of 52 rated nodes are confirmed by the owner.
+0 of 53 rated nodes are confirmed by the owner.
 
-Not yet confirmed: `research-lkl-nommu`, `research-unkernel`, `research-flinux-translation`, `research-qemu-emulation`, `workloads-podman-on-gvisor-linux`, `research-gvisor-benchmark`, `platform-elf-alignment-survey`, `fs-persistent-image-storage`, `platform-trap-cost`, `platform-4k-section-views`, `platform-tls-register`, `platform-restricted-stub`, `sentry-go-fault-recovery`, `research-whpx-this-machine`, `runsc-container-on-windows`, `platform-stub-controller`, `platform-page-verification`, `platform-syscall-fast-path`, `platform-winstub`, `platform-busybox-on-windows`, `fs-windows-directfs`, `fs-change-notifications`, `fs-linux-metadata-on-ntfs`, `fs-handles-do-not-block-users`, `net-netstack-windows-link`, `net-port-forwarding`, `runsc-measure-cli`, `runsc-sandbox-lifecycle`, `ops-windows-ci-standard-user`, `sentry-fault-recovery`, `sentry-host-stdio-and-tty`, `fs-root-filesystem-source`, `sentry-threads-and-signals`, `research-file-protocol`, `platform-zpoline-hooks`, `sentry-unix-shim`, `platform-exception-stack`, `workloads-strict-bar-linux`, `platform-static-guest-from-memory`, `net-bridge-networking`, `platform-debug-event-cost`, `platform-syscall-site-survey`, `platform-faults-per-exec`, `platform-controller-wakeups`, `platform-fp-state`, `platform-retire-prototype`, `platform-fast-process-start`, `runsc-windows-boot`, `sentry-dynamic-elf-and-exec`, `fs-attribute-cache`, `runsc-windows-lifecycle-commands`, `workloads-end-to-end-speed`.
+Not yet confirmed: `research-lkl-nommu`, `research-unkernel`, `research-flinux-translation`, `research-qemu-emulation`, `workloads-podman-on-gvisor-linux`, `research-gvisor-benchmark`, `platform-elf-alignment-survey`, `fs-persistent-image-storage`, `platform-trap-cost`, `platform-4k-section-views`, `platform-tls-register`, `platform-restricted-stub`, `sentry-go-fault-recovery`, `research-whpx-this-machine`, `runsc-container-on-windows`, `platform-stub-controller`, `platform-page-verification`, `platform-syscall-fast-path`, `platform-winstub`, `platform-busybox-on-windows`, `fs-windows-directfs`, `fs-change-notifications`, `fs-linux-metadata-on-ntfs`, `fs-handles-do-not-block-users`, `net-netstack-windows-link`, `net-port-forwarding`, `runsc-measure-cli`, `runsc-sandbox-lifecycle`, `ops-windows-ci-standard-user`, `ops-syscall-tests-on-windows`, `sentry-fault-recovery`, `sentry-host-stdio-and-tty`, `fs-root-filesystem-source`, `sentry-threads-and-signals`, `research-file-protocol`, `platform-zpoline-hooks`, `sentry-unix-shim`, `platform-exception-stack`, `workloads-strict-bar-linux`, `platform-static-guest-from-memory`, `net-bridge-networking`, `platform-debug-event-cost`, `platform-syscall-site-survey`, `platform-faults-per-exec`, `platform-controller-wakeups`, `platform-fp-state`, `platform-retire-prototype`, `platform-fast-process-start`, `runsc-windows-boot`, `sentry-dynamic-elf-and-exec`, `fs-attribute-cache`, `runsc-windows-lifecycle-commands`, `workloads-end-to-end-speed`.
 <!-- END GENERATED: ratings -->
 
 ## Overview
@@ -192,14 +192,14 @@ flowchart TB
 | Binary translation as a fallback | ⏸ parked | Translate guest code (as the owner's v3compat does with DynamoRIO on Linux) only if debugger faults or unpatchable syscalls prove too slow, or to support CPUs without FSGSBASE. |
 | Start guest processes fast | ✔ done · very-successful | A guest process takes 280-560 ms to start through the Sentry, against 18 ms for a bare stub; profile the gap and keep a pool of ready stubs. |
 | Rare hang under heavy exec load | ⚠ open | A multithreaded guest that forks many children hangs in about 1 of 50 runs: the debugger loop and an interrupt capture the same thread at once. |
+| Unsupported platform calls return errnos | ⚠ open | arch_prctl(ARCH_SET_GS) and ptrace preparation return a raw error from the platform instead of an errno, so the Sentry panics with "Unknown syscall 158". |
 | Event waiting on IOCP | ⏸ parked | Waiting for many host events at once (epoll on Linux) moves to Windows completion ports. |
 | Timers and clocks on Windows | ⛔ blocked | The Sentry's clocks and timers run on Windows' high-resolution timers. |
 | Profile the slow file and exec path | ▶ in progress | Creating a file on tmpfs costs about 1 ms and a fork+exec 32 ms on Windows; find where the time goes (syscall round trips, page faults, debug events, Sentry work) and fix the top causes. |
+| Sentry dies with netpoll failed | ⚠ open | After a few hundred socket test cases in one kernel the Sentry dies with "fatal error: runtime: netpoll failed" or stalls; about 1,700 syscall-test cases fail only because of this. |
 | Compatibility layer, not security boundary | ✔ done · n/a | The sandbox may open the user's files directly with the user's rights; it isolates containers from each other, not from the user. |
 | Open Windows files directly | ✔ done · successful | The Sentry opens NTFS files itself for bind mounts, with its own caches, instead of going through a file protocol. |
 | Storage that survives restarts | ⛔ blocked | Implement the chosen writable filesystem so data inside the sandbox outlives a restart. |
-| Flaky negative-cache test on host folders | ⚠ open | TestVFSNegativeCacheAndQuickChange failed once on windows-fs after passing on the previous head; a timing race in the change watcher or the test. |
-| Case-sensitive names without admin | ⚠ open | A standard user on the hosted runner cannot set per-directory case sensitivity (access denied), so Linux images with names differing only in case need another way, without an admin setup step. |
 | Netstack to Windows sockets | ✔ done · successful | gVisor's own TCP/IP stack sends guest traffic out through ordinary Windows sockets, like a user-space NAT. |
 | Bridge networking inside gVisor | ✔ done · successful | Podman's default network creates a bridge and veth pairs over netlink; gVisor lacks part of that, so it fails today. Fix it in gVisor itself, first on Linux, then it carries over to Windows. |
 | Podman on gVisor on Linux | ✔ done · mixed ⚠ | Run the acceptance test on stock gVisor on Linux; whatever fails there is a gap in gVisor itself, not in the port. |
@@ -209,7 +209,6 @@ flowchart TB
 | Pick gVisor as the base | ✔ done · unrated | Of all ways to run Linux code on Windows without admin, gVisor's user-space Linux kernel is the only one that already runs containers. |
 | Name it gvisor-windows | ✔ done · n/a | The project is an unofficial fork of gVisor's Go branch called gvisor-windows. |
 | Go or no-go after Phase 0 | ✔ done · n/a | Go: the owner asked for the full project; ADR 0004 lists the conditions. |
-| gVisor syscall tests on Windows | ▶ in progress | gVisor's own syscall test suite runs against the Windows port to show which Linux calls work. |
 | Merge upstream gVisor regularly | ○ next | Regularly take in upstream gVisor's Go branch so the port does not drift. |
 | Portable zip, no installer | ⛔ blocked | Ship runsc for Windows as a zip or per-user installer that needs no admin. |
 | Try it on a real work machine | ⛔ blocked | All evidence comes from GitHub hosted Windows images; the owner runs runsc.exe once on a work machine to check FSGSBASE and whether security software tolerates the generated stub being debugged. |
@@ -227,6 +226,8 @@ flowchart TB
 - `platform-no-fsgsbase-fallback`: Support CPUs without FSGSBASE
 - `workloads-conmon-sync-pipe`: conmon sees no data on its sync pipe
 - `platform-rare-hang-under-exec-load`: Rare hang under heavy exec load
+- `sentry-netpoll-failure`: Sentry dies with netpoll failed
+- `platform-unsupported-errno`: Unsupported platform calls return errnos
 <!-- END GENERATED: ready-now -->
 
 ## Running
@@ -234,7 +235,6 @@ flowchart TB
 <!-- BEGIN GENERATED: running -->
 **windows-ci**
 
-- `ops-syscall-tests-on-windows`: gVisor syscall tests on Windows
 - `workloads-podman-harness`: Serve Podman to Windows clients
 - `sentry-profile-small-file-path`: Profile the slow file and exec path
 <!-- END GENERATED: running -->
@@ -262,7 +262,7 @@ Generated on 2026-11-27.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 76 done, 7 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 79 done, 7 abandoned</summary>
 
 - `fs-attribute-cache`: Faster stat walks on host folders (✔ done · mixed). A git-status-like walk of 20000 files takes 1.2-2.4 s through the host folder; an attribute cache fed by the change watcher would bring stat near native.
   - Cold stat walk on a fresh mount is still about 4x native, 99-105 us per file (2026-11-26)
@@ -367,6 +367,10 @@ Generated on 2026-11-27.
 - `workloads-podman-on-gvisor-linux`: Podman on gVisor on Linux (✔ done · mixed). Run the acceptance test on stock gVisor on Linux; whatever fails there is a gap in gVisor itself, not in the port.
 - `workloads-podman-probe`: Probe Podman inside the sandbox (✔ done · unrated). Right after busybox works, run podman --version and podman info inside the sandbox; their failures are the real gap list.
 - `workloads-strict-bar-linux`: Strict bar on stock gVisor (✔ done · mixed). Find out what stock gVisor on Linux needs for -p port publishing and compose service names, across Podman versions and network modes.
+- `fs-case-sensitivity-without-admin`: Case-sensitive names without admin (✔ fixed). A standard user on the hosted runner cannot set per-directory case sensitivity (access denied), so Linux images with names differing only in case need another way, without an admin setup step.
+- `fs-flaky-negative-cache-test`: Flaky negative-cache test on host folders (✔ fixed). TestVFSNegativeCacheAndQuickChange failed once on windows-fs after passing on the previous head; a timing race in the change watcher or the test.
+- `ops-syscall-tests-on-windows`: gVisor syscall tests on Windows (✔ done · mixed). gVisor's own syscall test suite runs against the Windows port to show which Linux calls work.
+  - Linux runsc 81.5%, Windows with network 77.3% of 14620 cases (2026-11-27)
 - `platform-veneer-address-in-child`: Veneer addresses differ after clone (✔ fixed). A syscall through a relocated veneer returns into the veneer; after clone into a new address space the veneers sit elsewhere, so the child resumes on a zero page and crashes.
 - `runsc-sandbox-lifecycle`: Start and stop sandboxes on Windows (✔ done · successful). runsc creates, starts, signals and deletes a sandbox process on Windows that outlives runsc.exe.
 - `runsc-windows-lifecycle-commands`: Container lifecycle commands on Windows (✔ done · successful). create, start, state, kill, delete, exec, ps and list need a sandbox process that outlives runsc.exe and a named control pipe; only run and version exist today.
@@ -383,11 +387,11 @@ Generated on 2026-11-27.
 Each track has its own page with its tree, node table and per-node details.
 
 - [runsc - runsc](roadmap/tracks/runsc.md): 6 nodes (6 done)
-- [platform - platform](roadmap/tracks/platform.md): 32 nodes (25 done, 2 next, 1 blocked, 3 parked, 1 abandoned)
-- [sentry - sentry](roadmap/tracks/sentry.md): 11 nodes (8 done, 1 in progress, 1 blocked, 1 parked)
-- [fs - files](roadmap/tracks/fs.md): 15 nodes (12 done, 2 in progress, 1 blocked)
+- [platform - platform](roadmap/tracks/platform.md): 33 nodes (25 done, 3 next, 1 blocked, 3 parked, 1 abandoned)
+- [sentry - sentry](roadmap/tracks/sentry.md): 12 nodes (8 done, 1 in progress, 1 next, 1 blocked, 1 parked)
+- [fs - files](roadmap/tracks/fs.md): 15 nodes (14 done, 1 blocked)
 - [net - network](roadmap/tracks/net.md): 4 nodes (4 done)
 - [workloads - workloads](roadmap/tracks/workloads.md): 15 nodes (12 done, 1 in progress, 1 next, 1 blocked)
 - [research - research](roadmap/tracks/research.md): 8 nodes (2 done, 6 abandoned)
-- [ops - operations](roadmap/tracks/ops.md): 11 nodes (7 done, 1 in progress, 1 next, 2 blocked)
+- [ops - operations](roadmap/tracks/ops.md): 11 nodes (8 done, 1 next, 2 blocked)
 <!-- END GENERATED: tracks -->

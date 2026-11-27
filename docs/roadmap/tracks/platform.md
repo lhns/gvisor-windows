@@ -35,6 +35,7 @@ flowchart TB
     platform_map_files_without_sections>"✔ Map files not in the<br/>memory file"]
     platform_veneer_address_in_child>"✔ Veneer addresses<br/>differ after clone"]
     platform_rare_hang_under_exec_load>"⚠ Rare hang under<br/>heavy exec load"]
+    platform_unsupported_errno>"⚠ Unsupported platform<br/>calls return errnos"]
     platform_own_vdso["⛔ Own vDSO for clock<br/>calls"]
     platform_64k_mapping_conflicts["⏸ Handle 64 KB mapping<br/>conflicts"]
     platform_busybox_on_windows["✔ Run busybox under<br/>the Sentry"]
@@ -70,14 +71,14 @@ flowchart TB
     platform_memory_release ~~~ platform_map_files_without_sections
     platform_fast_process_start ~~~ platform_veneer_address_in_child
     platform_split_syscall_unpatched ~~~ platform_rare_hang_under_exec_load
-    platform_map_files_without_sections ~~~ platform_own_vdso
-    platform_veneer_address_in_child ~~~ platform_64k_mapping_conflicts
-    platform_rare_hang_under_exec_load ~~~ platform_busybox_on_windows
+    platform_map_files_without_sections ~~~ platform_unsupported_errno
+    platform_veneer_address_in_child ~~~ platform_own_vdso
+    platform_rare_hang_under_exec_load ~~~ platform_64k_mapping_conflicts
+    platform_unsupported_errno ~~~ platform_busybox_on_windows
     platform_own_vdso ~~~ platform_hardware_acceleration
     platform_64k_mapping_conflicts ~~~ platform_no_fsgsbase_fallback
     platform_busybox_on_windows ~~~ platform_binary_translation_fallback
     platform_hardware_acceleration ~~~ platform_binary_translation_fallback
-    platform_no_fsgsbase_fallback ~~~ platform_binary_translation_fallback
     platform_trap_cost -.-> platform_veh_on_guest_stack_unsafe
     platform_tls_register -.-> platform_veh_on_guest_stack_unsafe
     platform_trap_cost --> platform_exception_stack
@@ -124,7 +125,7 @@ flowchart TB
     class platform_zpoline_hooks dead
     class platform_fs_base_repair unrated
     class platform_fast_process_start vsucc
-    class platform_rare_hang_under_exec_load finding
+    class platform_rare_hang_under_exec_load,platform_unsupported_errno finding
     class platform_own_vdso blocked
     class platform_64k_mapping_conflicts,platform_hardware_acceleration,platform_binary_translation_fallback parked
     class platform_no_fsgsbase_fallback next
@@ -168,6 +169,7 @@ flowchart TB
 | `platform-map-files-without-sections` | Map files not in the memory file | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/1g-platform-memory.md; docs/adr/0016-memory-file-on-extent-sections.md |
 | `platform-veneer-address-in-child` | Veneer addresses differ after clone | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/results/1h-platform-share.md |
 | `platform-rare-hang-under-exec-load` | Rare hang under heavy exec load | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/1h-platform-share.md |
+| `platform-unsupported-errno` | Unsupported platform calls return errnos | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/4-syscall-tests.md |
 
 ### Details per node
 
@@ -205,6 +207,7 @@ flowchart TB
 | `platform-map-files-without-sections` | Map files not in the memory file |  |  | The platform can only map pages of the Sentry memory file; erofs image pages (and any other memmap.File) make the guest fault on its first instruction. | Fixed when: runsc run boots busybox from an erofs image root (mkfs.erofs --all-root) on windows-latest. |  |  |  |  |
 | `platform-veneer-address-in-child` | Veneer addresses differ after clone |  |  | A syscall through a relocated veneer returns into the veneer; after clone into a new address space the veneers sit elsewhere, so the child resumes on a zero page and crashes. | Fixed: patch windows end at the syscall where possible, other veneers get a platform-wide address per site; clonesys cases are required. |  |  |  |  |
 | `platform-rare-hang-under-exec-load` | Rare hang under heavy exec load |  |  | A multithreaded guest that forks many children hangs in about 1 of 50 runs: the debugger loop and an interrupt capture the same thread at once. | Fixed when: the gopodman hunt step passes 200 runs in a row; suggested: capture threads with a request flag the stub polls instead of SuspendThread. |  |  |  |  |
+| `platform-unsupported-errno` | Unsupported platform calls return errnos |  |  | arch_prctl(ARCH_SET_GS) and ptrace preparation return a raw error from the platform instead of an errno, so the Sentry panics with "Unknown syscall 158". | Fixed when: arch_prctl_test fails cleanly (EPERM or ENOTSUP) instead of crashing the Sentry. |  |  |  |  |
 
 ### Folded items per node
 
