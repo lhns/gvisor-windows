@@ -184,3 +184,6 @@ func (fs FeatureSet) AllowedHWCap2() uint64 {
 func (fs FeatureSet) UnsetFSGSBASE() FeatureSet {
 	return fs
 }
+
+// UnsetAVX512 does nothing on arm64.
+func (fs FeatureSet) UnsetAVX512() FeatureSet { return fs }
