@@ -80,6 +80,10 @@ type scanResult struct {
 	// tail0f: the last byte is 0x0f and starts an instruction (the sweep reaches
 	// it): a `syscall` whose second byte is the first byte of the next range.
 	tail0f bool
+	// tailB: the offsets of the instructions that start in the last 64 bytes of the
+	// range (nil if the range was not decoded): a point where the next range's
+	// decoding can begin on a real instruction boundary.
+	tailB []int
 }
 
 // ---- decoding ------------------------------------------------------------------
@@ -726,12 +730,28 @@ func scanText(code []byte, from int, wantFS bool) *scanResult {
 	if n := len(list); n > 0 {
 		end, lastStart = list[n-1].off+list[n-1].n, list[n-1].off
 	}
+	for i := len(list) - 1; i >= 0 && list[i].off >= len(code)-64; i-- {
+		r.tailB = append(r.tailB, list[i].off)
+	}
 	// (the decoder may or may not report a lone 0x0f as an instruction)
 	r.tail0f = len(code) > 0 && (end == len(code)-1 || lastStart == len(code)-1) && code[len(code)-1] == 0x0F
 	isTgt := make([]uint64, (len(code)+63)/64)
 	for _, x := range list {
 		if x.hasTgt && x.tgt >= 0 && x.tgt < len(code) {
 			isTgt[x.tgt/64] |= 1 << (x.tgt % 64)
+		}
+	}
+	// The instruction after padding, a return or an unconditional jump is probably the
+	// entry of a function that other ranges call (Debian's __read_nocancel begins after
+	// 10 bytes of nop padding; a window across the padding made the call land in the
+	// jump's filler and skip the syscall). Only branches inside the range are seen
+	// above, so these count as targets too.
+	for i := 1; i < len(list); i++ {
+		switch list[i-1].op {
+		case x86asm.NOP, x86asm.RET, x86asm.JMP, x86asm.LRET, x86asm.IRET:
+			if list[i-1].off+list[i-1].n == list[i].off && list[i].off < len(code) {
+				isTgt[list[i].off/64] |= 1 << (list[i].off % 64)
+			}
 		}
 	}
 	for s, x := range list {

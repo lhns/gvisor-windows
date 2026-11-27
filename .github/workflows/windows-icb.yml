@@ -1,0 +1,22 @@
+# Can a process register a process instrumentation callback on itself (the "tripwire" of
+# docs/results/1m-platform-repair.md), as the admin and as a standard user?
+name: windows-icb
+on:
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  probe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version-file: go.mod, cache: false}
+      - shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force C:\ci\bin | Out-Null
+          go build -o C:\ci\bin\icbprobe.exe ./tools/windows/icbprobe
+          "--- admin"; C:\ci\bin\icbprobe.exe
+          "--- standard user"
+          & tools/windows/ci/run-as-standard-user.ps1 -Program C:\ci\bin\icbprobe.exe -GrantPath C:\ci\bin -TimeoutSeconds 60

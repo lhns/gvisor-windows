@@ -112,7 +112,9 @@ jobs:
         shell: pwsh
         run: |
           $only = '${{ inputs.only }}'
-          $must = 1, 2, 3, 4, 6, 7, 8, 9, 10 | Where-Object { -not $only -or ($only -split '[, ]+') -contains "$_" }
+          # Step 5 (build-apt) is required except in rewrite mode, until the rewrite fix lands.
+          $all = if ('${{ matrix.mode }}' -eq 'rewrite') { 1, 2, 3, 4, 6, 7, 8, 9, 10 } else { 1..10 }
+          $must = $all | Where-Object { -not $only -or ($only -split '[, ]+') -contains "$_" }
           $t = Get-Content -Raw C:\ci\std\results\steps.txt
           $bad = $must | Where-Object { $t -notmatch "(?m)^STEP $_ PASS" }
           if ($bad) { "required steps failed: $bad"; exit 1 }

@@ -17,6 +17,7 @@ concurrency:
   group: windows-sentry-guests-${{ github.ref }}-${{ inputs.prebuilt && 'ci' || 'solo' }}
   cancel-in-progress: true
 env:
+  WINSTUB_TRIPWIRE: '1'
   LEGS: ${{ inputs.legs || 'native,rewrite,rewrite-fxsave' }}
   ONLY: ${{ inputs.only }}
 jobs:

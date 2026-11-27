@@ -4,7 +4,7 @@
 name: ci
 on:
   push:
-    branches: [windows]
+    branches: [windows, ci-fast]
     paths: ["pkg/**", "runsc/**", "third_party/**", "tools/**", "test/guests/**", "test/e2e/podman-acceptance/**", "go.mod", "go.sum", ".github/**"]
   workflow_dispatch:
 concurrency:
@@ -65,3 +65,18 @@ jobs:
     needs: bin
     uses: ./.github/workflows/podman-windows.yml
     with: {prebuilt: true}
+  # Something to try on another machine: runsc.exe, a hello/busybox bundle and a README.
+  release:
+    needs: [bin, runsc]
+    if: ${{ !cancelled() && needs.bin.result == 'success' }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {sparse-checkout: tools/windows/ci}
+      - uses: actions/download-artifact@v4
+        with: {name: win-bin, path: 'C:\ci\bin'}
+      - uses: actions/download-artifact@v4
+        with: {name: runsc-guests, path: guests}
+      - run: ./tools/windows/ci/make-release.ps1 -Guests guests -Runsc C:\ci\bin\runsc.exe -Out release
+      - uses: actions/upload-artifact@v4
+        with: {name: runsc-windows, path: release, retention-days: 14}

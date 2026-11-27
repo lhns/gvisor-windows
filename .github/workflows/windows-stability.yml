@@ -50,6 +50,21 @@ jobs:
           foreach ($d in 'bin','etc','proc','dev','tmp') { New-Item -ItemType Directory -Force "$r\$d" | Out-Null }
           foreach ($a in 'busybox','sh','true','tar','mkdir','cat','ls') { Copy-Item guests\busybox "$r\bin\$a" }
           Set-Content "$r\small.tar" ''
+      - name: Fork+exec time (spare stubs off and on)
+        shell: pwsh
+        run: |
+          foreach ($sp in '0','2') {
+            $env:WINSTUB_SPARES = $sp
+            $t = @()
+            for ($i = 0; $i -lt 7; $i++) {
+              $o = C:\ci\bin\runsctest.exe -timeout 60s -runsc C:\ci\bin\runsc.exe -rootfs C:\ci\work\rootfs -work C:\ci\work\t-$sp-$i -only forkexec 2>&1 | Out-String
+              if ($o -match 'RESULT forkexec_wall ([0-9.]+)') { $t += [double]$Matches[1] } else { "no time in run $i of spares=$sp"; $o }
+              Remove-Item -Recurse -Force C:\ci\work\t-$sp-$i -ErrorAction SilentlyContinue
+            }
+            $m = ($t | Sort-Object)[[int]($t.Count / 2)]
+            "FORKEXEC ${{ matrix.mode }} spares=$sp median=$m s of 100 (runs: $($t -join ' '))"
+          }
+          Remove-Item Env:\WINSTUB_SPARES
       - name: Fork+exec runs
         shell: pwsh
         run: |

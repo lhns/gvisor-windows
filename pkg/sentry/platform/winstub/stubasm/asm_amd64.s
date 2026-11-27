@@ -228,3 +228,69 @@ TEXT ·cpuid7(SB),NOSPLIT,$0-4
 	CPUID
 	MOVL BX, ret+0(FP)
 	RET
+
+// Process instrumentation callback (the tripwire, WINSTUB_TRIPWIRE=1): the kernel
+// continues here, with R10 = the address it was about to return to, after every
+// system call (and some exceptions) of the stub process. A return to an address in
+// guest text that follows a `syscall` instruction (0f 05) is a guest syscall that
+// ran on Windows because it was never patched: the thread records the address in
+// its page and executes ud2, which the debugger reports. Every register and flag
+// is kept (the guest's red zone is not touched: the callback runs on a small
+// stack inside the thread's own page, and threads without a page, such as the
+// loader's workers, are passed straight through). TEB slots 3 and 4 (0x1498,
+// 0x14A0) hold rsp and rcx meanwhile.
+TEXT ·icb(SB),NOSPLIT|NOFRAME,$0-0
+	BYTE $0x65; BYTE $0x48; BYTE $0x89; BYTE $0x24; BYTE $0x25; LONG $0x1498
+	BYTE $0x65; BYTE $0x48; BYTE $0x89; BYTE $0x0C; BYTE $0x25; LONG $0x14A0
+	BYTE $0x65; BYTE $0x48; BYTE $0x8B; BYTE $0x0C; BYTE $0x25; LONG $0x28
+	JCXZQ out
+	LEAQ 0x800(CX), SP
+	PUSHFQ
+	PUSHQ AX
+	CMPQ R10, $0x400000
+	JCS  ok
+	MOVQ $0x6FFF80000000, AX
+	CMPQ R10, AX
+	JCC  ok
+	MOVWLZX -2(R10), AX
+	CMPL AX, $0x050F
+	JNE  ok
+	MOVQ R10, 0x1C8(CX)
+	BYTE $0x0F; BYTE $0x0B
+ok:
+	POPQ AX
+	POPFQ
+out:
+	BYTE $0x65; BYTE $0x48; BYTE $0x8B; BYTE $0x24; BYTE $0x25; LONG $0x1498
+	BYTE $0x65; BYTE $0x48; BYTE $0x8B; BYTE $0x0C; BYTE $0x25; LONG $0x14A0
+	JMP  R10
+	BYTE $0x0F; BYTE $0x0B; BYTE $0x0F; BYTE $0x0B; BYTE $0x0F; BYTE $0x0B; BYTE $0x0F; BYTE $0x0B
+
+// First code of the anchor thread when the tripwire is on: registers the callback
+// (NtSetInformationProcess(-1, 40, &info, 16), info in the page) and continues in
+// trampWait. The status goes to the page.
+TEXT ·icbInit(SB),NOSPLIT|NOFRAME,$0-0
+	BYTE $0x65; BYTE $0x4C; BYTE $0x8B; BYTE $0x1C; BYTE $0x25; LONG $0x28
+	SUBQ $0x20, SP
+	MOVQ $-1, CX
+	MOVL $40, DX
+	LEAQ 0x1B0(R11), R8
+	MOVL $16, R9
+	MOVQ 0x1D0(R11), AX
+	CALL AX
+	BYTE $0x65; BYTE $0x4C; BYTE $0x8B; BYTE $0x1C; BYTE $0x25; LONG $0x28
+	MOVQ AX, 0x1C0(R11)
+	ADDQ $0x20, SP
+	MOVQ $0x110400, AX
+	JMP  AX
+	BYTE $0x0F; BYTE $0x0B; BYTE $0x0F; BYTE $0x0B; BYTE $0x0F; BYTE $0x0B; BYTE $0x0F; BYTE $0x0B
+
+TEXT ·icbPtr(SB),NOSPLIT,$0-8
+	LEAQ ·icb(SB), AX
+	MOVQ AX, ret+0(FP)
+	RET
+
+TEXT ·icbInitPtr(SB),NOSPLIT,$0-8
+	LEAQ ·icbInit(SB), AX
+	MOVQ AX, ret+0(FP)
+	RET

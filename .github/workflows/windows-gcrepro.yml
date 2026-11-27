@@ -1,0 +1,67 @@
+# The native-mode Go GC crash (SIGSEGV at 0xfffffffffffffff8, a thread's %fs base lost and not repaired;
+# docs/results/1m-platform-repair.md): a Go guest that keeps the collector busy, run repeatedly through
+# runsc.exe with three versions of the platform: "old" (repair gave up after 20 repairs in 5 ms),
+# "base" (2000 in 20 ms) and "fix" (this tree: the debugger decides from the fault address whether the base was lost).
+name: windows-gcrepro
+on:
+  workflow_dispatch:
+    inputs:
+      runs: {description: "runs per variant", default: "12"}
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  gc:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [old, base, fix]
+    env:
+      WINSTUB_FSMODE: native
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-go@v5
+        with: {go-version-file: go.mod, cache: false}
+      - name: Select the platform version
+        shell: pwsh
+        run: |
+          if ('${{ matrix.variant }}' -eq 'old') { git checkout 73227a2f1~1 -- pkg/sentry/platform/winstub }
+          if ('${{ matrix.variant }}' -eq 'base') { git checkout 73227a2f1 -- pkg/sentry/platform/winstub }
+          Get-CimInstance Win32_Processor | Select-Object Name | Format-List
+      - name: Build
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force C:\ci\bin | Out-Null
+          go build -p 2 -o C:\ci\bin\runsc.exe ./runsc
+          go build -o C:\ci\bin\runsctest.exe ./tools/windows/runsctest
+          $r = 'C:\ci\work\rootfs'
+          foreach ($d in 'bin','etc','proc','dev','tmp') { New-Item -ItemType Directory -Force "$r\$d" | Out-Null }
+          Push-Location test\guests\gogc
+          $env:GOOS = 'linux'; $env:CGO_ENABLED = '0'
+          go build -o "$r\bin\gogc" .
+          Pop-Location
+      - name: Runs
+        shell: pwsh
+        run: |
+          $env:GOOS = ''; $env:CGO_ENABLED = ''
+          New-Item -ItemType Directory -Force out | Out-Null
+          $n = if ('${{ inputs.runs }}' -ne '') { [int]'${{ inputs.runs }}' } else { 12 }
+          $pass = 0; $fail = 0
+          for ($i = 0; $i -lt $n; $i++) {
+            $env:RUNSC_HANG_DUMP = "$PWD\out\dump-$i.txt:12"
+            $o = C:\ci\bin\runsctest.exe -timeout 90s -gc-secs 20 -runsc C:\ci\bin\runsc.exe -rootfs C:\ci\work\rootfs -work C:\ci\work\w-$i -only gogc 2>&1 | Out-String
+            if ($o -match 'PASS gogc') { $pass++; (Select-String -Path out\dump-$i.txt -Pattern 'counts:' -ErrorAction SilentlyContinue | Select-Object -First 3 | ForEach-Object { "  $($_.Line)" }) } else {
+              $fail++; "FAILED $i"
+              $o | Out-File -Encoding utf8 out\out-$i.txt
+              ($o -split "`n" | Select-String 'SIGSEGV|addr=|ScanSpan|fatal|panic' | Select-Object -First 5) | ForEach-Object { "  $_" }
+            }
+            Remove-Item -Recurse -Force C:\ci\work\w-$i -ErrorAction SilentlyContinue
+          }
+          "GCREPRO ${{ matrix.variant }} pass=$pass fail=$fail of $n"
+          if ('${{ matrix.variant }}' -eq 'fix' -and $fail -gt 0) { exit 1 }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: "gcrepro-${{ matrix.variant }}", path: out, if-no-files-found: ignore}
