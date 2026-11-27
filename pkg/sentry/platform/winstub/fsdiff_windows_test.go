@@ -286,6 +286,9 @@ func (g *fdGen) vex(m fdMem) (code []byte, used []int) {
 		}
 	}
 	reg, vvvv := pick(), pick()
+	if f.imm {
+		vvvv = 0 // rorx: vvvv must be unused (1111b)
+	}
 	if f.ext >= 0 {
 		reg = f.ext
 	}
@@ -684,14 +687,21 @@ func TestFSDifferential(t *testing.T) {
 							diffs = append(diffs, fmt.Sprintf("reg %d: native %#x, rewrite %#x", k, a.regs[k], b.regs[k]))
 						}
 					}
-					if a.rax != b.rax || a.rcx != b.rcx || a.r11 != b.r11 {
-						diffs = append(diffs, fmt.Sprintf("rax/rcx/r11 native %#x/%#x/%#x rewrite %#x/%#x/%#x", a.rax, a.rcx, a.r11, b.rax, b.rcx, b.r11))
+					if a.rax != b.rax || a.rcx != b.rcx { // (r11 is not compared: a context's first run starts with r11 = rip)
+						diffs = append(diffs, fmt.Sprintf("rax/rcx native %#x/%#x rewrite %#x/%#x", a.rax, a.rcx, b.rax, b.rcx))
 					}
 					if a.flags != b.flags {
 						diffs = append(diffs, fmt.Sprintf("flags native %#x rewrite %#x", a.flags, b.flags))
 					}
 					if a.xmm != b.xmm || a.mxcsr != b.mxcsr {
-						diffs = append(diffs, "vector state differs")
+						for k := 0; k < 16; k++ {
+							if !bytes.Equal(a.xmm[16*k:16*k+16], b.xmm[16*k:16*k+16]) {
+								diffs = append(diffs, fmt.Sprintf("xmm%d native %x rewrite %x (initial %x)", k, a.xmm[16*k:16*k+16], b.xmm[16*k:16*k+16], cases[i].xmm[16*k:16*k+16]))
+							}
+						}
+						if a.mxcsr != b.mxcsr {
+							diffs = append(diffs, fmt.Sprintf("mxcsr native %#x rewrite %#x", a.mxcsr, b.mxcsr))
+						}
 					}
 					if !bytes.Equal(a.mem, b.mem) {
 						diffs = append(diffs, "memory differs")

@@ -480,15 +480,59 @@ func rewritableFS(in x86asm.Inst, b []byte) bool {
 	return true
 }
 
+// regIsDigit reports whether the modrm.reg field of the instruction is an opcode
+// extension (/digit) rather than a register. Opcodes not listed count as register.
+func (r *fsRaw) regIsDigit() bool {
+	if len(r.vex) > 0 {
+		return false
+	}
+	switch len(r.opc) {
+	case 1:
+		switch o := r.opc[0]; {
+		case o >= 0x80 && o <= 0x83, o == 0x8F, o == 0xC0, o == 0xC1, o == 0xC6, o == 0xC7, o >= 0xD0 && o <= 0xDF, o == 0xF6, o == 0xF7, o == 0xFE, o == 0xFF:
+			return true
+		}
+	case 2:
+		if r.opc[0] == 0x0F {
+			switch o := r.opc[1]; {
+			case o == 0xBA, o >= 0x90 && o <= 0x9F, o == 0x18, o == 0xAE, o == 0xC7, o == 0x0D, o == 0x01, o == 0x00:
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// byteReg reports whether modrm.reg names an 8-bit register (ah..bh without a REX
+// prefix, spl..dil with one).
+func (r *fsRaw) byteReg() bool {
+	if len(r.vex) > 0 {
+		return false
+	}
+	switch len(r.opc) {
+	case 1:
+		o := r.opc[0]
+		return o < 0x40 && o&7 <= 2 && o&1 == 0 || o == 0x84 || o == 0x86 || o == 0x88 || o == 0x8A
+	case 2:
+		return r.opc[0] == 0x0F && (r.opc[1] == 0xB0 || r.opc[1] == 0xC0)
+	}
+	return false
+}
+
 // scratch picks the register the veneer uses for the base: not one the
-// instruction uses (explicitly or, conservatively, implicitly); without a REX
-// prefix only registers that need none, so that 8-bit register operands keep
-// their meaning.
+// instruction uses (explicitly or, conservatively, implicitly). A register above
+// rdi needs a REX prefix, which the veneer adds unless that would turn an 8-bit
+// operand ah..bh into spl..dil.
 func (r *fsRaw) scratch() (int, bool) {
 	used := uint32(1<<0 | 1<<1 | 1<<2 | 1<<4) // rax, rcx, rdx, rsp
 	reg := r.regx
-	used |= 1<<reg | 1<<r.vvvv
-	if r.rex == 0 && len(r.vex) == 0 && reg >= 4 && reg <= 7 {
+	digit := r.regIsDigit()
+	if !digit {
+		used |= 1 << reg
+	}
+	used |= 1 << r.vvvv
+	highByte := !digit && r.rex == 0 && r.byteReg() && reg >= 4 && reg <= 7
+	if highByte {
 		used |= 1 << (reg - 4) // ah, ch, dh, bh: parts of rax, rcx, rdx, rbx
 	}
 	if r.base >= 0 {
@@ -498,7 +542,7 @@ func (r *fsRaw) scratch() (int, bool) {
 		used |= 1 << r.index
 	}
 	cands := []int{3, 6, 7, 5}
-	if r.rex != 0 {
+	if r.rex != 0 || len(r.vex) == 0 && !highByte {
 		cands = append(cands, 8, 9, 10, 11, 12, 13, 14, 15)
 	}
 	for _, c := range cands {

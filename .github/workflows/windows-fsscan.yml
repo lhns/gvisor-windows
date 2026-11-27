@@ -37,5 +37,4 @@ jobs:
           ./fsscan -targets $(pick /lib/x86_64-linux-gnu/libc.so.6 /lib64/ld-linux-x86-64.so.2 /lib/x86_64-linux-gnu/libm.so.6 /usr/bin/busybox /bin/bash /usr/lib/x86_64-linux-gnu/libsqlite3.so.0 "$(readlink -f /usr/bin/python3)") 2>&1 | tee targets.txt
           gcc -static -no-pie -O1 -o /tmp/aptrename test/guests/aptrename.c && ./fsscan -targets /tmp/aptrename 2>&1 | tee -a targets.txt
       - uses: actions/upload-artifact@v4
-        with: {name: fsscan, path: "fsscan.txt
-targets.txt"}
+        with: {name: fsscan, path: "fsscan.txt\ntargets.txt"}
