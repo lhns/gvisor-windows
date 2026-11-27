@@ -52,6 +52,7 @@ gantt
     glibc runs AVX code on a non-AVX CPU :platform_avx_on_non_avx_cpu, 2026-11-27, 2026-11-27
     More room for %fs veneers :platform_fs_veneer_capacity, 2026-11-27, 2026-11-27
     Podman engine stalls in rewrite mode :platform_rewrite_mode_slow_engine, 2026-11-27, 2026-11-27
+    Static glibc crashes at start in rewrit… :platform_rewrite_glibc_init_crash, 2026-11-27, 2026-11-27
     section sentry - sentry
     Recover faults in Go :sentry_go_fault_recovery, 2026-11-26, 2026-11-26
     Sentry builds for Windows :sentry_windows_build, 2026-11-26, 2026-11-26
@@ -83,6 +84,7 @@ gantt
     Unix sockets on host folders :fs_unix_sockets_on_host_folders, 2026-11-27, 2026-11-27
     Copied library reads as too short :fs_copied_file_too_short, 2026-11-27, 2026-11-27
     Nil dereference in gofer invalidation :fs_disown_children_nil_deref, 2026-11-27, 2026-11-27
+    Host-folder writes keep the old mtime :fs_host_folder_mtime_resolution, 2026-11-27, 2026-11-27
     section net - network
     Netstack to Windows sockets :net_netstack_windows_link, 2026-11-26, 2026-11-26
     Publish guest ports on localhost :net_port_forwarding, 2026-11-26, 2026-11-26

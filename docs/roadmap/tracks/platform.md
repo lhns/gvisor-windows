@@ -41,6 +41,7 @@ flowchart TB
     platform_avx_on_non_avx_cpu>"✔ glibc runs AVX code<br/>on a non-AVX CPU"]
     platform_fs_veneer_capacity>"⚠ More room for %fs<br/>veneers"]
     platform_rewrite_mode_slow_engine>"⚠ Podman engine stalls<br/>in rewrite mode"]
+    platform_rewrite_glibc_init_crash>"⚠ Static glibc crashes<br/>at start in rewrite<br/>mode"]
     platform_own_vdso["⛔ Own vDSO for clock<br/>calls"]
     platform_64k_mapping_conflicts["⏸ Handle 64 KB mapping<br/>conflicts"]
     platform_busybox_on_windows["✔ Run busybox under<br/>the Sentry"]
@@ -82,14 +83,14 @@ flowchart TB
     platform_rare_hang_under_exec_load ~~~ platform_avx_on_non_avx_cpu
     platform_unsupported_errno ~~~ platform_fs_veneer_capacity
     platform_avx512_state_lost ~~~ platform_rewrite_mode_slow_engine
-    platform_avx_on_non_avx_cpu ~~~ platform_own_vdso
-    platform_fs_veneer_capacity ~~~ platform_64k_mapping_conflicts
-    platform_rewrite_mode_slow_engine ~~~ platform_busybox_on_windows
+    platform_avx_on_non_avx_cpu ~~~ platform_rewrite_glibc_init_crash
+    platform_fs_veneer_capacity ~~~ platform_own_vdso
+    platform_rewrite_mode_slow_engine ~~~ platform_64k_mapping_conflicts
+    platform_rewrite_glibc_init_crash ~~~ platform_busybox_on_windows
     platform_own_vdso ~~~ platform_hardware_acceleration
     platform_64k_mapping_conflicts ~~~ platform_binary_translation_fallback
     platform_busybox_on_windows ~~~ platform_recycle_stubs
     platform_hardware_acceleration ~~~ platform_recycle_stubs
-    platform_binary_translation_fallback ~~~ platform_recycle_stubs
     platform_trap_cost -.-> platform_veh_on_guest_stack_unsafe
     platform_tls_register -.-> platform_veh_on_guest_stack_unsafe
     platform_trap_cost --> platform_exception_stack
@@ -137,7 +138,7 @@ flowchart TB
     class platform_zpoline_hooks dead
     class platform_fs_base_repair unrated
     class platform_fast_process_start vsucc
-    class platform_rare_hang_under_exec_load,platform_avx512_state_lost,platform_fs_veneer_capacity,platform_rewrite_mode_slow_engine finding
+    class platform_rare_hang_under_exec_load,platform_avx512_state_lost,platform_fs_veneer_capacity,platform_rewrite_mode_slow_engine,platform_rewrite_glibc_init_crash finding
     class platform_own_vdso blocked
     class platform_64k_mapping_conflicts,platform_hardware_acceleration,platform_binary_translation_fallback parked
     class platform_recycle_stubs next
@@ -187,6 +188,7 @@ flowchart TB
 | `platform-avx-on-non-avx-cpu` | glibc runs AVX code on a non-AVX CPU | defect | windows-local | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/1j-no-fsgsbase.md; docs/results/1k-platform-next.md |
 | `platform-fs-veneer-capacity` | More room for %fs veneers | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/1j-no-fsgsbase.md |
 | `platform-rewrite-mode-slow-engine` | Podman engine stalls in rewrite mode | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/5-podman-windows.md |
+| `platform-rewrite-glibc-init-crash` | Static glibc crashes at start in rewrite mode | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/5-podman-windows.md |
 
 ### Details per node
 
@@ -230,6 +232,7 @@ flowchart TB
 | `platform-avx-on-non-avx-cpu` | glibc runs AVX code on a non-AVX CPU |  |  | On the dev VM a static glibc hello dies with SIGILL on vmovd (AVX) in start-up code, although the CPU has no AVX; busybox runs fine. | Not a platform bug: the runner's static glibc runs AVX in init_cpu_features; guests are now built in debian:bookworm. Found on the way: text pieces starting inside an instruction were decoded from garbage, now decoded with the tail of the piece below. |  |  |  |  |
 | `platform-fs-veneer-capacity` | More room for %fs veneers |  |  | python3 with libpython and libc needs about 8500 %fs veneers against room for about 7000, and 24% of far %fs sites in Rust PIE binaries such as netavark fall back to the 100 us debugger path. | Fixed when: python3 and netavark run in rewrite mode with under 1% of %fs executions on the debugger path. |  |  |  |  |
 | `platform-rewrite-mode-slow-engine` | Podman engine stalls in rewrite mode |  |  | With %fs rewriting, the Podman engine answers version after 29-52 s instead of 2 s and then goes silent; no acceptance run completed in 8 tries. | Fixed when: the acceptance completes in rewrite mode at native speed in 8 of 8 runs. |  |  |  |  |
+| `platform-rewrite-glibc-init-crash` | Static glibc crashes at start in rewrite mode |  |  | The static glibc fsstress guest dies with SIGSEGV in libc init right after set_tid_address in rewrite mode, every run; native mode runs it. | Fixed when: fsstress runs in all three CI legs. |  |  |  |  |
 
 ### Folded items per node
 

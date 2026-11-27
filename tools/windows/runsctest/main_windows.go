@@ -13,6 +13,7 @@
 package main
 
 import (
+	"strconv"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -36,6 +37,9 @@ var (
 	image    = flag.String("image", "", "erofs image of the same rootfs (enables the erofs test)")
 	only     = flag.String("only", "", "comma-separated test names (default all)")
 	timeout  = flag.Duration("timeout", 120*time.Second, "per test")
+	stressWorkers = flag.Int("stress-workers", 6, "fsstress: parallel mount namespaces")
+	stressStrace  = flag.Bool("stress-strace", false, "fsstress: run with runsc --strace")
+	stressIters   = flag.Int("stress-iters", 600, "fsstress: iterations per worker")
 	fsMode   = flag.String("fsmode", "", "WINSTUB_FSMODE for runsc (native or rewrite)")
 	fpMode   = flag.String("fpmode", "", "WINSTUB_FPMODE for runsc (fxsave)")
 )
@@ -80,6 +84,7 @@ func main() {
 		{"case", testCase},
 		{"lifecycle", testLifecycle},
 		{"sockfs", testSockfs},
+		{"fsstress", testFsStress},
 		{"bench", testBench},
 		{"forward", testForward},
 		{"mounts", func() error { return profileRun("mounts", "cat /proc/self/mountinfo; pwd; ls -la /tmp") }},
@@ -98,7 +103,7 @@ func main() {
 	}
 	failed := 0
 	for _, t := range tests {
-		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "strace" || t.name == "restart" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec" || t.name == "sockfs")) {
+		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "strace" || t.name == "restart" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec" || t.name == "sockfs" || t.name == "fsstress")) {
 			continue
 		}
 		start := time.Now()
@@ -108,8 +113,8 @@ func main() {
 			fmt.Printf("--- FAIL %s (%v): %v\n", t.name, time.Since(start).Round(time.Millisecond), err)
 			if b, err := os.ReadFile(filepath.Join(*workDir, "logs", t.name+".log")); err == nil {
 				lines := strings.Split(strings.TrimRight(string(b), "\r\n"), "\n")
-				if len(lines) > 40 {
-					lines = lines[len(lines)-40:]
+				if keep := 40 + 100*len(stressExtra); len(lines) > keep {
+					lines = lines[len(lines)-keep:]
 				}
 				fmt.Printf("--- tail of the runsc debug log:\n%s\n", strings.Join(lines, "\n"))
 			}
@@ -168,6 +173,9 @@ func bundle(name string, args []string, terminal bool) string {
 			{"path": "/dev/zero", "type": "c", "major": 1, "minor": 5, "fileMode": 438},
 			{"path": "/dev/urandom", "type": "c", "major": 1, "minor": 9, "fileMode": 438},
 		}},
+	}
+	if len(extraCaps) > 0 {
+		spec["process"].(map[string]any)["capabilities"] = map[string]any{"bounding": extraCaps, "effective": extraCaps, "permitted": extraCaps, "inheritable": extraCaps}
 	}
 	b, err := json.MarshalIndent(spec, "", "  ")
 	must(err)
@@ -322,6 +330,12 @@ func testPublish() error {
 }
 
 var extraMounts []map[string]any
+
+// extraCaps, when set, are the capabilities of the guest process (the default has no CAP_SYS_ADMIN).
+var extraCaps []string
+
+// stressExtra are extra runsc flags of the fsstress test (for example --strace).
+var stressExtra []string
 
 // testHostfs is the reproducer for the rename and rmdir failures Podman's
 // storage hits on a host-folder bind mount ("rename .tmp-images.json
@@ -595,6 +609,36 @@ func testSockfs() error {
 				return fmt.Errorf("sockfs on %s: %q missing; stdout %q", where, want, r.stdout)
 			}
 		}
+	}
+	return nil
+}
+
+// testFsStress runs test/guests/fsstress: parallel mount namespaces creating container-like
+// directories on a tmpfs and on a host-folder bind mount (docs/results/5-podman-windows.md, fifth round).
+func testFsStress() error {
+	if *stressStrace {
+		stressExtra = []string{"--strace"}
+	}
+	dir := filepath.Join(*workDir, "fsstress")
+	_ = os.RemoveAll(dir)
+	must(os.MkdirAll(dir, 0o755))
+	extraMounts = []map[string]any{{"destination": "/w", "type": "bind", "source": dir, "options": []string{"rbind", "rw"}}}
+	extraCaps = []string{"CAP_SYS_ADMIN", "CAP_MKNOD", "CAP_DAC_OVERRIDE", "CAP_CHOWN", "CAP_FOWNER"}
+	defer func() { extraMounts, extraCaps = nil, nil }()
+	bad := 0
+	for _, where := range []string{"/tmp/fs", "/w/fs"} {
+		r, err := runsc("fsstress", []string{"/bin/fsstress", where, strconv.Itoa(*stressWorkers), strconv.Itoa(*stressIters)}, nil, stressExtra...)
+		if err != nil {
+			return err
+		}
+		fmt.Println("fsstress on", where, "exit", r.code, "stderr", r.stderr)
+		fmt.Print(r.stdout)
+		if r.code != 0 {
+			bad++
+		}
+	}
+	if bad > 0 {
+		return fmt.Errorf("fsstress: %d of 2 runs failed", bad)
 	}
 	return nil
 }
