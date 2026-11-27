@@ -86,11 +86,32 @@ static void locked_update(const char *lockp, const char *datap, int i, int write
   close(lfd);
 }
 
+// A reader without the lock sees the file replaced by rename: always present, complete, never shorter.
+static void unlocked_read(const char *datap, int i, ssize_t *last) {
+  char buf[65536];
+  int fd = open(datap, O_RDONLY);
+  if (fd < 0) { fail("D:unlocked-open", i, datap); return; }
+  ssize_t n = read(fd, buf, sizeof buf), m = 0;
+  if (n > 0 && n < (ssize_t)sizeof buf) m = pread(fd, buf, sizeof buf, 0);
+  close(fd);
+  if (n < 0 || (n > 0 && buf[n - 1] != '\n') || n < *last || m != n) {
+    errno = 0;
+    char w[96];
+    snprintf(w, sizeof w, "read %zd bytes, then %zd, previously %zd", n, m, *last);
+    fail("D:unlocked-read", i, w);
+  }
+  if (n > *last) *last = n;
+}
+
 static void lockloop(int iters) {
+  ssize_t last = 0;
   char lockp[600], datap[600];
   snprintf(lockp, sizeof lockp, "%s/lock", base);
   snprintf(datap, sizeof datap, "%s/data", base);
-  for (int i = 0; i < iters; i++) locked_update(lockp, datap, i, i % 4 != 3);
+  for (int i = 0; i < iters; i++) {
+    locked_update(lockp, datap, i, i % 4 != 3);
+    unlocked_read(datap, i, &last);
+  }
 }
 
 // E: file timestamps. c/storage notices changes by mtime; two writes in a row must give distinct,
