@@ -112,8 +112,8 @@ func main() {
 			fmt.Printf("--- FAIL %s (%v): %v\n", t.name, time.Since(start).Round(time.Millisecond), err)
 			if b, err := os.ReadFile(filepath.Join(*workDir, "logs", t.name+".log")); err == nil {
 				lines := strings.Split(strings.TrimRight(string(b), "\r\n"), "\n")
-				if len(lines) > 40 {
-					lines = lines[len(lines)-40:]
+				if keep := 40 + 100*len(stressExtra); len(lines) > keep {
+					lines = lines[len(lines)-keep:]
 				}
 				fmt.Printf("--- tail of the runsc debug log:\n%s\n", strings.Join(lines, "\n"))
 			}
