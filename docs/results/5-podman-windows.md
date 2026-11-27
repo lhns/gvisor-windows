@@ -205,3 +205,27 @@ What the logs say:
 - Step 9 fails in two of five native runs (`images before=0 after=N`: the image list is empty before the restart because the images are listed during the run, then the restart returns; the volume data is gone). The container directories are on a tmpfs by design (see round 3), the volume should survive: needs a look.
 
 Conclusion for the default: **do not switch to rewrite**: it is slower by an order of magnitude at start-up and hung in 8 of 8 runs, while native completed 5 of 8 and hung in 2 of the others in `vfork`.
+
+## Seventh round (branch podman-volume): volume data across an engine restart, and the "no engine" run
+Runs (8 repetitions each, default mode, standard user): https://github.com/lhns/gvisor-windows/actions/runs/45944642328 (workaround A) and https://github.com/lhns/gvisor-windows/actions/runs/45946735980 (final).
+
+**Cause of "volume data gone": our own harness workaround, not the filesystem.** Two workarounds from early rounds were still in the engine image and spec after their gaps had been fixed: `static_dir = /run/podman-static` (libpod's database on a tmpfs) and the container directories (`vfs-containers`) on a tmpfs. With the database on a tmpfs, a restart empties it: Podman then knows no volume `accvol` and creates a new, empty one, so `cat /v/f` finds nothing even though the files are on the host folder. Removing the `static_dir` line (the database lives with the storage on the Windows folder, sqlite works there since the delete-rights fix) fixes it; removing the tmpfs on `vfs-containers` (attach sockets on host folders work now) also removed a second flake (`writing runtime spec JSON ... userdata/config.json: no such file or directory`, a just-created directory missing in the tmpfs, seen in 3 of 16 runs with the tmpfs and 0 of 8 without).
+
+**runsc itself flushes correctly.** The test `restart` (`runsctest -only restart`, in the required host-folder step of `windows-runsc.yml`): a first sandbox writes a volume file, a database file and a container directory under a bind mount that has a tmpfs on a subdirectory and calls sync; a second sandbox on the same folder reads them, creates a new container directory and replaces the database file with write and rename: passes. No sandbox shutdown path loses writes (the Windows host-folder backend writes through; there are no dirty inodes in the Sentry to flush), and a restart that kills the old `runsc.exe` first does not leave files held.
+
+**Result of the final 8 runs** (per-step passes of 8; step 5 is the known failure):
+| step | passes |
+|---|---|
+| 1, 2 | 8, 7 (run 2 hung in step 2) |
+| 3 run-exit-code | 7 of 7 reported |
+| 4 interactive-tty | 7 of 7 |
+| 6 bind-mount | 7 of 7 |
+| 7 port-publish | 5 of 7 |
+| 8 compose | 5 of 7 |
+| 9 restart-persist | 5 of 7 (the failures are the two engine deaths below) |
+| 10 isolation | 6 of 7 (run 7 hung 1806 s) |
+Timings are as before (steps 3 to 10 take 5-90 s each; the acceptance takes 4-5 minutes).
+
+**What still fails is not persistence:**
+1. **The AVX-512-looking crash is still there** (runs 3 and 6, and run 5 of the first set, where it killed the engine at both boots): `SIGSEGV addr=0xfffffffffffffff8` in `ScanSpanPackedAVX512` of the guest's Go GC. 3 of 16 runs. After the death, steps 7-9 fail with "cannot connect". Owner: platform.
+2. **Hangs, 2 of 8 in the final set** (run 2 in step 2, run 7 in step 10; in run 2 the debug log ends with a gofer range-lock line, in run 7 with `Signal 23` deliveries and no progress); the earlier "native run 6, no engine after the second boot" was the same kind: the first boot stopped between `Using sqlite as database backend` and `API service listening` (normally 3 s), and the second boot was fine (`engine-040939.err` listens). Owner: platform/Sentry (stuck stub, vfork stop).
