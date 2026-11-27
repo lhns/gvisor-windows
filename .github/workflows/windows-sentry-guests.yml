@@ -162,6 +162,14 @@ jobs:
               else { "$pol run $i ok" | Tee-Object -Append -FilePath hang.txt }
             }
           }
+      - name: Diagnose dlopen (debug log)
+        if: always() && matrix.mode != 'native'
+        continue-on-error: true
+        env: {WINSTUB_DEBUG: "1"}
+        shell: pwsh
+        run: |
+          $o = & ./sentryguest.exe "-tar=out/rootfs.tar" "-timeout=60s" /bin/dlopen_glibc 2>&1 | Out-String
+          $o -split "`n" | Where-Object { $_ -match 'fs|ud2|SIGSEGV|fault|signal|text 0x|unsupported' } | Select-Object -First 300 | Tee-Object -Append -FilePath diag.txt
       - name: Timing
         continue-on-error: true
         shell: pwsh
