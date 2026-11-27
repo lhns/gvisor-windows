@@ -776,6 +776,13 @@ func renameHandle(h windows.Handle, full string, replace bool) error {
 			err = err2
 		} // else the flag is refused to this user: keep the access error
 	}
+	if err == unix.EINVAL && strings.HasPrefix(full, `\??\`) {
+		// The path was refused (ERROR_INVALID_NAME for some names); try the Win32 long form.
+		if e2 := renameHandle(h, win32Path(full), replace); e2 != unix.EINVAL {
+			log.Warningf("winhost: rename to %q: the Win32 long form gave %v", full, e2)
+			return e2
+		}
+	}
 	if err == unix.EINVAL || err == unix.EOPNOTSUPP {
 		// No POSIX rename (before Windows 10 1809): classic rename.
 		r := uint32(0)
