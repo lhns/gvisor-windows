@@ -104,6 +104,9 @@ type inode struct {
 	ino uint64
 	uid auth.KUID
 	gid auth.KGID
+	// mode is the file mode: S_IFIFO plus permission bits that fchmod changes (conmon
+	// does fchmod(2) on its standard streams, which are pipes).
+	mode linux.FileMode
 	// We use the creation timestamp for all of atime, mtime, and ctime.
 	ctime ktime.Time
 }
@@ -115,6 +118,7 @@ func newInode(ctx context.Context, fs *filesystem) *inode {
 		ino:   fs.Filesystem.NextIno(),
 		uid:   creds.FilesystemKUID,
 		gid:   creds.FilesystemKGID,
+		mode:  pipeMode,
 		ctime: ktime.NowFromContext(ctx),
 	}
 }
@@ -125,12 +129,14 @@ const pipeMode = 0600 | linux.S_IFIFO
 func (i *inode) CheckPermissions(ctx context.Context, creds *auth.Credentials, ats vfs.AccessTypes) error {
 	i.attrMu.Lock()
 	defer i.attrMu.Unlock()
-	return vfs.GenericCheckPermissions(creds, ats, pipeMode, nil, i.uid, i.gid)
+	return vfs.GenericCheckPermissions(creds, ats, i.mode, nil, i.uid, i.gid)
 }
 
 // Mode implements kernfs.Inode.Mode.
 func (i *inode) Mode() linux.FileMode {
-	return pipeMode
+	i.attrMu.Lock()
+	defer i.attrMu.Unlock()
+	return i.mode
 }
 
 // UID implements kernfs.Inode.UID.
@@ -158,7 +164,7 @@ func (i *inode) Stat(_ context.Context, vfsfs *vfs.Filesystem, opts vfs.StatOpti
 		Nlink:    1,
 		UID:      uint32(i.uid),
 		GID:      uint32(i.gid),
-		Mode:     pipeMode,
+		Mode:     uint16(i.mode),
 		Ino:      i.ino,
 		Size:     0,
 		Blocks:   0,
@@ -172,13 +178,16 @@ func (i *inode) Stat(_ context.Context, vfsfs *vfs.Filesystem, opts vfs.StatOpti
 
 // SetStat implements kernfs.Inode.SetStat.
 func (i *inode) SetStat(ctx context.Context, vfsfs *vfs.Filesystem, creds *auth.Credentials, opts vfs.SetStatOptions) error {
-	if opts.Stat.Mask&^(linux.STATX_UID|linux.STATX_GID) != 0 {
+	if opts.Stat.Mask&^(linux.STATX_MODE|linux.STATX_UID|linux.STATX_GID) != 0 {
 		return linuxerr.EPERM
 	}
 	i.attrMu.Lock()
 	defer i.attrMu.Unlock()
-	if err := vfs.CheckSetStat(ctx, creds, &opts, pipeMode, nil, auth.KUID(i.uid), auth.KGID(i.gid)); err != nil {
+	if err := vfs.CheckSetStat(ctx, creds, &opts, i.mode, nil, auth.KUID(i.uid), auth.KGID(i.gid)); err != nil {
 		return err
+	}
+	if opts.Stat.Mask&linux.STATX_MODE != 0 {
+		i.mode = linux.S_IFIFO | linux.FileMode(opts.Stat.Mode)&^linux.S_IFMT
 	}
 	if opts.Stat.Mask&linux.STATX_UID != 0 {
 		i.uid = auth.KUID(opts.Stat.UID)

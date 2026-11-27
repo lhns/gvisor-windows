@@ -19,6 +19,8 @@ flowchart TB
     sentry_dynamic_elf_and_exec["✔ Dynamic programs,<br/>exec and pipes"]
     sentry_profile_small_file_path[/"✔ Profile the slow<br/>file and exec path"/]
     sentry_netpoll_failure>"⚠ Sentry dies with<br/>netpoll failed"]
+    sentry_fchmod_std_stream>"✔ fchmod on a standard<br/>stream fails"]
+    sentry_pasta_in_sandbox>"✔ pasta networking<br/>inside the sandbox"]
     sentry_event_loop_iocp["⏸ Event waiting on<br/>IOCP"]
     sentry_timers_and_clocks["⛔ Timers and clocks on<br/>Windows"]
     sentry_go_fault_recovery ~~~ sentry_unix_shim
@@ -30,8 +32,11 @@ flowchart TB
     sentry_fault_recovery ~~~ sentry_dynamic_elf_and_exec
     sentry_host_stdio_and_tty ~~~ sentry_profile_small_file_path
     sentry_threads_and_signals ~~~ sentry_netpoll_failure
-    sentry_dynamic_elf_and_exec ~~~ sentry_event_loop_iocp
-    sentry_profile_small_file_path ~~~ sentry_timers_and_clocks
+    sentry_dynamic_elf_and_exec ~~~ sentry_fchmod_std_stream
+    sentry_profile_small_file_path ~~~ sentry_pasta_in_sandbox
+    sentry_netpoll_failure ~~~ sentry_event_loop_iocp
+    sentry_fchmod_std_stream ~~~ sentry_timers_and_clocks
+    sentry_pasta_in_sandbox ~~~ sentry_timers_and_clocks
     sentry_go_fault_recovery --> sentry_unix_shim
     sentry_unix_shim --> sentry_windows_build
     sentry_windows_build --> sentry_memory_file_sections
@@ -53,7 +58,7 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class sentry_go_fault_recovery,sentry_unix_shim,sentry_fault_recovery,sentry_host_stdio_and_tty,sentry_threads_and_signals,sentry_dynamic_elf_and_exec succ
+    class sentry_go_fault_recovery,sentry_unix_shim,sentry_fault_recovery,sentry_host_stdio_and_tty,sentry_threads_and_signals,sentry_dynamic_elf_and_exec,sentry_fchmod_std_stream,sentry_pasta_in_sandbox succ
     class sentry_windows_build,sentry_memory_file_sections unrated
     class sentry_profile_small_file_path mixed
     class sentry_netpoll_failure finding
@@ -79,6 +84,8 @@ flowchart TB
 | `sentry-dynamic-elf-and-exec` | Dynamic programs, exec and pipes | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-static-guest-from-memory |  |  |  | docs/results/1f-exec-signals.md |
 | `sentry-profile-small-file-path` | Profile the slow file and exec path | experiment | windows-ci | done | mixed | 2026-11-27 | 2026-11-27 | workloads-end-to-end-speed |  |  | 6x to 12x faster | docs/results/1i-profile.md |
 | `sentry-netpoll-failure` | Sentry dies with netpoll failed | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/4-syscall-tests.md |
+| `sentry-fchmod-std-stream` | fchmod on a standard stream fails | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
+| `sentry-pasta-in-sandbox` | pasta networking inside the sandbox | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
 
 ### Details per node
 
@@ -96,6 +103,8 @@ flowchart TB
 | `sentry-dynamic-elf-and-exec` | Dynamic programs, exec and pipes | Under the real Sentry on `windows-latest`, dynamic glibc and musl programs with `dlopen`, execve chains, fork+exec+wait, busybox shell pipelines |  | Run dynamically linked programs with their interpreter and shared libraries, exec a second program, and connect processes with pipes. | Done when: a dynamic glibc and a dynamic musl program, an exec chain and a shell pipeline (static busybox sh -c "echo a \| cat") pass under the Sentry on Windows. |  |  |  |  |
 | `sentry-profile-small-file-path` | Profile the slow file and exec path | trusting the Sentry's cache of the root folder made it 6x to 12x faster | 6x to 12x faster | Creating a file on tmpfs costs about 1 ms and a fork+exec 32 ms on Windows; find where the time goes (syscall round trips, page faults, debug events, Sentry work) and fix the top causes. | Done when: a profile is written up and untar of 20k files on tmpfs and fork+exec are each at least 4x faster than today. |  |  |  |  |
 | `sentry-netpoll-failure` | Sentry dies with netpoll failed |  |  | After a few hundred socket test cases in one kernel the Sentry dies with "fatal error: runtime: netpoll failed" or stalls; about 1,700 syscall-test cases fail only because of this. | Fixed when: socket_filesystem_test and socket_abstract_test complete in one kernel on Windows; cause separated between Go's IOCP netpoller and a host-handle leak per guest process. |  |  |  |  |
+| `sentry-fchmod-std-stream` | fchmod on a standard stream fails |  |  | conmon logs "Failed to chmod stderr" and container logs are lost, so the compose check cannot read them. | Fixed: pipefs refused every mode change with EPERM; it now keeps the mode like Linux. fchmod test required in windows-runsc. |  |  |  |  |
+| `sentry-pasta-in-sandbox` | pasta networking inside the sandbox |  |  | buildah RUN uses pasta, which fails: /proc/sys/net/ipv4/ip_local_port_range is missing and switching into the namespace returns EPERM. | ip_local_port_range now printed with a tab; the setns EPERM is pasta dropping its capabilities, not a Sentry bug. Builds use BUILDAH_ISOLATION=oci. |  |  |  |  |
 
 ### Folded items per node
 

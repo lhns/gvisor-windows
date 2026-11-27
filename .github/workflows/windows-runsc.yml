@@ -20,6 +20,7 @@ jobs:
           sudo apt-get install -y -qq busybox-static erofs-utils
           mkdir -p out
           gcc -static -no-pie -O1 -fstack-protector-all -o out/hello test/guests/hello.c
+          gcc -static -no-pie -O1 -o out/unixsock test/guests/unixsock.c
           cp "$(command -v busybox)" out/busybox
           file out/*
           ! ldd out/busybox
@@ -73,8 +74,8 @@ jobs:
           # busybox applets are copies: the Windows folder has no Linux symlinks.
           $r = 'C:\ci\work\rootfs'
           foreach ($d in 'bin','etc','proc','dev','tmp','www') { New-Item -ItemType Directory -Force "$r\$d" | Out-Null }
-          Copy-Item guests\hello "$r\bin\hello"
-          foreach ($a in 'busybox','sh','ls','cat','wget','httpd','sleep','stty','tty','true','tar','head','sha256sum','gzip','awk','cut','mkdir','rm') { Copy-Item guests\busybox "$r\bin\$a" }
+          Copy-Item guests\hello "$r\bin\hello"; Copy-Item guests\unixsock "$r\bin\unixsock"
+          foreach ($a in 'busybox','sh','ls','cat','wget','httpd','sleep','stty','tty','true','chmod','tar','head','sha256sum','gzip','awk','cut','mkdir','rm') { Copy-Item guests\busybox "$r\bin\$a" }
           Copy-Item guests\rootfs.erofs C:\ci\work\rootfs.erofs
           Copy-Item guests\bench.sh "$r\bench.sh"; Copy-Item guests\small.tar "$r\small.tar"
           [IO.File]::WriteAllText("$r\etc\hostname", "ciguest`n")
@@ -104,7 +105,11 @@ jobs:
           $wargs = @('-fsmode', $env:WINSTUB_FSMODE); if ($env:WINSTUB_FPMODE) { $wargs += '-fpmode', $env:WINSTUB_FPMODE }
           & tools/windows/ci/run-as-standard-user.ps1 `
             -Program C:\ci\bin\runsctest.exe `
+<<<<<<< ours
             -Arguments ($wargs + @('-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-hostfs','-only','hostfs,forward')) `
+=======
+            -Arguments '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-hostfs','-only','hostfs,forward,sockfs,fchmod,strace' `
+>>>>>>> theirs
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 300
       - name: Case sensitivity as a standard user (known gap, Windows denies the flag, see docs/results/5-podman-windows.md)
         shell: pwsh

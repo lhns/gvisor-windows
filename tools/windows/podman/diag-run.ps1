@@ -1,7 +1,7 @@
-# Diagnostics: start the engine (with RUNSC_EXTRA_FLAGS, e.g. --strace) and try one container.
+# Diagnostics: start the engine (with RUNSC_EXTRA_FLAGS, e.g. --strace), run a container and a build.
 param([Parameter(Mandatory)][string]$Root)
 $ErrorActionPreference = 'Continue'
-$env:RUNSC_EXTRA_FLAGS = '--strace'
+$env:RUNSC_EXTRA_FLAGS = if ($env:DIAG_RUNSC_FLAGS) { $env:DIAG_RUNSC_FLAGS } else { '--strace' }
 $repo = (Resolve-Path "$PSScriptRoot\..\..\..").Path
 $work = "$Root\std"; New-Item -ItemType Directory -Force $work, "$work\results" | Out-Null
 $podman = (Get-ChildItem "$Root\tools" -Recurse -Filter podman.exe | Select-Object -First 1).FullName
@@ -14,12 +14,11 @@ $sock = Get-Content "$work\engine\sock.path"
 $env:CONTAINER_HOST = 'unix://' + ($sock -replace '^[A-Za-z]:', '' -replace '\\', '/')
 "url $env:CONTAINER_HOST sock '$sock'" | Tee-Object -Append $log
 P pull mirror.gcr.io/library/alpine:3.20
-"=== run" | Tee-Object -Append $log
-P --log-level=debug run --rm mirror.gcr.io/library/alpine:3.20 echo ok
-"=== create (no network, no log driver)" | Tee-Object -Append $log
-P --log-level=debug create --name d1 --network=none --log-driver=none mirror.gcr.io/library/alpine:3.20 echo ok
-P --log-level=debug start d1
-P ps --all
-"=== run with the k8s-file log in /tmp and --cgroups=disabled" | Tee-Object -Append $log
-P --log-level=debug run --rm --network=none --cgroups=disabled mirror.gcr.io/library/alpine:3.20 echo ok2
+P pull mirror.gcr.io/library/debian:12-slim
+$cf = "$work\build"; New-Item -ItemType Directory -Force $cf | Out-Null
+"FROM mirror.gcr.io/library/debian:12-slim`nRUN echo built" | Set-Content "$cf\Containerfile" -Encoding ascii
+"=== build" | Tee-Object -Append $log
+P build -t diag-build $cf
+"=== libc sizes in the storage" | Tee-Object -Append $log
+P run --rm -v /var/lib/containers/storage:/s mirror.gcr.io/library/alpine:3.20 sh -c 'for f in $(find /s/vfs -name libc.so.6 | head -8); do ls -l $f; wc -c < $f; head -c 4 $f | od -c | head -1; done'
 & "$repo\tools\windows\podman\start-engine.ps1" -Action stop -Runsc "$Root\bin\runsc.exe" -Work "$work\engine" -Name ci

@@ -80,6 +80,13 @@ jobs:
             -Program 'C:\Program Files\PowerShell\7\pwsh.exe' `
             -Arguments '-NoProfile','-File',"$PWD\tools\windows\podman\ci-run.ps1",'-Root','C:\ci' `
             -GrantPath C:\ci\bin,C:\ci\tools,$PWD -WritablePath C:\ci\std -TimeoutSeconds 6000
+      - name: Steps that must pass (grows with every fixed step)
+        shell: pwsh
+        run: |
+          $must = 1, 2, 7
+          $t = Get-Content C:\ci\std\results\steps.txt
+          $bad = $must | Where-Object { $t -notmatch "^STEP $_ PASS" }
+          if ($bad) { "required steps failed: $bad"; exit 1 }
       - name: Summary
         if: always()
         shell: pwsh

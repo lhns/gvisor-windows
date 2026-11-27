@@ -89,3 +89,68 @@ CI: strace diagnostics https://github.com/lhns/gvisor-windows/actions/runs/45909
 **Per step.** Steps 3 to 10 still fail at container creation (crun, defect 1.2); steps 1 and 2 pass as before. The acceptance workflow was not re-run to a result different from the second round, because the first container start needs the platform fix.
 
 Verdict update: the conmon failure was a FIFO on the host folder (fixed in the Sentry), and the next blocker is a platform bug, a `clone` child in a new address space resuming inside the parent's veneer (reproducer `clonesys`), not a Sentry gap.
+
+## Third round (branch podman-windows-3; veneer, conmon FIFOs, /var/tmp tmpfs, case-sensitive folders merged)
+CI: https://github.com/lhns/gvisor-windows/actions/runs/45924051831 (Podman 6.2.0, standard user). Earlier runs of the round: 45921171038, 45922552504; reproducer run 45923294271.
+
+| step | result | what happens |
+|---|---|---|
+| 1 engine-reachable | PASS | |
+| 2 pull | PASS | |
+| 3 run-exit-code | FAIL (126) | containers are created and started now (crun's clone survives), then `failed to connect to container's attach socket ... dial unixpacket /proc/self/fd/N: connect: connection refused` |
+| 4 interactive-tty | FAIL | same attach failure |
+| 5 build-apt | FAIL | the RUN step: `setup network: pasta failed ... Unable to parse /proc/sys/net/ipv4/ip_local_port_range / Couldn't switch to pasta namespaces: Operation not permitted`, then `error running container: did not get container start message from parent: EOF` |
+| 6 bind-mount | FAIL | attach socket |
+| 7 port-publish | **PASS** | `podman run -d -p 8080:80 nginx` through the gateway forwarder API and netavark's nftables DNAT; nginx answers at 127.0.0.1:8080 on Windows |
+| 8 compose | FAIL | both services start on the compose network and the cli container exits 0; the check fails because the logs are lost: `[conmon:w]: Failed to chmod stderr` (conmon's fchmod on its log stream) |
+| 9 restart-persist | FAIL | volume run needs attach |
+| 10 isolation | FAIL | `exec` needs attach |
+
+The required steps (1, 2, 7) are checked by a strict workflow step; the acceptance step itself stays `continue-on-error` only so that the logs are uploaded.
+
+Findings and gaps:
+- **Attach socket (blocks 3, 4, 6, 9, 10).** Minimal reproducer `test/guests/unixsock.c` (`runsctest -only sockfs`, in the `windows-runsc` host-folder step, prints only): a `SOCK_SEQPACKET` socket bound and listening on a host-folder bind mount refuses `connect` (`Connection refused`), both by path and through `/proc/self/fd/N` of an O_PATH descriptor; on tmpfs both work. Owner: fs (`fsimpl/gofer`, bound endpoints are lost on host-folder dentries, possibly by the revalidation that became the default). Trying `cache=exclusive` on the storage mount changed nothing (reverted). Putting the container directories (`vfs-containers`) on a tmpfs did not fix Podman's failure either, so there is a second cause not yet isolated: conmon binds `userdata/attach` with a path longer than the 108 bytes of `sun_path` (via `/proc/self/fd`), and podman connects through `/proc/self/fd/N`; this needs the strace of conmon (`podman-diag`'s `--strace` run lost its log: the debug log stayed at 925 bytes, a logging deadlock with `--strace` to be looked at).
+- **conmon: `Failed to chmod stderr` (step 8 logs).** fchmod of a std stream (pipe or /dev/null) is refused. Owner: Sentry.
+- **pasta (step 5).** Buildah RUN uses pasta: `/proc/sys/net/ipv4/ip_local_port_range` is missing in the Sentry's procfs (reproducer: `cat /proc/sys/net/ipv4/ip_local_port_range` in the guest) and pasta's namespace switch fails with EPERM. Owner: Sentry (procfs sysctl) and netns/setns. Workaround to try: `build --network=host`-style, not applied (strict mode).
+- **Podman 6 needs cgroup v2**: `--in-sandbox-cgroup=v2` and a `cgroup2` mount are in the engine spec (round 2).
+
+## Fourth round (branch podman-windows-4)
+CI: https://github.com/lhns/gvisor-windows/actions/runs/45926399186 (acceptance); https://github.com/lhns/gvisor-windows/actions/runs/45925916828 (runsc tests).
+
+- **fchmod on a standard stream (conmon `Failed to chmod stderr`): fixed.** The Sentry's pipefs refused every mode change on a pipe with EPERM (it only accepted uid and gid); on Linux fchmod on a pipe works. The inode now keeps its mode (`S_IFIFO` plus the permission bits, `pkg/sentry/fsimpl/pipefs`). Test `fchmod` (`chmod 0777 /proc/self/fd/1` in a guest whose stdout is such a pipe) is a required step; the warning is gone from the engine log.
+- **The debug log that stopped after nine lines: fixed, and it was our bug, not strace's.** The refactor that split `run` into `newInstance` (round 3b) left `defer f.Close()` of the debug log in `newInstance`, so every log of a Windows sandbox stopped as soon as the Loader was created (`write ...: file already closed`). The file is now closed with the sandbox, and a failing log write is reported once on stderr (`reportingWriter`). The engine's debug log is 1.4 MB for the acceptance run. The `strace` test (`--strace` on a hello, log must contain `write(` and `exit_group`) guards it.
+- **Acceptance steps unchanged:** 1, 2 and 7 pass (required), 3, 4, 6, 8, 9 and 10 fail on the attach socket (host-folder sockets and the second cause, with the Sentry worker), 5 on pasta. Step 8 now has containers that start and exit (`cli-1 exited with code 0`) without the conmon warning; the compose check still lacks the output because logs and attach need the attach socket.
+- The full debug log now shows only `rseq`, `sys_442` and `sys_458` as unsupported syscalls during the run; none of them explains the attach failure.
+
+## Fourth round (branch podman-sentry-gaps-2): attach socket, pasta, Go GC crash
+CI: acceptance https://github.com/lhns/gvisor-windows/actions/runs/45928866953 (Podman 6.2.0, standard user); socket reproducer https://github.com/lhns/gvisor-windows/actions/runs/45926068962 (`windows-runsc`, required step); strace diagnostics (`podman-diag`) 45926978293, 45927543429, 45929187209.
+
+| step | result | what happens |
+|---|---|---|
+| 1 engine-reachable | PASS | |
+| 2 pull | PASS | |
+| 3 run-exit-code | **PASS** | `podman run --rm alpine echo ok`: the attach socket works |
+| 4 interactive-tty | FAIL | the podman client says `The input device is not a TTY` inside the test's ConPTY (`ttydrive`), the typed line never reaches it; the guest side is fine (`TTY=/dev/pts/0`, SIGINT arrives). A harness or Windows-client issue, not looked at further |
+| 5 build-apt | FAIL | pasta is gone (below); the RUN step of the debian image now fails with `/bin/sh: error while loading shared libraries: /lib/x86_64-linux-gnu/libc.so.6: file too short` |
+| 6 bind-mount | **PASS** | |
+| 7 port-publish | PASS | |
+| 8 compose | **PASS** | |
+| 9 restart-persist | **PASS** | |
+| 10 isolation | **PASS** | (one earlier run failed it: `acc-b sees` the other container's file, not reproduced in the last run) |
+
+**1. Unix sockets on host folders (fixed).** `bind(2)` on a host folder created the socket file as metadata only (an ADS record), so the generic `MknodAt` never fell back to its in-memory socket and `connect` found no endpoint (`Connection refused`). `winInode.hostMknod` (`fsimpl/gofer/winfs_windows.go`) now returns EPERM for a socket with an endpoint, which makes `MknodAt` create the synthetic dentry that keeps the endpoint in the Sentry (as for a socket on tmpfs; the file exists in the guest's view only and is gone with the dentry; it shows in directory listings). The reproducer `test/guests/unixsock.c` (`runsctest -only sockfs`, a required step of `windows-runsc` now) binds as conmon does (through `/proc/self/fd/DIRFD/sock`), connects from a forked child directly and through an O_PATH descriptor (`/proc/self/fd/N`, as Podman does) and from the parent, and exchanges data: all steps pass on tmpfs and on a host-folder bind mount.
+
+**2. Second attach-socket failure: not a second cause.** With the fix above `podman run` attaches; the failure Podman showed with its container directory on tmpfs did not reproduce (the runs before the fix all had the attach socket in `userdata` on the host folder). No change to the connect path through `/proc/self/fd` was needed: the child-process and O_PATH cases of `unixsock` pass on tmpfs and host folder.
+
+**3. pasta.**
+- `/proc/sys/net/ipv4/ip_local_port_range` existed (netstack's port range) but was printed as `16000 65535` with a space; pasta wants Linux's tab (`Unable to parse`). Fixed in `fsimpl/proc/tasks_sys.go`.
+- The `setns` EPERM is not a Sentry bug. The strace shows pasta (started as root: "will change to nobody") calling `capset` to keep CAP_SYS_ADMIN, then `setgid`/`setuid(65534)`, after which the permitted set is empty (Linux clears it too; pasta sets no keepcaps), then `setns(netns, CLONE_NEWNET)` -> EPERM. On Linux runsc and on runc the same flow fails identically (docs/results/0c-linux-strict-bar.md: rootful pasta is refused by Podman 5.7 and fails like this on 6.2). pasta is meant for rootless Podman.
+- Why a rootful build asked for pasta: Buildah picks its rootless isolation by default (`--network=bridge` gives `cannot use networks as rootless`), which uses pasta; the cause of that choice inside the sandbox was not found. `--isolation=oci` and `--isolation=chroot` both build. The engine now sets `BUILDAH_ISOLATION=oci` (`start-engine.ps1`), which makes the RUN step of the build get past networking.
+
+**4. Guest Go crash in the AVX-512 GC scan (new, fixed by a workaround).** Twice in one acceptance run the engine (Podman, Go 1.26) died: `SIGSEGV addr=0xfffffffffffffff8` in `internal/runtime/gc/scan.ScanSpanPackedAVX512` (runs 45926978291 and 45927543429, `engine.err`), taking the docker pipe and the engine with it (steps 8, 9 failed after it). The Sentry's CPUID exposed the host's AVX-512; a sporadic fault of an AVX-512 instruction points at vector state lost across a stop (`winstub` saves XSAVE state with the mask of XCR0, the debugger path redirects threads). Not diagnosed in the platform; workaround: for platform `winstub` the guest's CPUID has no AVX512 feature (`cpuid.FeatureSet.UnsetAVX512`, `runsc/boot/loader.go`), so Go does not use the code. The acceptance run with it (45928866953) had no engine death; one run is not proof, the crash was intermittent (the run before it, without the change, passed 8 and 9 too). For the platform owner: guest code using AVX-512 (Go's GC scan loop, with a GC worker under preemption) sometimes faults at an address of -8, which looks like a lost or stale vector or opmask register after an interrupt or fault stop.
+
+**5. Open: debian container `libc.so.6: file too short` (blocks step 5).** The vfs driver copies the image layer into the container layer with `copy_file_range`, which returns the full size (1926232) for `libc.so.6`; the image layer's file is intact (`wc -c` 1926232, ELF magic). The nested `/bin/sh` of the build container opens `/lib/x86_64-linux-gnu/libc.so.6` through the new layer and `ld.so` closes it again without a `read` in the strace, then prints the error. The diag run 45929187209 has the strace. Likely a host-folder size or cached-pages inconsistency of the copied file (the new layer's file is written through the page cache and read right after by another process); not isolated. Next: a guest that does `copy_file_range` into a host-folder file and reads it from another process (`runsctest`), then compare sizes seen by `fstat` and `read`.
+
+**Also fixed on the way:** the debug log of `runsc.exe run` was closed right after start-up (`defer f.Close()` in `newInstance`), so every message after the first 10 lines was lost; `--debug` and `--strace` logs work again.
+
+Verdict: with in-Sentry sockets on host folders, the tab in `ip_local_port_range`, `BUILDAH_ISOLATION=oci` and AVX-512 hidden from the guest, 8 of the 10 acceptance steps pass through the stock Windows clients; the two left are the terminal input of the test driver and a debian container reading a copied library as truncated.

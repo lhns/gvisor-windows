@@ -191,6 +191,7 @@ flowchart TB
 | Rare hang under heavy exec load | ⚠ open | A guest that forks many children hangs now and then: about 1 in 50 gopodman runs, and 9 in 48 fork+exec loops through runsc.exe with the exclusive root cache (2 in 48 with the shared cache); the shell waits in wait4 with no child task. |
 | Unsupported platform calls return errnos | ⚠ open | arch_prctl(ARCH_SET_GS) and ptrace preparation return a raw error from the platform instead of an errno, so the Sentry panics with "Unknown syscall 158". |
 | Reuse stub processes across exec | ⛔ blocked | Each fork+exec starts two stub processes at about 10 ms each; recycling a stub on release and execve and mapping memory up front would cut process start further. |
+| AVX-512 state lost across stops | ⚠ open | Podman's Go GC crashed in its AVX-512 scan, likely because vector or opmask state is lost across a fault or interrupt; AVX-512 is hidden from guests as a workaround. |
 | Event waiting on IOCP | ⏸ parked | Waiting for many host events at once (epoll on Linux) moves to Windows completion ports. |
 | Timers and clocks on Windows | ⛔ blocked | The Sentry's clocks and timers run on Windows' high-resolution timers. |
 | Profile the slow file and exec path | ✔ done · mixed | Creating a file on tmpfs costs about 1 ms and a fork+exec 32 ms on Windows; find where the time goes (syscall round trips, page faults, debug events, Sentry work) and fix the top causes. |
@@ -198,12 +199,14 @@ flowchart TB
 | Compatibility layer, not security boundary | ✔ done · n/a | The sandbox may open the user's files directly with the user's rights; it isolates containers from each other, not from the user. |
 | Open Windows files directly | ✔ done · successful | The Sentry opens NTFS files itself for bind mounts, with its own caches, instead of going through a file protocol. |
 | Storage that survives restarts | ⛔ blocked | Implement the chosen writable filesystem so data inside the sandbox outlives a restart. |
+| Copied library reads as too short | ⚠ open | In podman build, a nested container fails with "libc.so.6: file too short" after the vfs driver copied it with copy_file_range onto the host folder; the copy has the right size but ld.so does not read it. |
 | Netstack to Windows sockets | ✔ done · successful | gVisor's own TCP/IP stack sends guest traffic out through ordinary Windows sockets, like a user-space NAT. |
 | Bridge networking inside gVisor | ✔ done · successful | Podman's default network creates a bridge and veth pairs over netlink; gVisor lacks part of that, so it fails today. Fix it in gVisor itself, first on Linux, then it carries over to Windows. |
 | Podman on gVisor on Linux | ✔ done · mixed ⚠ | Run the acceptance test on stock gVisor on Linux; whatever fails there is a gap in gVisor itself, not in the port. |
 | Podman passes on Windows | ⛔ blocked | The bar for enough features: an unmodified Podman engine passes the acceptance test on gVisor on Windows. |
 | Serve Podman to Windows clients | ▶ in progress | The test harness runs the Podman engine on runsc and exposes its API to the stock Windows clients. |
-| conmon sees no data on its sync pipe | ⚠ open | Every podman run fails with "conmon bytes \"\": found \x00": conmon reads nothing from its sync pipe while creating the first container inside the sandbox on Windows. |
+| Interactive TTY through the Windows client | ⚠ open | The Windows podman client says "The input device is not a TTY" inside the ConPTY test driver, so the interactive step cannot type into the container. |
+| Isolation step failed once | ⚠ open | Acceptance step 10 failed once: one container saw the other container's file; not reproduced since. |
 | Pick gVisor as the base | ✔ done · unrated | Of all ways to run Linux code on Windows without admin, gVisor's user-space Linux kernel is the only one that already runs containers. |
 | Name it gvisor-windows | ✔ done · n/a | The project is an unofficial fork of gVisor's Go branch called gvisor-windows. |
 | Go or no-go after Phase 0 | ✔ done · n/a | Go: the owner asked for the full project; ADR 0004 lists the conditions. |
@@ -221,9 +224,12 @@ flowchart TB
 
 **windows-ci**
 
-- `workloads-conmon-sync-pipe`: conmon sees no data on its sync pipe
 - `platform-rare-hang-under-exec-load`: Rare hang under heavy exec load
 - `sentry-netpoll-failure`: Sentry dies with netpoll failed
+- `platform-avx512-state-lost`: AVX-512 state lost across stops
+- `fs-copied-file-too-short`: Copied library reads as too short
+- `workloads-tty-through-windows-client`: Interactive TTY through the Windows client
+- `workloads-isolation-flake`: Isolation step failed once
 <!-- END GENERATED: ready-now -->
 
 ## Running
@@ -258,7 +264,7 @@ Generated on 2026-11-27.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 80 done, 7 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 85 done, 7 abandoned</summary>
 
 - `fs-attribute-cache`: Faster stat walks on host folders (✔ done · mixed). A git-status-like walk of 20000 files takes 1.2-2.4 s through the host folder; an attribute cache fed by the change watcher would bring stat near native.
   - Cold stat walk on a fresh mount is still about 4x native, 99-105 us per file (2026-11-26)
@@ -365,13 +371,19 @@ Generated on 2026-11-27.
 - `workloads-strict-bar-linux`: Strict bar on stock gVisor (✔ done · mixed). Find out what stock gVisor on Linux needs for -p port publishing and compose service names, across Podman versions and network modes.
 - `fs-case-sensitivity-without-admin`: Case-sensitive names without admin (✔ fixed). A standard user on the hosted runner cannot set per-directory case sensitivity (access denied), so Linux images with names differing only in case need another way, without an admin setup step.
 - `fs-flaky-negative-cache-test`: Flaky negative-cache test on host folders (✔ fixed). TestVFSNegativeCacheAndQuickChange failed once on windows-fs after passing on the previous head; a timing race in the change watcher or the test.
+- `fs-unix-sockets-on-host-folders`: Unix sockets on host folders (✔ fixed). Binding a Unix socket on a Windows folder and connecting to it (by path or via /proc/self/fd) is refused, so Podman cannot reach conmon's attach socket.
 - `ops-syscall-tests-on-windows`: gVisor syscall tests on Windows (✔ done · mixed). gVisor's own syscall test suite runs against the Windows port to show which Linux calls work.
   - Linux runsc 81.5%, Windows with network 77.3% of 14620 cases (2026-11-27)
 - `platform-veneer-address-in-child`: Veneer addresses differ after clone (✔ fixed). A syscall through a relocated veneer returns into the veneer; after clone into a new address space the veneers sit elsewhere, so the child resumes on a zero page and crashes.
 - `runsc-sandbox-lifecycle`: Start and stop sandboxes on Windows (✔ done · successful). runsc creates, starts, signals and deletes a sandbox process on Windows that outlives runsc.exe.
 - `runsc-windows-lifecycle-commands`: Container lifecycle commands on Windows (✔ done · successful). create, start, state, kill, delete, exec, ps and list need a sandbox process that outlives runsc.exe and a named control pipe; only run and version exist today.
+- `sentry-fchmod-std-stream`: fchmod on a standard stream fails (✔ fixed). conmon logs "Failed to chmod stderr" and container logs are lost, so the compose check cannot read them.
+- `sentry-pasta-in-sandbox`: pasta networking inside the sandbox (✔ fixed). buildah RUN uses pasta, which fails: /proc/sys/net/ipv4/ip_local_port_range is missing and switching into the namespace returns EPERM.
 - `sentry-profile-small-file-path`: Profile the slow file and exec path (✔ done · mixed). Creating a file on tmpfs costs about 1 ms and a fork+exec 32 ms on Windows; find where the time goes (syscall round trips, page faults, debug events, Sentry work) and fix the top causes.
   - Fork+exec only 1.7-2.1x faster with a pool of ready address spaces; stub creation is the floor (2026-11-27)
+- `workloads-conmon-attach-second-cause`: Second attach-socket failure (✔ fixed). Even with container directories on a tmpfs, Podman's connect to conmon's attach socket is refused; a second cause is not isolated.
+- `workloads-conmon-sync-pipe`: conmon sees no data on its sync pipe (✔ fixed). Every podman run fails with "conmon bytes \"\": found \x00": conmon reads nothing from its sync pipe while creating the first container inside the sandbox on Windows.
+  - Cause 1 fixed: FIFO opens on host folders were rejected by policy, now in-Sentry named pipes (2026-11-27)
 - `workloads-end-to-end-speed`: Measure end-to-end speed on Windows (✔ done · mixed). Run the Phase 0 workloads (fork+exec loop, untar of small files, a CPU job) through runsc.exe on Windows and compare with runsc and native on Linux.
 - `workloads-overlay-userxattr`: Overlay mounts with userxattr rejected (✔ fixed). podman build fails: the Sentry overlay rejects the userxattr option (or the layer setup) when Podman storage sits on a Windows folder.
   - Overlay upperdir must be tmpfs; /var/tmp is now a tmpfs in the engine spec (2026-11-27)
@@ -385,11 +397,11 @@ Generated on 2026-11-27.
 Each track has its own page with its tree, node table and per-node details.
 
 - [runsc - runsc](roadmap/tracks/runsc.md): 6 nodes (6 done)
-- [platform - platform](roadmap/tracks/platform.md): 34 nodes (25 done, 2 in progress, 1 next, 2 blocked, 3 parked, 1 abandoned)
-- [sentry - sentry](roadmap/tracks/sentry.md): 12 nodes (9 done, 1 next, 1 blocked, 1 parked)
-- [fs - files](roadmap/tracks/fs.md): 15 nodes (14 done, 1 blocked)
+- [platform - platform](roadmap/tracks/platform.md): 35 nodes (25 done, 2 in progress, 2 next, 2 blocked, 3 parked, 1 abandoned)
+- [sentry - sentry](roadmap/tracks/sentry.md): 14 nodes (11 done, 1 next, 1 blocked, 1 parked)
+- [fs - files](roadmap/tracks/fs.md): 17 nodes (15 done, 1 next, 1 blocked)
 - [net - network](roadmap/tracks/net.md): 4 nodes (4 done)
-- [workloads - workloads](roadmap/tracks/workloads.md): 15 nodes (12 done, 1 in progress, 1 next, 1 blocked)
+- [workloads - workloads](roadmap/tracks/workloads.md): 18 nodes (14 done, 1 in progress, 2 next, 1 blocked)
 - [research - research](roadmap/tracks/research.md): 8 nodes (2 done, 6 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 11 nodes (8 done, 1 next, 2 blocked)
 <!-- END GENERATED: tracks -->

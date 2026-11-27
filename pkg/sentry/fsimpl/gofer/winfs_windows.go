@@ -469,10 +469,13 @@ func (i *winInode) created(a winhost.Attr, createDentry bool) (*dentry, error) {
 }
 
 func (i *winInode) hostMknod(name string, creds *auth.Credentials, opts *vfs.MknodOptions) (*dentry, error) {
-	if _, ok := opts.Endpoint.(interface {
-		SetBoundSocketFD(context.Context, int) error
-	}); ok {
-		return nil, unix.EOPNOTSUPP // no host sockets in a Windows folder
+	if opts.Endpoint != nil {
+		// bind(2): a Windows folder cannot hold a socket the host could connect to, so
+		// the generic MknodAt falls back to a synthetic dentry that keeps the endpoint in
+		// the Sentry (the socket file exists in the guest's view of the folder only, like
+		// a socket on tmpfs, and is gone with the dentry or the sandbox). Without this the
+		// socket was created as metadata only and every connect was refused.
+		return nil, linuxerr.EPERM
 	}
 	switch opts.Mode.FileType() {
 	case linux.S_IFREG, linux.S_IFCHR, linux.S_IFBLK, linux.S_IFIFO, linux.S_IFSOCK:

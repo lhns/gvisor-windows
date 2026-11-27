@@ -20,6 +20,8 @@ flowchart TB
     fs_flaky_negative_cache_test>"✔ Flaky negative-cache<br/>test on host folders"]
     fs_standard_user_delete_rights>"✔ Deletes fail for<br/>standard users"]
     fs_case_sensitivity_without_admin>"✔ Case-sensitive names<br/>without admin"]
+    fs_unix_sockets_on_host_folders>"✔ Unix sockets on host<br/>folders"]
+    fs_copied_file_too_short>"⚠ Copied library reads<br/>as too short"]
     fs_persistent_storage_impl["⛔ Storage that<br/>survives restarts"]
     fs_persistent_image_storage ~~~ fs_change_notifications
     fs_windows_directfs ~~~ fs_linux_metadata_on_ntfs
@@ -30,8 +32,8 @@ flowchart TB
     fs_root_filesystem_source ~~~ fs_flaky_negative_cache_test
     fs_safe_save_keeps_metadata ~~~ fs_standard_user_delete_rights
     fs_attribute_cache ~~~ fs_case_sensitivity_without_admin
-    fs_flaky_negative_cache_test ~~~ fs_persistent_storage_impl
-    fs_standard_user_delete_rights ~~~ fs_persistent_storage_impl
+    fs_flaky_negative_cache_test ~~~ fs_unix_sockets_on_host_folders
+    fs_standard_user_delete_rights ~~~ fs_copied_file_too_short
     fs_case_sensitivity_without_admin ~~~ fs_persistent_storage_impl
     fs_windows_directfs --> fs_change_notifications
     fs_windows_directfs --> fs_linux_metadata_on_ntfs
@@ -54,7 +56,8 @@ flowchart TB
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class fs_persistent_image_storage,fs_attribute_cache mixed
-    class fs_windows_directfs,fs_change_notifications,fs_linux_metadata_on_ntfs,fs_handles_do_not_block_users,fs_root_filesystem_source,fs_safe_save_keeps_metadata,fs_flaky_negative_cache_test,fs_standard_user_delete_rights,fs_case_sensitivity_without_admin succ
+    class fs_windows_directfs,fs_change_notifications,fs_linux_metadata_on_ntfs,fs_handles_do_not_block_users,fs_root_filesystem_source,fs_safe_save_keeps_metadata,fs_flaky_negative_cache_test,fs_standard_user_delete_rights,fs_case_sensitivity_without_admin,fs_unix_sockets_on_host_folders succ
+    class fs_copied_file_too_short finding
     class fs_persistent_storage_impl blocked
 ```
 <!-- END GENERATED: track-fs -->
@@ -79,6 +82,8 @@ flowchart TB
 | `fs-flaky-negative-cache-test` | Flaky negative-cache test on host folders | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-27 |  |  |  |  | docs/results/1g-platform-memory.md |
 | `fs-standard-user-delete-rights` | Deletes fail for standard users | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/5-podman-windows.md; docs/results/2c-fs-speed.md |
 | `fs-case-sensitivity-without-admin` | Case-sensitive names without admin | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/results/2-windows-directfs.md |
+| `fs-unix-sockets-on-host-folders` | Unix sockets on host folders | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
+| `fs-copied-file-too-short` | Copied library reads as too short | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/5-podman-windows.md |
 
 ### Details per node
 
@@ -99,6 +104,8 @@ flowchart TB
 | `fs-flaky-negative-cache-test` | Flaky negative-cache test on host folders |  |  | TestVFSNegativeCacheAndQuickChange failed once on windows-fs after passing on the previous head; a timing race in the change watcher or the test. | Fixed when: the test passes 20 runs in a row on windows-latest. |  |  |  |  |
 | `fs-standard-user-delete-rights` | Deletes fail for standard users |  |  | On a host folder as a standard Windows user, rename over an existing file, rmdir and unlink fail with permission denied; Podman cannot extract layers or write images.json. | Fixed: Unlink asked for FILE_DELETE_CHILD on the parent, which a standard user with Modify lacks; DELETE on the child is enough. hostfs test now required. |  |  |  |  |
 | `fs-case-sensitivity-without-admin` | Case-sensitive names without admin |  |  | A standard user on the hosted runner cannot set per-directory case sensitivity (access denied), so Linux images with names differing only in case need another way, without an admin setup step. | Fixed: the backend grants the current user FILE_DELETE_CHILD on that one directory when the call is refused; the Podman workflow no longer has an admin step. |  |  |  |  |
+| `fs-unix-sockets-on-host-folders` | Unix sockets on host folders |  |  | Binding a Unix socket on a Windows folder and connecting to it (by path or via /proc/self/fd) is refused, so Podman cannot reach conmon's attach socket. | Fixed: bind on a host folder now creates the in-Sentry synthetic socket dentry, as on tmpfs; sockfs check required. |  |  |  |  |
+| `fs-copied-file-too-short` | Copied library reads as too short |  |  | In podman build, a nested container fails with "libc.so.6: file too short" after the vfs driver copied it with copy_file_range onto the host folder; the copy has the right size but ld.so does not read it. | Fixed when: a guest that copy_file_range-s into a host-folder file can read it from another process, and podman build of a debian RUN step passes. |  |  |  |  |
 
 ### Folded items per node
 

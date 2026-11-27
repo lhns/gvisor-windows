@@ -3,6 +3,9 @@
 # first; docs/results/5-podman-windows.md lists the gaps per step.
 name: podman-diag
 on:
+  push:
+    branches: [podman-sentry-gaps-2]
+    paths: ["pkg/**", "runsc/**", "tools/windows/podman/**", ".github/workflows/podman-diag.yml"]
   workflow_dispatch:
 env:
   PODMAN_VERSION: "6.2.0"

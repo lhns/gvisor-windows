@@ -456,6 +456,14 @@
   - fs-case-sensitivity-without-admin
   - platform-rare-hang-under-exec-load
   - sentry-netpoll-failure
+  - fs-unix-sockets-on-host-folders
+  - workloads-conmon-attach-second-cause
+  - sentry-fchmod-std-stream
+  - sentry-pasta-in-sandbox
+  - platform-avx512-state-lost
+  - fs-copied-file-too-short
+  - workloads-tty-through-windows-client
+  - workloads-isolation-flake
   replaced_by: []
   lane: windows-ci
   start: ''
@@ -1220,6 +1228,8 @@
   folded:
   - Podman 6.2.0 pulls and stores images on a Windows folder; steps 1-2 pass (2026-11-26, commit 61c8b8f92)
   - Runtime -p via the forwarder expose API works as a standard user (2026-11-26, commit 61c8b8f92)
+  - Steps 1, 2 and 7 pass; nginx published with -p answers on 127.0.0.1 (2026-11-27, commit 159f62dc1)
+  - Eight of ten acceptance steps pass; tty and build remain (2026-11-27, commit 0f4d0b353)
   overview: false
   plain: The test harness runs the Podman engine on runsc and exposes its API to the stock Windows clients.
   notes: Engine runs on runsc.exe with the erofs podman image; step 1 passes. Gap list in docs/results/5-podman-windows.md.
@@ -2019,7 +2029,7 @@
   - platform-veneer-address-in-child
   replaced_by: []
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-27'
   folded:
   - 'Cause 1 fixed: FIFO opens on host folders were rejected by policy, now in-Sentry named pipes (2026-11-27, commit 9ab48dea3)'
   overview: false
@@ -2027,10 +2037,10 @@
   title: conmon sees no data on its sync pipe
   track: workloads
   kind: defect
-  state: next
+  state: done
   lane: windows-ci
   plain: 'Every podman run fails with "conmon bytes \"\": found \x00": conmon reads nothing from its sync pipe while creating the first container inside the sandbox on Windows.'
-  notes: 'Remaining cause: crun clone through glibc syscall() lands in a relocated veneer whose address differs in the child address space (platform). Fixed when: podman run --rm alpine echo ok passes.'
+  notes: 'Fixed: containers are created and started; podman run -d -p works end to end (step 7 passes).'
 - outcome: unrated
   evidence:
   - docs/results/5-podman-windows.md
@@ -2191,3 +2201,156 @@
   overview: false
   plain: Each fork+exec starts two stub processes at about 10 ms each; recycling a stub on release and execve and mapping memory up front would cut process start further.
   notes: 'Done when: the 100x fork+exec loop through runsc.exe is at least 4x faster than the 3.47 s baseline in docs/results/3b.'
+- outcome: unrated
+  evidence:
+  - docs/results/5-podman-windows.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-27'
+  end: '2026-11-27'
+  folded: []
+  overview: false
+  id: fs-unix-sockets-on-host-folders
+  title: Unix sockets on host folders
+  track: fs
+  kind: defect
+  state: done
+  lane: windows-ci
+  plain: Binding a Unix socket on a Windows folder and connecting to it (by path or via /proc/self/fd) is refused, so Podman cannot reach conmon's attach socket.
+  notes: 'Fixed: bind on a host folder now creates the in-Sentry synthetic socket dentry, as on tmpfs; sockfs check required.'
+- outcome: unrated
+  evidence:
+  - docs/results/5-podman-windows.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-27'
+  end: '2026-11-27'
+  folded: []
+  overview: false
+  id: workloads-conmon-attach-second-cause
+  title: Second attach-socket failure
+  track: workloads
+  kind: defect
+  state: done
+  lane: windows-ci
+  plain: Even with container directories on a tmpfs, Podman's connect to conmon's attach socket is refused; a second cause is not isolated.
+  notes: 'No separate cause: with the host-folder socket fix, podman run --rm alpine echo ok prints ok.'
+- outcome: unrated
+  evidence:
+  - docs/results/5-podman-windows.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-27'
+  end: '2026-11-27'
+  folded: []
+  overview: false
+  id: sentry-fchmod-std-stream
+  title: fchmod on a standard stream fails
+  track: sentry
+  kind: defect
+  state: done
+  lane: windows-ci
+  plain: conmon logs "Failed to chmod stderr" and container logs are lost, so the compose check cannot read them.
+  notes: 'Fixed: pipefs refused every mode change with EPERM; it now keeps the mode like Linux. fchmod test required in windows-runsc.'
+- outcome: unrated
+  evidence:
+  - docs/results/5-podman-windows.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-27'
+  end: '2026-11-27'
+  folded: []
+  overview: false
+  id: sentry-pasta-in-sandbox
+  title: pasta networking inside the sandbox
+  track: sentry
+  kind: defect
+  state: done
+  lane: windows-ci
+  plain: 'buildah RUN uses pasta, which fails: /proc/sys/net/ipv4/ip_local_port_range is missing and switching into the namespace returns EPERM.'
+  notes: ip_local_port_range now printed with a tab; the setns EPERM is pasta dropping its capabilities, not a Sentry bug. Builds use BUILDAH_ISOLATION=oci.
+- outcome: unrated
+  evidence:
+  - docs/results/5-podman-windows.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-27'
+  end: ''
+  folded: []
+  overview: false
+  id: platform-avx512-state-lost
+  title: AVX-512 state lost across stops
+  track: platform
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: Podman's Go GC crashed in its AVX-512 scan, likely because vector or opmask state is lost across a fault or interrupt; AVX-512 is hidden from guests as a workaround.
+  notes: 'Fixed when: a guest keeps zmm and k registers across syscalls, faults and interrupts on an AVX-512 runner, and the CPUID workaround in runsc/boot/loader.go is removed.'
+- outcome: unrated
+  evidence:
+  - docs/results/5-podman-windows.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-27'
+  end: ''
+  folded: []
+  overview: false
+  id: fs-copied-file-too-short
+  title: Copied library reads as too short
+  track: fs
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: 'In podman build, a nested container fails with "libc.so.6: file too short" after the vfs driver copied it with copy_file_range onto the host folder; the copy has the right size but ld.so does
+    not read it.'
+  notes: 'Fixed when: a guest that copy_file_range-s into a host-folder file can read it from another process, and podman build of a debian RUN step passes.'
+- outcome: unrated
+  evidence:
+  - docs/results/5-podman-windows.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-27'
+  end: ''
+  folded: []
+  overview: false
+  id: workloads-tty-through-windows-client
+  title: Interactive TTY through the Windows client
+  track: workloads
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: The Windows podman client says "The input device is not a TTY" inside the ConPTY test driver, so the interactive step cannot type into the container.
+  notes: 'Fixed when: acceptance step 4 (podman run -it with typing, Ctrl-C and exit code) passes.'
+- outcome: unrated
+  evidence:
+  - docs/results/5-podman-windows.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-27'
+  end: ''
+  folded: []
+  overview: false
+  id: workloads-isolation-flake
+  title: Isolation step failed once
+  track: workloads
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: 'Acceptance step 10 failed once: one container saw the other container''s file; not reproduced since.'
+  notes: 'Fixed when: step 10 passes 20 runs in a row, or the cause is found and fixed.'

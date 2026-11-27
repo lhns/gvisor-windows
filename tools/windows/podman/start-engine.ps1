@@ -83,7 +83,11 @@ function Start-Engine {
     @{ destination = '/tmp'; type = 'tmpfs'; source = 'tmpfs'; options = @('mode=1777') },
     # buildah mounts an overlay with its upperdir in /var/tmp; the Sentry accepts only tmpfs or host-folder uppers for user mounts, not the root overlay.
     @{ destination = '/var/tmp'; type = 'tmpfs'; source = 'tmpfs'; options = @('mode=1777') },
-    @{ destination = '/var/lib/containers'; type = 'bind'; source = $storage; options = @('rbind', 'rw', 'case-sensitive') }
+    @{ destination = '/var/lib/containers'; type = 'bind'; source = $storage; options = @('rbind', 'rw', 'case-sensitive') },
+    # Gap (docs/results/5-podman-windows.md, round 3): a unix socket bound on a host folder cannot be connected to
+    # (ECONNREFUSED, test/guests/unixsock.c); conmon's attach socket lives in the container directory, so the
+    # container directories are on a tmpfs until that is fixed (they do not survive a restart).
+    @{ destination = '/var/lib/containers/storage/vfs-containers'; type = 'tmpfs'; source = 'tmpfs'; options = @('mode=755', 'size=1024m') }
   )
   if ($Share) {
     $mounts += @{ destination = (Guest-Path $Share); type = 'bind'; source = (Resolve-Path $Share).Path; options = @('rbind', 'rw', 'case-sensitive') }
@@ -100,7 +104,10 @@ function Start-Engine {
       user         = @{ uid = 0; gid = 0 }
       args         = @('sh', '-c', 'mkdir -p /run/podman /run/containers/storage; exec podman --log-level=info system service --time=0 tcp://0.0.0.0:8888')
       env          = @('PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'HOME=/root', 'TERM=xterm', 'container=podman',
-        'CONTAINERS_STORAGE_CONF=/etc/containers/storage.conf', 'CONTAINERS_CONF=/etc/containers/containers.conf')
+        'CONTAINERS_STORAGE_CONF=/etc/containers/storage.conf', 'CONTAINERS_CONF=/etc/containers/containers.conf',
+        # Without it a build chooses buildah's rootless isolation (pasta networking, which fails as root: it drops
+        # its capabilities before setns, on real Linux too, docs/results/0c-linux-strict-bar.md); the OCI isolation uses netavark.
+        'BUILDAH_ISOLATION=oci')
       cwd          = '/'
       capabilities = @{ bounding = $caps; effective = $caps; permitted = $caps; inheritable = $caps }
     }
