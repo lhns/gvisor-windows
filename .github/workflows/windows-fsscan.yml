@@ -49,5 +49,10 @@ jobs:
               ./fsscan -audit "$f" /tmp/dis.txt
             done
           } 2>&1 | tee audit.txt
+      - name: Dump the windows (testdata of TestFSRealWindows)
+        run: |
+          pick() { for f in "$@"; do [ -e "$f" ] && echo "$f"; done; }
+          ./fsscan -dumpwin $(pick /lib/x86_64-linux-gnu/libc.so.6 /lib64/ld-linux-x86-64.so.2 /lib/x86_64-linux-gnu/libm.so.6 /usr/bin/busybox /tmp/aptrename /usr/lib/x86_64-linux-gnu/libsqlite3.so.0 /tmp/gohello) | sort > fswindows.txt
+          wc -l fswindows.txt
       - uses: actions/upload-artifact@v4
-        with: {name: fsscan, path: "fsscan.txt\ntargets.txt\naudit.txt"}
+        with: {name: fsscan, path: "fsscan.txt\ntargets.txt\naudit.txt\nfswindows.txt"}

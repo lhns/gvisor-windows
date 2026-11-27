@@ -1038,6 +1038,7 @@ func ScanFS(code []byte) FSReport {
 type FSWindow struct {
 	Lo, Hi int   // the bytes the window covers
 	Insn   []int // offsets of the instructions in it, the first is Lo
+	Rip    []int // offsets (in the code) of the disp32 of the rip-relative loads in it
 }
 
 // FSWindows returns the windows the patcher would plan for the %fs instructions of
@@ -1062,6 +1063,9 @@ func FSWindows(code []byte, minLen int) (wins []FSWindow, starts []int) {
 		w := FSWindow{Lo: win[a].off, Hi: win[b].off + win[b].n}
 		for k := a; k <= b; k++ {
 			w.Insn = append(w.Insn, win[k].off)
+			if win[k].cls == clsRip {
+				w.Rip = append(w.Rip, win[k].off+win[k].n-4)
+			}
 		}
 		wins = append(wins, w)
 	}

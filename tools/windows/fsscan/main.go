@@ -52,6 +52,15 @@ func main() {
 		}
 		return
 	}
+	if len(os.Args) > 2 && os.Args[1] == "-dumpwin" {
+		seen := map[string]bool{}
+		for _, f := range os.Args[2:] {
+			if err := dumpWindows(f, seen); err != nil {
+				fmt.Fprintf(os.Stderr, "%s: %v\n", f, err)
+			}
+		}
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "-targets" {
 		for _, f := range os.Args[2:] {
 			if err := targets(f); err != nil {
@@ -382,6 +391,44 @@ func audit(path, disFile string) error {
 			break
 		}
 		fmt.Printf("  %6d %-14s e.g. %s\n", groups[k].n, k, strings.Join(groups[k].ex, "  ;  "))
+	}
+	return nil
+}
+
+// dumpWindows prints the %fs windows of the executable segments of path as hex bytes
+// followed by the offsets of the disp32 of their rip-relative loads (a test replays them).
+func dumpWindows(path string, seen map[string]bool) error {
+	f, err := elf.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	for _, p := range f.Progs {
+		if p.Type != elf.PT_LOAD || p.Flags&elf.PF_X == 0 {
+			continue
+		}
+		b := make([]byte, p.Filesz)
+		if _, err := p.ReadAt(b, 0); err != nil {
+			return err
+		}
+		for _, minLen := range []int{5, 7} {
+			ws, _ := winstub.FSWindows(b, minLen)
+			for _, w := range ws {
+				code := append([]byte(nil), b[w.Lo:w.Hi]...)
+				var rip []string
+				for _, o := range w.Rip {
+					for i := 0; i < 4; i++ {
+						code[o-w.Lo+i] = 0
+					}
+					rip = append(rip, strconv.Itoa(o-w.Lo))
+				}
+				line := fmt.Sprintf("%x %s", code, strings.Join(rip, ","))
+				if !seen[line] {
+					seen[line] = true
+					fmt.Println(line)
+				}
+			}
+		}
 	}
 	return nil
 }
