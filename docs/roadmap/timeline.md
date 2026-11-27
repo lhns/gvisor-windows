@@ -31,7 +31,7 @@ gantt
     Run busybox under the Sentry :platform_busybox_on_windows, 2026-11-26, 2026-11-26
     Hook syscalls like zpoline :crit, platform_zpoline_hooks, 2026-11-26, 2026-11-26
     Restore the TLS register after switches :platform_fs_base_repair, 2026-11-26, 2026-11-26
-    Support CPUs without FSGSBASE :active, platform_no_fsgsbase_fallback, 2026-11-27, 2026-11-27
+    Support CPUs without FSGSBASE :platform_no_fsgsbase_fallback, 2026-11-27, 2026-11-27
     Check what exceptions do to stacks :platform_exception_stack, 2026-11-26, 2026-11-26
     Run a static guest from memory :platform_static_guest_from_memory, 2026-11-26, 2026-11-26
     Exceptions overwrite guest stacks :platform_veh_on_guest_stack_unsafe, 2026-11-26, 2026-11-26
@@ -46,9 +46,11 @@ gantt
     Syscalls split across mappings :platform_split_syscall_unpatched, 2026-11-26, 2026-11-26
     Map files not in the memory file :platform_map_files_without_sections, 2026-11-26, 2026-11-26
     Veneer addresses differ after clone :platform_veneer_address_in_child, 2026-11-27, 2026-11-27
-    Rare hang under heavy exec load :platform_rare_hang_under_exec_load, 2026-11-27, 2026-11-27
-    Unsupported platform calls return errnos :active, platform_unsupported_errno, 2026-11-27, 2026-11-27
+    Rare hang under heavy exec load :active, platform_rare_hang_under_exec_load, 2026-11-27, 2026-11-27
+    Unsupported platform calls return errnos :platform_unsupported_errno, 2026-11-27, 2026-11-27
     AVX-512 state lost across stops :platform_avx512_state_lost, 2026-11-27, 2026-11-27
+    glibc runs AVX code on a non-AVX CPU :platform_avx_on_non_avx_cpu, 2026-11-27, 2026-11-27
+    More room for %fs veneers :platform_fs_veneer_capacity, 2026-11-27, 2026-11-27
     section sentry - sentry
     Recover faults in Go :sentry_go_fault_recovery, 2026-11-26, 2026-11-26
     Sentry builds for Windows :sentry_windows_build, 2026-11-26, 2026-11-26

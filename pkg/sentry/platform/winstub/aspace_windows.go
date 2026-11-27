@@ -27,6 +27,7 @@ import (
 
 	"golang.org/x/sys/windows"
 	"gvisor.dev/gvisor/pkg/context"
+	"gvisor.dev/gvisor/pkg/errors/linuxerr"
 	"gvisor.dev/gvisor/pkg/hostarch"
 	"gvisor.dev/gvisor/pkg/safemem"
 	"gvisor.dev/gvisor/pkg/sentry/memmap"
@@ -117,6 +118,10 @@ type addressSpace struct {
 	siteCache map[uint64]siteInfo
 	restartAt map[uint64]uint64
 	ud2Sites  map[uint64]bool
+	fcur      uint64 // next free address in the %fs veneer area
+	fsCache   map[fsKey]uint64
+	fsVen     []*fsVenInfo
+	fsUD2     map[uint64][]byte
 	privs     []*privSection
 	edges     map[uint64]edge
 
@@ -136,7 +141,7 @@ func newAddressSpace(p *Platform) *addressSpace {
 	return &addressSpace{
 		p: p, loopDone: make(chan struct{}), started: make(chan error, 1),
 		vcur: stubasm.Veneers, siteCache: map[uint64]siteInfo{}, restartAt: map[uint64]uint64{},
-		ud2Sites: map[uint64]bool{}, byTid: map[uint32]*thread{}, edges: map[uint64]edge{},
+		ud2Sites: map[uint64]bool{}, fcur: stubasm.FSVeneers, fsCache: map[fsKey]uint64{}, fsUD2: map[uint64][]byte{}, byTid: map[uint32]*thread{}, edges: map[uint64]edge{},
 	}
 }
 
@@ -298,7 +303,7 @@ func (as *addressSpace) removeRange(lo, hi uint64) error {
 		if v.lo < lo {
 			if b, ok := as.readStub(lo-1, 1); ok && b[0] == 0x0F {
 				if piece, ok := as.readStub(v.lo, int(lo-v.lo)); ok {
-					leftTail = scanText(piece, 0).tail0f
+					leftTail = scanText(piece, 0, false).tail0f
 				}
 			}
 		}
@@ -476,7 +481,7 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 	}
 	if content != nil {
 		st := as.patchText(content, lo, hi)
-		debugf("text %#x-%#x: %+v", lo, hi, st)
+		debugf("text %#x-%#x: %+v (fs veneers: %d of %d bytes)", lo, hi, st, as.fcur-stubasm.FSVeneers, stubasm.FSVeneersSize)
 		ps, err := as.newPrivate(content)
 		if err != nil {
 			return err
@@ -523,13 +528,13 @@ func (as *addressSpace) PostFork() {}
 // PrepareForPtrace implements platform.AddressSpace.PrepareForPtrace. Rewritten
 // syscall sites cannot be restored, so ptrace is not supported.
 func (as *addressSpace) PrepareForPtrace(ctx context.Context, mm platform.MemoryManager) error {
-	return errUnsupported
+	return linuxerr.EPERM
 }
 
 // UserModifiedGS implements platform.AddressSpace.UserModifiedGS. The trampoline
 // uses %gs for the thread environment block.
 func (as *addressSpace) UserModifiedGS(ctx context.Context, mm platform.MemoryManager) error {
-	return errUnsupported
+	return linuxerr.EPERM
 }
 
 // Release implements platform.AddressSpace.Release.

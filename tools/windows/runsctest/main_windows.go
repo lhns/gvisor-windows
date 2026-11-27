@@ -36,6 +36,8 @@ var (
 	image    = flag.String("image", "", "erofs image of the same rootfs (enables the erofs test)")
 	only     = flag.String("only", "", "comma-separated test names (default all)")
 	timeout  = flag.Duration("timeout", 120*time.Second, "per test")
+	fsMode   = flag.String("fsmode", "", "WINSTUB_FSMODE for runsc (native or rewrite)")
+	fpMode   = flag.String("fpmode", "", "WINSTUB_FPMODE for runsc (fxsave)")
 )
 
 type result struct {
@@ -45,6 +47,13 @@ type result struct {
 
 func main() {
 	flag.Parse()
+	// (the CI runs this as another user, whose environment cannot be set from outside)
+	if *fsMode != "" {
+		os.Setenv("WINSTUB_FSMODE", *fsMode)
+	}
+	if *fpMode != "" {
+		os.Setenv("WINSTUB_FPMODE", *fpMode)
+	}
 	if *rootfs == "" || *workDir == "" {
 		fmt.Fprintln(os.Stderr, "usage: runsctest -rootfs dir -work dir [-runsc exe] [-only names]")
 		os.Exit(2)

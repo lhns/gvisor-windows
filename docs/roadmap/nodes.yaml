@@ -1353,20 +1353,23 @@
   title: Support CPUs without FSGSBASE
   track: platform
   kind: feature
-  state: in-progress
-  outcome: unrated
+  state: done
+  outcome: mixed
   evidence:
+  - docs/results/1j-no-fsgsbase.md
   - docs/adr/0020-cpus-without-fsgsbase-rewrite-fs-accesses.md
-  verdict_quote: ''
+  verdict_quote: '`runsc.exe` now runs on a CPU without FSGSBASE and XSAVE (the QEMU development machine ran busybox from a host folder in rewrite mode)'
   headline: ''
   depends_on:
   - platform-veneer-address-in-child
   replaced_by: []
   lane: windows-ci
   start: '2026-11-27'
-  end: ''
+  end: '2026-11-27'
   folded:
   - Dev VM lacks FSGSBASE, XSAVE, OSXSAVE and AVX; runsc.exe refuses to start (2026-11-27, session record)
+  - Static glibc hello still dies with SIGILL on an AVX instruction on the dev VM (2026-11-27, commit d5e97d844)
+  - About 1.4 ns more per %fs access in rewrite mode (2026-11-27, commit d5e97d844)
   overview: false
   plain: On CPUs or VMs without the instruction to set the thread-local register (like the dev VM), rewrite every %fs-prefixed guest instruction into a veneer that reads the base from per-thread storage;
     chosen automatically by CPUID.
@@ -2132,13 +2135,14 @@
   replaced_by: []
   start: '2026-11-27'
   end: ''
-  folded: []
+  folded:
+  - Debug loop no longer waits forever after TerminateProcess; unverified because CI did not reproduce the hang (2026-11-27, commit d5e97d844)
   overview: false
   id: platform-rare-hang-under-exec-load
   title: Rare hang under heavy exec load
   track: platform
   kind: defect
-  state: next
+  state: in-progress
   lane: windows-ci
   plain: 'A guest that forks many children hangs now and then: about 1 in 50 gopodman runs, and 9 in 48 fork+exec loops through runsc.exe with the exclusive root cache (2 in 48 with the shared cache); the
     shell waits in wait4 with no child task.'
@@ -2170,14 +2174,14 @@
   depends_on: []
   replaced_by: []
   start: '2026-11-27'
-  end: ''
+  end: '2026-11-27'
   folded: []
   overview: false
   id: platform-unsupported-errno
   title: Unsupported platform calls return errnos
   track: platform
   kind: defect
-  state: in-progress
+  state: done
   lane: windows-ci
   plain: arch_prctl(ARCH_SET_GS) and ptrace preparation return a raw error from the platform instead of an errno, so the Sentry panics with "Unknown syscall 158".
   notes: 'Fixed when: arch_prctl_test fails cleanly (EPERM or ENOTSUP) instead of crashing the Sentry.'
@@ -2185,7 +2189,7 @@
   title: Reuse stub processes across exec
   track: platform
   kind: feature
-  state: blocked
+  state: next
   outcome: unrated
   evidence:
   - docs/results/1i-profile.md
@@ -2294,7 +2298,8 @@
   kind: defect
   state: next
   lane: windows-ci
-  plain: Podman's Go GC crashed in its AVX-512 scan, likely because vector or opmask state is lost across a fault or interrupt; AVX-512 is hidden from guests as a workaround.
+  plain: Podman's Go GC crashed at address 0xfffffffffffffff8, which is Go's %fs:-8 load with a zero base, so the cause is more likely a missed %fs repair than lost AVX-512 state; AVX-512 stays hidden from
+    guests in native mode.
   notes: 'Fixed when: a guest keeps zmm and k registers across syscalls, faults and interrupts on an AVX-512 runner, and the CPUID workaround in runsc/boot/loader.go is removed.'
 - outcome: unrated
   evidence:
@@ -2354,3 +2359,41 @@
   lane: windows-ci
   plain: 'Acceptance step 10 failed once: one container saw the other container''s file; not reproduced since.'
   notes: 'Fixed when: step 10 passes 20 runs in a row, or the cause is found and fixed.'
+- outcome: unrated
+  evidence:
+  - docs/results/1j-no-fsgsbase.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-27'
+  end: ''
+  folded: []
+  overview: false
+  id: platform-avx-on-non-avx-cpu
+  title: glibc runs AVX code on a non-AVX CPU
+  track: platform
+  kind: defect
+  state: next
+  lane: windows-local
+  plain: On the dev VM a static glibc hello dies with SIGILL on vmovd (AVX) in start-up code, although the CPU has no AVX; busybox runs fine.
+  notes: 'Fixed when: the hello and glibc guests run on the dev VM in rewrite plus fxsave mode.'
+- outcome: unrated
+  evidence:
+  - docs/results/1j-no-fsgsbase.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-27'
+  end: ''
+  folded: []
+  overview: false
+  id: platform-fs-veneer-capacity
+  title: More room for %fs veneers
+  track: platform
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: python3 with libpython and libc needs about 8500 %fs veneers against room for about 7000, and 24% of far %fs sites in Rust PIE binaries such as netavark fall back to the 100 us debugger path.
+  notes: 'Fixed when: python3 and netavark run in rewrite mode with under 1% of %fs executions on the debugger path.'

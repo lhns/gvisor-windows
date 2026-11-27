@@ -56,6 +56,7 @@ var (
 	pReadProcMem      = k32.NewProc("ReadProcessMemory")
 	pNtSetEvent       = ntd.NewProc("NtSetEvent")
 	pNtWaitSingle     = ntd.NewProc("NtWaitForSingleObject")
+	pNtQueryInformationThread = ntd.NewProc("NtQueryInformationThread")
 )
 
 const (

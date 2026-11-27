@@ -35,7 +35,8 @@ import "unsafe"
 // Windows maps fixed regions at [0x10000,0x94000), [0xA0000,0xA2000),
 // [0x200000,0x400000) and around 0x7FFE0000 in every process. The guest range
 // therefore starts at 0x400000 (GuestMin). Everything below it that the stub needs
-// (trap table, trampolines, veneers) lives in the free gap [0xA2000,0x200000), which
+// (trap table, trampolines, veneers) lives in the free gap [0xC0000,0x200000) (Windows maps
+// more below: [0x10000,0xA4000) and, depending on the build, a few pages at 0xA0000 or 0xB0000), which
 // is below 2 GiB so that `jmp *abs32` and `jmp rel32` from low guest code reach it.
 const (
 	ReserveMin uint64 = 0x10000          // placeholders start here
@@ -52,28 +53,32 @@ const (
 	GuestMin uint64 = 0x400000
 	GuestMax uint64 = CtlBase // first address the guest may not use
 
-	TrapPtrs     uint64 = 0xB0000 // 8-byte pointers, one per patched site (jmp *abs32 targets)
+	TrapPtrs     uint64 = 0xC0000 // 8-byte pointers, one per patched site (jmp *abs32 targets)
 	TrapPtrsSize uint64 = 0x10000
-	TrapCode     uint64 = 0xC0000 // 32-byte entries: mov $nr,%eax; movabs $ret,%rcx; jmp tramp
+	TrapCode     uint64 = 0xD0000 // 32-byte entries: mov $nr,%eax; movabs $ret,%rcx; jmp tramp
 	TrapCodeSize uint64 = 0x40000
 	EntrySize    uint64 = 32
 	MaxSites            = int(TrapPtrsSize / 8)
 
-	StubCode     uint64 = 0x100000 // tramp at +0, trampWait at +0x400, threadEntry at +0x800
+	StubCode     uint64 = 0x110000 // tramp at +0, trampWait at +0x400, threadEntry at +0x800
 	StubCodeSize uint64 = 0x1000
 	OffTramp     uint64 = 0
 	OffTrampWait uint64 = 0x400
 	OffThreadEnt uint64 = 0x800
 	OffTrampPark uint64 = 0xC00
 
-	Veneers     uint64 = 0x110000 // displaced instructions of relocated syscall sites
+	Veneers     uint64 = 0x120000 // displaced instructions of relocated syscall sites
 	VeneersSize uint64 = 0x70000
 	// Veneers whose syscall returns inside them live in the upper part, at
 	// addresses chosen platform-wide (the same in every address space).
-	VeneersShared uint64 = 0x148000
+	VeneersShared uint64 = 0x158000
+
+	// Veneers of %fs instructions (rewrite mode, ADR 0020), private to the address space.
+	FSVeneers     uint64 = 0x190000
+	FSVeneersSize uint64 = 0x70000
 
 	AreaLo uint64 = TrapPtrs // the low stub area is one section of this range
-	AreaHi uint64 = Veneers + VeneersSize
+	AreaHi uint64 = FSVeneers + FSVeneersSize
 
 	// Per-thread regions: a view of a per-process control section (not guest memory).
 	CtlBase      uint64 = 0x6FFF_8000_0000
@@ -82,6 +87,14 @@ const (
 	XsaveOff            = 0x1000
 	XsaveSize           = 0x1000
 	CtlSize      uint64 = ThreadRegion * uint64(MaxThreads)
+)
+
+// TEB slots the stub owns in rewrite mode (ADR 0020): TlsSlots[1] and [2], which a
+// process without a CRT never touches. TebSave holds the guest's scratch register
+// while a veneer runs; TebFS holds the guest's %fs base.
+const (
+	TebSave uint32 = 0x1488
+	TebFS   uint32 = 0x1490
 )
 
 // Per-thread page offsets (the first 4 KB of each thread region; the rest is the
@@ -109,6 +122,8 @@ const (
 	PgNtTerm  = 0x90  // ntdll!NtTerminateThread; mode 2 on a reply makes the thread end itself
 	PgRegs    = 0x100 // 16 qwords in hardware order: rax rcx rdx rbx rsp rbp rsi rdi r8..r15
 	PgRepair  = 0x200 // per-thread %fs repair code
+	PgDyn     = 0x400 // veneer of an %fs instruction the debugger runs (rewrite mode)
+	PgDynSize = 0x100
 )
 
 func trampPtr() unsafe.Pointer
@@ -136,8 +151,37 @@ func copyCode(p unsafe.Pointer) []byte {
 	panic("stubasm: sentinel not found")
 }
 
-// Image lays the routines out at the StubCode offsets.
-func Image() []byte {
+// Image lays the routines out at the StubCode offsets. rewrite: the CPU has no
+// FSGSBASE, the guest's %fs base goes to the TEB (TebFS) instead of the CPU
+// (ADR 0020); fxsave: no XSAVE, the vector state is saved with fxsave64/fxrstor64.
+func Image(rewrite, fxsave bool) []byte {
+	img := image()
+	replace := func(from, to []byte) {
+		n := 0
+		for i := 0; i+len(from) <= len(img); i++ {
+			if string(img[i:i+len(from)]) == string(from) {
+				copy(img[i:], to)
+				n++
+				i += len(from) - 1
+			}
+		}
+		if n == 0 {
+			panic("stubasm: instruction pattern not found")
+		}
+	}
+	if rewrite {
+		// wrfsbase %rax; nop4  ->  mov %rax,%gs:TebFS
+		replace([]byte{0xF3, 0x48, 0x0F, 0xAE, 0xD0, 0x0F, 0x1F, 0x40, 0x00},
+			[]byte{0x65, 0x48, 0x89, 0x04, 0x25, byte(TebFS & 0xFF), byte(TebFS >> 8), 0, 0})
+	}
+	if fxsave {
+		replace([]byte{0x49, 0x0F, 0xAE, 0xA3, 0, 0x10, 0, 0}, []byte{0x49, 0x0F, 0xAE, 0x83, 0, 0x10, 0, 0})
+		replace([]byte{0x49, 0x0F, 0xAE, 0xAB, 0, 0x10, 0, 0}, []byte{0x49, 0x0F, 0xAE, 0x8B, 0, 0x10, 0, 0})
+	}
+	return img
+}
+
+func image() []byte {
 	img := make([]byte, StubCodeSize)
 	for _, r := range []struct {
 		off uint64

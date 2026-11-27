@@ -64,6 +64,14 @@ jobs:
   run:
     needs: guests
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [native, rewrite, rewrite-fxsave]
+    env:
+      WINSTUB_FSMODE: ${{ matrix.mode == 'native' && 'native' || 'rewrite' }}
+      WINSTUB_FPMODE: ${{ matrix.mode == 'rewrite-fxsave' && 'fxsave' || '' }}
+      WINSTUB_KEEP_AVX512: ${{ matrix.mode == 'rewrite' && '1' || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -143,7 +151,7 @@ jobs:
           exit $fail
       - name: Hunt for hangs (limit policy)
         timeout-minutes: 15
-        if: always()
+        if: always() && matrix.mode == 'native'
         continue-on-error: true
         shell: pwsh
         run: |
@@ -155,6 +163,14 @@ jobs:
               else { "$pol run $i ok" | Tee-Object -Append -FilePath hang.txt }
             }
           }
+      - name: Diagnose dlopen (debug log)
+        if: always() && matrix.mode != 'native'
+        continue-on-error: true
+        env: {WINSTUB_DEBUG: "1"}
+        shell: pwsh
+        run: |
+          $o = & ./sentryguest.exe "-tar=out/rootfs.tar" "-timeout=60s" /bin/dlopen_glibc 2>&1 | Out-String
+          $o -split "`n" | Where-Object { $_ -match 'fault|signal|unsupported|exception|illegal|unexpected' -and $_ -notmatch 'ud2 site' } | Select-Object -Last 150 | Tee-Object -Append -FilePath diag.txt
       - name: Timing
         continue-on-error: true
         shell: pwsh
@@ -168,8 +184,30 @@ jobs:
             $t = $t | Sort-Object
             "TIMING $n median $($t[4]) ms (min $($t[0]), max $($t[8])) all: $($t -join ' ')" | Tee-Object -Append -FilePath timing.txt
           }
+      - name: Timing, both modes on this machine
+        if: matrix.mode == 'native'
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          foreach ($round in 1..2) {
+          foreach ($m in 'native', 'rewrite') {
+            $env:WINSTUB_FSMODE = $m
+            foreach ($n in "hello_asm","hello_glibc","fork_glibc","hello_go") {
+              $t = @()
+              for ($i = 0; $i -lt 9; $i++) {
+                $o = & ./sentryguest.exe "-code=$(if ($n -eq 'hello_glibc') {7} else {0})" "out/$n" 2>&1 | Out-String
+                if ($o -match 'run ([0-9.]+)(ms|s)') { $v = [double]$Matches[1]; if ($Matches[2] -eq 's') { $v *= 1000 }; $t += $v }
+              }
+              $t = $t | Sort-Object
+              "TIMING2 $m $n median $($t[4]) ms (min $($t[0]), max $($t[8]))" | Tee-Object -Append -FilePath timing.txt
+            }
+            $o = & ./sentryguest.exe "-tar=out/rootfs.tar" "-timeout=60s" /bin/gopodman 2>&1 | Out-String
+            if ($o -match '(gopodman: \d+ syscall-level ops[^\n]*)') { "TIMING2 $m $($Matches[1])" | Tee-Object -Append -FilePath timing.txt }
+            if ($o -match '(gopodman: 50 children[^\n]*)') { "TIMING2 $m $($Matches[1])" | Tee-Object -Append -FilePath timing.txt }
+          }
+          }
       - name: Trace
-        if: always()
+        if: always() && matrix.mode == 'native'
         continue-on-error: true
         shell: pwsh
         env: {WINSTUB_TRACE: "1"}
@@ -180,4 +218,4 @@ jobs:
           }
       - uses: actions/upload-artifact@v4
         if: always()
-        with: {name: sentry-guests-output, path: "guests.txt\ntrace.txt\ntiming.txt\npodman.txt\nhang.txt"}
+        with: {name: "sentry-guests-output-${{ matrix.mode }}", path: "guests.txt\ntrace.txt\ntiming.txt\npodman.txt\nhang.txt"}

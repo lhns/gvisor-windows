@@ -4,7 +4,9 @@
 // controller binary; the controller copies their bytes (up to an 8-byte ud2
 // sentinel) into the guest address space. They reference nothing but %gs:0x28
 // (TEB.ArbitraryUserPointer = per-thread shared page) and the page itself.
-// Page layout: see stubasm.go. Registers rax, rcx, r11 are free at a syscall
+// Page layout: see stubasm.go. The wrfsbase and xsave/xrstor instructions are patched
+// in the copy (Image) for CPUs without FSGSBASE or XSAVE: wrfsbase is followed by
+// a 4-byte nop so that a 9-byte store to the TEB fits. Registers rax, rcx, r11 are free at a syscall
 // site (the syscall instruction clobbers them); everything else is saved.
 
 // Wait for state==2: spin, then sleep on the reply event (stubSleeping handshake),
@@ -56,7 +58,7 @@ done: \
 	MOVQ 0x178(R11), R15 \
 	MOVQ 0x120(R11), SP \
 	MOVQ 0x10(R11), AX \
-	BYTE $0xF3; BYTE $0x48; BYTE $0x0F; BYTE $0xAE; BYTE $0xD0 \
+	BYTE $0xF3; BYTE $0x48; BYTE $0x0F; BYTE $0xAE; BYTE $0xD0; BYTE $0x0F; BYTE $0x1F; BYTE $0x40; BYTE $0x00 \
 	MOVQ 0x08(R11), AX \
 	MOVQ 0x18(R11), CX \
 	MOVL $0x246, R11 \
@@ -88,7 +90,7 @@ full: \
 	MOVQ 0x170(R11), R14 \
 	MOVQ 0x178(R11), R15 \
 	MOVQ 0x10(R11), AX \
-	BYTE $0xF3; BYTE $0x48; BYTE $0x0F; BYTE $0xAE; BYTE $0xD0 \
+	BYTE $0xF3; BYTE $0x48; BYTE $0x0F; BYTE $0xAE; BYTE $0xD0; BYTE $0x0F; BYTE $0x1F; BYTE $0x40; BYTE $0x00 \
 	MOVQ 0x08(R11), AX \
 	MOVQ 0x120(R11), SP \
 	MOVQ 0x158(R11), R11 \
@@ -148,7 +150,7 @@ TEXT ·threadEntry(SB),NOSPLIT|NOFRAME,$0-0
 	MOVL 0x8C(R11), DX
 	BYTE $0x49; BYTE $0x0F; BYTE $0xAE; BYTE $0xAB; LONG $0x1000
 	MOVQ 0x10(R11), AX
-	BYTE $0xF3; BYTE $0x48; BYTE $0x0F; BYTE $0xAE; BYTE $0xD0
+	BYTE $0xF3; BYTE $0x48; BYTE $0x0F; BYTE $0xAE; BYTE $0xD0; BYTE $0x0F; BYTE $0x1F; BYTE $0x40; BYTE $0x00
 	MOVQ 0x108(R11), CX
 	MOVQ 0x110(R11), DX
 	MOVQ 0x118(R11), BX
