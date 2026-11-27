@@ -320,7 +320,7 @@ Runs: https://github.com/lhns/gvisor-windows/actions/runs/45969933641 (before me
 |---|---|---|---|---|---|---|---|---|---|---|
 | native | 8 | 8 | 8 | 8 | 0 | 8 | 8 | 8 | 5 | 5 |
 | rewrite | 8 | 6 | 6 | 6 | 0 | 6 | 6 | 6 | 6 | 8 |
-Step times: native 2 s, pull 17 to 37 s, run 5 to 10 s, tty 20 s, bind 9 to 18 s, port 41 to 92 s, compose 14 to 44 s, restart 14 to 18 s (failing: 307 s timeout). Step 5 now reaches apt: native runs end in `dpkg: cannot stat '/tmp/apt-dpkg-install-.../*.deb'` (or the temp-dir error above); rewrite runs 1, 3, 5 and 8 die in `apt` with `Segmentation fault` (exit 139) or `double free or corruption` (134).
+Step times: native 2 s, pull 17 to 37 s, run 5 to 10 s, tty 20 s, bind 9 to 18 s, port 41 to 92 s, compose 14 to 44 s, restart 14 to 18 s (failing: 307 s timeout). Step 5 now reaches apt: native runs end in `dpkg: cannot stat '/tmp/apt-dpkg-install-.../*.deb'` (or the temp-dir error above); four rewrite runs die in `apt` with `Segmentation fault` (exit 139) or `double free or corruption` (134).
 - **No Go GC crash** (`ScanSpanPackedAVX512`) in 16 runs with the GODEBUG line gone, and no hang or hang dump. (The previous run, before the merge, also had none.)
 - **Rewrite runs 4 and 6: engine SIGSEGV addr=0x28 in cgo (`sqlite3_exec_no_args`) at start**, the unrewritten `%fs:0x28` site of round 9 (the same in 45969933641 run 7); steps 2 to 9 then fail with "cannot connect". 3 of 24 rewrite runs in the two sets, 0 of 16 native.
 
