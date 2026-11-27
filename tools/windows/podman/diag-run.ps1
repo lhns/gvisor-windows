@@ -1,6 +1,8 @@
 # Diagnostics: start the engine (with RUNSC_EXTRA_FLAGS, e.g. --strace), run containers of the debian image.
 param([Parameter(Mandatory)][string]$Root)
 $ErrorActionPreference = 'Continue'
+if ($env:DIAG_ASPOOL) { $env:GVISOR_ASPOOL = $env:DIAG_ASPOOL }
+$env:GVISOR_ASPOOL = '0'
 $env:RUNSC_EXTRA_FLAGS = if ($env:DIAG_RUNSC_FLAGS) { $env:DIAG_RUNSC_FLAGS } else { '--strace' }
 $repo = (Resolve-Path "$PSScriptRoot\..\..\..").Path
 $work = "$Root\std"; New-Item -ItemType Directory -Force $work, "$work\results" | Out-Null
