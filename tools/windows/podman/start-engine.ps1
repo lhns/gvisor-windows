@@ -99,7 +99,7 @@ function Start-Engine {
       terminal     = $false
       user         = @{ uid = 0; gid = 0 }
       args         = @('sh', '-c', 'mkdir -p /run/podman /run/containers/storage; exec podman --log-level=info system service --time=0 tcp://0.0.0.0:8888')
-      env          = @('PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'HOME=/root', 'TERM=xterm', 'container=podman',
+      env          = @('PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'HOME=/root', 'TERM=xterm', 'container=podman', $(if ($env:ENGINE_GODEBUG) { "GODEBUG=$env:ENGINE_GODEBUG" } else { 'CONTAINER_NOGODEBUG=1' }),
         'CONTAINERS_STORAGE_CONF=/etc/containers/storage.conf', 'CONTAINERS_CONF=/etc/containers/containers.conf',
         # Without it a build chooses buildah's rootless isolation (pasta networking, which fails as root: it drops
         # its capabilities before setns, on real Linux too, docs/results/0c-linux-strict-bar.md); the OCI isolation uses netavark.
@@ -136,6 +136,9 @@ function Start-Engine {
   $sock | Set-Content (Join-Path $Work 'sock.path')
   $args = @('--debug', "--debug-log=$logs\", '--network=windows-nat', '--overlay2=root:memory', '--in-sandbox-cgroup=v2', "--pipe-forward=8888:$pipe", "--unix-forward=8888:$sock") + @($env:RUNSC_EXTRA_FLAGS -split ' ' | Where-Object { $_ }) + @('run', '-bundle', $bundle, "podman-$Name")
   $stamp = Get-Date -Format "HHmmss"
+  # A sandbox still alive after 6 minutes (an acceptance takes about 5) writes the stacks of its goroutines and the
+  # winstub state (hang hunt, runsc/winrunsc); the file is uploaded with the logs.
+  $env:RUNSC_HANG_DUMP = (Join-Path $logs "hang-$stamp.txt") + ":360"
   $p = Start-Process -FilePath $Runsc -ArgumentList $args -PassThru -WindowStyle Hidden `
     -RedirectStandardOutput (Join-Path $logs "engine-$stamp.out") -RedirectStandardError (Join-Path $logs "engine-$stamp.err")
   $p.Id | Set-Content $pidFile
