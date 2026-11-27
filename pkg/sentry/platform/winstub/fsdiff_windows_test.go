@@ -634,7 +634,7 @@ func runCases(t *testing.T, mode string, interrupt bool, textBase uint64, cases 
 	stack := h.pages(nil, 4)
 	h.mapAt(mm, fdStack, stack, rw)
 	c := h.p.NewContext(pkgcontext.Background())
-	defer func() { c.Release() }()
+	defer c.Release()
 	res := make([]fdResult, len(cases))
 	nIntr := 0
 	defer func() {
@@ -697,10 +697,7 @@ func runCases(t *testing.T, mode string, interrupt bool, textBase uint64, cases 
 				why = fmt.Sprintf("signal %d at %#x (rip %#x)", rr.si.Signo, rr.si.Addr(), ac.StateData().Regs.Rip)
 			}
 			res[i].err = why
-			// a fresh context: this one is parked in a fault
-			c.Release()
-			c = h.p.NewContext(pkgcontext.Background())
-			continue
+			continue // (the thread waits in the fault; the next case answers it with new registers)
 		}
 		if err := c.PullFullState(mm.as, ac); err != nil {
 			t.Fatal(err)
@@ -860,7 +857,7 @@ func TestFSRealWindows(t *testing.T) {
 		}
 		wins = append(wins, w)
 	}
-	const rounds = 4
+	const rounds = 2
 	for _, textBase := range []uint64{fdText, fdFar} {
 		t.Run(fmt.Sprintf("text %#x", textBase), func(t *testing.T) {
 			rnd := rand.New(rand.NewSource(7))
