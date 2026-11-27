@@ -109,19 +109,43 @@ func (as *addressSpace) areaWrite(addr uint64, b []byte) {
 //
 // Bookkeeping for restarts and ud2 sites goes to as.restartAt and as.ud2Sites.
 // The caller holds as.mu.
-func (as *addressSpace) patchCode(code []byte, base uint64, from int) (siteStats, *scanResult) {
+// The sites in the first zone bytes after the context get only the safe patch:
+// zoneNoContext when nothing is known about the bytes below, zoneContext when the
+// decoder started in the original tail of the range below.
+const (
+	zoneNoContext = 48
+	zoneContext   = 8
+)
+
+func (as *addressSpace) patchCode(code []byte, base uint64, from, skip, zone int) (siteStats, *scanResult) {
 	var st siteStats
 	scan := as.p.scans.scan(code, from, as.p.fsRewrite)
 	st.pairs = scan.pairs
 	var cl claims
+	if skip > 0 {
+		cl.add(0, skip) // context bytes of the range below: decoded, never patched
+	}
 	for i := range scan.sites {
 		site := &scan.sites[i]
+		if site.off < skip {
+			continue
+		}
 		win, tgt := site.win[:site.n], site.tgt[:site.n]
+		// A range may begin in the middle of an instruction (the text is mapped
+		// in pieces); the decoder needs a few instructions to find the real
+		// boundaries, so the sites there only get the safe patch (ud2).
+		unsure := site.off < skip+zone
 		if site.fs {
-			as.patchFS(code, base, site, &cl, &st)
+			as.patchFS(code, base, site, &cl, &st, unsure)
 			continue
 		}
 		st.syscalls++
+		if unsure {
+			code[site.off], code[site.off+1] = 0x0F, 0x0B
+			as.ud2Sites[base+uint64(site.off)] = true
+			st.ud2++
+			continue
+		}
 		if as.patchImm(code, base, win, site.s, tgt, &cl, &st) {
 			continue
 		}
@@ -259,6 +283,13 @@ func (as *addressSpace) patchReloc(code []byte, base uint64, list []ins, s int, 
 		return
 	}
 	bestA, bestB, bestL := search(0)
+	if debugEnabled {
+		var ss []int
+		for k := range list {
+			ss = append(ss, list[k].off, list[k].n)
+		}
+		debugf("reloc site %#x: list(off,n) %v s=%d window %d..%d len %d (taken: %v)", base+uint64(x.off), ss, s, bestA, bestB, bestL, *cl)
+	}
 	if bestA < 0 {
 		bestA, bestB, bestL = search(3)
 	}

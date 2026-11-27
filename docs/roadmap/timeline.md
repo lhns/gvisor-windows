@@ -82,6 +82,7 @@ gantt
     Case-sensitive names without admin :fs_case_sensitivity_without_admin, 2026-11-26, 2026-11-27
     Unix sockets on host folders :fs_unix_sockets_on_host_folders, 2026-11-27, 2026-11-27
     Copied library reads as too short :fs_copied_file_too_short, 2026-11-27, 2026-11-27
+    Nil dereference in gofer invalidation :fs_disown_children_nil_deref, 2026-11-27, 2026-11-27
     section net - network
     Netstack to Windows sockets :net_netstack_windows_link, 2026-11-26, 2026-11-26
     Publish guest ports on localhost :net_port_forwarding, 2026-11-26, 2026-11-26

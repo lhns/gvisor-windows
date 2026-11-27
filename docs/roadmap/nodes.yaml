@@ -2139,6 +2139,7 @@
   end: ''
   folded:
   - Debug loop no longer waits forever after TerminateProcess; unverified because CI did not reproduce the hang (2026-11-27, commit d5e97d844)
+  - 'Bounded anchor waits, thread restart and stub abandonment: 98 of 100 pass with the exclusive cache, 16 of 16 shared (2026-11-27, commit 0c354f20)'
   overview: false
   id: platform-rare-hang-under-exec-load
   title: Rare hang under heavy exec load
@@ -2302,8 +2303,8 @@
   kind: defect
   state: next
   lane: windows-ci
-  plain: 'The engine dies in about 1 run in 4: Go GC SIGSEGV at 0xfffffffffffffff8 (Go %fs:-8 with a zero base) in its AVX-512 path. Guests run CPUID natively, so hiding AVX-512 in the Sentry cannot work;
-    the zero base points at a missed %fs repair in native mode.'
+  plain: 'Podman''s Go GC crashed at 0xfffffffffffffff8; a likely cause was found: a straddling instruction at a text-piece start swallowed Go''s mov %fs:-8 load, now fixed. AVX-512 stays hidden until repeated
+    acceptance runs are clean.'
   notes: 'Fixed when: a guest keeps zmm and k registers across syscalls, faults and interrupts on an AVX-512 runner, and the CPUID workaround in runsc/boot/loader.go is removed.'
 - outcome: unrated
   evidence:
@@ -2366,22 +2367,24 @@
 - outcome: unrated
   evidence:
   - docs/results/1j-no-fsgsbase.md
+  - docs/results/1k-platform-next.md
   verdict_quote: ''
   headline: ''
   depends_on: []
   replaced_by: []
   start: '2026-11-27'
-  end: ''
+  end: '2026-11-27'
   folded: []
   overview: false
   id: platform-avx-on-non-avx-cpu
   title: glibc runs AVX code on a non-AVX CPU
   track: platform
   kind: defect
-  state: next
+  state: done
   lane: windows-local
   plain: On the dev VM a static glibc hello dies with SIGILL on vmovd (AVX) in start-up code, although the CPU has no AVX; busybox runs fine.
-  notes: 'Fixed when: the hello and glibc guests run on the dev VM in rewrite plus fxsave mode.'
+  notes: 'Not a platform bug: the runner''s static glibc runs AVX in init_cpu_features; guests are now built in debian:bookworm. Found on the way: text pieces starting inside an instruction were decoded
+    from garbage, now decoded with the tail of the piece below.'
 - outcome: unrated
   evidence:
   - docs/results/1j-no-fsgsbase.md
@@ -2438,3 +2441,22 @@
   lane: windows-ci
   plain: In 2 of 5 complete native runs, the named volume written before the engine restart is empty afterwards (step 9).
   notes: 'Fixed when: step 9 passes in 8 of 8 runs.'
+- outcome: unrated
+  evidence:
+  - docs/results/1k-platform-next.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-27'
+  end: ''
+  folded: []
+  overview: false
+  id: fs-disown-children-nil-deref
+  title: Nil dereference in gofer invalidation
+  track: fs
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: The Sentry panics with a nil dereference in gofer dentry.disownAllChildrenForInvalidation during the bench test in rewrite-mode CI legs.
+  notes: 'Fixed when: the runsc bench test passes in all three CI legs 10 times in a row.'
