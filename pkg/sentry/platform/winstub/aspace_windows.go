@@ -481,7 +481,7 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 	}
 	if content != nil {
 		st := as.patchText(content, lo, hi)
-		debugf("text %#x-%#x: %+v", lo, hi, st)
+		debugf("text %#x-%#x: %+v (fs veneers: %d of %d bytes)", lo, hi, st, as.fcur-stubasm.FSVeneers, stubasm.FSVeneersSize)
 		ps, err := as.newPrivate(content)
 		if err != nil {
 			return err
