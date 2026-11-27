@@ -439,6 +439,59 @@ func TestUnmapAndRemap(t *testing.T) {
 	check(17, 0xA00F, true)
 }
 
+// TestUnmapAcrossStubViews unmaps a range that reaches the end of the address
+// space, as the memory manager does when it invalidates the last pages of a heap:
+// the guest pages in it go, the stub's own views in the guest range (the %fs veneer
+// area in rewrite mode) stay. Before, the whole unmap was refused and the heap kept
+// stale pages (docs/results/1p-rewrite-heap.md).
+func TestUnmapAcrossStubViews(t *testing.T) {
+	h := newHarness(t)
+	g := buildGuest()
+	mm := h.newMM()
+	h.setup(mm, g)
+	c := h.p.NewContext(pkgcontext.Background())
+	defer c.Release()
+	ac := newAC(g.readLoop, 0)
+	r := &ac.StateData().Regs
+	const base = 0x1000000
+	read := func(a uint64) (uint64, bool) {
+		r.Rip, r.Rdi, r.Rax = g.readLoop, a, 0
+		res := h.sw(c, mm, ac)
+		if res.err == platform.ErrContextSignal {
+			return 0, false
+		}
+		if res.err != nil {
+			t.Fatalf("read %#x: %v", a, res.err)
+		}
+		return r.Rdi, true
+	}
+	h.mapAt(mm, base, h.pages(le64(0xA1), 2), rw)
+	h.mapAt(mm, 0x7000_0000, h.pages(le64(0xA2), 1), rw) // above the veneer area
+	if v, ok := read(base); !ok || v != 0xA1 {
+		t.Fatalf("before: %#x mapped=%v", v, ok)
+	}
+	as := mm.as.(*addressSpace)
+	mm.as.Unmap(base+pageSz, 0x6000_0000_0000-(base+pageSz))
+	if v, ok := read(base); !ok || v != 0xA1 {
+		t.Fatalf("the page below the range: %#x mapped=%v", v, ok)
+	}
+	for _, a := range []uint64{base + pageSz, 0x7000_0000} {
+		if v, ok := read(a); ok {
+			t.Errorf("%#x is still mapped after the unmap (reads %#x)", a, v)
+		}
+	}
+	if as.fbigView != nil {
+		if v := as.findView(stubasm.FSBig); v == nil || !v.sys {
+			t.Errorf("the %%fs veneer area was unmapped")
+		}
+	}
+	// the range can be mapped again, with new contents
+	h.mapAt(mm, base+pageSz, h.pages(le64(0xB1), 1), rw)
+	if v, ok := read(base + pageSz); !ok || v != 0xB1 {
+		t.Errorf("after mapping again: %#x mapped=%v, want 0xb1", v, ok)
+	}
+}
+
 func TestNewThreadsAndSpeed(t *testing.T) {
 	h := newHarness(t)
 	g := buildGuest()

@@ -116,7 +116,7 @@ flowchart TB
 | `workloads-volume-lost-on-restart` | Volume data lost across engine restart | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
 | `workloads-buildah-thinks-rootless` | buildah picks rootless isolation | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/adr/0002-what-done-means.md |
 | `workloads-dev-null-eacces` | Rare permission error opening the null device | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/results/2r-step5-overlay.md |
-| `workloads-podman-without-fsgsbase` | Podman on CPUs without FSGSBASE | feature | windows-ci | blocked | unrated | 2026-11-27 |  | workloads-podman-on-windows, platform-unrewritten-fs-in-library, platform-rewrite-heap-corruption |  |  |  | docs/results/5-podman-windows.md |
+| `workloads-podman-without-fsgsbase` | Podman on CPUs without FSGSBASE | feature | windows-ci | blocked | unrated | 2026-11-27 |  | workloads-podman-on-windows, platform-unrewritten-fs-in-library, platform-rewrite-heap-corruption, platform-resume-inside-fs-window |  |  |  | docs/results/5-podman-windows.md |
 
 ### Details per node
 
@@ -161,4 +161,6 @@ flowchart TB
   - Cause 1 fixed: FIFO opens on host folders were rejected by policy, now in-Sentry named pipes (2026-11-27, commit 9ab48dea3)
 - `workloads-overlay-userxattr`: Overlay mounts with userxattr rejected
   - Overlay upperdir must be tmpfs; /var/tmp is now a tmpfs in the engine spec (2026-11-27, commit 9ab48dea3)
+- `workloads-podman-without-fsgsbase`: Podman on CPUs without FSGSBASE
+  - Rewrite Podman: all 10 steps 7 of 8, then 8 of 8 (runs 46016231319, 46020575644) (2026-11-27, commit bce41cf19)
 <!-- END GENERATED: table-workloads -->

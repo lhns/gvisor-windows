@@ -299,7 +299,10 @@ func TestFSSeamBinary(t *testing.T) {
 		var first []string
 		for _, s := range truth.sites {
 			x := s.win[s.s]
-			if s.fs && !h.p.fsRewrite {
+			// (An %fs instruction the veneers cannot express is left alone by design;
+			// the ELF header page of the Go guest, whose build ID changes with every
+			// commit, sometimes decodes as one: `64 6f`, outsd.)
+			if s.fs && (!h.p.fsRewrite || x.cls == clsFSBad) {
 				continue
 			}
 			if bytes.Equal(got[s.off:s.off+x.n], code[s.off:s.off+x.n]) {

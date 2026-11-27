@@ -77,7 +77,9 @@ func (as *addressSpace) patchFS(code []byte, base uint64, site *scanSite, cl *cl
 	}
 	a, b, ok := 0, 0, false
 	why := "start of a range"
-	if !unsure {
+	if fsForceUD2 {
+		why = "WINSTUB_FSUD2"
+	} else if !unsure {
 		a, b, ok = planFSWindow(win, tgt, site.s, minLen, func(lo, hi int) bool { return !cl.taken(lo, hi) })
 		why = fmt.Sprintf("no window of %d bytes", minLen)
 	}
@@ -240,7 +242,7 @@ func (as *addressSpace) fsFix(t *thread, rip uint64) (newRip uint64, ok bool) {
 		}
 	}
 	if fsLog && n <= 200 {
-		log.Printf("winstub: FSFIX thread %d: stopped at %#x in the veneer of %#x, back to %#x (restore r%d: %v)", t.idx, rip, info.w0, newRip, r1, restore)
+		log.Printf("winstub: FSFIX stub pid %d thread %d: stopped at %#x in the veneer of %#x, back to %#x (restore r%d: %v)", as.wpid, t.idx, rip, info.w0, newRip, r1, restore)
 	}
 	if restore {
 		if v, ok := as.readTebSlot(t, stubasm.TebSave); ok {

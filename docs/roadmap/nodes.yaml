@@ -2588,23 +2588,24 @@
   evidence:
   - docs/results/5-podman-windows.md
   - docs/results/1o-rewrite-correctness.md
+  - docs/results/1p-rewrite-heap.md
   verdict_quote: ''
   headline: ''
   depends_on: []
   replaced_by: []
   start: '2026-11-27'
-  end: ''
+  end: '2026-11-27'
   folded: []
   overview: false
   id: platform-rewrite-heap-corruption
   title: glibc heap errors in rewrite mode
   track: platform
   kind: defect
-  state: in-progress
+  state: done
   lane: windows-ci
   plain: 'In rewrite mode, aptrename dies with free(): invalid size and apt inside builds with segfaults or double free; native mode runs them, so a %fs veneer likely computes or clobbers something wrong.'
-  notes: 'Not the veneers: it also happens with every %fs site on the debugger path. Hits forked children (aptrename engine ~6 s in at opendir/readdir; apt in builds). Fixed when: aptrename and acceptance
-    step 5 pass in rewrite mode.'
+  notes: 'Fixed: Unmap refused any range reaching the sealed %fs veneer area, so released pages stayed mapped in the stub; it now unmaps around stub views. aptrename passes in rewrite; podman rewrite 8
+    of 8 all steps in the second run.'
 - id: ops-ci-build-once
   title: Build once, run suites on demand
   track: ops
@@ -2677,10 +2678,12 @@
   - workloads-podman-on-windows
   - platform-unrewritten-fs-in-library
   - platform-rewrite-heap-corruption
+  - platform-resume-inside-fs-window
   replaced_by: []
   start: '2026-11-27'
   end: ''
-  folded: []
+  folded:
+  - 'Rewrite Podman: all 10 steps 7 of 8, then 8 of 8 (runs 46016231319, 46020575644) (2026-11-27, commit bce41cf19)'
   overview: false
   lane: windows-ci
   notes: 'Done when: podman-windows modes=rewrite,rewrite-fxsave passes all 10 steps 8 of 8.'
@@ -2747,3 +2750,23 @@
   kind: defect
   state: next
   plain: A "negative WaitGroup counter" panic seen once in safecopy tests is not explained by stack overrun and did not recur in 1600 runs.
+- outcome: unrated
+  evidence:
+  - docs/results/1p-rewrite-heap.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-27'
+  end: ''
+  folded: []
+  overview: false
+  lane: windows-ci
+  id: platform-resume-inside-fs-window
+  title: Thread resumed inside a patch window
+  track: platform
+  kind: defect
+  state: next
+  plain: In rewrite mode the platform can move a thread out of a veneer to an address inside the patch window; a Go signal handler then returns there and runs nop filler (one engine crash in 16 rewrite
+    runs).
+  notes: 'Fixed when: the platform never hands back an address inside a window (run to its end or back to its start) and rewrite Podman passes 16 of 16.'

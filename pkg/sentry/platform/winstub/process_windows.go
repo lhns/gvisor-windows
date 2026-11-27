@@ -264,7 +264,7 @@ func (as *addressSpace) createThread(t *thread) error {
 	if err != nil {
 		return fmt.Errorf("CreateRemoteThread: %w", err)
 	}
-	t.hThread, t.tid = h, tid
+	t.hThread, t.tid, t.teb, t.dyn = h, tid, 0, nil // a new thread: a new TEB (readTebSlot), no veneer of the old one
 	as.tmu.Lock()
 	as.byTid[tid] = t
 	as.tmu.Unlock()

@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"sort"
 	"sync"
@@ -334,7 +335,10 @@ func (as *addressSpace) removeRange(lo, hi uint64) error {
 	as.views = append(as.views[:i], as.views[j:]...)
 	var pieces []*view
 	for _, v := range olds {
-		call(pUnmapViewOfFile2, as.h, uintptr(v.lo), memPreservePH)
+		if _, err := call(pUnmapViewOfFile2, as.h, uintptr(v.lo), memPreservePH); err != nil {
+			// The guest would keep the old pages there.
+			log.Printf("winstub: unmapping the view %#x-%#x of stub pid %d failed: %v", v.lo, v.hi, as.wpid, err)
+		}
 		as.freeInsert(rng{v.lo, v.hi})
 		if v.lo < lo {
 			pieces = append(pieces, v.slice(v.lo, lo))
@@ -531,8 +535,28 @@ func (as *addressSpace) Unmap(addr hostarch.Addr, length uint64) {
 	}
 	as.mu.Lock()
 	defer as.mu.Unlock()
-	if err := as.removeRange(uint64(addr), uint64(addr)+length); err != nil {
-		debugf("Unmap(%#x, %#x): %v", uint64(addr), length, err)
+	// The memory manager widens an unmap to the gaps between its mappings, up to
+	// the end of the address space: the range may span the stub's own views in
+	// the guest range (the %fs veneer area, reserved against the guest), which stay.
+	// Refusing the whole range instead left stale views behind: a heap shrunk and
+	// grown again kept its old pages, which the Sentry no longer wrote to
+	// (docs/results/1p-rewrite-heap.md).
+	lo, hi := uint64(addr), uint64(addr)+length
+	for lo < hi {
+		end, next := hi, hi
+		i := sort.Search(len(as.views), func(i int) bool { return as.views[i].hi > lo })
+		for ; i < len(as.views) && as.views[i].lo < hi; i++ {
+			if v := as.views[i]; v.sys {
+				end, next = max(lo, v.lo), min(hi, v.hi)
+				break
+			}
+		}
+		if end > lo {
+			if err := as.removeRange(lo, end); err != nil {
+				log.Printf("winstub: Unmap(%#x, %#x) in stub pid %d: %v", lo, end-lo, as.wpid, err)
+			}
+		}
+		lo = next
 	}
 }
 
