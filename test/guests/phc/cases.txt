@@ -1,0 +1,9 @@
+# name|args|bind (see run.ps1)
+apt|/bin/aptrename /w/ar 200|1
+aptprobe|/bin/aptprobe /w/ar 200|1
+fd-host|/bin/heapprobe fd /w/d 3000|1
+fcd-host|/bin/heapprobe fcd /w/d 3000|1
+fed-host|/bin/heapprobe fed /w/d 2000|1
+fpem-tmp|/bin/heapprobe fpem /tmp/d 20000|0
+fd-tmp|/bin/heapprobe fd /tmp/d 3000|0
+ed-host|/bin/heapprobe ed /w/d 2000|1
