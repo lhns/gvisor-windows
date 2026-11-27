@@ -72,6 +72,7 @@ func main() {
 		{"stdin", testStdin},
 		{"fchmod", testFchmod},
 		{"strace", testStrace},
+		{"restart", testRestart},
 		{"net", testNet},
 		{"publish", testPublish},
 		{"tty", testTTY},
@@ -97,7 +98,7 @@ func main() {
 	}
 	failed := 0
 	for _, t := range tests {
-		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "strace" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec" || t.name == "sockfs")) {
+		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "strace" || t.name == "restart" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec" || t.name == "sockfs")) {
 			continue
 		}
 		start := time.Now()
@@ -625,4 +626,27 @@ func testStrace() error {
 		return fmt.Errorf("the strace log is incomplete (%d bytes), ends with %q", len(b), tail)
 	}
 	return nil
+}
+
+// testRestart models the engine restart of the acceptance (step 9): the storage folder is a
+// bind mount with a tmpfs on one of its subdirectories (the container directories), the first run
+// writes a volume file and a container directory, the second run (a new sandbox on the same host
+// folder) must see the volume file, create a new container directory with a file in it, and
+// delete and recreate files. runsctest -only restart.
+func testRestart() error {
+	dir := filepath.Join(*workDir, "restart")
+	_ = os.RemoveAll(dir)
+	must(os.MkdirAll(dir, 0o755))
+	extraMounts = []map[string]any{
+		{"destination": "/s", "type": "bind", "source": dir, "options": []string{"rbind", "rw"}},
+		{"destination": "/s/vfs-containers", "type": "tmpfs", "source": "tmpfs", "options": []string{"mode=755"}},
+	}
+	defer func() { extraMounts = nil }()
+	r, err := runsc("restart", []string{"/bin/sh", "-c", "mkdir -p /s/vol/accvol/_data /s/vfs-containers/a/userdata && echo keep >/s/vol/accvol/_data/f && echo cfg >/s/vfs-containers/a/userdata/config.json && echo db >/s/db.sql && sync && echo first-ok"}, nil)
+	if e := expect(r, err, "first-ok\n", 0); e != nil {
+		return fmt.Errorf("first run: %w", e)
+	}
+	script := "cat /s/vol/accvol/_data/f; cat /s/db.sql; ls /s/vfs-containers; mkdir -p /s/vfs-containers/b/userdata && echo cfg2 >/s/vfs-containers/b/userdata/config.json && cat /s/vfs-containers/b/userdata/config.json; echo again >/s/db.sql && mv /s/db.sql /s/db.old && echo db2 >/s/db.sql && cat /s/db.sql; echo second-ok"
+	r, err = runsc("restart2", []string{"/bin/sh", "-c", script}, nil)
+	return expect(r, err, "keep\ndb\ncfg2\ndb2\nsecond-ok\n", 0)
 }

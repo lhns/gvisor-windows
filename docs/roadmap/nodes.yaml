@@ -2430,17 +2430,17 @@
   depends_on: *id005
   replaced_by: *id006
   start: '2026-11-27'
-  end: ''
+  end: '2026-11-27'
   folded: *id007
   overview: false
   id: workloads-volume-lost-on-restart
   title: Volume data lost across engine restart
   track: workloads
   kind: defect
-  state: next
+  state: done
   lane: windows-ci
   plain: In 2 of 5 complete native runs, the named volume written before the engine restart is empty afterwards (step 9).
-  notes: 'Fixed when: step 9 passes in 8 of 8 runs.'
+  notes: 'Harness cause: an old static_dir workaround put libpod''s database on a tmpfs. The database now lives on the storage folder; a runsc restart test is required.'
 - outcome: unrated
   evidence:
   - docs/results/1k-platform-next.md

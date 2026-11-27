@@ -23,7 +23,7 @@ flowchart TB
     workloads_conmon_attach_second_cause>"✔ Second attach-socket<br/>failure"]
     workloads_tty_through_windows_client>"✔ Interactive TTY<br/>through the Windows<br/>client"]
     workloads_isolation_flake>"⚠ Isolation step<br/>failed once"]
-    workloads_volume_lost_on_restart>"⚠ Volume data lost<br/>across engine restart"]
+    workloads_volume_lost_on_restart>"✔ Volume data lost<br/>across engine restart"]
     workloads_podman_on_windows[/"⛔ Podman passes on<br/>Windows"/]
     workloads_podman_probe[/"✔ Probe Podman inside<br/>the sandbox"/]
     workloads_podman_harness["▶ Serve Podman to<br/>Windows clients"]
@@ -77,8 +77,8 @@ flowchart TB
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class workloads_acceptance_test,workloads_acceptance_test_windows,workloads_podman_api_named_pipe,workloads_podman_probe unrated
     class workloads_podman_on_gvisor_linux,workloads_strict_bar_linux,workloads_end_to_end_speed mixed
-    class workloads_gvisor_bridge_netlink,workloads_gvisor_port_publishing,workloads_gvisor_cgroupfs_readonly,workloads_overlay_userxattr,workloads_conmon_sync_pipe,workloads_conmon_attach_second_cause,workloads_tty_through_windows_client succ
-    class workloads_isolation_flake,workloads_volume_lost_on_restart finding
+    class workloads_gvisor_bridge_netlink,workloads_gvisor_port_publishing,workloads_gvisor_cgroupfs_readonly,workloads_overlay_userxattr,workloads_conmon_sync_pipe,workloads_conmon_attach_second_cause,workloads_tty_through_windows_client,workloads_volume_lost_on_restart succ
+    class workloads_isolation_flake finding
     class workloads_podman_on_windows blocked
     class workloads_podman_harness inprog
 ```
@@ -107,7 +107,7 @@ flowchart TB
 | `workloads-conmon-attach-second-cause` | Second attach-socket failure | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
 | `workloads-tty-through-windows-client` | Interactive TTY through the Windows client | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
 | `workloads-isolation-flake` | Isolation step failed once | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/5-podman-windows.md |
-| `workloads-volume-lost-on-restart` | Volume data lost across engine restart | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/5-podman-windows.md |
+| `workloads-volume-lost-on-restart` | Volume data lost across engine restart | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
 
 ### Details per node
 
@@ -131,7 +131,7 @@ flowchart TB
 | `workloads-conmon-attach-second-cause` | Second attach-socket failure |  |  | Even with container directories on a tmpfs, Podman's connect to conmon's attach socket is refused; a second cause is not isolated. | No separate cause: with the host-folder socket fix, podman run --rm alpine echo ok prints ok. |  |  |  |  |
 | `workloads-tty-through-windows-client` | Interactive TTY through the Windows client |  |  | The Windows podman client says "The input device is not a TTY" inside the ConPTY test driver, so the interactive step cannot type into the container. | Fixed in the harness: ttydrive now sets STARTF_USESTDHANDLES with NULL handles so the child gets the pseudoconsole; step 4 passed 7 of 7 runs. |  |  |  |  |
 | `workloads-isolation-flake` | Isolation step failed once |  |  | Steps fail now and then: /dev/null missing in a container for a moment, a just-created config.json missing, and one job that hung; about 1 run in 4 also loses the sandbox to the Go GC crash. | Fixed when: step 10 passes 20 runs in a row, or the cause is found and fixed. |  |  |  |  |
-| `workloads-volume-lost-on-restart` | Volume data lost across engine restart |  |  | In 2 of 5 complete native runs, the named volume written before the engine restart is empty afterwards (step 9). | Fixed when: step 9 passes in 8 of 8 runs. |  |  |  |  |
+| `workloads-volume-lost-on-restart` | Volume data lost across engine restart |  |  | In 2 of 5 complete native runs, the named volume written before the engine restart is empty afterwards (step 9). | Harness cause: an old static_dir workaround put libpod's database on a tmpfs. The database now lives on the storage folder; a runsc restart test is required. |  |  |  |  |
 
 ### Folded items per node
 
