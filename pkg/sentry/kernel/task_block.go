@@ -224,6 +224,9 @@ func (t *Task) block(C <-chan struct{}, timerChan <-chan struct{}) error {
 		runtime.Gosched()
 	}
 
+	if SigLat {
+		sigLatBlock(t) // gvisor-windows
+	}
 	region := trace.StartRegion(t.traceContext, blockRegion)
 	select {
 	case <-C:
@@ -233,6 +236,9 @@ func (t *Task) block(C <-chan struct{}, timerChan <-chan struct{}) error {
 
 	case <-t.interruptChan:
 		region.End()
+		if SigLat {
+			sigLatOut(t, "block") // gvisor-windows
+		}
 		// Ensure that Task.interrupted() will return true once we return to
 		// the task run loop.
 		t.interruptSelf()

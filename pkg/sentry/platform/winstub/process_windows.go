@@ -816,42 +816,57 @@ func (as *addressSpace) parkAs(t *thread, ctx *ctxBuf, req request, resume uint6
 	ctx.set(t.hThread)
 }
 
+// Why interrupt refused a thread (counted by the signal latency trace).
+const (
+	refuseNone    = iota
+	refuseStartup // still in ntdll's thread start-up
+	refuseWaking  // answered, waking from (or asleep in) its reply wait
+	refuseSuspend // SuspendThread or GetThreadContext failed
+	refuseStub    // in the stub's code
+	refuseRepair  // in the repair code above CtlBase
+	refuseJump    // under a patch jump
+	refuseLow     // below AreaLo
+	nRefuse
+)
+
+var refuseNames = [nRefuse]string{"", "startup", "waking", "suspend", "stub", "repair", "jump", "low"}
+
 // interrupt stops a running thread at its current instruction and publishes an
-// interrupt request. It reports false if the thread is not (yet) somewhere that
-// can be captured exactly (inside the stub's own code, or in ntdll during thread
-// start); the caller retries.
-func (as *addressSpace) interrupt(t *thread) bool {
+// interrupt request. It reports why not (non-zero) if the thread is not (yet)
+// somewhere that can be captured exactly (inside the stub's own code, or in ntdll
+// during thread start); the caller retries.
+func (as *addressSpace) interrupt(t *thread) int {
 	t.stopMu.Lock()
 	defer t.stopMu.Unlock()
 	if t.state() == 1 || !t.started {
-		return true // a request is already there
+		return refuseNone // a request is already there
 	}
 	// A thread still in ntdll's start-up (waiting for the debugger to continue its
 	// CREATE_THREAD event, running the loader) is left alone: suspending it there
 	// can wedge it for good.
 	if atomic.LoadUint32(t.u32(stubasm.PgRunning)) == 0 {
-		return false
+		return refuseStartup
 	}
 	// A thread that has just been answered is waking up from its wait in the
 	// kernel (or still asleep in it): suspending it there loses the wake-up
 	// often enough to hang the guest. Only a thread that has gone through the
 	// whole reply path (state 0) and runs guest code is captured.
 	if t.state() == 2 || atomic.LoadUint32(t.u32(stubasm.PgStubSlp)) != 0 {
-		return false
+		return refuseWaking
 	}
 	t.mu.Lock()
 	if t.parked {
 		t.mu.Unlock()
-		return true
+		return refuseNone
 	}
 	t.mu.Unlock()
 	if r, _, _ := pSuspendThread.Call(t.hThread); int32(r) == -1 {
-		return false
+		return refuseSuspend
 	}
 	ctx := newCtxBuf()
 	if !ctx.get(t.hThread, ctxControlInt) {
 		pResumeThread.Call(t.hThread)
-		return false
+		return refuseSuspend
 	}
 	rip := *ctx.u64(ctxRipOff)
 	inStub := rip >= stubasm.StubCode && rip < stubasm.StubCode+stubasm.StubCodeSize
@@ -867,13 +882,24 @@ func (as *addressSpace) interrupt(t *thread) bool {
 			inJump = info.inJump(rip)
 		}
 	}
-	if inStub || inRepair || inJump || rip < stubasm.AreaLo {
+	why := refuseNone
+	switch {
+	case inStub:
+		why = refuseStub
+	case inRepair:
+		why = refuseRepair
+	case inJump:
+		why = refuseJump
+	case rip < stubasm.AreaLo:
+		why = refuseLow
+	}
+	if why != refuseNone {
 		pResumeThread.Call(t.hThread)
-		return false
+		return why
 	}
 	as.park(t, ctx, request{kind: reqInterrupt})
 	pResumeThread.Call(t.hThread)
-	return true
+	return refuseNone
 }
 
 // ---- the stub image -----------------------------------------------------------

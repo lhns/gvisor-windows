@@ -300,6 +300,9 @@ func (t *Task) deliverSignal(info *linux.SignalInfo, act linux.SigAction) taskRu
 // deliverSignalToHandler changes the task's userspace state to enter the given
 // user-configured handler for the given signal.
 func (t *Task) deliverSignalToHandler(info *linux.SignalInfo, act linux.SigAction) error {
+	if SigLat {
+		sigLatDeliver(t, info.Signo) // gvisor-windows
+	}
 	// Signal delivery to an application handler interrupts restartable
 	// sequences.
 	t.rseqInterrupt()

@@ -106,6 +106,7 @@ func main() {
 		{"ovlopaque", testOvlOpaque},
 		{"cfr", testCfr},
 		{"clocks", testClocks},
+		{"siglat", testSiglat},
 		{"debian", testDebian},
 		{"gogc", testGoGC},
 		{"bench", testBench},
@@ -126,7 +127,7 @@ func main() {
 	}
 	failed := 0
 	for _, t := range tests {
-		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "strace" || t.name == "restart" || t.name == "aptrename" || t.name == "mountkeep" || t.name == "devnull" || t.name == "ovlsub" || t.name == "ovlopaque" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec" || t.name == "sockfs" || t.name == "fsstress" || t.name == "cfr" || t.name == "debian" || t.name == "gogc")) {
+		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "strace" || t.name == "restart" || t.name == "aptrename" || t.name == "mountkeep" || t.name == "devnull" || t.name == "ovlsub" || t.name == "ovlopaque" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec" || t.name == "sockfs" || t.name == "fsstress" || t.name == "cfr" || t.name == "debian" || t.name == "gogc" || t.name == "siglat")) {
 			continue
 		}
 		start := time.Now()
@@ -882,6 +883,9 @@ func testCfr() error {
 // testClocks runs test/guests/clocks: sleeps, clocks, timerfd, POSIX and interval timers and
 // poll/select/epoll timeouts, each within a generous tolerance. The guest names every failed check.
 func testClocks() error {
+	// A late timer signal explains itself in stderr (SIGLAT, STALL lines).
+	os.Setenv("GVISOR_SIGLAT", "1")
+	defer os.Unsetenv("GVISOR_SIGLAT")
 	r, err := runsc("clocks", []string{"/bin/clocks"}, nil)
 	if err != nil {
 		return err

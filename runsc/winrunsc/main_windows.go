@@ -17,6 +17,7 @@ import (
 	"runtime"
 	"strings"
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub"
+	"gvisor.dev/gvisor/pkg/stallwatch"
 	"sync"
 	"time"
 
@@ -63,7 +64,18 @@ func Main() {
 			}
 		}
 	}
+	// GVISOR_SIGLAT=1 traces timer signal latency (kernel/siglat.go) and watches this
+	// process for stalls (docs/results/3e-signal-latency.md).
+	var stalls *stallwatch.Watch
+	if kernel.SigLat {
+		stalls = stallwatch.Start("runsc", os.Stderr, 20*time.Millisecond)
+	}
 	code := run(os.Args[1:])
+	if stalls != nil {
+		stalls.Stop()
+		kernel.DumpSigLat(os.Stderr)
+		winstub.DumpSigLat(os.Stderr)
+	}
 	if kernel.ProfStats {
 		if tbl, ok := kernel.LookupSyscallTable(abi.Linux, arch.AMD64); ok {
 			kernel.DumpProfStats(os.Stderr, tbl.LookupName)

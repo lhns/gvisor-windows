@@ -62,6 +62,11 @@ type winContext struct {
 	ctlScore  int
 	stubScore int
 	nwaits    int
+
+	// The signal latency trace (siglat_windows.go). intrAt: when the pending
+	// interrupt was raised (qpc ns), 0 if none.
+	sl     sigLatSwitch
+	intrAt atomic.Int64
 }
 
 // Spin policies, WINSTUB_POLICY.
@@ -183,6 +188,13 @@ func (c *winContext) Switch(ctx pkgcontext.Context, mm platform.MemoryManager, a
 		return nil, hostarch.NoAccess, platform.ErrContextInterrupt
 	}
 	defer c.intr.Disable()
+	if sigLatOn {
+		c.sl = sigLatSwitch{t0: qpc(), stale: c.intrPending.Load()}
+		if c.sl.stale {
+			sigLatStats.stale.Add(1)
+			c.intrAt.Store(c.sl.t0) // measure this Switch's interrupt from here
+		}
+	}
 
 	if c.needRestore {
 		copy(unsafe.Slice((*byte)(unsafe.Add(t.page, stubasm.XsaveOff)), t.as.p.fpSize), ac.FloatingPointData().Slice())
@@ -197,6 +209,12 @@ func (c *winContext) Switch(ctx pkgcontext.Context, mm platform.MemoryManager, a
 	req, err := c.wait(t)
 	if err != nil {
 		return nil, hostarch.NoAccess, &platform.ContextError{Err: err, Errno: unix.EPERM}
+	}
+	if sigLatOn {
+		c.sl.t1, c.sl.kind = qpc(), req.kind
+		if req.kind == reqInterrupt {
+			c.sigLatInterrupted(c.sl.t1)
+		}
 	}
 	r := &ac.StateData().Regs
 	switch req.kind {
@@ -272,6 +290,7 @@ func (c *winContext) resume(t *thread, ac *arch.Context64) error {
 	t.nReply.Add(1)
 	if atomic.LoadUint32(t.u32(stubasm.PgStubSlp)) != 0 {
 		t.nSet.Add(1)
+		c.sl.stubSlept = true
 		// The stub's spin ended before we answered: it sleeps on the event.
 		c.stubScore = scoreUpdate(c.stubScore, false)
 		c.releaseToken(t.as.p)
@@ -334,7 +353,11 @@ func (c *winContext) wait(t *thread) (request, error) {
 			return request{}, errDead
 		}
 		if c.intrPending.Load() {
-			if !as.interrupt(t) {
+			if why := as.interrupt(t); why != refuseNone {
+				if sigLatOn {
+					c.sl.refusals[why]++
+					sigLatStats.refusals[why].Add(1)
+				}
 				time.Sleep(50 * time.Microsecond)
 			}
 			continue
@@ -345,6 +368,7 @@ func (c *winContext) wait(t *thread) (request, error) {
 			continue
 		}
 		slept = true
+		c.sl.ctlSlept = true
 		pWaitSingle.Call(t.evReq, infinite)
 		atomic.StoreUint32(sleep, 0)
 	}
@@ -367,6 +391,9 @@ func (c *winContext) Interrupt() { c.intr.NotifyInterrupt() }
 
 // NotifyInterrupt implements interrupt.Receiver.NotifyInterrupt.
 func (c *winContext) NotifyInterrupt() {
+	if sigLatOn {
+		c.intrAt.CompareAndSwap(0, qpc())
+	}
 	c.intrPending.Store(true)
 	if t := c.cur.Load(); t != nil {
 		pSetEvent.Call(t.evReq)
