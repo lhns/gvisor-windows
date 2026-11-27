@@ -86,6 +86,7 @@ func main() {
 		{"sockfs", testSockfs},
 		{"fsstress", testFsStress},
 		{"aptrename", testAptRename},
+		{"mountkeep", testMountKeep},
 		{"cfr", testCfr},
 		{"debian", testDebian},
 		{"bench", testBench},
@@ -106,7 +107,7 @@ func main() {
 	}
 	failed := 0
 	for _, t := range tests {
-		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "strace" || t.name == "restart" || t.name == "aptrename" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec" || t.name == "sockfs" || t.name == "fsstress" || t.name == "cfr" || t.name == "debian")) {
+		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "strace" || t.name == "restart" || t.name == "aptrename" || t.name == "mountkeep" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec" || t.name == "sockfs" || t.name == "fsstress" || t.name == "cfr" || t.name == "debian")) {
 			continue
 		}
 		start := time.Now()
@@ -661,6 +662,47 @@ func testAptRename() error {
 	fmt.Print(r.stdout)
 	if r.code != 0 {
 		return fmt.Errorf("aptrename exit %d, stderr %q", r.code, r.stderr)
+	}
+	return nil
+}
+
+// testMountKeep: a tmpfs mounted on a directory of a host folder survives changes made to the folder from
+// Windows, enough of them to overflow the change stream (the container /dev and /tmp vanished in the Podman acceptance).
+func testMountKeep() error {
+	dir := filepath.Join(*workDir, "mountkeep")
+	_ = os.RemoveAll(dir)
+	must(os.MkdirAll(filepath.Join(dir, "flood"), 0o755))
+	extraMounts = []map[string]any{{"destination": "/w", "type": "bind", "source": dir, "options": []string{"rbind", "rw"}}}
+	extraCaps = []string{"CAP_SYS_ADMIN", "CAP_DAC_OVERRIDE", "CAP_CHOWN", "CAP_FOWNER"}
+	defer func() { extraMounts, extraCaps = nil, nil }()
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		flood := filepath.Join(dir, "flood")
+		for round := 0; ; round++ {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			for i := 0; i < 3000; i++ {
+				_ = os.WriteFile(filepath.Join(flood, fmt.Sprintf("file-with-a-long-name-to-fill-the-buffer-%05d-%d", i, round%2)), []byte("x"), 0o644)
+			}
+			for i := 0; i < 3000; i++ {
+				_ = os.Remove(filepath.Join(flood, fmt.Sprintf("file-with-a-long-name-to-fill-the-buffer-%05d-%d", i, round%2)))
+			}
+		}
+	}()
+	r, err := runsc("mountkeep", []string{"/bin/mountkeep", "/w", "20"}, nil)
+	close(stop)
+	<-done
+	if err != nil {
+		return err
+	}
+	fmt.Print(r.stdout)
+	if r.code != 0 {
+		return fmt.Errorf("mountkeep exit %d, stderr %q", r.code, r.stderr)
 	}
 	return nil
 }

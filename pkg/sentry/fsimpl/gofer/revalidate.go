@@ -198,6 +198,14 @@ func (fs *filesystem) revalidateStep(ctx context.Context, rp resolvingPath, d *d
 
 // Precondition: fs.renameMu must be locked.
 func (d *dentry) invalidate(ctx context.Context, vfsObj *vfs.VirtualFilesystem, ds **[]*dentry) {
+	// gvisor-windows: invalidating a dentry that a mount sits on (or that has
+	// one below it) would unmount it (vfs.InvalidateDentry) or hide it behind a
+	// fresh dentry: a container's /dev and /tmp vanished whenever the host
+	// folder's change stream overflowed or reported a change around it.
+	if d.subtreeMounted() {
+		d.invalidateAroundMounts(ctx, vfsObj, ds)
+		return
+	}
 	// Remove d from its parent.
 	removed := func() bool {
 		parent := d.parent.Load()
