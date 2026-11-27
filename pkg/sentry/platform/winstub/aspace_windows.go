@@ -17,6 +17,7 @@
 package winstub
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -119,10 +120,18 @@ type addressSpace struct {
 	siteCache map[uint64]siteInfo
 	restartAt map[uint64]uint64
 	ud2Sites  map[uint64]bool
+	fbigSec   uintptr // the big %fs veneer area (rewrite mode)
+	fbigView  unsafe.Pointer
+	gcur      uint64 // next free address in it
+	gcommit   uint64 // end of its committed part
 	fcur      uint64 // next free address in the %fs veneer area
+	ftop      uint64 // end of the free space shared by syscall veneers (up from vcur) and overflowing %fs veneers (down)
 	fsCache   map[fsKey]uint64
 	fsVen     []*fsVenInfo
 	fsUD2     map[uint64][]byte
+	fsSplit   map[uint64][]byte // first bytes of %fs instructions that continue in the next piece, by address
+	fsWhy     map[uint64]string // why a %fs instruction stayed ud2, and how often the debugger ran it (diagnostics)
+	fsHits    map[uint64]uint32
 	tails     map[uint64][]byte // original last bytes of the text ranges mapped, by end address
 	privs     []*privSection
 	edges     map[uint64]edge
@@ -146,7 +155,7 @@ func newAddressSpace(p *Platform) *addressSpace {
 	return &addressSpace{
 		p: p, loopDone: make(chan struct{}), started: make(chan error, 1),
 		vcur: stubasm.Veneers, siteCache: map[uint64]siteInfo{}, restartAt: map[uint64]uint64{},
-		ud2Sites: map[uint64]bool{}, fcur: stubasm.FSVeneers, fsCache: map[fsKey]uint64{}, fsUD2: map[uint64][]byte{}, tails: map[uint64][]byte{}, byTid: map[uint32]*thread{}, edges: map[uint64]edge{},
+		ud2Sites: map[uint64]bool{}, fcur: stubasm.FSVeneers, ftop: stubasm.VeneersShared, fsCache: map[fsKey]uint64{}, fsUD2: map[uint64][]byte{}, fsSplit: map[uint64][]byte{}, fsWhy: map[uint64]string{}, fsHits: map[uint64]uint32{}, tails: map[uint64][]byte{}, byTid: map[uint32]*thread{}, edges: map[uint64]edge{},
 	}
 }
 
@@ -583,6 +592,10 @@ func (as *addressSpace) Release() {
 	as.privs = nil
 	pUnmapViewOfFile.Call(uintptr(as.areaView))
 	pUnmapViewOfFile.Call(uintptr(as.ctlView))
+	if as.fbigView != nil {
+		pUnmapViewOfFile.Call(uintptr(as.fbigView))
+		pCloseHandle.Call(as.fbigSec)
+	}
 	pCloseHandle.Call(as.areaSec)
 	pCloseHandle.Call(as.ctlSec)
 	pCloseHandle.Call(as.hMain)
@@ -612,7 +625,11 @@ func (as *addressSpace) reserveHoles(ctx context.Context, mm platform.MemoryMana
 	for _, h := range []hostarch.AddrRange{
 		{Start: holeStart, End: holeEnd},
 		{Start: hostarch.Addr(stubasm.WinWindow), End: hostarch.Addr(stubasm.WinWindow + stubasm.WinWindowSize)},
+		{Start: hostarch.Addr(stubasm.FSBig), End: hostarch.Addr(stubasm.FSBig + stubasm.FSBigSize)},
 	} {
+		if h.Start == hostarch.Addr(stubasm.FSBig) && !as.p.fsRewrite {
+			continue
+		}
 		if _, _, err := mm.FindVMAByName(h, holeName); err == nil {
 			continue // inherited through fork
 		}
@@ -734,7 +751,25 @@ func (as *addressSpace) patchText(content []byte, lo, hi uint64) siteStats {
 	} else if from == 0 {
 		zone = zoneNoContext // the range may begin inside an instruction (the piece below may be mapped later)
 	}
-	st, scan := as.patchCode(buf, bufBase, from, len(pre), zone)
+	// An %fs instruction that starts at the end of this piece and ends in the next
+	// is neither piece's to patch: its first byte becomes int3 and the debugger
+	// runs it (fsSplit) once the rest is there.
+	stop := len(buf)
+	if as.p.fsRewrite && bytes.IndexByte(buf[max(from, len(buf)-14):], 0x64) >= 0 {
+		if p := splitFSAt(buf, decodeAll(buf[from:]), from); p >= 0 {
+			stop = p
+		}
+	}
+	var splitBytes []byte
+	if stop < len(buf) {
+		splitBytes = append([]byte(nil), buf[stop:]...)
+	}
+	st, scan := as.patchCode(buf, bufBase, from, len(pre), zone, stop)
+	if splitBytes != nil {
+		buf[stop] = 0xCC
+		as.fsSplit[bufBase+uint64(stop)] = splitBytes
+		debugf("%%fs instruction split at the end of %#x: starts at %#x", hi, bufBase+uint64(stop))
+	}
 	if len(pre) > 0 {
 		copy(content, buf[len(pre):])
 	}
@@ -777,7 +812,7 @@ func (as *addressSpace) fixHead(a uint64) bool {
 		return false
 	}
 	orig := append([]byte(nil), buf...)
-	as.patchCode(buf, v.lo, 1, 0, 0)
+	as.patchCode(buf, v.lo, 1, 0, 0, len(buf))
 	buf[0] = 0x0B
 	off := v.off
 	base := off &^ 0xFFFF
@@ -840,6 +875,13 @@ func (as *addressSpace) purgeSites(lo, hi uint64) {
 	for k := range as.fsUD2 {
 		if k >= lo && k < hi {
 			delete(as.fsUD2, k)
+			delete(as.fsWhy, k)
+			delete(as.fsHits, k)
+		}
+	}
+	for k := range as.fsSplit {
+		if k >= lo && k < hi {
+			delete(as.fsSplit, k)
 		}
 	}
 	for k := range as.tails {

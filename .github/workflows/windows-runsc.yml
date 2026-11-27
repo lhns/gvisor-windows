@@ -21,6 +21,9 @@ jobs:
           mkdir -p out
           docker run --rm -v "$PWD:/w" -w /w debian:bookworm sh -c 'apt-get update -qq && apt-get install -y -qq gcc libc6-dev >/dev/null && sh test/guests/build-glibc.sh out'
           docker run --rm -v "$PWD:/w" -w /w debian:bookworm sh -c 'apt-get update -qq && apt-get install -y -qq busybox-static >/dev/null && cp /bin/busybox out/busybox'
+          c=$(docker create debian:12-slim); mkdir -p out/dbin
+          for f in /lib/x86_64-linux-gnu/libc.so.6 /lib64/ld-linux-x86-64.so.2 /bin/echo; do docker cp -L $c:$f out/dbin/; done
+          ls -l out/dbin
           file out/*
           ! ldd out/busybox
           # The same rootfs as an erofs image, applets as symlinks.
@@ -74,8 +77,8 @@ jobs:
           # busybox applets are copies: the Windows folder has no Linux symlinks.
           $r = 'C:\ci\work\rootfs'
           foreach ($d in 'bin','etc','proc','dev','tmp','www') { New-Item -ItemType Directory -Force "$r\$d" | Out-Null }
-          Copy-Item guests\hello "$r\bin\hello"; Copy-Item guests\unixsock "$r\bin\unixsock"
-          foreach ($a in 'busybox','sh','ls','cat','wget','httpd','sleep','stty','tty','true','chmod','tar','head','sha256sum','gzip','awk','cut','mkdir','rm') { Copy-Item guests\busybox "$r\bin\$a" }
+          Copy-Item guests\hello "$r\bin\hello"; Copy-Item guests\unixsock "$r\bin\unixsock"; Copy-Item guests\cfr "$r\bin\cfr"; New-Item -ItemType Directory -Force "$r\dbin" | Out-Null; Copy-Item guests\dbin\* "$r\dbin"
+          foreach ($a in 'busybox','sh','ls','cat','wget','httpd','sleep','stty','tty','true','chmod','ln','chown','touch','tar','head','sha256sum','gzip','awk','cut','mkdir','rm') { Copy-Item guests\busybox "$r\bin\$a" }
           Copy-Item guests\rootfs.erofs C:\ci\work\rootfs.erofs
           Copy-Item guests\bench.sh "$r\bench.sh"; Copy-Item guests\small.tar "$r\small.tar"
           [IO.File]::WriteAllText("$r\etc\hostname", "ciguest`n")
@@ -105,8 +108,17 @@ jobs:
           $wargs = @('-fsmode', $env:WINSTUB_FSMODE); if ($env:WINSTUB_FPMODE) { $wargs += '-fpmode', $env:WINSTUB_FPMODE }
           & tools/windows/ci/run-as-standard-user.ps1 `
             -Program C:\ci\bin\runsctest.exe `
-            -Arguments ($wargs + @('-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-hostfs','-only','hostfs,forward,sockfs,fchmod,strace,restart')) `
+            -Arguments ($wargs + @('-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-hostfs','-only','hostfs,forward,sockfs,fchmod,strace,cfr,restart')) `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 300
+      - name: debian loader from the root folder (known platform gap)
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $wargs = @('-fsmode', $env:WINSTUB_FSMODE); if ($env:WINSTUB_FPMODE) { $wargs += '-fpmode', $env:WINSTUB_FPMODE }
+          & tools/windows/ci/run-as-standard-user.ps1 `
+            -Program C:\ciinunsctest.exe `
+            -Arguments ($wargs + @('-runsc','C:\ciinunsc.exe','-rootfs','C:\ci\workootfs','-work','C:\ci\work\std-debian','-only','debian')) `
+            -GrantPath C:\ciin -WritablePath C:\ci\work -TimeoutSeconds 300
       - name: Case sensitivity as a standard user (known gap, Windows denies the flag, see docs/results/5-podman-windows.md)
         shell: pwsh
         continue-on-error: true

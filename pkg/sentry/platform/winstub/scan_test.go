@@ -206,3 +206,23 @@ func TestFSVeneerVEX(t *testing.T) {
 		}
 	}
 }
+
+func TestSplitFSAt(t *testing.T) {
+	body := []byte{0x48, 0x89, 0xe5, 0x0f, 0xb6, 0x05, 0xbd, 0x40, 0x0c, 0x00} // mov %rsp,%rbp; movzbl rip-relative
+	for _, tail := range [][]byte{{0x64}, {0x64, 0x88}, {0x64, 0x88, 0x04}, {0x64, 0x48, 0x8b, 0x04, 0x25, 1}, {0x66, 0x64, 0x89}} {
+		code := append(append(make([]byte, 0, 40), body...), tail...)
+		if p := splitFSAt(code, decodeAll(code), 0); p != len(body) {
+			t.Errorf("tail % x: split at %d, want %d", tail, p, len(body))
+		}
+	}
+	for _, tail := range [][]byte{{0x48}, {0x48, 0x89}, {0x0f}, {0x65, 0x88}, nil} {
+		code := append(append(make([]byte, 0, 40), body...), tail...)
+		if p := splitFSAt(code, decodeAll(code), 0); p != -1 {
+			t.Errorf("tail % x: split at %d, want none", tail, p)
+		}
+	}
+	whole := append(append([]byte(nil), body...), 0x64, 0x88, 0x04, 0x25, 0x11, 0x06, 0, 0)
+	if p := splitFSAt(whole, decodeAll(whole), 0); p != -1 {
+		t.Errorf("a whole instruction is reported split at %d", p)
+	}
+}

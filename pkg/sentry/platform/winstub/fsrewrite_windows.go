@@ -19,10 +19,14 @@ package winstub
 import (
 	"crypto/sha256"
 	"encoding/binary"
+	"fmt"
 	"sort"
 	"unsafe"
 
+	"golang.org/x/sys/windows"
+	"gvisor.dev/gvisor/pkg/hostarch"
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/stubasm"
+	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/x86asm"
 )
 
 // Rewrite mode (ADR 0020): on CPUs without FSGSBASE every %fs instruction of the
@@ -54,17 +58,25 @@ func (as *addressSpace) patchFS(code []byte, base uint64, site *scanSite, cl *cl
 	}
 	// A jump rel32 reaches the veneer area from code below about 2 GiB; anything
 	// else jumps through a pointer stored at the veneer (7 bytes).
-	rel := int64(stubasm.FSVeneers) - int64(base) - int64(x.off)
+	target := stubasm.FSVeneers
+	if as.fbigView != nil {
+		target = stubasm.FSBig
+	}
+	rel := int64(target) - int64(base) - int64(x.off)
 	minLen := 7
 	if rel > -(1<<31)+(1<<20) && rel < (1<<31)-(1<<20) {
 		minLen = 5
 	}
 	a, b, ok := 0, 0, false
+	why := "start of a range"
 	if !unsure {
 		a, b, ok = planFSWindow(win, tgt, site.s, minLen, func(lo, hi int) bool { return !cl.taken(lo, hi) })
+		why = fmt.Sprintf("no window of %d bytes", minLen)
 	}
 	if ok {
-		ok = as.fsWindow(code, base, win, a, b, site.s, minLen, cl)
+		if ok = as.fsWindow(code, base, win, a, b, site.s, minLen, cl); !ok {
+			why = "veneer area full or veneer not buildable"
+		}
 	}
 	if ok {
 		st.fs++
@@ -75,6 +87,7 @@ func (as *addressSpace) patchFS(code []byte, base uint64, site *scanSite, cl *cl
 		return
 	}
 	as.fsUD2[base+uint64(x.off)] = append([]byte(nil), code[x.off:x.off+x.n]...)
+	as.fsWhy[base+uint64(x.off)] = why
 	code[x.off], code[x.off+1] = 0x0F, 0x0B
 	cl.add(x.off, x.off+x.n)
 	st.fsUD2++
@@ -92,16 +105,23 @@ func (as *addressSpace) fsWindow(code []byte, base uint64, win []ins, a, b, s, m
 	key := fsKey{addr: w0, h: sha256.Sum256(code[w0off : w0off+wlen])}
 	va, cached := as.fsCache[key]
 	if !cached {
-		vlen := uint64(8+len(v.code)+15) &^ 15
-		if as.fcur+vlen > stubasm.FSVeneers+stubasm.FSVeneersSize {
+		vlen := uint64(8+len(v.code)+7) &^ 7
+		if va = as.fsAlloc(vlen); va == 0 {
 			return false
 		}
-		va = as.fcur
-		as.fcur += vlen
-		as.areaWrite(va, binary.LittleEndian.AppendUint64(nil, va+8))
-		as.areaWrite(va+8, v.code)
+		if minLen == 5 {
+			if d := int64(va+8) - int64(w0+5); d != int64(int32(d)) {
+				return false // (the veneer ended up out of reach of this code: only the low area can do that)
+			}
+		}
+		as.fsPut(va, binary.LittleEndian.AppendUint64(nil, va+8))
+		as.fsPut(va+8, v.code)
 		as.fsCache[key] = va
-		as.fsVen = append(as.fsVen, &fsVenInfo{lo: va + 8, hi: va + 8 + uint64(len(v.code)), w0: w0, v: v})
+		vi := &fsVenInfo{lo: va + 8, hi: va + 8 + uint64(len(v.code)), w0: w0, v: v}
+		i := sort.Search(len(as.fsVen), func(i int) bool { return as.fsVen[i].lo > vi.lo })
+		as.fsVen = append(as.fsVen, nil)
+		copy(as.fsVen[i+1:], as.fsVen[i:])
+		as.fsVen[i] = vi
 		v.code = nil
 	}
 	entry := va + 8
@@ -133,7 +153,11 @@ func (as *addressSpace) fsWindow(code []byte, base uint64, win []ins, a, b, s, m
 func (as *addressSpace) fsUD2At(a uint64) []byte {
 	as.mu.Lock()
 	defer as.mu.Unlock()
-	return as.fsUD2[a]
+	if b := as.fsUD2[a]; b != nil {
+		as.fsHits[a]++
+		return b
+	}
+	return nil
 }
 
 // fsLocate finds the veneer a stopped thread's rip is in: one the debugger set
@@ -142,7 +166,8 @@ func (as *addressSpace) fsLocate(t *thread, rip uint64) *fsVenInfo {
 	if d := t.dyn; d != nil && rip >= d.lo && rip < d.hi {
 		return d
 	}
-	if rip < stubasm.FSVeneers || rip >= stubasm.FSVeneers+stubasm.FSVeneersSize {
+	inBig := rip >= stubasm.FSBig && rip < stubasm.FSBig+stubasm.FSBigSize
+	if !inBig && (rip < stubasm.Veneers || rip >= stubasm.FSVeneers+stubasm.FSVeneersSize) {
 		return nil
 	}
 	as.mu.Lock()
@@ -233,4 +258,80 @@ func (as *addressSpace) fsRunInline(t *thread, ctx *ctxBuf, rip uint64, orig []b
 	v.code = nil
 	*ctx.u64(ctxRipOff) = lo
 	return ctx.set(t.hThread)
+}
+
+// fsSplitRun handles the int3 that stands for an %fs instruction split between
+// two pieces of text (see patchText): the whole instruction is read from the
+// guest now and run in the thread's own veneer, as for a ud2 site.
+func (as *addressSpace) fsSplitRun(t *thread, ctx *ctxBuf, a uint64) bool {
+	as.mu.Lock()
+	head := as.fsSplit[a]
+	as.mu.Unlock()
+	if head == nil {
+		return false
+	}
+	*ctx.u64(ctxRipOff) = a // the int3 itself (the exception reports the next byte)
+	next := a + uint64(len(head))
+	rest, ok := as.readStub(next, 16)
+	if !ok {
+		// The piece that holds the rest is not mapped: an instruction fetch fault
+		// there, the Sentry maps it and the thread comes back to the int3.
+		as.park(t, ctx, request{kind: reqFault, sig: 11, code: 1, addr: next, at: hostarch.AccessType{Execute: true}})
+		return true
+	}
+	joined := append(append([]byte(nil), head...), rest...)
+	n := 0
+	func() {
+		defer func() { recover() }()
+		if inst, err := x86asm.Decode(joined, 64); err == nil && inst.Len >= len(head) {
+			n = inst.Len
+		}
+	}()
+	if n == 0 || !as.fsRunInline(t, ctx, a, joined[:n]) {
+		as.park(t, ctx, request{kind: reqFault, sig: 4, code: 1, addr: a})
+	}
+	return true
+}
+
+// fsAlloc returns the address of n bytes for a veneer, 0 if there is no room: in
+// the big area (committing it as it fills), else in the low area and the end of
+// the syscall veneers' space.
+func (as *addressSpace) fsAlloc(n uint64) uint64 {
+	if as.fbigView != nil && as.gcur+n <= stubasm.FSBig+stubasm.FSBigSize {
+		ok := true
+		for as.gcommit < as.gcur+n {
+			if _, err := windows.VirtualAlloc(uintptr(as.fbigView)+uintptr(as.gcommit-stubasm.FSBig), uintptr(stubasm.FSBigChunk), windows.MEM_COMMIT, windows.PAGE_READWRITE); err != nil {
+				debugf("commit of the %%fs veneer area: %v", err)
+				ok = false
+				break
+			}
+			as.gcommit += stubasm.FSBigChunk
+		}
+		if ok {
+			va := as.gcur
+			as.gcur += n
+			return va
+		}
+	}
+	switch {
+	case as.fcur+n <= stubasm.FSVeneers+stubasm.FSVeneersSize:
+		va := as.fcur
+		as.fcur += n
+		return va
+	case as.ftop-n >= as.vcur:
+		// The area is full: take room from the end of the private syscall
+		// veneers, which use little of theirs.
+		as.ftop -= n
+		return as.ftop
+	}
+	return 0
+}
+
+// fsPut writes veneer code at an address fsAlloc returned.
+func (as *addressSpace) fsPut(va uint64, b []byte) {
+	if va >= stubasm.FSBig && va < stubasm.FSBig+stubasm.FSBigSize {
+		copy(unsafe.Slice((*byte)(unsafe.Add(as.fbigView, va-stubasm.FSBig)), len(b)), b)
+		return
+	}
+	as.areaWrite(va, b)
 }

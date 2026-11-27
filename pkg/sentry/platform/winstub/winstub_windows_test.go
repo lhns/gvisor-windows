@@ -345,8 +345,12 @@ func TestSyscallsFaultsInterrupt(t *testing.T) {
 	if r.Rip != g.udAfter {
 		t.Fatalf("ud2 site resume at %#x, want %#x", r.Rip, g.udAfter)
 	}
-	if mm.mmaps != 2 {
-		t.Errorf("hole reservations = %d, want 2", mm.mmaps)
+	want := 2
+	if h.p.fsRewrite {
+		want = 3 // and the %fs veneer area
+	}
+	if mm.mmaps != want {
+		t.Errorf("hole reservations = %d, want %d", mm.mmaps, want)
 	}
 }
 
@@ -1040,13 +1044,13 @@ func TestMemoryRelease(t *testing.T) {
 		t.Fatalf("Allocate: %v", err)
 	}
 	fillRange(t, h.mf, fr, 0x5a)
-	h.mapAt(mm, 0x10000000, fr, rw)
+	h.mapAt(mm, 0x80000000, fr, rw)
 	c1, w1 := memState()
 	t.Logf("RELEASE allocated, touched and mapped 1 GB in %v: commit %d -> %d MB, working set %d -> %d MB", time.Since(t0).Round(time.Millisecond), c0, c1, w0, w1)
 	if c1 < c0+900 || w1 < w0+900 {
 		t.Fatalf("the allocation did not show up: commit %d -> %d, working set %d -> %d", c0, c1, w0, w1)
 	}
-	mm.as.Unmap(0x10000000, size)
+	mm.as.Unmap(0x80000000, size)
 	h.mf.DecRef(fr)
 	t1 := time.Now()
 	var c2, w2 uint64
@@ -1499,6 +1503,133 @@ func TestVeneerSurvivesNewAddressSpace(t *testing.T) {
 			ac2.StateData().Regs.Rax = 77
 			if nr := h.syscall(c2, mm2, ac2); nr != c.next || ac2.StateData().Regs.Rdi != 77 {
 				t.Fatalf("child: syscall %d rdi %d, want %d 77", nr, ac2.StateData().Regs.Rdi, c.next)
+			}
+		})
+	}
+}
+
+// TestAddressReuseAfterUnmap: text unmapped and other code mapped at the same
+// addresses. What the address space keeps for patched text is either keyed by
+// content (veneers, which a rescan finds again) or by address (restart targets,
+// ud2 sites, saved tails); the latter must not redirect the new code, and the
+// per-site table entries must follow the new syscall number.
+func TestAddressReuseAfterUnmap(t *testing.T) {
+	// A: `mov $39,%eax; syscall` at textBase, a relocated site behind a jmp.
+	build := func(nr uint32, post [3]byte) (code []byte, imm, reloc uint64) {
+		a := &asm{base: textBase}
+		a.emit(0xb8)
+		a.emit(le32(nr)...)
+		imm = a.emit(0x0f, 0x05)
+		a.emit(0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05)
+		a.emit(0xeb, 0x00) // jmp +0: the next instruction is a branch target
+		reloc = a.emit(0x31, 0xc0)
+		a.emit(0x0f, 0x05)
+		a.emit(post[:]...)
+		a.emit(0xb8, 0xf5, 1, 0, 0, 0x0f, 0x05)
+		return a.b, imm, reloc
+	}
+	codeA, immA, relocA := build(39, [3]byte{0x48, 0x89, 0xc7}) // mov rdi,rax
+	// B: the same layout with another syscall number and another instruction
+	// after the relocated site (mov rsi,rax).
+	codeB, immB, relocB := build(40, [3]byte{0x48, 0x89, 0xc6})
+	if immA != immB || relocA != relocB {
+		t.Fatal("test code does not line up")
+	}
+	h := newHarness(t)
+	mm := h.newMM()
+	as := mm.as.(*addressSpace)
+	h.mapAt(mm, textBase, h.pages(codeA, 1), rx)
+	c := h.p.NewContext(pkgcontext.Background())
+	defer c.Release()
+	ac := newAC(textBase, 0)
+	r := &ac.StateData().Regs
+	if nr := h.syscall(c, mm, ac); nr != 39 {
+		t.Fatalf("A: syscall %d, want 39", nr)
+	}
+	r.Rip, r.Rax = relocA, 0
+	if nr := h.syscall(c, mm, ac); nr != 0 {
+		t.Fatalf("A reloc: syscall %d, want 0", nr)
+	}
+	r.Rax = 77
+	if nr := h.syscall(c, mm, ac); nr != 501 || r.Rdi != 77 {
+		t.Fatalf("A reloc: syscall %d rdi %d, want 501 77", nr, r.Rdi)
+	}
+	if as.restartTarget(immA) == immA {
+		t.Fatal("A: no restart target recorded for the first site")
+	}
+
+	mm.as.Unmap(textBase, pageSz)
+	// What is keyed by address is gone with the text.
+	if got := as.restartTarget(immA); got != immA {
+		t.Errorf("restart target %#x of the unmapped site survives", got)
+	}
+	as.mu.Lock()
+	for k := range as.restartAt {
+		if k >= textBase && k < textBase+pageSz {
+			t.Errorf("restartAt[%#x] survives the unmap", k)
+		}
+	}
+	as.mu.Unlock()
+
+	h.mapAt(mm, textBase, h.pages(codeB, 1), rx)
+	r.Rip, r.Rax, r.Rdi, r.Rsi = textBase, 0, 0, 0
+	if nr := h.syscall(c, mm, ac); nr != 40 {
+		t.Fatalf("B: first site syscall %d, want 40 (the table entry of A's number was reused)", nr)
+	}
+	r.Rip, r.Rax, r.Rdi, r.Rsi = relocB, 0, 5, 0
+	if nr := h.syscall(c, mm, ac); nr != 0 {
+		t.Fatalf("B reloc: syscall %d, want 0", nr)
+	}
+	r.Rax = 88
+	if nr := h.syscall(c, mm, ac); nr != 501 || r.Rsi != 88 || r.Rdi != 5 {
+		t.Fatalf("B reloc: syscall %d rsi %d rdi %d, want 501 88 5 (the veneer of A's instruction ran)", nr, r.Rsi, r.Rdi)
+	}
+
+	// Entering B at the address that was a restart target of A runs B's code.
+	mm.as.Unmap(textBase, pageSz)
+	plain := &asm{base: textBase}
+	plain.emit(0x90, 0x90, 0x90, 0x90, 0x90)
+	plain.emit(0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05) // mov eax,500; syscall at A's first site
+	h.mapAt(mm, textBase, h.pages(plain.b, 1), rx)
+	r.Rip, r.Rax = textBase+5, 0
+	if nr := h.syscall(c, mm, ac); nr != 500 {
+		t.Fatalf("C: syscall %d, want 500", nr)
+	}
+}
+
+// TestFSInstructionSplitAcrossPieces: an %fs instruction that starts at the end
+// of one piece of text and ends in the next (found by the static glibc start-up
+// code, where the page boundary cuts `mov %al,%fs:0x10`), in both mapping orders.
+func TestFSInstructionSplitAcrossPieces(t *testing.T) {
+	page0 := make([]byte, pageSz)
+	for i := range page0 {
+		page0[i] = 0x90
+	}
+	copy(page0, []byte{0xb8, 0x77, 0, 0, 0}) // mov $0x77,%eax
+	copy(page0[pageSz-3:], []byte{0x64, 0x88, 0x04})
+	page1 := append([]byte{0x25, 0x10, 0, 0, 0}, // ... mov %al,%fs:0x10
+		0x64, 0x0f, 0xb6, 0x3c, 0x25, 0x10, 0, 0, 0, // movzbl %fs:0x10,%edi
+		0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05) // mov $500,%eax; syscall
+	for _, lowFirst := range []bool{true, false} {
+		t.Run(fmt.Sprintf("low first %v", lowFirst), func(t *testing.T) {
+			h := newHarness(t)
+			mm := h.newMM()
+			lo, hi := h.pages(page0, 1), h.pages(page1, 1)
+			if lowFirst {
+				h.mapAt(mm, textBase, lo, rx)
+				h.mapAt(mm, textBase+pageSz, hi, rx)
+			} else {
+				h.mapAt(mm, textBase+pageSz, hi, rx)
+				h.mapAt(mm, textBase, lo, rx)
+			}
+			h.mapAt(mm, tlsBase, h.pages(tlsData(), 1), rw)
+			c := h.p.NewContext(pkgcontext.Background())
+			defer c.Release()
+			ac := newAC(textBase, 0)
+			r := &ac.StateData().Regs
+			r.Fs_base = tlsBase
+			if nr := h.syscall(c, mm, ac); nr != 500 || r.Rdi != 0x77 {
+				t.Fatalf("syscall %d(%#x), want 500(0x77)", nr, r.Rdi)
 			}
 		})
 	}

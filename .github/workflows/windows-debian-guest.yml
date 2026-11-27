@@ -1,0 +1,34 @@
+# Debian 12's glibc (2.36) under the Sentry from a tmpfs (docs/results/5-podman-windows.md, "libc.so.6: file too short").
+name: windows-debian-guest
+on:
+  workflow_dispatch:
+jobs:
+  rootfs:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          c=$(docker create debian:12-slim)
+          mkdir root && docker export "$c" | tar -x -C root
+          ls -l root/lib/x86_64-linux-gnu/libc.so.6 root/lib64/ld-linux-x86-64.so.2 root/bin/echo
+          tar -C root -cf rootfs.tar .
+      - uses: actions/upload-artifact@v4
+        with: {name: debian-rootfs, path: rootfs.tar, compression-level: 0}
+  run:
+    needs: rootfs
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version-file: go.mod, cache: false}
+      - uses: actions/download-artifact@v4
+        with: {name: debian-rootfs, path: dl}
+      - run: go build -p 2 -o sentryguest.exe ./tools/windows/sentryguest
+        shell: pwsh
+      - name: Run
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          ./sentryguest.exe '-tar=dl/rootfs.tar' -timeout=120s '-env=PATH=/bin:/usr/bin' /bin/echo hi
+          $env:WINSTUB_TRACE = '1'
+          ./sentryguest.exe '-tar=dl/rootfs.tar' -timeout=120s '-env=PATH=/bin:/usr/bin' /bin/echo hi 2>&1 | Select-String 'ud2|site|patch' | Select-Object -First 40
+          ./sentryguest.exe '-tar=dl/rootfs.tar' -timeout=120s '-env=PATH=/bin:/usr/bin' /bin/sh -c 'echo from sh; ls /bin | head -3'

@@ -809,3 +809,59 @@ func ScanFS(code []byte) FSReport {
 	}
 	return rep
 }
+
+// splitFSAt reports whether the last bytes of code are the start of a
+// %fs-prefixed instruction that continues in the next piece of text, and where it
+// starts (-1 if not). The decoder cannot see such an instruction in either piece.
+// The bytes are decoded again from an instruction boundary, padded with zeros so
+// that the decoder can tell how long the last instruction is.
+func splitFSAt(code []byte, list []ins, from int) int {
+	pos := from
+	for i := len(list) - 1; i >= 0; i-- {
+		if list[i].off+list[i].n <= len(code)-15 {
+			pos = list[i].off + list[i].n
+			break
+		}
+	}
+	pos = max(pos, from)
+	for pos < len(code) {
+		padded := append(append(make([]byte, 0, len(code)-pos+15), code[pos:]...), make([]byte, 15)...)
+		n := 0
+		func() {
+			defer func() { recover() }()
+			if inst, err := x86asm.Decode(padded, 64); err == nil {
+				n = inst.Len
+			}
+		}()
+		if n == 0 {
+			n = fsVexLen(padded[:min(len(padded), 16)])
+		}
+		if n == 0 {
+			pos++
+			continue
+		}
+		if pos+n > len(code) {
+			if hasFSPrefix(code[pos:]) {
+				return pos
+			}
+			return -1
+		}
+		pos += n
+	}
+	return -1
+}
+
+// hasFSPrefix reports whether the instruction at the start of b has an %fs
+// segment prefix among its legacy prefixes.
+func hasFSPrefix(b []byte) bool {
+	for i := 0; i < len(b) && i < 14; i++ {
+		switch c := b[i]; {
+		case c == 0x64:
+			return true
+		case c == 0x66 || c == 0x67 || c == 0xF0 || c == 0xF2 || c == 0xF3 || c == 0x2E || c == 0x36 || c == 0x3E || c == 0x26 || c == 0x65 || c >= 0x40 && c <= 0x4F:
+		default:
+			return false
+		}
+	}
+	return false
+}
