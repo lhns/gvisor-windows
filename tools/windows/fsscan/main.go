@@ -288,15 +288,16 @@ func audit(path, startsFile, fsFile string) error {
 			ourFS[p.Vaddr+uint64(o)] = true
 		}
 	}
-	bytesAt := func(a uint64) string {
+	bytesAtN := func(a, n uint64) string {
 		for _, t := range texts {
 			if a >= t.v && a < t.v+uint64(len(t.b)) {
 				o := a - t.v
-				return fmt.Sprintf("% x", t.b[o:min(uint64(len(t.b)), o+16)])
+				return fmt.Sprintf("% x", t.b[o:min(uint64(len(t.b)), o+n)])
 			}
 		}
 		return ""
 	}
+	bytesAt := func(a uint64) string { return bytesAtN(a, 16) }
 	diff := func(name string, ours, theirs map[uint64]bool) {
 		var only []uint64
 		for a := range theirs {
@@ -318,6 +319,19 @@ func audit(path, startsFile, fsFile string) error {
 				break
 			}
 			fmt.Printf("  missed %#x: %s\n", a, bytesAt(a))
+			if name == "%fs instructions" {
+				// where the two decodings part: starts in the 40 bytes before
+				var o, d []string
+				for k := a - 40; k <= a; k++ {
+					if objStarts[k] {
+						o = append(o, fmt.Sprintf("%d", int64(k)-int64(a)))
+					}
+					if ourStarts[k] {
+						d = append(d, fmt.Sprintf("%d", int64(k)-int64(a)))
+					}
+				}
+				fmt.Printf("    before: %s\n    objdump starts %s\n    decoder starts %s\n", bytesAtN(a-40, 48), strings.Join(o, " "), strings.Join(d, " "))
+			}
 		}
 		for i, a := range bogus {
 			if i >= 12 {
