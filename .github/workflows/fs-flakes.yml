@@ -58,7 +58,7 @@ jobs:
           go test -c -o C:\ci\bin\winstub.test.exe ./pkg/sentry/platform/winstub
           $env:FSSEAM_ELF = (Resolve-Path guests\aptrename).Path
           Push-Location pkg/sentry/platform/winstub
-          $a = @('-test.run=^TestFSSeamBinary'+[char]36, '-test.v=true', '-test.timeout=10m'); & C:\ci\bin\winstub.test.exe @a 2>&1 | Select-String -NotMatch 'winstub: (imm site|reloc site|%fs ud2|text |edges|wx)' | Select-Object -Last 60
+          $a = @(('-test.run=^TestFSSeamBinary'+[char]36), '-test.v=true', '-test.timeout=10m'); & C:\ci\bin\winstub.test.exe @a 2>&1 | Select-String -NotMatch 'winstub: (imm site|reloc site|%fs ud2|text |edges|wx)' | Select-Object -Last 60
           Pop-Location
       - name: A mount on a host folder survives changes from Windows
         shell: pwsh
