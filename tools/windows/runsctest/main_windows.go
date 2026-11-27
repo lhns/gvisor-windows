@@ -85,6 +85,7 @@ func main() {
 		{"lifecycle", testLifecycle},
 		{"sockfs", testSockfs},
 		{"fsstress", testFsStress},
+		{"aptrename", testAptRename},
 		{"bench", testBench},
 		{"forward", testForward},
 		{"mounts", func() error { return profileRun("mounts", "cat /proc/self/mountinfo; pwd; ls -la /tmp") }},
@@ -103,7 +104,7 @@ func main() {
 	}
 	failed := 0
 	for _, t := range tests {
-		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "strace" || t.name == "restart" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec" || t.name == "sockfs" || t.name == "fsstress")) {
+		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "strace" || t.name == "restart" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec" || t.name == "sockfs" || t.name == "fsstress" || t.name == "aptrename")) {
 			continue
 		}
 		start := time.Now()
@@ -639,6 +640,25 @@ func testFsStress() error {
 	}
 	if bad > 0 {
 		return fmt.Errorf("fsstress: %d of 2 runs failed", bad)
+	}
+	return nil
+}
+
+// testAptRename runs test/guests/aptrename: apt's download-rename-reopen pattern and an engine process
+// that holds the names open and removes the trees, on a host-folder bind mount (docs/results/5-podman-windows.md).
+func testAptRename() error {
+	dir := filepath.Join(*workDir, "aptrename")
+	_ = os.RemoveAll(dir)
+	must(os.MkdirAll(dir, 0o755))
+	extraMounts = []map[string]any{{"destination": "/w", "type": "bind", "source": dir, "options": []string{"rbind", "rw"}}}
+	defer func() { extraMounts = nil }()
+	r, err := runsc("aptrename", []string{"/bin/aptrename", "/w/ar", strconv.Itoa(*stressIters)}, nil)
+	if err != nil {
+		return err
+	}
+	fmt.Print(r.stdout)
+	if r.code != 0 {
+		return fmt.Errorf("aptrename exit %d, stderr %q", r.code, r.stderr)
 	}
 	return nil
 }
