@@ -382,7 +382,7 @@ func rewritableFS(in x86asm.Inst, b []byte) bool {
 		if !isMem {
 			continue
 		}
-		if m.Segment != x86asm.FS || regNum(m.Base) != r.base || regNum(m.Index) != r.index || m.Disp != int64(r.disp) {
+		if m.Segment != x86asm.FS || regNum(m.Base) != r.base || regNum(m.Index) != r.index || int32(m.Disp) != r.disp { // (the decoder zero-extends a disp32)
 			return false
 		}
 		if r.index >= 0 && int(m.Scale) != 1<<r.scale {

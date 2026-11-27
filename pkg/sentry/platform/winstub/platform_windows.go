@@ -115,6 +115,10 @@ func New(opts platform.Options) (*Platform, error) {
 	if fpSize > stubasm.XsaveSize {
 		return nil, fmt.Errorf("winstub: xsave area of %d bytes does not fit", fpSize)
 	}
+	var xmask uint64 // xgetbv would fault without XSAVE
+	if !fxsave {
+		xmask = stubasm.XSaveMask()
+	}
 	f, err := os.CreateTemp("", "winstub-*.exe")
 	if err != nil {
 		return nil, fmt.Errorf("winstub: stub image: %w", err)
@@ -126,7 +130,7 @@ func New(opts platform.Options) (*Platform, error) {
 	return &Platform{
 		spinLimit: envInt("WINSTUB_SPINLIMIT", runtime.NumCPU()),
 		maxTokens: int32(envInt("WINSTUB_TOKENS", max(1, runtime.NumCPU()/2))),
-		xmask:    stubasm.XSaveMask(),
+		xmask:    xmask,
 		fsRewrite: rewrite,
 		fpSize:   int(fpSize),
 		stubPath: f.Name(),

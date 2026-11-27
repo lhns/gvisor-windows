@@ -39,6 +39,8 @@ func TestFSVeneerEncoding(t *testing.T) {
 		{0x64, 0x48, 0x8b, 0x04, 0x25, 0x28, 0, 0, 0},                // mov %fs:0x28,%rax
 		{0x64, 0x48, 0x8b, 0x04, 0x25, 0xf8, 0xff, 0xff, 0xff},       // mov %fs:-8,%rax
 		{0x64, 0x48, 0x8b, 0x01},                                     // mov %fs:(%rcx),%rax
+		{0x64, 0x48, 0x8b, 0x41, 0xf8},                               // mov %fs:-8(%rcx),%rax
+		{0x64, 0x4c, 0x8b, 0x34, 0x25, 0xf8, 0xff, 0xff, 0xff},       // mov %fs:-8,%r14 (Go)
 		{0x64, 0x8b, 0x07},                                           // mov %fs:(%rdi),%eax
 		{0x64, 0x48, 0x8b, 0x44, 0x7e, 0x10},                         // mov %fs:0x10(%rsi,%rdi,2),%rax
 		{0x64, 0x4a, 0x8b, 0x44, 0xe3, 0x08},                         // mov %fs:8(%rbx,%r12,8),%rax
@@ -126,7 +128,7 @@ func TestFSVeneerEncoding(t *testing.T) {
 				continue
 			}
 			nm, ok := op.Args[i].(x86asm.Mem)
-			if !ok || nm.Segment != 0 || nm.Disp != m.Disp || nm.Index != m.Index || (m.Index != 0 && nm.Scale != m.Scale) {
+			if !ok || nm.Segment != 0 || int32(nm.Disp) != int32(m.Disp) || nm.Index != m.Index || (m.Index != 0 && nm.Scale != m.Scale) {
 				t.Errorf("% x: operand %d is %v, want %v on %v", orig, i, op.Args[i], m, r1)
 				continue
 			}
