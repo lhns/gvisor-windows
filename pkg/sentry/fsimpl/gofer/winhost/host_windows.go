@@ -182,6 +182,23 @@ func (fs *FS) Pin(id ID) error {
 	if err != nil {
 		return err
 	}
+	// A handle opened by file ID makes Windows refuse to replace the file by
+	// rename (access denied, whatever the access and sharing, even with only
+	// FILE_READ_ATTRIBUTES: TestRenameReplaceProbe), and every c/storage
+	// rewrite of layers.json, which the guest had open, then fell back to
+	// delete + rename. A handle opened by name does not have that effect, so
+	// reopen the file by its path (and keep the ID handle if the name has
+	// moved on in the meantime).
+	if p, perr := handlePath(h); perr == nil {
+		if nh, nerr := ntOpen(0, p, fileReadData|fileWriteData|fileReadAttributes|fileWriteAttributes|fileReadEA|fileWriteEA|deleteAccess, shareAll, windows.FILE_OPEN, windows.FILE_NON_DIRECTORY_FILE|windows.FILE_OPEN_REPARSE_POINT, 0); nerr == nil {
+			if a, aerr := fs.attrOf(nh); aerr == nil && a.ID == id {
+				windows.CloseHandle(h)
+				h = nh
+			} else {
+				windows.CloseHandle(nh)
+			}
+		}
+	}
 	fs.pins[id] = &pin{h: h, refs: 1}
 	return nil
 }

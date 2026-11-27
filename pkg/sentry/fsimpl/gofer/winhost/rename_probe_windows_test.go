@@ -90,6 +90,9 @@ func TestRenameReplaceProbe(t *testing.T) {
 		if err == nil {
 			works++
 		}
+		if v.pinTarget && err != nil {
+			t.Errorf("%s: a pinned target must be replaceable (guest files are pinned while open): %v", v.name, err)
+		}
 		if held != 0 {
 			windows.CloseHandle(held)
 		}
