@@ -39,7 +39,12 @@ $pipe = "podman-$Name"
 function Stop-Engine {
   if (Test-Path $pidFile) {
     $p = Get-Process -Id ([int](Get-Content $pidFile)) -ErrorAction SilentlyContinue
-    if ($p) { $p.Kill($true); $p.WaitForExit(30000) | Out-Null }
+    if ($p) {
+      # SIGTERM first (runsc kill reaches init through the control pipe of `run`), so podman closes its store the way
+      # the Linux harness's `pkill`/`docker stop` lets it; a hard kill is the fallback.
+      & $Runsc kill "podman-$Name" TERM *> $null
+      if (-not $p.WaitForExit(60000)) { Write-Host 'start-engine: no exit 60 s after SIGTERM, killing'; $p.Kill($true); $p.WaitForExit(30000) | Out-Null }
+    }
     Remove-Item $pidFile -Force
   }
 }
