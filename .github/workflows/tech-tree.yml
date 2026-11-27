@@ -1,9 +1,13 @@
 name: tech-tree
 on:
   push:
+    branches: [windows]
     paths: ["docs/**", "tech-tree.yaml", ".github/workflows/tech-tree.yml"]
   pull_request:
     paths: ["docs/**", "tech-tree.yaml"]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   check:
     runs-on: ubuntu-latest

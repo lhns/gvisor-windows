@@ -2,14 +2,22 @@
 # running in a runsc.exe sandbox, through a named pipe, as a standard user. Expected to fail at
 # first; docs/results/5-podman-windows.md lists the gaps per step.
 name: podman-windows
+# Called by ci.yml on push (runs=1); nightly with runs=4 (flakiness). Dispatch it alone with
+# `gh workflow run podman-windows --ref <branch> -f only=4 -f modes=native -f runs=1`.
 on:
-  push:
-    paths: ["pkg/**", "runsc/**", "tools/windows/**", "test/e2e/podman-acceptance/**", ".github/workflows/podman-windows.yml"]
+  workflow_call:
+    inputs:
+      prebuilt: {type: boolean, default: false}
+  schedule:
+    - cron: "17 3 * * *"
   workflow_dispatch:
     inputs:
       only: {description: 'steps to run, e.g. 4 (default all)', default: ''}
       modes: {description: 'comma list of fs modes to compare: default, native, rewrite (rewrite also keeps AVX-512)', default: 'default'}
       runs: {description: 'how many times to run the whole acceptance, in parallel (flakiness)', default: '1'}
+concurrency:
+  group: podman-windows-${{ github.ref }}-${{ inputs.prebuilt && 'ci' || github.event_name }}
+  cancel-in-progress: true
 env:
   PODMAN_VERSION: "6.2.0"
   DOCKER_VERSION: "27.3.1"
@@ -23,14 +31,21 @@ jobs:
     steps:
       - id: p
         run: |
-          n=${{ github.event.inputs.runs || 1 }}
-          echo "modes=$(echo '${{ github.event.inputs.modes || 'default' }}' | sed 's/,/","/g; s/^/["/; s/$/"]/')" >> $GITHUB_OUTPUT
+          n=${{ inputs.runs || (github.event_name == 'schedule' && 4 || 1) }}
+          echo "modes=$(echo '${{ inputs.modes || 'default' }}' | sed 's/,/","/g; s/^/["/; s/$/"]/')" >> $GITHUB_OUTPUT
           echo "runs=$(seq -s, 1 $n | sed 's/^/[/; s/$/]/')" >> $GITHUB_OUTPUT
   image:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # The image depends only on the podman version and the harness files (bump v1 to rebuild).
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: podman.erofs
+          key: podman-erofs-v1-${{ env.PODMAN_VERSION }}-${{ hashFiles('test/e2e/podman-acceptance/harness/**') }}
       - name: Erofs image from the podman image
+        if: steps.cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
           sudo apt-get update -qq && sudo apt-get install -y -qq erofs-utils
@@ -64,16 +79,10 @@ jobs:
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: {go-version-file: go.mod, cache: false}
       - uses: actions/download-artifact@v4
         with: {name: podman-rootfs, path: dl}
-      - name: Build
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force C:\ci\bin | Out-Null
-          go build -p 2 -o C:\ci\bin\runsc.exe ./runsc
-          go build -o C:\ci\bin\ttydrive.exe ./tools/windows/podman/ttydrive
+      - uses: ./.github/actions/winbin
+        with: {prebuilt: "${{ inputs.prebuilt }}", targets: "runsc,ttydrive"}
       - name: Clients
         shell: pwsh
         run: |
@@ -97,12 +106,12 @@ jobs:
           New-Item -ItemType Directory -Force C:\ci\std\engine\storage | Out-Null
           & tools/windows/ci/run-as-standard-user.ps1 `
             -Program 'C:\Program Files\PowerShell\7\pwsh.exe' `
-            -Arguments '-NoProfile','-File',"$PWD\tools\windows\podman\ci-run.ps1",'-Root','C:\ci','-Only','${{ github.event.inputs.only || 'all' }}','-FsMode','${{ matrix.mode }}' `
+            -Arguments '-NoProfile','-File',"$PWD\tools\windows\podman\ci-run.ps1",'-Root','C:\ci','-Only','${{ inputs.only || 'all' }}','-FsMode','${{ matrix.mode }}' `
             -GrantPath C:\ci\bin,C:\ci\tools,$PWD -WritablePath C:\ci\std -TimeoutSeconds 2400
       - name: Steps that must pass (grows with every fixed step)
         shell: pwsh
         run: |
-          $only = '${{ github.event.inputs.only }}'
+          $only = '${{ inputs.only }}'
           $must = 1, 2, 3, 4, 6, 7, 8, 9, 10 | Where-Object { -not $only -or ($only -split '[, ]+') -contains "$_" }
           $t = Get-Content C:\ci\std\results\steps.txt
           $bad = $must | Where-Object { $t -notmatch "^STEP $_ PASS" }

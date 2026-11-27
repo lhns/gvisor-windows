@@ -2,9 +2,13 @@ name: nftables
 
 on:
   push:
+    branches: [windows]
     paths: ["pkg/tcpip/nftables/**", "pkg/sentry/socket/netlink/netfilter/**", ".github/workflows/nftables.yml"]
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   race:
     runs-on: ubuntu-latest

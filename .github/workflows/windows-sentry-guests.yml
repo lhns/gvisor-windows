@@ -1,10 +1,24 @@
 # Phase 1d: the real Sentry on Windows runs static Linux guests from an in-memory
-# tmpfs on the winstub platform (tools/windows/sentryguest).
+# tmpfs on the winstub platform (tools/windows/sentryguest). The three legs run in a
+# loop in one job. Called by ci.yml on push; dispatch it alone with
+# `gh workflow run windows-sentry-guests --ref <branch> -f only=<case regexp> -f legs=native`.
 name: windows-sentry-guests
 on:
-  push:
-    paths: ["pkg/**", "runsc/**", "third_party/**", "tools/windows/**", "test/guests/**", "go.mod", ".github/workflows/windows-sentry-guests.yml"]
+  workflow_call:
+    inputs:
+      prebuilt: {type: boolean, default: false}
+      only: {type: string, default: ''}
+      legs: {type: string, default: ''}
   workflow_dispatch:
+    inputs:
+      only: {description: 'regexp of the guest case names to run, e.g. fork|sig_ (default all, and the stress/timing steps)', default: ''}
+      legs: {description: 'comma list of legs: native, rewrite, rewrite-fxsave (default all)', default: ''}
+concurrency:
+  group: windows-sentry-guests-${{ github.ref }}-${{ inputs.prebuilt && 'ci' || 'solo' }}
+  cancel-in-progress: true
+env:
+  LEGS: ${{ inputs.legs || 'native,rewrite,rewrite-fxsave' }}
+  ONLY: ${{ inputs.only }}
 jobs:
   guests:
     runs-on: ubuntu-latest
@@ -12,9 +26,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           sparse-checkout: test/guests
-      - uses: actions/setup-go@v5
+      # The guests depend only on test/guests (bump v1 to rebuild: the base images float).
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: out
+          key: sentry-guests-v1-${{ hashFiles('test/guests/**') }}
+      - if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/setup-go@v5
         with: {go-version: "1.26.x", cache: false}
       - name: Build guests
+        if: steps.cache.outputs.cache-hit != 'true'
         run: |
           G=test/guests
           mkdir -p out
@@ -49,29 +71,17 @@ jobs:
   run:
     needs: guests
     runs-on: windows-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        mode: [native, rewrite, rewrite-fxsave]
-    env:
-      WINSTUB_FSMODE: ${{ matrix.mode == 'native' && 'native' || 'rewrite' }}
-      WINSTUB_FPMODE: ${{ matrix.mode == 'rewrite-fxsave' && 'fxsave' || '' }}
-      WINSTUB_KEEP_AVX512: ${{ matrix.mode == 'rewrite' && '1' || '' }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: {go-version-file: go.mod, cache: false}
       - uses: actions/download-artifact@v4
         with: {name: guests, path: out}
-      - name: Build
-        shell: pwsh
-        run: |
-          go vet ./tools/windows/sentryguest
-          go build -o sentryguest.exe ./tools/windows/sentryguest
+      - uses: ./.github/actions/winbin
+        with: {prebuilt: "${{ inputs.prebuilt }}", targets: sentryguest}
       - name: Guests
         shell: pwsh
         run: |
-          $fail = 0
+          . tools/windows/ci/leg.ps1
+          Copy-Item C:\ci\bin\sentryguest.exe sentryguest.exe
           $nl = "`n"
           $cases = @(
             @{n='bench_asm'; out="bench done${nl}"; code=0},
@@ -113,66 +123,86 @@ jobs:
           foreach ($t in $tcases) { $t.tar = $true }
           $cases += $tcases
           $cases += $known
-          foreach ($c in $cases) {
-            "===== $($c.n)" | Tee-Object -Append -FilePath guests.txt
-            $a = @("-check", "-out=$($c.out)", "-code=$($c.code)", "-timeout=120s")
-            if ($c.tar) { $a += "-tar=out/rootfs.tar"; $a += $c.a } else { $a += "out/$($c.n)" }
-            & ./sentryguest.exe @a 2>&1 | Tee-Object -Append -FilePath guests.txt
-            "exit: $LASTEXITCODE" | Tee-Object -Append -FilePath guests.txt
-            if ($LASTEXITCODE -ne 0 -and -not $c.known) { $fail = 1 }
+          if ($env:ONLY) { $cases = @($cases | Where-Object { $_.n -match $env:ONLY }) }
+          $fail = 0
+          foreach ($leg in $env:LEGS -split '[, ]+' | Where-Object { $_ }) {
+            Set-Leg $leg -KeepAvx512
+            "##### leg $leg" | Tee-Object -Append -FilePath guests-$leg.txt
+            foreach ($c in $cases) {
+              "===== $($c.n)" | Tee-Object -Append -FilePath guests-$leg.txt
+              $a = @("-check", "-out=$($c.out)", "-code=$($c.code)", "-timeout=120s")
+              if ($c.tar) { $a += "-tar=out/rootfs.tar"; $a += $c.a } else { $a += "out/$($c.n)" }
+              & ./sentryguest.exe @a 2>&1 | Tee-Object -Append -FilePath guests-$leg.txt
+              "exit: $LASTEXITCODE" | Tee-Object -Append -FilePath guests-$leg.txt
+              if ($LASTEXITCODE -ne 0 -and -not $c.known) { $fail = 1 }
+            }
           }
           exit $fail
       - name: Podman-shaped stress
+        if: always() && env.ONLY == ''
         shell: pwsh
         run: |
+          . tools/windows/ci/leg.ps1
           $fail = 0
-          foreach ($pol in 'tokens', 'limit', 'always') {
-            $env:WINSTUB_POLICY = $pol
-            "===== gopodman, spin policy $pol" | Tee-Object -Append -FilePath podman.txt
-            $o = & ./sentryguest.exe "-tar=out/rootfs.tar" "-timeout=60s" /bin/gopodman 2>&1 | Out-String
-            $o | Tee-Object -Append -FilePath podman.txt
-            if ($o -notmatch 'gopodman ok' -or $LASTEXITCODE -ne 0) { "FAILED with policy $pol"; $fail = 1 }
+          foreach ($leg in $env:LEGS -split '[, ]+' | Where-Object { $_ }) {
+            Set-Leg $leg -KeepAvx512
+            foreach ($pol in 'tokens', 'limit', 'always') {
+              $env:WINSTUB_POLICY = $pol
+              "===== $leg gopodman, spin policy $pol" | Tee-Object -Append -FilePath podman.txt
+              $o = & ./sentryguest.exe "-tar=out/rootfs.tar" "-timeout=60s" /bin/gopodman 2>&1 | Out-String
+              $o | Tee-Object -Append -FilePath podman.txt
+              if ($o -notmatch 'gopodman ok' -or $LASTEXITCODE -ne 0) { "FAILED with policy $pol in leg $leg"; $fail = 1 }
+            }
           }
           exit $fail
       - name: Hunt for hangs (limit policy)
         timeout-minutes: 15
-        if: always() && matrix.mode == 'native'
+        if: always() && env.ONLY == '' && contains(env.LEGS, 'native')
         continue-on-error: true
         shell: pwsh
+        env: {WINSTUB_FSMODE: native, WINSTUB_POLICY: limit}
         run: |
-          foreach ($pol in 'limit') {
-            $env:WINSTUB_POLICY = $pol
-            for ($i = 0; $i -lt 40; $i++) {
-              $o = & ./sentryguest.exe "-tar=out/rootfs.tar" "-timeout=20s" /bin/gopodman 2>&1 | Out-String
-              if ($o -notmatch 'gopodman ok') { "===== $pol run $i hung or failed" | Tee-Object -Append -FilePath hang.txt; $o | Tee-Object -Append -FilePath hang.txt }
-              else { "$pol run $i ok" | Tee-Object -Append -FilePath hang.txt }
-            }
+          for ($i = 0; $i -lt 40; $i++) {
+            $o = & ./sentryguest.exe "-tar=out/rootfs.tar" "-timeout=20s" /bin/gopodman 2>&1 | Out-String
+            if ($o -notmatch 'gopodman ok') { "===== limit run $i hung or failed" | Tee-Object -Append -FilePath hang.txt; $o | Tee-Object -Append -FilePath hang.txt }
+            else { "limit run $i ok" | Tee-Object -Append -FilePath hang.txt }
           }
       - name: Diagnose dlopen (debug log)
-        if: always() && matrix.mode != 'native'
+        if: always() && env.ONLY == ''
         continue-on-error: true
         env: {WINSTUB_DEBUG: "1"}
         shell: pwsh
         run: |
-          $o = & ./sentryguest.exe "-tar=out/rootfs.tar" "-timeout=60s" /bin/dlopen_glibc 2>&1 | Out-String
-          $o -split "`n" | Where-Object { $_ -match 'fault|signal|unsupported|exception|illegal|unexpected' -and $_ -notmatch 'ud2 site' } | Select-Object -Last 150 | Tee-Object -Append -FilePath diag.txt
+          . tools/windows/ci/leg.ps1
+          foreach ($leg in $env:LEGS -split '[, ]+' | Where-Object { $_ -and $_ -ne 'native' }) {
+            Set-Leg $leg -KeepAvx512
+            "===== $leg" | Tee-Object -Append -FilePath diag.txt
+            $o = & ./sentryguest.exe "-tar=out/rootfs.tar" "-timeout=60s" /bin/dlopen_glibc 2>&1 | Out-String
+            $o -split "`n" | Where-Object { $_ -match 'fault|signal|unsupported|exception|illegal|unexpected' -and $_ -notmatch 'ud2 site' } | Select-Object -Last 150 | Tee-Object -Append -FilePath diag.txt
+          }
       - name: Timing
+        if: always() && env.ONLY == ''
         continue-on-error: true
         shell: pwsh
         run: |
-          foreach ($n in "hello_asm","hello_glibc","fork_glibc","hello_go") {
-            $t = @()
-            for ($i = 0; $i -lt 9; $i++) {
-              $o = & ./sentryguest.exe "-code=$(if ($n -eq 'hello_glibc') {7} else {0})" "out/$n" 2>&1 | Out-String
-              if ($o -match 'run ([0-9.]+)(ms|s)') { $v = [double]$Matches[1]; if ($Matches[2] -eq 's') { $v *= 1000 }; $t += $v }
+          . tools/windows/ci/leg.ps1
+          foreach ($leg in $env:LEGS -split '[, ]+' | Where-Object { $_ }) {
+            Set-Leg $leg -KeepAvx512
+            foreach ($n in "hello_asm","hello_glibc","fork_glibc","hello_go") {
+              $t = @()
+              for ($i = 0; $i -lt 9; $i++) {
+                $o = & ./sentryguest.exe "-code=$(if ($n -eq 'hello_glibc') {7} else {0})" "out/$n" 2>&1 | Out-String
+                if ($o -match 'run ([0-9.]+)(ms|s)') { $v = [double]$Matches[1]; if ($Matches[2] -eq 's') { $v *= 1000 }; $t += $v }
+              }
+              $t = $t | Sort-Object
+              "TIMING $leg $n median $($t[4]) ms (min $($t[0]), max $($t[8])) all: $($t -join ' ')" | Tee-Object -Append -FilePath timing.txt
             }
-            $t = $t | Sort-Object
-            "TIMING $n median $($t[4]) ms (min $($t[0]), max $($t[8])) all: $($t -join ' ')" | Tee-Object -Append -FilePath timing.txt
           }
       - name: Timing, both modes on this machine
-        if: matrix.mode == 'native'
+        if: always() && env.ONLY == '' && contains(env.LEGS, 'native')
         continue-on-error: true
         shell: pwsh
+        env: {WINSTUB_FPMODE: ''}
         run: |
           foreach ($round in 1..2) {
           foreach ($m in 'native', 'rewrite') {
@@ -192,10 +222,10 @@ jobs:
           }
           }
       - name: Trace
-        if: always() && matrix.mode == 'native'
+        if: always() && env.ONLY == '' && contains(env.LEGS, 'native')
         continue-on-error: true
         shell: pwsh
-        env: {WINSTUB_TRACE: "1"}
+        env: {WINSTUB_TRACE: "1", WINSTUB_FSMODE: native, WINSTUB_FPMODE: ''}
         run: |
           foreach ($n in "hello_asm","hello_glibc","fork_glibc") {
             "===== trace $n" | Tee-Object -Append -FilePath trace.txt
@@ -203,4 +233,13 @@ jobs:
           }
       - uses: actions/upload-artifact@v4
         if: always()
-        with: {name: "sentry-guests-output-${{ matrix.mode }}", path: "guests.txt\ntrace.txt\ntiming.txt\npodman.txt\nhang.txt"}
+        with:
+          name: sentry-guests-output
+          path: |
+            guests-*.txt
+            trace.txt
+            timing.txt
+            podman.txt
+            hang.txt
+            diag.txt
+          if-no-files-found: ignore

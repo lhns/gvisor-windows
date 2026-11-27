@@ -5,6 +5,9 @@ on:
     paths: ["pkg/**", "runsc/**", "third_party/**", "go.mod", "test/e2e/podman-acceptance/**", ".github/workflows/podman-acceptance-linux.yml"]
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 env:
   RESULTS_DIR: ${{ github.workspace }}/results
 

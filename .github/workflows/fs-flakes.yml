@@ -6,6 +6,9 @@ on:
       iters: {description: iterations per worker, default: "600"}
       workers: {description: parallel mount namespaces, default: "12"}
       reps: {description: repetitions, default: "3"}
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   guests:
     runs-on: ubuntu-latest

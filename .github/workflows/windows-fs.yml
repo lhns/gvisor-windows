@@ -1,50 +1,51 @@
+# Called by ci.yml on push; dispatch it alone with `gh workflow run windows-fs --ref <branch>`.
 name: windows-fs
 
 on:
-  push:
+  workflow_call:
+    inputs:
+      prebuilt: {type: boolean, default: false}
   workflow_dispatch:
 
-env:
-  CGO_ENABLED: "0"
+concurrency:
+  group: windows-fs-${{ github.ref }}-${{ inputs.prebuilt && 'ci' || 'solo' }}
+  cancel-in-progress: true
 
 jobs:
   directfs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
+      - uses: ./.github/actions/winbin
+        with: {prebuilt: "${{ inputs.prebuilt }}", targets: "winhost,gofer"}
       - name: Host layer (winhost) tests
         shell: bash
         run: |
           set +e
-          go test -p 1 -count=1 -v -timeout 600s ./pkg/sentry/fsimpl/gofer/winhost/ > winhost.log 2>&1
+          (cd pkg/sentry/fsimpl/gofer/winhost && C:/ci/bin/winhost.test.exe -test.count=1 -test.v -test.timeout=600s) > winhost.log 2>&1
           rc=$?
-          grep -E "^(\s*--- |FAIL|ok|panic|fatal)|_test.go:[0-9]+:" winhost.log | head -200
+          grep -E "^(\s*--- |FAIL|ok|PASS|panic|fatal)|_test.go:[0-9]+:" winhost.log | head -200
           exit $rc
       - name: Gofer backend through the VFS layer
         if: always()
         shell: bash
         run: |
           set +e
-          go test -p 1 -count=1 -v -timeout 600s -run 'TestVFS' ./pkg/sentry/fsimpl/gofer/ > gofer.log 2>&1
+          (cd pkg/sentry/fsimpl/gofer && C:/ci/bin/gofer.test.exe -test.count=1 -test.v -test.timeout=600s -test.run 'TestVFS') > gofer.log 2>&1
           rc=$?
-          grep -E "^(\s*--- |FAIL|ok|panic|fatal)|_test.go:[0-9]+:|^goroutine|\.go:[0-9]+ " gofer.log | head -120
+          grep -E "^(\s*--- |FAIL|ok|PASS|panic|fatal)|_test.go:[0-9]+:|^goroutine|\.go:[0-9]+ " gofer.log | head -120
           exit $rc
       - name: The watcher-driven cache tests, repeated (flakiness check)
         if: always()
         shell: bash
         run: |
-          go test -p 1 -count=20 -timeout 600s -run 'TestVFSNegativeCacheAndQuickChange|TestVFSWindowsChangesReachGuest' ./pkg/sentry/fsimpl/gofer/ 2>&1 | tail -20
-          go test -p 1 -count=10 -timeout 600s -run 'TestWatch' ./pkg/sentry/fsimpl/gofer/winhost/ 2>&1 | tail -20
+          (cd pkg/sentry/fsimpl/gofer && C:/ci/bin/gofer.test.exe -test.count=20 -test.timeout=600s -test.run 'TestVFSNegativeCacheAndQuickChange|TestVFSWindowsChangesReachGuest' 2>&1 | tail -20)
+          (cd pkg/sentry/fsimpl/gofer/winhost && C:/ci/bin/winhost.test.exe -test.count=10 -test.timeout=600s -test.run 'TestWatch' 2>&1 | tail -20)
       - name: The same tests as a standard user (deletes and renames in the user's own folders)
         if: always()
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force C:\ci\bin, C:\ci\probe | Out-Null
-          go test -c -o C:\ci\bin\winhost.test.exe ./pkg/sentry/fsimpl/gofer/winhost
-          go test -c -o C:\ci\bin\gofer.test.exe ./pkg/sentry/fsimpl/gofer
+          New-Item -ItemType Directory -Force C:\ci\probe | Out-Null
           & tools/windows/ci/run-as-standard-user.ps1 -Program C:\ci\bin\winhost.test.exe -Arguments '-test.v','-test.count=1','-test.timeout=600s' -GrantPath C:\ci\bin -WritablePath C:\ci\probe -Environment @{GVISOR_PROBE_DIR='C:\ci\probe'; TEMP='C:\ci\probe'; TMP='C:\ci\probe'} -TimeoutSeconds 900
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & tools/windows/ci/run-as-standard-user.ps1 -Program C:\ci\bin\gofer.test.exe -Arguments '-test.v','-test.count=1','-test.timeout=900s','-test.run','TestVFS' -GrantPath C:\ci\bin -TimeoutSeconds 1200
