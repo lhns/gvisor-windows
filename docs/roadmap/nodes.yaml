@@ -2091,21 +2091,22 @@
   lane: windows-ci
   plain: A syscall through a relocated veneer returns into the veneer; after clone into a new address space the veneers sit elsewhere, so the child resumes on a zero page and crashes.
   notes: 'Fixed: patch windows end at the syscall where possible, other veneers get a platform-wide address per site; clonesys cases are required.'
-- outcome: unrated
+- outcome: mixed
   evidence:
-  - docs/results/3b-runsc-speed-lifecycle.md
-  verdict_quote: ''
-  headline: ''
+  - docs/results/1i-profile.md
+  verdict_quote: trusting the Sentry's cache of the root folder made it 6x to 12x faster
+  headline: 6x to 12x faster
   replaced_by: []
   start: '2026-11-27'
-  end: ''
-  folded: []
+  end: '2026-11-27'
+  folded:
+  - Fork+exec only 1.7-2.1x faster with a pool of ready address spaces; stub creation is the floor (2026-11-27, commit 1d513a109)
   overview: true
   id: sentry-profile-small-file-path
   title: Profile the slow file and exec path
   track: sentry
   kind: experiment
-  state: in-progress
+  state: done
   lane: windows-ci
   depends_on:
   - workloads-end-to-end-speed
@@ -2114,6 +2115,7 @@
 - outcome: unrated
   evidence:
   - docs/results/1h-platform-share.md
+  - docs/results/1i-profile.md
   verdict_quote: ''
   headline: ''
   depends_on: []
@@ -2128,7 +2130,8 @@
   kind: defect
   state: next
   lane: windows-ci
-  plain: 'A multithreaded guest that forks many children hangs in about 1 of 50 runs: the debugger loop and an interrupt capture the same thread at once.'
+  plain: 'A guest that forks many children hangs now and then: about 1 in 50 gopodman runs, and 9 in 48 fork+exec loops through runsc.exe with the exclusive root cache (2 in 48 with the shared cache); the
+    shell waits in wait4 with no child task.'
   notes: 'Fixed when: the gopodman hunt step passes 200 runs in a row; suggested: capture threads with a request flag the stub polls instead of SuspendThread.'
 - outcome: unrated
   evidence:
@@ -2168,3 +2171,23 @@
   lane: windows-ci
   plain: arch_prctl(ARCH_SET_GS) and ptrace preparation return a raw error from the platform instead of an errno, so the Sentry panics with "Unknown syscall 158".
   notes: 'Fixed when: arch_prctl_test fails cleanly (EPERM or ENOTSUP) instead of crashing the Sentry.'
+- id: platform-recycle-stubs
+  title: Reuse stub processes across exec
+  track: platform
+  kind: feature
+  state: blocked
+  outcome: unrated
+  evidence:
+  - docs/results/1i-profile.md
+  verdict_quote: ''
+  headline: ''
+  depends_on:
+  - platform-no-fsgsbase-fallback
+  replaced_by: []
+  lane: windows-ci
+  start: ''
+  end: ''
+  folded: []
+  overview: false
+  plain: Each fork+exec starts two stub processes at about 10 ms each; recycling a stub on release and execve and mapping memory up front would cut process start further.
+  notes: 'Done when: the 100x fork+exec loop through runsc.exe is at least 4x faster than the 3.47 s baseline in docs/results/3b.'

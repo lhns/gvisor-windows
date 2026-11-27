@@ -10,6 +10,7 @@
 package winrunsc
 
 import (
+	"runtime/pprof"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,6 +19,9 @@ import (
 	"time"
 
 	specs "github.com/opencontainers/runtime-spec/specs-go"
+	"gvisor.dev/gvisor/pkg/abi"
+	"gvisor.dev/gvisor/pkg/sentry/arch"
+	"gvisor.dev/gvisor/pkg/sentry/kernel"
 	"gvisor.dev/gvisor/pkg/cpuid"
 	"gvisor.dev/gvisor/pkg/log"
 	"gvisor.dev/gvisor/pkg/sentry/fsimpl/rootfs"
@@ -33,7 +37,36 @@ var pipeForwardFlag, unixForwardFlag string
 
 // Main runs runsc.exe and does not return.
 func Main() {
-	os.Exit(run(os.Args[1:]))
+	// Profiling hooks (docs/results/1i-profile.md): RUNSC_CPUPROFILE=file writes a Go CPU
+	// profile of this process; GVISOR_PROFSTATS=1 prints per-syscall counts to stderr at exit.
+	if f := os.Getenv("RUNSC_CPUPROFILE"); f != "" {
+		if w, err := os.Create(f); err == nil && pprof.StartCPUProfile(w) == nil {
+			defer pprof.StopCPUProfile()
+		}
+	}
+	// RUNSC_HANG_DUMP=file:seconds writes the stacks of all goroutines after that long (a hang hunt).
+	if v := os.Getenv("RUNSC_HANG_DUMP"); v != "" {
+		if i := strings.LastIndex(v, ":"); i > 0 {
+			file, secs := v[:i], v[i+1:]
+			if d, err := time.ParseDuration(secs + "s"); err == nil {
+				go func() {
+					time.Sleep(d)
+					if w, err := os.Create(file); err == nil {
+						pprof.Lookup("goroutine").WriteTo(w, 2)
+						w.Close()
+					}
+				}()
+			}
+		}
+	}
+	code := run(os.Args[1:])
+	if kernel.ProfStats {
+		if tbl, ok := kernel.LookupSyscallTable(abi.Linux, arch.AMD64); ok {
+			kernel.DumpProfStats(os.Stderr, tbl.LookupName)
+		}
+	}
+	pprof.StopCPUProfile()
+	os.Exit(code)
 }
 
 func usage() {

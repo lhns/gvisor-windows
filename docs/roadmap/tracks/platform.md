@@ -42,6 +42,7 @@ flowchart TB
     platform_busybox_on_windows["✔ Run busybox under<br/>the Sentry"]
     platform_hardware_acceleration["⏸ Use hardware<br/>acceleration when<br/>available"]
     platform_binary_translation_fallback["⏸ Binary translation<br/>as a fallback"]
+    platform_recycle_stubs["⛔ Reuse stub processes<br/>across exec"]
     platform_elf_alignment_survey ~~~ platform_tls_register
     platform_trap_cost ~~~ platform_restricted_stub
     platform_4k_section_views ~~~ platform_zpoline_hooks
@@ -78,7 +79,7 @@ flowchart TB
     platform_unsupported_errno ~~~ platform_busybox_on_windows
     platform_own_vdso ~~~ platform_hardware_acceleration
     platform_64k_mapping_conflicts ~~~ platform_binary_translation_fallback
-    platform_busybox_on_windows ~~~ platform_binary_translation_fallback
+    platform_busybox_on_windows ~~~ platform_recycle_stubs
     platform_trap_cost -.-> platform_veh_on_guest_stack_unsafe
     platform_tls_register -.-> platform_veh_on_guest_stack_unsafe
     platform_trap_cost --> platform_exception_stack
@@ -105,6 +106,7 @@ flowchart TB
     platform_stub_controller --> platform_own_vdso
     platform_winstub --> platform_hardware_acceleration
     platform_debug_event_cost --> platform_binary_translation_fallback
+    platform_no_fsgsbase_fallback --> platform_recycle_stubs
     linkStyle 37,38 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
@@ -127,7 +129,7 @@ flowchart TB
     class platform_fast_process_start vsucc
     class platform_no_fsgsbase_fallback inprog
     class platform_rare_hang_under_exec_load,platform_unsupported_errno finding
-    class platform_own_vdso blocked
+    class platform_own_vdso,platform_recycle_stubs blocked
     class platform_64k_mapping_conflicts,platform_hardware_acceleration,platform_binary_translation_fallback parked
 ```
 <!-- END GENERATED: track-platform -->
@@ -168,8 +170,9 @@ flowchart TB
 | `platform-split-syscall-unpatched` | Syscalls split across mappings | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/1c-windows-platform.md; docs/results/1e-platform-perf.md |
 | `platform-map-files-without-sections` | Map files not in the memory file | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/1g-platform-memory.md; docs/adr/0016-memory-file-on-extent-sections.md |
 | `platform-veneer-address-in-child` | Veneer addresses differ after clone | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/results/1h-platform-share.md |
-| `platform-rare-hang-under-exec-load` | Rare hang under heavy exec load | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/1h-platform-share.md |
+| `platform-rare-hang-under-exec-load` | Rare hang under heavy exec load | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/1h-platform-share.md; docs/results/1i-profile.md |
 | `platform-unsupported-errno` | Unsupported platform calls return errnos | defect | windows-ci | in-progress | unrated | 2026-11-27 |  |  |  |  |  | docs/results/4-syscall-tests.md |
+| `platform-recycle-stubs` | Reuse stub processes across exec | feature | windows-ci | blocked | unrated |  |  | platform-no-fsgsbase-fallback |  |  |  | docs/results/1i-profile.md |
 
 ### Details per node
 
@@ -206,8 +209,9 @@ flowchart TB
 | `platform-split-syscall-unpatched` | Syscalls split across mappings |  |  | A syscall instruction whose two bytes fall into two separately mapped ranges is not found by the scan, so it would reach the Windows kernel. | Fixed when: a test guest with a syscall straddling two MapFile ranges is patched and served correctly. |  |  |  |  |
 | `platform-map-files-without-sections` | Map files not in the memory file |  |  | The platform can only map pages of the Sentry memory file; erofs image pages (and any other memmap.File) make the guest fault on its first instruction. | Fixed when: runsc run boots busybox from an erofs image root (mkfs.erofs --all-root) on windows-latest. |  |  |  |  |
 | `platform-veneer-address-in-child` | Veneer addresses differ after clone |  |  | A syscall through a relocated veneer returns into the veneer; after clone into a new address space the veneers sit elsewhere, so the child resumes on a zero page and crashes. | Fixed: patch windows end at the syscall where possible, other veneers get a platform-wide address per site; clonesys cases are required. |  |  |  |  |
-| `platform-rare-hang-under-exec-load` | Rare hang under heavy exec load |  |  | A multithreaded guest that forks many children hangs in about 1 of 50 runs: the debugger loop and an interrupt capture the same thread at once. | Fixed when: the gopodman hunt step passes 200 runs in a row; suggested: capture threads with a request flag the stub polls instead of SuspendThread. |  |  |  |  |
+| `platform-rare-hang-under-exec-load` | Rare hang under heavy exec load |  |  | A guest that forks many children hangs now and then: about 1 in 50 gopodman runs, and 9 in 48 fork+exec loops through runsc.exe with the exclusive root cache (2 in 48 with the shared cache); the shell waits in wait4 with no child task. | Fixed when: the gopodman hunt step passes 200 runs in a row; suggested: capture threads with a request flag the stub polls instead of SuspendThread. |  |  |  |  |
 | `platform-unsupported-errno` | Unsupported platform calls return errnos |  |  | arch_prctl(ARCH_SET_GS) and ptrace preparation return a raw error from the platform instead of an errno, so the Sentry panics with "Unknown syscall 158". | Fixed when: arch_prctl_test fails cleanly (EPERM or ENOTSUP) instead of crashing the Sentry. |  |  |  |  |
+| `platform-recycle-stubs` | Reuse stub processes across exec |  |  | Each fork+exec starts two stub processes at about 10 ms each; recycling a stub on release and execve and mapping memory up front would cut process start further. | Done when: the 100x fork+exec loop through runsc.exe is at least 4x faster than the 3.47 s baseline in docs/results/3b. |  |  |  |  |
 
 ### Folded items per node
 
