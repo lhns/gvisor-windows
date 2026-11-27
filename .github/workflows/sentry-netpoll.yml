@@ -43,7 +43,7 @@ jobs:
           echo "shard $shard"
           grep "^$BIN	" "$shard/list.txt" > list.txt
           wc -l list.txt
-          flags="-sysmounts -stream -handles 5s -timeout 90m"
+          flags="-sysmounts -stream -handles 5s -timeout 25m"
           [ "$NET" = true ] && flags="$flags -net"
           set +e
           ./sentryguest.exe -tar "$shard/rootfs.tar" $flags -files "list.txt:/list.txt" /bin/driver -t 60 /list.txt > run.log 2>&1
