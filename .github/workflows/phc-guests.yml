@@ -1,0 +1,24 @@
+# Probe guests for the rewrite-mode heap corruption (docs/results/1p-rewrite-heap.md), built on
+# Debian bookworm (whose static glibc runs on CPUs without AVX) with their disassembly.
+name: phc-guests
+on:
+  workflow_dispatch:
+jobs:
+  guests:
+    runs-on: ubuntu-latest
+    container: debian:bookworm
+    steps:
+      - run: apt-get update -qq && apt-get install -y -qq gcc libc6-dev binutils git >/dev/null
+      - uses: actions/checkout@v4
+        with: {sparse-checkout: test/guests}
+      - run: |
+          mkdir -p out
+          for g in aptrename fsstress mountkeep devnull ovlsub; do gcc -static -no-pie -O1 -Wall -o out/$g test/guests/$g.c; done
+          gcc -static -no-pie -O1 -Wall -o out/aptprobe test/guests/phc/aptprobe.c
+          gcc -static -no-pie -O1 -Wall -o out/heapprobe test/guests/phc/heapprobe.c
+          mkdir -p dis
+          for g in aptrename aptprobe heapprobe; do objdump -d out/$g > dis/$g.txt; nm -n out/$g > dis/$g.nm; done
+      - uses: actions/upload-artifact@v4
+        with: {name: phc-guests, path: out}
+      - uses: actions/upload-artifact@v4
+        with: {name: phc-dis, path: dis}
