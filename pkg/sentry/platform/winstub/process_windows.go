@@ -75,7 +75,7 @@ type thread struct {
 	hThread uintptr
 	tid     uint32
 	// diagnostics: replies sent, SetEvent calls made for them
-	nReply, nSet atomic.Uint32
+	nReply, nSet, nSetFail, lastSetErr atomic.Uint32
 
 	// stopMu serializes stopping the thread (debug event handler, interrupt).
 	stopMu sync.Mutex
@@ -576,6 +576,13 @@ func (as *addressSpace) interrupt(t *thread) bool {
 	// CREATE_THREAD event, running the loader) is left alone: suspending it there
 	// can wedge it for good.
 	if atomic.LoadUint32(t.u32(stubasm.PgRunning)) == 0 {
+		return false
+	}
+	// A thread that has just been answered is waking up from its wait in the
+	// kernel (or still asleep in it): suspending it there loses the wake-up
+	// often enough to hang the guest. Only a thread that has gone through the
+	// whole reply path (state 0) and runs guest code is captured.
+	if t.state() == 2 || atomic.LoadUint32(t.u32(stubasm.PgStubSlp)) != 0 {
 		return false
 	}
 	t.mu.Lock()

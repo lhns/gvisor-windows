@@ -69,8 +69,8 @@ func DumpState(w io.Writer) {
 				}
 				pResumeThread.Call(t.hThread)
 			}
-			fmt.Fprintf(w, "  thread %d tid %d: state %d ctlSleep %d stubSleep %d mode %d parked %v lastKind %d req %+v spins %d rip %#x (%s) exit %d suspendcount %d replies %d setevents %d stubwaits %d\n",
-				i, t.tid, t.state(), *t.u32(stubasm.PgCtlSlp), *t.u32(stubasm.PgStubSlp), *t.u32(stubasm.PgMode), t.parked, t.lastKind, t.req, *t.u64(stubasm.PgSpins), rip, ntdllSymbol(rip), code, prevSuspend, t.nReply.Load(), t.nSet.Load(), *t.u32(stubasm.PgWaits))
+			fmt.Fprintf(w, "  thread %d tid %d: state %d ctlSleep %d stubSleep %d mode %d parked %v lastKind %d req %+v spins %d rip %#x (%s) exit %d suspendcount %d replies %d setevents %d (failed %d, error %d) stubwaits %d\n",
+				i, t.tid, t.state(), *t.u32(stubasm.PgCtlSlp), *t.u32(stubasm.PgStubSlp), *t.u32(stubasm.PgMode), t.parked, t.lastKind, t.req, *t.u64(stubasm.PgSpins), rip, ntdllSymbol(rip), code, prevSuspend, t.nReply.Load(), t.nSet.Load(), t.nSetFail.Load(), t.lastSetErr.Load(), *t.u32(stubasm.PgWaits))
 			t.mu.Unlock()
 		}
 		as.tmu.Unlock()

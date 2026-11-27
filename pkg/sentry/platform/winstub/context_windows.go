@@ -17,6 +17,7 @@
 package winstub
 
 import (
+	"syscall"
 	"os"
 	"sync/atomic"
 	"time"
@@ -264,7 +265,10 @@ func (c *winContext) resume(t *thread, ac *arch.Context64) error {
 		// The stub's spin ended before we answered: it sleeps on the event.
 		c.stubScore = scoreUpdate(c.stubScore, false)
 		c.releaseToken(t.as.p)
-		pSetEvent.Call(t.evReply)
+		if r, _, e := pSetEvent.Call(t.evReply); r == 0 {
+			t.nSetFail.Add(1)
+			t.lastSetErr.Store(uint32(e.(syscall.Errno)))
+		}
 	} else {
 		c.stubScore = scoreUpdate(c.stubScore, true)
 	}
