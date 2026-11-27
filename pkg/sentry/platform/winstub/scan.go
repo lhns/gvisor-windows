@@ -113,10 +113,11 @@ func decodeRangeSafe(code []byte, from, end int, list []ins) (res []ins, at int,
 		}
 	}()
 	for off < end {
-		// endbr64 and endbr32: the decoder reads them as a 3-byte instruction and a `cli`
-		if off+4 <= len(code) && code[off] == 0xF3 && code[off+1] == 0x0F && code[off+2] == 0x1E && code[off+3]&^1 == 0xFA {
-			list = append(list, ins{off: off, n: 4, op: x86asm.NOP, cls: clsOK})
-			off += 4
+		// CET instructions (endbr64 and endbr32 among them): the decoder reads them as other
+		// instructions of other lengths
+		if n := cetLen(code[off:min(len(code), off+16)]); n > 0 && off+n <= len(code) {
+			list = append(list, ins{off: off, n: n, op: x86asm.NOP, cls: clsOK})
+			off += n
 			continue
 		}
 		inst, err := x86asm.Decode(code[off:], 64)
@@ -493,9 +494,38 @@ func modrmLen(b []byte) (n int, ripRel bool) {
 	return n, false
 }
 
+// cetLen returns the length of the CET instruction at the start of b (endbr64/32, rdsspd/q,
+// incsspd/q, saveprevssp, setssbsy, rstorssp), 0 if it is none.
+func cetLen(b []byte) int {
+	if len(b) < 4 || b[0] != 0xF3 {
+		return 0
+	}
+	i := 1
+	if b[i]&0xF0 == 0x40 {
+		i++
+	}
+	if i+2 >= len(b) || b[i] != 0x0F {
+		return 0
+	}
+	op, m := b[i+1], b[i+2]
+	switch {
+	case op == 0x1E && m>>6 == 3 && m>>3&7 != 0: // endbr (fa, fb), rdssp (/1)
+		return i + 3
+	case op == 0xAE && m>>6 == 3 && m>>3&7 == 5: // incssp
+		return i + 3
+	case op == 0x01 && (m == 0xEA || m == 0xE8): // saveprevssp, setssbsy
+		return i + 3
+	case op == 0x01 && m>>6 != 3 && m>>3&7 == 5: // rstorssp
+		if n, _ := modrmLen(b[i+2:]); n > 0 {
+			return i + 2 + n
+		}
+	}
+	return 0
+}
+
 // unknownLen returns the length of an instruction that the decoder does not know and
-// whose length follows from its encoding: VEX (BMI, mask registers, ...), EVEX and the
-// CET instructions, and whether it addresses memory relative to rip. 0 if b is none.
+// whose length follows from its encoding: VEX (BMI, mask registers, ...) and EVEX, and
+// whether it addresses memory relative to rip. 0 if b is none.
 func unknownLen(b []byte) (n int, ripRel bool) {
 	if len(b) < 3 {
 		return 0, false
@@ -509,27 +539,6 @@ func unknownLen(b []byte) (n int, ripRel bool) {
 		pre, op = 3, int(b[1]&0x1F)
 	case 0x62:
 		pre, op, evex = 4, int(b[1]&7), true
-	case 0xF3: // CET: rdsspd/q, incsspd/q, saveprevssp, setssbsy, rstorssp
-		i := 1
-		if b[i]&0xF0 == 0x40 {
-			i++
-		}
-		if i+2 >= len(b) {
-			return 0, false
-		}
-		switch {
-		case b[i] == 0x0F && (b[i+1] == 0x1E || b[i+1] == 0xAE) && b[i+2]>>6 == 3:
-			return i + 3, false
-		case b[i] == 0x0F && b[i+1] == 0x01 && (b[i+2] == 0xEA || b[i+2] == 0xE8):
-			return i + 3, false
-		case b[i] == 0x0F && b[i+1] == 0x01 && b[i+2]>>6 != 3 && b[i+2]>>3&7 == 5:
-			m, rip := modrmLen(b[i+2:])
-			if m == 0 {
-				return 0, false
-			}
-			return i + 2 + m, rip
-		}
-		return 0, false
 	default:
 		return 0, false
 	}
