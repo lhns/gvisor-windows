@@ -70,6 +70,7 @@ func main() {
 		{"case", testCase},
 		{"lifecycle", testLifecycle},
 		{"sockfs", testSockfs},
+		{"cfr", testCfr},
 		{"bench", testBench},
 		{"forward", testForward},
 		{"mounts", func() error { return profileRun("mounts", "cat /proc/self/mountinfo; pwd; ls -la /tmp") }},
@@ -88,7 +89,7 @@ func main() {
 	}
 	failed := 0
 	for _, t := range tests {
-		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "strace" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec" || t.name == "sockfs")) {
+		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "strace" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec" || t.name == "sockfs" || t.name == "cfr")) {
 			continue
 		}
 		start := time.Now()
@@ -614,6 +615,32 @@ func testStrace() error {
 			tail = tail[len(tail)-1500:]
 		}
 		return fmt.Errorf("the strace log is incomplete (%d bytes), ends with %q", len(b), tail)
+	}
+	return nil
+}
+
+// testCfr: copy_file_range onto a host folder (the vfs storage driver's layer copy), then reads
+// of the copy from the same and from another process, and an exec of it (cfr.c), with the
+// folder revalidated (default) and trusted (cache=exclusive).
+func testCfr() error {
+	for _, cache := range []string{"", "cache=exclusive"} {
+		dir := filepath.Join(*workDir, "cfr")
+		_ = os.RemoveAll(dir)
+		must(os.MkdirAll(dir, 0o755))
+		opts := []string{"rbind", "rw"}
+		if cache != "" {
+			opts = append(opts, cache)
+		}
+		extraMounts = []map[string]any{{"destination": "/w", "type": "bind", "source": dir, "options": opts}}
+		r, err := runsc("cfr", []string{"/bin/cfr", "/w", "/bin/busybox"}, nil)
+		extraMounts = nil
+		if err != nil {
+			return err
+		}
+		fmt.Printf("cfr (%q): exit %d\n%s%s\n", cache, r.code, r.stdout, r.stderr)
+		if r.code != 0 {
+			return fmt.Errorf("cfr with %q: exit %d, stdout %q", cache, r.code, r.stdout)
+		}
 	}
 	return nil
 }
