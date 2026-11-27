@@ -120,6 +120,31 @@ static void container(const char *base, int rounds) {
       else if (content_is(q, tok) == -2) { errno = 0; fail("content-after-rename", i, q); }
       if (access(p, F_OK) == 0) { errno = 0; fail("partial-still-there", i, p); }
     }
+    // dpkg's install directory: symlinks (absolute targets) to archives whose names have %3a.
+    {
+      char arch[1024], inst[1024], lnk[1024], target[1024], back[1024];
+      snprintf(p, sizeof p, "%s/r%d/var/cache", base, i); mkdir(p, 0755);
+      snprintf(p, sizeof p, "%s/r%d/var/cache/apt", base, i); mkdir(p, 0755);
+      snprintf(arch, sizeof arch, "%s/r%d/var/cache/apt/archives", base, i); mkdir(arch, 0755);
+      snprintf(p, sizeof p, "%s/r%d/tmp", base, i); mkdir(p, 0755);
+      snprintf(inst, sizeof inst, "%s/r%d/tmp/apt-dpkg-install-Lp0Tjn", base, i);
+      if (mkdir(inst, 0700)) fail("mkdir-install", i, inst);
+      for (int f = 0; f < 3; f++) {
+        snprintf(target, sizeof target, "%s/libmagic-mgc_1%%3a5.44-3_amd64.deb%d", arch, f);
+        snprintf(lnk, sizeof lnk, "%s/00-libmagic-mgc_1%%3a5.44-3_amd64.deb%d", inst, f);
+        snprintf(p, sizeof p, "%s.partial", target);
+        snprintf(tok, sizeof tok, "r%d-deb%d", i, f);
+        if (put(p, tok) || rename(p, target)) { fail("archive", i, target); continue; }
+        if (symlink(target, lnk)) { fail("symlink", i, lnk); continue; }
+        ssize_t n = readlink(lnk, back, sizeof back - 1);
+        if (n < 0) fail("readlink", i, lnk);
+        else { back[n] = 0; if (strcmp(back, target)) { errno = 0; fail("readlink-target", i, back); } }
+        struct stat st;
+        if (stat(lnk, &st)) fail("stat-through-symlink", i, lnk);
+        else if (content_is(lnk, tok) != 0) { errno = 0; fail("read-through-symlink", i, lnk); }
+        if (lstat(lnk, &st) || !S_ISLNK(st.st_mode)) { errno = 0; fail("lstat-symlink", i, lnk); }
+      }
+    }
     // Signal that this tree is complete.
     snprintf(p, sizeof p, "%s/r%d.done", base, i);
     if (put(p, "x")) fail("done-marker", i, p);
