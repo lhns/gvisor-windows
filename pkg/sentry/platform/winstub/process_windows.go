@@ -172,7 +172,8 @@ func (as *addressSpace) freeThread(t *thread) {
 				pTerminateThread.Call(h, 0)
 			}
 		} else {
-			pTerminateThread.Call(h, 0)
+			as.nTermFallback.Add(1)
+		pTerminateThread.Call(h, 0)
 		}
 		// TerminateThread is asynchronous. Until the thread is gone it may still
 		// be waiting on the slot's reply event, and would take the wake-up meant
@@ -364,6 +365,7 @@ func (as *addressSpace) debugLoop() {
 		}
 		status := uint32(dbgContinue)
 		exited := false
+		as.lastEvent.Store(fmt.Sprintf("handling event %d tid %d code %#x", ev.code(), ev.tid(), ev.u32(16)))
 		if traceOn && ev.code() != 1 {
 			name := ""
 			if h := uintptr(ev.u64(16)); (ev.code() == 6 || ev.code() == 3) && h != 0 {
@@ -388,7 +390,8 @@ func (as *addressSpace) debugLoop() {
 		case 5: // EXIT_PROCESS
 			exited = true
 		}
-		pContinueDebug.Call(uintptr(ev.pid()), uintptr(ev.tid()), uintptr(status))
+		cr, _, ce := pContinueDebug.Call(uintptr(ev.pid()), uintptr(ev.tid()), uintptr(status))
+		as.lastEvent.Store(fmt.Sprintf("continued event %d tid %d code %#x (status %#x, ContinueDebugEvent ok=%v err=%v)", ev.code(), ev.tid(), ev.u32(16), status, cr != 0, ce))
 		if exited {
 			as.markDead()
 			return

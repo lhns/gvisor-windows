@@ -69,7 +69,7 @@ func DumpState(w io.Writer) {
 	time.Sleep(300 * time.Millisecond)
 	c1 := cycles()
 	for as := range live {
-		fmt.Fprintf(w, "winstub: address space pid %d dead=%v\n", as.wpid, as.dead.Load())
+		fmt.Fprintf(w, "winstub: address space pid %d dead=%v last debug event: %v; TerminateThread fallbacks: %d\n", as.wpid, as.dead.Load(), as.lastEvent.Load(), as.nTermFallback.Load())
 		as.tmu.Lock()
 		for i, t := range as.slots {
 			if t == nil || !t.started {

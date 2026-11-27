@@ -121,6 +121,9 @@ type addressSpace struct {
 	edges     map[uint64]edge
 
 	createMu  sync.Mutex // serializes thread creation
+	lastEvent atomic.Value
+	// diagnostics: threads ended with TerminateThread instead of by themselves
+	nTermFallback atomic.Uint32
 	tmu       sync.Mutex
 	byTid     map[uint32]*thread
 	slots     [stubasm.MaxThreads]*thread
