@@ -1,4 +1,4 @@
-# Diagnostics: start the engine (with RUNSC_EXTRA_FLAGS, e.g. --strace), run a container and builds.
+# Diagnostics: start the engine (with RUNSC_EXTRA_FLAGS, e.g. --strace), run a container and a build.
 param([Parameter(Mandatory)][string]$Root)
 $ErrorActionPreference = 'Continue'
 $env:RUNSC_EXTRA_FLAGS = if ($env:DIAG_RUNSC_FLAGS) { $env:DIAG_RUNSC_FLAGS } else { '--strace' }
@@ -14,10 +14,8 @@ $sock = Get-Content "$work\engine\sock.path"
 $env:CONTAINER_HOST = 'unix://' + ($sock -replace '^[A-Za-z]:', '' -replace '\\', '/')
 "url $env:CONTAINER_HOST sock '$sock'" | Tee-Object -Append $log
 P pull mirror.gcr.io/library/alpine:3.20
-"=== run" | Tee-Object -Append $log
-P run --rm mirror.gcr.io/library/alpine:3.20 echo ok
 P pull mirror.gcr.io/library/debian:12-slim
-$cf = "$workuild"; New-Item -ItemType Directory -Force $cf | Out-Null
+$cf = "$work\build"; New-Item -ItemType Directory -Force $cf | Out-Null
 "FROM mirror.gcr.io/library/debian:12-slim`nRUN echo built" | Set-Content "$cf\Containerfile" -Encoding ascii
 "=== build" | Tee-Object -Append $log
 P build -t diag-build $cf
