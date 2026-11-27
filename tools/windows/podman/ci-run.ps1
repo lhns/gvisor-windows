@@ -40,9 +40,15 @@ $steps = if ($Only -and $Only -ne 'all') { [int[]]($Only -split "[, ]+" | Where-
 $sock = (Get-Content "$work\engine\sock.path" -ErrorAction SilentlyContinue)
 $purl = 'unix://' + ($sock -replace '^[A-Za-z]:', '' -replace '\\', '/')
 & $podman --url $purl info --format '{{.Host.NetworkBackend}} {{.Host.NetworkBackendInfo.Package}} {{.Version.Version}} rootless={{.Host.Security.Rootless}} cgroup={{.Host.CgroupManager}}'
+# Storage driver and c/storage's native-diff probe result (docs/results/2s-overlay-default.md).
+$graph = & $podman --url $purl info --format '{{.Store.GraphDriverName}}: {{.Store.GraphStatus}}'
+"graph: $graph"
+$nativeDiffFail = $StorageDriver -eq 'overlay' -and "$graph" -notmatch 'Native Overlay Diff:\s*true'
+if ($nativeDiffFail) { Write-Host 'native overlay diff is not true' }
 & "$repo\test\e2e\podman-acceptance\run.ps1" -Podman $podman -Docker $docker -PodmanUrl $purl -Pipe podman-ci -ShareDir "$work\share" `
   -Only $steps -EngineCtl $ctl -TtyDrive "$Root\bin\ttydrive.exe" -ResultsDir "$work\results"
 $rc = $LASTEXITCODE
+if ($rc -eq 0 -and $nativeDiffFail) { $rc = 1 }
 "acceptance seconds: $([int]((Get-Date) - $acceptStart).TotalSeconds)"
 try { & $ctl -Action stop } catch { }
 exit $rc
