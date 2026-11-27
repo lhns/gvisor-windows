@@ -81,12 +81,12 @@ int main(int argc, char **argv) {
     snprintf(name, sizeof name, "copy touch=%d", touch);
     snprintf(why, sizeof why, "copied %ld of %ld", n, (long)st.st_size);
     report(name, n == st.st_size, why);
-    why[0] = 0;
-    snprintf(name, sizeof name, "same process reads touch=%d", touch);
-    report(name, same(argv[2], dst, why, sizeof why), why);
     snprintf(why, sizeof why, "read of the header returned %ld", rawread(dst));
     snprintf(name, sizeof name, "raw read first, same process touch=%d", touch);
     report(name, rawread(dst) == 832, why);
+    why[0] = 0;
+    snprintf(name, sizeof name, "same process reads touch=%d", touch);
+    report(name, same(argv[2], dst, why, sizeof why), why);
     pid_t p = fork();
     if (p == 0) {
       snprintf(why, sizeof why, "read of the header returned %ld", rawread(dst));
