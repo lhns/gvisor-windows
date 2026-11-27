@@ -28,7 +28,7 @@ flowchart TB
     fs_layer_store_corrupt_after_restart>"✔ Layer store<br/>unreadable after<br/>restart"]
     fs_overlay_upper_on_host_folder>"⚠ Overlay with a host-<br/>folder upper layer"]
     fs_overlay_native_diff>"⚠ Fast layer diffs<br/>with overlay"]
-    fs_layers_empty_on_slow_host>"⚠ Empty file read<br/>during a replace"]
+    fs_layers_empty_on_slow_host>"✔ Empty file read<br/>during a replace"]
     fs_persistent_image_storage ~~~ fs_change_notifications
     fs_windows_directfs ~~~ fs_linux_metadata_on_ntfs
     fs_windows_directfs ~~~ fs_handles_do_not_block_users
@@ -68,9 +68,9 @@ flowchart TB
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class fs_persistent_image_storage,fs_attribute_cache mixed
-    class fs_windows_directfs,fs_change_notifications,fs_linux_metadata_on_ntfs,fs_handles_do_not_block_users,fs_root_filesystem_source,fs_safe_save_keeps_metadata,fs_flaky_negative_cache_test,fs_standard_user_delete_rights,fs_case_sensitivity_without_admin,fs_unix_sockets_on_host_folders,fs_copied_file_too_short,fs_disown_children_nil_deref,fs_host_folder_mtime_resolution,fs_layer_store_corrupt_after_restart succ
+    class fs_windows_directfs,fs_change_notifications,fs_linux_metadata_on_ntfs,fs_handles_do_not_block_users,fs_root_filesystem_source,fs_safe_save_keeps_metadata,fs_flaky_negative_cache_test,fs_standard_user_delete_rights,fs_case_sensitivity_without_admin,fs_unix_sockets_on_host_folders,fs_copied_file_too_short,fs_disown_children_nil_deref,fs_host_folder_mtime_resolution,fs_layer_store_corrupt_after_restart,fs_layers_empty_on_slow_host succ
     class fs_persistent_storage_impl unrated
-    class fs_overlay_upper_on_host_folder,fs_overlay_native_diff,fs_layers_empty_on_slow_host finding
+    class fs_overlay_upper_on_host_folder,fs_overlay_native_diff finding
 ```
 <!-- END GENERATED: track-fs -->
 
@@ -101,7 +101,7 @@ flowchart TB
 | `fs-layer-store-corrupt-after-restart` | Layer store unreadable after restart | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
 | `fs-overlay-upper-on-host-folder` | Overlay with a host-folder upper layer | defect | windows-ci | in-progress | unrated | 2026-11-27 |  |  |  |  |  | docs/adr/0002-what-done-means.md; docs/results/2r-step5-overlay.md |
 | `fs-overlay-native-diff` | Fast layer diffs with overlay | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/2r-step5-overlay.md |
-| `fs-layers-empty-on-slow-host` | Empty file read during a replace | defect | windows-local | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/1p-rewrite-heap.md |
+| `fs-layers-empty-on-slow-host` | Empty file read during a replace | defect | windows-local | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/1p-rewrite-heap.md |
 
 ### Details per node
 
@@ -129,7 +129,7 @@ flowchart TB
 | `fs-layer-store-corrupt-after-restart` | Layer store unreadable after restart |  |  | After a failed apt build, a layer directory (.../var/cache/apt/archives) cannot be removed ("directory not empty") although the Sentry lists it as empty; c/storage retries that removal on every load and fails the whole store, so steps 9-10 fail after the restart. | Fixed with atomic replace of layers.json/images.json (pins switch to by-name handles at replace time) and the graceful engine stop. |  |  |  |  |
 | `fs-overlay-upper-on-host-folder` | Overlay with a host-folder upper layer |  |  | Podman uses the slow vfs storage driver because native overlay with its upper layer on a Windows folder fails c/storage's probe: removing a directory in the merged view returns "directory not empty". | Cause fixed: device nodes came back as DT_UNKNOWN, hiding whiteouts; native overlay passed all 10 steps 4 of 4 (run 45992758965). Fixed when: native-overlay passes 8 of 8, then the acceptance default can switch by a new ADR. |  |  |  |  |
 | `fs-overlay-native-diff` | Fast layer diffs with overlay |  |  | With overlay, c/storage's native-diff probe fails ("opaque flag erroneously copied up"), so it computes layer diffs the slow way. | Fixed when: podman info reports Native Overlay Diff true. |  |  |  |  |
-| `fs-layers-empty-on-slow-host` | Empty file read during a replace |  |  | On the slow development VM, aptrename saw an empty layers.json in 2 of 5 runs while another process replaced it, which atomic replace should rule out. | Fixed when: aptrename passes 5 of 5 on the VM with the current build. |  |  |  |  |
+| `fs-layers-empty-on-slow-host` | Empty file read during a replace |  |  | On the slow development VM, aptrename saw an empty layers.json in 2 of 5 runs while another process replaced it, which atomic replace should rule out. | Not reproduced with the final build: aptrename 200 rounds passed 5 of 5 on the VM (rewrite plus fxsave, runsc.exe from ci run 46041024959); the 2 of 5 were on an intermediate build. |  |  |  |  |
 
 ### Folded items per node
 

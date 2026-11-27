@@ -2799,16 +2799,16 @@
   depends_on: *id016
   replaced_by: *id017
   start: '2026-11-27'
-  end: ''
+  end: '2026-11-27'
   folded: *id018
   overview: false
   id: fs-layers-empty-on-slow-host
   title: Empty file read during a replace
   track: fs
   kind: defect
-  state: next
+  state: done
   lane: windows-local
   evidence:
   - docs/results/1p-rewrite-heap.md
   plain: On the slow development VM, aptrename saw an empty layers.json in 2 of 5 runs while another process replaced it, which atomic replace should rule out.
-  notes: 'Fixed when: aptrename passes 5 of 5 on the VM with the current build.'
+  notes: 'Not reproduced with the final build: aptrename 200 rounds passed 5 of 5 on the VM (rewrite plus fxsave, runsc.exe from ci run 46041024959); the 2 of 5 were on an intermediate build.'
