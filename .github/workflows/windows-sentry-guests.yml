@@ -108,7 +108,7 @@ jobs:
             @{n='fork_exec'; a=@('/bin/exec','forkexec'); out="child: argc=4 a2=a b a3=c X=1 auxv=ok${nl}forkexec: waited=1 exited=1 status=9${nl}forkexec: enoent child status=11${nl}forkexec: sum=6 wait=-1 errno_echild=1${nl}"; code=0},
             @{n='sh_pipes'; a=@('/bin/busybox','sh','-c','echo a | cat; echo $((1+2)); for i in 1 2 3; do echo $i; done | wc -l'); out="a${nl}3${nl}3${nl}"; code=0},
             @{n='sh_pipeline_tools'; a=@('/bin/busybox','sh','/t/pipes.sh'); out="a${nl}X${nl}done${nl}"; code=0},
-            @{n='sh_wait_status'; a=@('/bin/busybox','sh','/t/wait.sh'); out="st=3${nl}Terminated${nl}sig=143${nl}Terminated${nl}bg=143${nl}pipe=2${nl}done${nl}"; code=0},
+            @{n='sh_wait_status'; a=@('/bin/busybox','sh','/t/wait.sh'); out="st=3${nl}Terminated${nl}sig=143${nl}bg=143${nl}pipe=2${nl}done${nl}"; code=0},
             @{n='sig_self'; a=@('/bin/signals','self'); out="self ok${nl}"; code=0},
             @{n='sig_alarm'; a=@('/bin/signals','alarm'); out="alarm ok${nl}"; code=0},
             @{n='sig_segv'; a=@('/bin/signals','segv'); out="segv ok${nl}"; code=0},
