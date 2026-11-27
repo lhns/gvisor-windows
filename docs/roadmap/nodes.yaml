@@ -1816,17 +1816,18 @@
   depends_on: []
   replaced_by: []
   start: '2026-11-26'
-  end: '2026-11-26'
+  end: ''
   folded: []
   overview: false
   id: platform-split-syscall-unpatched
   title: Syscalls split across mappings
   track: platform
   kind: defect
-  state: done
+  state: next
   lane: windows-ci
   plain: A syscall instruction whose two bytes fall into two separately mapped ranges is not found by the scan, so it would reach the Windows kernel.
-  notes: 'Fixed when: a test guest with a syscall straddling two MapFile ranges is patched and served correctly.'
+  notes: 'Reopened: a syscall at the seam of two MapFile ranges is still missed (Debian ld.so from the root folder, runsctest debian). Fixed when: the debian step is required and green and a tripwire catches
+    any kernel return into guest text.'
 - outcome: n/a
   evidence:
   - docs/adr/0015-sandbox-rootfs-as-erofs-image.md
@@ -2133,12 +2134,13 @@
   evidence:
   - docs/results/1h-platform-share.md
   - docs/results/1i-profile.md
+  - docs/results/1l-platform-stability.md
   verdict_quote: ''
   headline: ''
   depends_on: []
   replaced_by: []
   start: '2026-11-27'
-  end: ''
+  end: '2026-11-27'
   folded:
   - Debug loop no longer waits forever after TerminateProcess; unverified because CI did not reproduce the hang (2026-11-27, commit d5e97d844)
   - 'Bounded anchor waits, thread restart and stub abandonment: 98 of 100 pass with the exclusive cache, 16 of 16 shared (2026-11-27, commit 0c354f20)'
@@ -2147,12 +2149,13 @@
   title: Rare hang under heavy exec load
   track: platform
   kind: defect
-  state: in-progress
+  state: done
   lane: windows-ci
   plain: 'A guest that forks many children hangs now and then: about 1 in 50 gopodman runs, and 9 in 48 fork+exec loops through runsc.exe with the exclusive root cache (2 in 48 with the shared cache); the
     shell waits in wait4 with no child task. Syscall-test runs show the same root: a stub process that never finishes starting (one thread in a kernel wait), and newAS/Release wait forever on it. The Podman
     engine also hangs in vforkStop (2 of 8 runs): the vfork child never gets its new address space.'
-  notes: 'Fixed when: the gopodman hunt step passes 200 runs in a row; suggested: capture threads with a request flag the stub polls instead of SuspendThread.'
+  notes: 'Fixed: debug-event and context buffers lived on the Go stack and were handed to Windows as raw addresses; a moved stack made WaitForDebugEvent write into dead memory and the wrong event got continued,
+    freezing whole stubs. Heap buffers: 300/300 fork+exec in all three modes.'
 - outcome: unrated
   evidence:
   - docs/results/4-syscall-tests.md
@@ -2325,8 +2328,8 @@
   kind: defect
   state: next
   lane: windows-ci
-  plain: 'In podman build, a nested container fails with "libc.so.6: file too short" after the vfs driver copied it with copy_file_range onto the host folder; the copy has the right size but ld.so does
-    not read it.'
+  plain: '"libc.so.6: file too short" in podman build was an unpatched read syscall at a MapFile seam in Debian ld.so; a gofer change fills whole executable VMAs, which fixes bind mounts; from the root
+    folder it still needs the platform seam fix. apt renames on the storage folder still fail intermittently.'
   notes: 'Fixed when: a guest that copy_file_range-s into a host-folder file can read it from another process, and podman build of a debian RUN step passes.'
 - outcome: unrated
   evidence:
@@ -2397,7 +2400,8 @@
   replaced_by: []
   start: '2026-11-27'
   end: ''
-  folded: []
+  folded:
+  - A 32 MiB veneer area and PIE load base near it; 1-5% of far sites in high-mapped libraries still use the debugger (2026-11-27, commit 73227a2f1)
   overview: false
   id: platform-fs-veneer-capacity
   title: More room for %fs veneers
@@ -2408,33 +2412,35 @@
   plain: python3 with libpython and libc needs about 8500 %fs veneers against room for about 7000, and 24% of far %fs sites in Rust PIE binaries such as netavark fall back to the 100 us debugger path.
   notes: 'Fixed when: python3 and netavark run in rewrite mode with under 1% of %fs executions on the debugger path.'
 - outcome: unrated
-  evidence: &id004
+  evidence:
   - docs/results/5-podman-windows.md
+  - docs/results/1l-platform-stability.md
   verdict_quote: ''
   headline: ''
-  depends_on: &id005 []
-  replaced_by: &id006 []
+  depends_on: &id004 []
+  replaced_by: &id005 []
   start: '2026-11-27'
-  end: ''
-  folded: &id007 []
+  end: '2026-11-27'
+  folded: &id006 []
   overview: false
   id: platform-rewrite-mode-slow-engine
   title: Podman engine stalls in rewrite mode
   track: platform
   kind: defect
-  state: next
+  state: done
   lane: windows-ci
   plain: With %fs rewriting, the Podman engine answers version after 29-52 s instead of 2 s and then goes silent; no acceptance run completed in 8 tries.
-  notes: 'Fixed when: the acceptance completes in rewrite mode at native speed in 8 of 8 runs.'
+  notes: 'Fixed: the same frozen-stub bug plus a full veneer area; a 32 MiB %fs veneer area brings the engine to native speed.'
 - outcome: unrated
-  evidence: *id004
+  evidence:
+  - docs/results/5-podman-windows.md
   verdict_quote: ''
   headline: ''
-  depends_on: *id005
-  replaced_by: *id006
+  depends_on: *id004
+  replaced_by: *id005
   start: '2026-11-27'
   end: '2026-11-27'
-  folded: *id007
+  folded: *id006
   overview: false
   id: workloads-volume-lost-on-restart
   title: Volume data lost across engine restart
@@ -2464,33 +2470,35 @@
   plain: The Sentry panics with a nil dereference in gofer dentry.disownAllChildrenForInvalidation during the bench test in rewrite-mode CI legs.
   notes: 'Fixed: negative (nil) child entries are skipped during invalidation; bench passed 29 of 30 legs, the miss was the stuck-stub hang.'
 - outcome: unrated
-  evidence: &id008
+  evidence:
   - docs/results/5-podman-windows.md
+  - docs/results/1l-platform-stability.md
   verdict_quote: ''
   headline: ''
-  depends_on: &id009 []
-  replaced_by: &id010 []
+  depends_on: &id007 []
+  replaced_by: &id008 []
   start: '2026-11-27'
-  end: ''
-  folded: &id011 []
+  end: '2026-11-27'
+  folded: &id009 []
   overview: false
   id: platform-rewrite-glibc-init-crash
   title: Static glibc crashes at start in rewrite mode
   track: platform
   kind: defect
-  state: next
+  state: done
   lane: windows-ci
   plain: The static glibc fsstress guest dies with SIGSEGV in libc init right after set_tid_address in rewrite mode, every run; native mode runs it.
-  notes: 'Fixed when: fsstress runs in all three CI legs.'
+  notes: 'Fixed: a %fs instruction straddling two text pieces ran natively; it is now run by the debugger from a veneer.'
 - outcome: unrated
-  evidence: *id008
+  evidence:
+  - docs/results/5-podman-windows.md
   verdict_quote: ''
   headline: ''
-  depends_on: *id009
-  replaced_by: *id010
+  depends_on: *id007
+  replaced_by: *id008
   start: '2026-11-27'
   end: '2026-11-27'
-  folded: *id011
+  folded: *id009
   overview: false
   id: fs-host-folder-mtime-resolution
   title: Host-folder writes keep the old mtime

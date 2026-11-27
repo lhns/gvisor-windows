@@ -43,10 +43,10 @@ gantt
     Retire the stub prototype :platform_retire_prototype, 2026-11-26, 2026-11-26
     Give freed guest memory back :platform_memory_release, 2026-11-26, 2026-11-26
     Start guest processes fast :platform_fast_process_start, 2026-11-26, 2026-11-26
-    Syscalls split across mappings :platform_split_syscall_unpatched, 2026-11-26, 2026-11-26
+    Syscalls split across mappings :platform_split_syscall_unpatched, 2026-11-26, 2026-11-27
     Map files not in the memory file :platform_map_files_without_sections, 2026-11-26, 2026-11-26
     Veneer addresses differ after clone :platform_veneer_address_in_child, 2026-11-27, 2026-11-27
-    Rare hang under heavy exec load :active, platform_rare_hang_under_exec_load, 2026-11-27, 2026-11-27
+    Rare hang under heavy exec load :platform_rare_hang_under_exec_load, 2026-11-27, 2026-11-27
     Unsupported platform calls return errnos :platform_unsupported_errno, 2026-11-27, 2026-11-27
     AVX-512 state lost across stops :platform_avx512_state_lost, 2026-11-27, 2026-11-27
     glibc runs AVX code on a non-AVX CPU :platform_avx_on_non_avx_cpu, 2026-11-27, 2026-11-27
