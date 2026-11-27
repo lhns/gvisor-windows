@@ -14,7 +14,6 @@ on:
       net:
         description: "Network stack for the guest (true/false)"
         default: "true"
-  push:
 jobs:
   run:
     runs-on: windows-latest
