@@ -63,7 +63,9 @@ jobs:
           cut -f3 shard.tsv | sort | uniq -c
       - uses: actions/upload-artifact@v4
         if: always()
-        with: {name: netpoll-log, path: |
-          run.log
-          shard.tsv
-          shard.tsv.out
+        with:
+          name: netpoll-log
+          path: |
+            run.log
+            shard.tsv
+            shard.tsv.out
