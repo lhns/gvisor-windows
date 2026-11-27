@@ -60,11 +60,13 @@ const (
 	MaxSites            = int(TrapPtrsSize / 8)
 
 	StubCode     uint64 = 0x110000 // tramp at +0, trampWait at +0x400, threadEntry at +0x800
-	StubCodeSize uint64 = 0x1000
+	StubCodeSize uint64 = 0x2000
 	OffTramp     uint64 = 0
 	OffTrampWait uint64 = 0x400
 	OffThreadEnt uint64 = 0x800
 	OffTrampPark uint64 = 0xC00
+	OffICB       uint64 = 0x1000 // tripwire: the instrumentation callback
+	OffICBInit   uint64 = 0x1400 // and the anchor's first code that registers it
 
 	Veneers     uint64 = 0x120000 // displaced instructions of relocated syscall sites
 	VeneersSize uint64 = 0x70000
@@ -107,37 +109,43 @@ const (
 // Per-thread page offsets (the first 4 KB of each thread region; the rest is the
 // stub-owned stack used for the slow wait path).
 const (
-	PgState    = 0x00 // uint32: 0 guest running, 1 request pending, 2 reply ready
-	PgReply    = 0x08
-	PgFS       = 0x10 // guest %fs base, written to the CPU on every return
-	PgRIP      = 0x18 // resume address
-	PgScratch  = 0x20
-	PgRetRIP   = 0x28  // %fs repair trampoline return address
-	PgStkTop   = 0x38  // 16-byte aligned top of the stub stack
-	PgSpins    = 0x40  // pause iterations before the stub sleeps on the reply event
-	PgCtlSlp   = 0x50  // uint32: the controller thread sleeps on the request event
-	PgStubSlp  = 0x54  // uint32: the stub sleeps on the reply event
-	PgHReq     = 0x58  // stub-side handle of the request event (stub signals)
-	PgHReply   = 0x60  // stub-side handle of the reply event (stub waits)
-	PgNtSet    = 0x68  // ntdll!NtSetEvent
-	PgNtWait   = 0x70  // ntdll!NtWaitForSingleObject
-	PgMode     = 0x78  // uint32: 0 return from a syscall, 1 restore the full context
-	PgFlags    = 0x80  // rflags restored in mode 1
-	PgXMask    = 0x88  // uint64: the xsave feature mask (XCR0 without AMX)
-	PgRunning  = 0x9C  // uint32: the thread has left ntdll's start-up and entered threadEntry
-	PgWaits    = 0x98  // uint32: how often the stub's wait for a reply returned (diagnostics)
-	PgNtTerm   = 0x90  // ntdll!NtTerminateThread; mode 2 on a reply makes the thread end itself
-	PgRegs     = 0x100 // 16 qwords in hardware order: rax rcx rdx rbx rsp rbp rsi rdi r8..r15
-	PgEqualN   = 0x1A0 // %fs repair: how often in a row the CPU's base was the expected one
-	PgScratch2 = 0x1A8
-	PgRepair   = 0x200 // per-thread %fs repair code
-	PgDyn      = 0x400 // veneer of an %fs instruction the debugger runs (rewrite mode)
-	PgDynSize  = 0x100
+	PgState     = 0x00 // uint32: 0 guest running, 1 request pending, 2 reply ready
+	PgReply     = 0x08
+	PgFS        = 0x10 // guest %fs base, written to the CPU on every return
+	PgRIP       = 0x18 // resume address
+	PgScratch   = 0x20
+	PgRetRIP    = 0x28  // %fs repair trampoline return address
+	PgStkTop    = 0x38  // 16-byte aligned top of the stub stack
+	PgSpins     = 0x40  // pause iterations before the stub sleeps on the reply event
+	PgCtlSlp    = 0x50  // uint32: the controller thread sleeps on the request event
+	PgStubSlp   = 0x54  // uint32: the stub sleeps on the reply event
+	PgHReq      = 0x58  // stub-side handle of the request event (stub signals)
+	PgHReply    = 0x60  // stub-side handle of the reply event (stub waits)
+	PgNtSet     = 0x68  // ntdll!NtSetEvent
+	PgNtWait    = 0x70  // ntdll!NtWaitForSingleObject
+	PgMode      = 0x78  // uint32: 0 return from a syscall, 1 restore the full context
+	PgFlags     = 0x80  // rflags restored in mode 1
+	PgXMask     = 0x88  // uint64: the xsave feature mask (XCR0 without AMX)
+	PgRunning   = 0x9C  // uint32: the thread has left ntdll's start-up and entered threadEntry
+	PgWaits     = 0x98  // uint32: how often the stub's wait for a reply returned (diagnostics)
+	PgNtTerm    = 0x90  // ntdll!NtTerminateThread; mode 2 on a reply makes the thread end itself
+	PgRegs      = 0x100 // 16 qwords in hardware order: rax rcx rdx rbx rsp rbp rsi rdi r8..r15
+	PgEqualN    = 0x1A0 // %fs repair: how often in a row the CPU's base was the expected one
+	PgScratch2  = 0x1A8
+	PgICBInfo   = 0x1B0 // {version, reserved, callback}: the argument of NtSetInformationProcess
+	PgICBStat   = 0x1C0 // its NTSTATUS
+	PgICBTrip   = 0x1C8 // the guest address the callback caught
+	PgNtSetInfo = 0x1D0 // ntdll!NtSetInformationProcess
+	PgRepair    = 0x200 // per-thread %fs repair code
+	PgDyn       = 0x400 // veneer of an %fs instruction the debugger runs (rewrite mode)
+	PgDynSize   = 0x100
 )
 
 func trampPtr() unsafe.Pointer
 func trampWaitPtr() unsafe.Pointer
 func trampParkPtr() unsafe.Pointer
+func icbPtr() unsafe.Pointer
+func icbInitPtr() unsafe.Pointer
 func xcr0() uint64
 
 // XSaveMask is the feature mask the stub saves and restores: everything the OS
@@ -195,7 +203,7 @@ func image() []byte {
 	for _, r := range []struct {
 		off uint64
 		p   unsafe.Pointer
-	}{{OffTramp, trampPtr()}, {OffTrampWait, trampWaitPtr()}, {OffThreadEnt, threadEntryPtr()}, {OffTrampPark, trampParkPtr()}} {
+	}{{OffTramp, trampPtr()}, {OffTrampWait, trampWaitPtr()}, {OffThreadEnt, threadEntryPtr()}, {OffTrampPark, trampParkPtr()}, {OffICB, icbPtr()}, {OffICBInit, icbInitPtr()}} {
 		code := copyCode(r.p)
 		if len(code) > 0x400 {
 			panic("stubasm: routine larger than its slot")

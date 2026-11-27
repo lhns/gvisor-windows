@@ -18,6 +18,7 @@ package winstub
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"runtime"
 	"strconv"
@@ -118,6 +119,7 @@ func (as *addressSpace) slot(idx int) *thread {
 	*t.u64(stubasm.PgNtSet) = as.p.ntSet
 	*t.u64(stubasm.PgNtWait) = as.p.ntWait
 	*t.u64(stubasm.PgNtTerm) = as.p.ntTerm
+	*t.u64(stubasm.PgNtSetInfo) = as.p.ntSetInfo
 	*t.u64(stubasm.PgHReq) = uint64(dupInto(as.h, t.evReq))
 	*t.u64(stubasm.PgHReply) = uint64(dupInto(as.h, t.evReply))
 	*t.u64(stubasm.PgStkTop) = addr + stubasm.ThreadRegion - 0x100
@@ -395,6 +397,12 @@ func (as *addressSpace) start() error {
 	t := as.slot(0)
 	*t.reg(4) = t.addr + stubasm.ThreadRegion - 0x100 // rsp
 	*t.u64(stubasm.PgRIP) = stubasm.StubCode + stubasm.OffTrampWait
+	if as.p.tripwire {
+		// The anchor registers the callback before it parks (NtSetInformationProcess
+		// on its own process: no privilege needed, checked as a standard user).
+		*t.u64(stubasm.PgICBInfo + 8) = stubasm.StubCode + stubasm.OffICB
+		*t.u64(stubasm.PgRIP) = stubasm.StubCode + stubasm.OffICBInit
+	}
 	*t.u32(0) = 1
 	t.hThread, t.tid, t.started = as.hMain, pi.ThreadId, true
 	as.byTid[pi.ThreadId] = t
@@ -583,6 +591,10 @@ func (as *addressSpace) onException(ev *debugEvent, ctx *ctxBuf, seenBP *bool) u
 	case excIllegalInstr:
 		b, ok := as.readStub(rip, 2)
 		isUD2 := ok && b[0] == 0x0F && b[1] == 0x0B
+		if isUD2 && rip >= stubasm.StubCode+stubasm.OffICB && rip < stubasm.StubCode+stubasm.OffICB+0x100 {
+			as.tripped(t)
+			break
+		}
 		if isUD2 && as.isUD2Site(rip) {
 			// A rewritten syscall that could not be patched: make it a request.
 			as.parkAs(t, ctx, request{kind: reqSyscall}, rip+2)
@@ -613,6 +625,19 @@ func (as *addressSpace) onException(ev *debugEvent, ctx *ctxBuf, seenBP *bool) u
 		as.park(t, ctx, request{kind: reqFault, sig: 11, code: 1, addr: rip})
 	}
 	return dbgContinue
+}
+
+// tripped reports a thread that the instrumentation callback caught returning from
+// the kernel into guest code that follows a syscall instruction: a syscall that was
+// never patched ran on Windows. The address space is ended, loudly.
+func (as *addressSpace) tripped(t *thread) {
+	addr := *t.u64(stubasm.PgICBTrip)
+	log.Printf("winstub: TRIPWIRE: the kernel returned to %#x in guest text, after a syscall instruction that was not patched (thread %d, stub pid %d)", addr, t.idx, as.wpid)
+	if b, ok := as.readStub(addr-32, 48); ok {
+		log.Printf("winstub: TRIPWIRE: bytes at %#x-32: % x", addr, b)
+	}
+	as.markDead()
+	pTerminateProcess.Call(as.h, 1)
 }
 
 func (as *addressSpace) readStub(a uint64, n int) ([]byte, bool) {

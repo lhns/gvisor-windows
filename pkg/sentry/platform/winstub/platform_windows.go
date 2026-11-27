@@ -67,6 +67,8 @@ type Platform struct {
 	image         []byte
 	ntSet, ntWait uint64
 	ntTerm        uint64
+	ntSetInfo     uint64
+	tripwire      bool // the stubs register an instrumentation callback that catches unpatched syscalls (WINSTUB_TRIPWIRE=1)
 }
 
 // New creates the platform.
@@ -94,6 +96,9 @@ func New(opts platform.Options) (*Platform, error) {
 		return nil, err
 	}
 	if err := pNtTerminateThread.Find(); err != nil {
+		return nil, err
+	}
+	if err := pNtSetInfoProcess.Find(); err != nil {
 		return nil, err
 	}
 	// Without XSAVE (or with WINSTUB_FPMODE=fxsave, which also hides it from the
@@ -139,6 +144,8 @@ func New(opts platform.Options) (*Platform, error) {
 		ntSet:    uint64(pNtSetEvent.Addr()),
 		ntWait:   uint64(pNtWaitSingle.Addr()),
 		ntTerm:   uint64(pNtTerminateThread.Addr()),
+		ntSetInfo: uint64(pNtSetInfoProcess.Addr()),
+		tripwire: os.Getenv("WINSTUB_TRIPWIRE") != "",
 	}, nil
 }
 

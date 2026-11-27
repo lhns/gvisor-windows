@@ -250,4 +250,6 @@ var pResetEvent = k32.NewProc("ResetEvent")
 
 var pNtTerminateThread = ntd.NewProc("NtTerminateThread")
 
+var pNtSetInfoProcess = ntd.NewProc("NtSetInformationProcess")
+
 var pQueryThreadCycle = k32.NewProc("QueryThreadCycleTime")

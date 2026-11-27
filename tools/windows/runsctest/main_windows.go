@@ -53,6 +53,7 @@ type result struct {
 func main() {
 	flag.Parse()
 	// (the CI runs this as another user, whose environment cannot be set from outside)
+	os.Setenv("WINSTUB_TRIPWIRE", "1") // a syscall that runs on Windows fails the test
 	if *fsMode != "" {
 		os.Setenv("WINSTUB_FSMODE", *fsMode)
 	}

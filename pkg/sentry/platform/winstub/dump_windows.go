@@ -72,6 +72,9 @@ func DumpState(w io.Writer) {
 	for as := range live {
 		fmt.Fprintf(w, "winstub: address space pid %d dead=%v last debug event: %v; TerminateThread fallbacks: %d\n", as.wpid, as.dead.Load(), as.lastEvent.Load(), as.nTermFallback.Load())
 		fmt.Fprintf(w, "  counts: debug events %d, %%fs run by the debugger %d, stops moved out of veneers %d, replaced threads %d, %%fs repairs %d (reported as faults %d)\n", as.nEvents.Load(), as.nFSInline.Load(), as.nFSFix.Load(), as.nThreadReplaced.Load(), as.nFSRepair.Load(), as.nFSGenuine.Load())
+		if as.p.tripwire {
+			fmt.Fprintf(w, "  tripwire: NtSetInformationProcess status %#x\n", uint32(*as.slots[0].u64(stubasm.PgICBStat)))
+		}
 		as.dumpFSSites(w)
 		as.tmu.Lock()
 		for i, t := range as.slots {
