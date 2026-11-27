@@ -6,6 +6,8 @@ on:
   push:
     paths: ["pkg/**", "runsc/**", "tools/windows/**", "test/e2e/podman-acceptance/**", ".github/workflows/podman-windows.yml"]
   workflow_dispatch:
+    inputs:
+      only: {description: 'steps to run, e.g. 4 (default all)', default: ''}
 env:
   PODMAN_VERSION: "6.2.0"
   DOCKER_VERSION: "27.3.1"
@@ -79,11 +81,13 @@ jobs:
           & tools/windows/ci/run-as-standard-user.ps1 `
             -Program 'C:\Program Files\PowerShell\7\pwsh.exe' `
             -Arguments '-NoProfile','-File',"$PWD\tools\windows\podman\ci-run.ps1",'-Root','C:\ci' `
+            -Environment @{ ACC_ONLY = '${{ github.event.inputs.only }}' } `
             -GrantPath C:\ci\bin,C:\ci\tools,$PWD -WritablePath C:\ci\std -TimeoutSeconds 6000
       - name: Steps that must pass (grows with every fixed step)
         shell: pwsh
         run: |
-          $must = 1, 2, 7
+          $only = '${{ github.event.inputs.only }}'
+          $must = 1, 2, 3, 6, 7, 8, 9, 10 | Where-Object { -not $only -or ($only -split '[, ]+') -contains "$_" }
           $t = Get-Content C:\ci\std\results\steps.txt
           $bad = $must | Where-Object { $t -notmatch "^STEP $_ PASS" }
           if ($bad) { "required steps failed: $bad"; exit 1 }
