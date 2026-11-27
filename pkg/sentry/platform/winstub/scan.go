@@ -954,6 +954,19 @@ func FSWindows(code []byte, minLen int) (wins []FSWindow, starts []int) {
 	return
 }
 
+// Decoded returns the offsets of the instructions the sweep over code finds, and of
+// those of them that are %fs instructions (the decoder's view, for audits against
+// another disassembler).
+func Decoded(code []byte) (starts, fs []int) {
+	for _, x := range decodeAll(code) {
+		starts = append(starts, x.off)
+		if x.cls == clsFS || x.cls == clsFSBad {
+			fs = append(fs, x.off)
+		}
+	}
+	return
+}
+
 // splitFSAt reports whether the last bytes of code are the start of a
 // %fs-prefixed instruction that continues in the next piece of text, and where it
 // starts (-1 if not). The decoder cannot see such an instruction in either piece.

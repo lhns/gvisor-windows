@@ -21,6 +21,10 @@
 //
 //	fsscan file...
 //	fsscan -targets file...
+//	fsscan -audit file objdump-starts.txt objdump-fs.txt
+//
+// -audit compares the decoder's instruction boundaries and %fs instructions with
+// those of objdump (the files hold one hex address per line).
 //
 // With -targets it looks for jump tables in the data of each file (runs of 8-byte,
 // absolute 4-byte or table-relative 4-byte entries that point at instruction starts)
@@ -33,11 +37,21 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
+	"sort"
+	"strconv"
+	"strings"
 
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub"
 )
 
 func main() {
+	if len(os.Args) == 5 && os.Args[1] == "-audit" {
+		if err := audit(os.Args[2], os.Args[3], os.Args[4]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "-targets" {
 		for _, f := range os.Args[2:] {
 			if err := targets(f); err != nil {
@@ -217,5 +231,102 @@ func targets(path string) error {
 		}
 		fmt.Printf("%s: %s: %d windows, %d with a jump table target in the middle (%d jump table targets in all)\n", path, name, len(wins[j]), hits, len(tgt))
 	}
+	return nil
+}
+
+// audit compares the decoder with objdump for the executable segments of one file.
+func audit(path, startsFile, fsFile string) error {
+	f, err := elf.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	read := func(name string) (map[uint64]bool, error) {
+		b, err := os.ReadFile(name)
+		if err != nil {
+			return nil, err
+		}
+		m := map[uint64]bool{}
+		for _, l := range strings.Fields(string(b)) {
+			v, err := strconv.ParseUint(strings.TrimPrefix(l, "0x"), 16, 64)
+			if err == nil {
+				m[v] = true
+			}
+		}
+		return m, nil
+	}
+	objStarts, err := read(startsFile)
+	if err != nil {
+		return err
+	}
+	objFS, err := read(fsFile)
+	if err != nil {
+		return err
+	}
+	ourStarts, ourFS := map[uint64]bool{}, map[uint64]bool{}
+	var texts []struct {
+		v uint64
+		b []byte
+	}
+	for _, p := range f.Progs {
+		if p.Type != elf.PT_LOAD || p.Flags&elf.PF_X == 0 {
+			continue
+		}
+		b := make([]byte, p.Filesz)
+		if _, err := p.ReadAt(b, 0); err != nil {
+			return err
+		}
+		texts = append(texts, struct {
+			v uint64
+			b []byte
+		}{p.Vaddr, b})
+		st, fs := winstub.Decoded(b)
+		for _, o := range st {
+			ourStarts[p.Vaddr+uint64(o)] = true
+		}
+		for _, o := range fs {
+			ourFS[p.Vaddr+uint64(o)] = true
+		}
+	}
+	bytesAt := func(a uint64) string {
+		for _, t := range texts {
+			if a >= t.v && a < t.v+uint64(len(t.b)) {
+				o := a - t.v
+				return fmt.Sprintf("% x", t.b[o:min(uint64(len(t.b)), o+16)])
+			}
+		}
+		return ""
+	}
+	diff := func(name string, ours, theirs map[uint64]bool) {
+		var only []uint64
+		for a := range theirs {
+			if !ours[a] {
+				only = append(only, a)
+			}
+		}
+		var bogus []uint64
+		for a := range ours {
+			if !theirs[a] {
+				bogus = append(bogus, a)
+			}
+		}
+		sort.Slice(only, func(i, j int) bool { return only[i] < only[j] })
+		sort.Slice(bogus, func(i, j int) bool { return bogus[i] < bogus[j] })
+		fmt.Printf("%s: %s: decoder %d, objdump %d; only objdump (missed) %d, only decoder (bogus) %d\n", path, name, len(ours), len(theirs), len(only), len(bogus))
+		for i, a := range only {
+			if i >= 12 {
+				break
+			}
+			fmt.Printf("  missed %#x: %s\n", a, bytesAt(a))
+		}
+		for i, a := range bogus {
+			if i >= 12 {
+				break
+			}
+			fmt.Printf("  bogus  %#x: %s\n", a, bytesAt(a))
+		}
+	}
+	diff("instruction starts", ourStarts, objStarts)
+	diff("%fs instructions", ourFS, objFS)
 	return nil
 }

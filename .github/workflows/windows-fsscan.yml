@@ -36,5 +36,16 @@ jobs:
           pick() { for f in "$@"; do [ -e "$f" ] && echo "$f"; done; }
           ./fsscan -targets $(pick /lib/x86_64-linux-gnu/libc.so.6 /lib64/ld-linux-x86-64.so.2 /lib/x86_64-linux-gnu/libm.so.6 /usr/bin/busybox /bin/bash /usr/lib/x86_64-linux-gnu/libsqlite3.so.0 "$(readlink -f /usr/bin/python3)") 2>&1 | tee targets.txt
           gcc -static -no-pie -O1 -o /tmp/aptrename test/guests/aptrename.c && ./fsscan -targets /tmp/aptrename 2>&1 | tee -a targets.txt
+      - name: Audit the decoder against objdump
+        run: |
+          audit() {
+            f="$1"; n=$(basename "$f")
+            objdump -d -w --no-show-raw-insn "$f" > /tmp/$n.dis
+            awk -F'	' '/^ +[0-9a-f]+:	/ {a=$1; sub(/:.*/,"",a); gsub(/ /,"",a); print a}' /tmp/$n.dis > /tmp/$n.starts
+            awk -F'	' '/^ +[0-9a-f]+:	/ && /%fs:/ {a=$1; sub(/:.*/,"",a); gsub(/ /,"",a); print a}' /tmp/$n.dis > /tmp/$n.fs
+            ./fsscan -audit "$f" /tmp/$n.starts /tmp/$n.fs
+          }
+          pick() { for f in "$@"; do [ -e "$f" ] && echo "$f"; done; }
+          { for f in $(pick /lib/x86_64-linux-gnu/libc.so.6 /lib64/ld-linux-x86-64.so.2 /lib/x86_64-linux-gnu/libm.so.6 /usr/bin/busybox /tmp/aptrename /tmp/gohello); do audit "$f"; done; } 2>&1 | tee audit.txt
       - uses: actions/upload-artifact@v4
-        with: {name: fsscan, path: "fsscan.txt\ntargets.txt"}
+        with: {name: fsscan, path: "fsscan.txt\ntargets.txt\naudit.txt"}
