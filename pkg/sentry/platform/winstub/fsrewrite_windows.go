@@ -228,6 +228,9 @@ func (as *addressSpace) fsFix(t *thread, rip uint64) (newRip uint64, ok bool) {
 	}
 	if restore {
 		if v, ok := as.readTebSlot(t, stubasm.TebSave); ok {
+			if fsLog && n <= 200 {
+				log.Printf("winstub: FSFIX r%d was %#x in the context, the save slot holds %#x (teb %#x, flags %#x)", r1, *t.reg(r1), v, t.teb, *t.u64(stubasm.PgFlags))
+			}
 			*t.reg(r1) = v
 		} else {
 			debugf("cannot read the TEB save slot of thread %d", t.idx)
