@@ -15,13 +15,10 @@ $env:CONTAINER_HOST = 'unix://' + ($sock -replace '^[A-Za-z]:', '' -replace '\\'
 "url $env:CONTAINER_HOST sock '$sock'" | Tee-Object -Append $log
 P pull mirror.gcr.io/library/alpine:3.20
 P pull mirror.gcr.io/library/debian:12-slim
-"=== create debian, then the sizes of every libc.so.6 in the storage" | Tee-Object -Append $log
+"=== ld.so of the debian layer from the host folder and from tmpfs" | Tee-Object -Append $log
 P create --name d1 mirror.gcr.io/library/debian:12-slim /bin/echo hi
-P run --rm -v /var/lib/containers/storage:/s mirror.gcr.io/library/alpine:3.20 sh -c 'for f in $(find /s/vfs -name libc.so.6); do ls -l $f; sha256sum < $f; done'
+$sh = Get-Content "$PSScriptRoot\ldtest.sh" -Raw
+P run --rm -v /var/lib/containers/storage:/s mirror.gcr.io/library/alpine:3.20 sh -c $sh
 "=== start d1" | Tee-Object -Append $log
 P start -a d1
-"=== run debian directly" | Tee-Object -Append $log
-P run --rm mirror.gcr.io/library/debian:12-slim /bin/echo hi2
-"=== sizes after" | Tee-Object -Append $log
-P run --rm -v /var/lib/containers/storage:/s mirror.gcr.io/library/alpine:3.20 sh -c 'for f in $(find /s/vfs -name libc.so.6); do ls -l $f; sha256sum < $f; done'
 & "$repo\tools\windows\podman\start-engine.ps1" -Action stop -Runsc "$Root\bin\runsc.exe" -Work "$work\engine" -Name ci
