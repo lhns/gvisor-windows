@@ -8,6 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       only: {description: 'steps to run, e.g. 4 (default all)', default: ''}
+      modes: {description: 'comma list of fs modes to compare: default, native, rewrite (rewrite also keeps AVX-512)', default: 'default'}
       runs: {description: 'how many times to run the whole acceptance, in parallel (flakiness)', default: '1'}
 env:
   PODMAN_VERSION: "6.2.0"
@@ -18,10 +19,12 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       runs: ${{ steps.p.outputs.runs }}
+      modes: ${{ steps.p.outputs.modes }}
     steps:
       - id: p
         run: |
           n=${{ github.event.inputs.runs || 1 }}
+          echo "modes=$(echo '${{ github.event.inputs.modes || 'default' }}' | sed 's/,/","/g; s/^/["/; s/$/"]/')" >> $GITHUB_OUTPUT
           echo "runs=$(seq -s, 1 $n | sed 's/^/[/; s/$/]/')" >> $GITHUB_OUTPUT
   image:
     runs-on: ubuntu-latest
@@ -57,8 +60,9 @@ jobs:
       fail-fast: false
       matrix:
         run: ${{ fromJSON(needs.plan.outputs.runs) }}
+        mode: ${{ fromJSON(needs.plan.outputs.modes) }}
     runs-on: windows-latest
-    timeout-minutes: 150
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -94,8 +98,8 @@ jobs:
           New-Item -ItemType Directory -Force C:\ci\std\engine\storage | Out-Null
           & tools/windows/ci/run-as-standard-user.ps1 `
             -Program 'C:\Program Files\PowerShell\7\pwsh.exe' `
-            -Arguments '-NoProfile','-File',"$PWD\tools\windows\podman\ci-run.ps1",'-Root','C:\ci','-Only','${{ github.event.inputs.only || 'all' }}' `
-            -GrantPath C:\ci\bin,C:\ci\tools,$PWD -WritablePath C:\ci\std -TimeoutSeconds 6000
+            -Arguments '-NoProfile','-File',"$PWD\tools\windows\podman\ci-run.ps1",'-Root','C:\ci','-Only','${{ github.event.inputs.only || 'all' }}','-FsMode','${{ matrix.mode }}' `
+            -GrantPath C:\ci\bin,C:\ci\tools,$PWD -WritablePath C:\ci\std -TimeoutSeconds 2400
       - name: Steps that must pass (grows with every fixed step)
         shell: pwsh
         run: |
@@ -113,7 +117,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: podman-windows-logs-${{ matrix.run }}
+          name: podman-windows-logs-${{ matrix.mode }}-${{ matrix.run }}
           path: |
             C:\ci\std\results
             C:\ci\std\engine\logs
