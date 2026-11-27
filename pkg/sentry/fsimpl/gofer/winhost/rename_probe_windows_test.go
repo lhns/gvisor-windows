@@ -22,6 +22,8 @@ func TestRenameReplaceProbe(t *testing.T) {
 		flags       uint32
 		holdDelete  bool // a handle with DELETE access on the target stays open
 		readTarget  bool // a read handle on the target stays open
+		writeTarget bool // a handle with write access stays open
+		pinTarget   bool // the target is pinned (a guest file descriptor is open)
 		setupTarget func(a Attr)
 	}
 	variants := []variant{
@@ -31,6 +33,9 @@ func TestRenameReplaceProbe(t *testing.T) {
 		{name: "posix-replace-with-data", class: ntClassRenameEx, flags: renameReplace | renamePosix, setupTarget: func(a Attr) { fs.WriteAt(a.ID, []byte("data"), 0) }},
 		{name: "posix-replace-after-chmod", class: ntClassRenameEx, flags: renameReplace | renamePosix, setupTarget: func(a Attr) { fs.SetAttr(a.ID, SetAttr{HasMode: true, Mode: 0o600}) }},
 		{name: "posix-replace-read-handle-open", class: ntClassRenameEx, flags: renameReplace | renamePosix, readTarget: true},
+		{name: "posix-replace-write-handle-open", class: ntClassRenameEx, flags: renameReplace | renamePosix, writeTarget: true},
+		{name: "posix-replace-pinned", class: ntClassRenameEx, flags: renameReplace | renamePosix, pinTarget: true},
+		{name: "plain-replace-pinned", class: ntClassRenameEx, flags: renameReplace, pinTarget: true},
 		{name: "posix-replace-delete-handle-open", class: ntClassRenameEx, flags: renameReplace | renamePosix, holdDelete: true},
 	}
 	works := 0
@@ -56,6 +61,15 @@ func TestRenameReplaceProbe(t *testing.T) {
 		}
 		if v.readTarget {
 			held, _ = openChild(sh, dname, fileReadData|fileReadAttributes, 0)
+		}
+		if v.writeTarget {
+			held, _ = openChild(sh, dname, fileReadData|fileWriteData|fileReadAttributes|fileWriteAttributes|deleteAccess, 0)
+		}
+		if v.pinTarget {
+			if err := fs.Pin(dst.ID); err != nil {
+				t.Logf("pin: %v", err)
+			}
+			defer fs.Unpin(dst.ID)
 		}
 		np, _ := handlePath(sh)
 		err = ntRename(sf, v.class, v.flags, 0, np+`\`+dname)
