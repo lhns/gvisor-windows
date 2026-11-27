@@ -788,7 +788,15 @@ func (d *dentry) Translate(ctx context.Context, required, optional memmap.Mappab
 
 	mf := d.inode.fs.mf
 	h := d.inode.readHandle()
-	_, cerr := d.inode.cache.Fill(ctx, required, maxFillRange(required, optional), d.inode.size.Load(), mf, pgalloc.AllocOpts{
+	fill := maxFillRange(required, optional)
+	if at.Execute {
+		// gvisor-windows: the winstub platform patches a mapped range's syscall instructions
+		// range by range, and cannot patch one that straddles two MapFile ranges. Code is
+		// therefore mapped whole: the translation of the whole VMA is one cache segment, not
+		// one per 64 KB of readahead (docs/results/5-podman-windows.md, "file too short").
+		fill = optional
+	}
+	_, cerr := d.inode.cache.Fill(ctx, required, fill, d.inode.size.Load(), mf, pgalloc.AllocOpts{
 		Kind:    usage.PageCache,
 		MemCgID: memCgID,
 		Mode:    pgalloc.AllocateAndWritePopulate,
