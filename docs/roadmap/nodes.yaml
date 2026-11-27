@@ -466,6 +466,8 @@
   - workloads-isolation-flake
   - platform-rewrite-mode-slow-engine
   - workloads-volume-lost-on-restart
+  - platform-rewrite-glibc-init-crash
+  - fs-host-folder-mtime-resolution
   replaced_by: []
   lane: windows-ci
   start: ''
@@ -2362,7 +2364,8 @@
   kind: defect
   state: next
   lane: windows-ci
-  plain: 'Steps fail now and then: /dev/null missing in a container for a moment, a just-created config.json missing, and one job that hung; about 1 run in 4 also loses the sandbox to the Go GC crash.'
+  plain: Rare container failures (/dev/null or config.json missing, exec on an unknown container) trace back to c/storage forgetting a container, not to a dentry race; a stress reproducer is clean. Host-folder
+    writes often keep the previous mtime (45-60%), which may matter to c/storage.
   notes: 'Fixed when: step 10 passes 20 runs in a row, or the cause is found and fixed.'
 - outcome: unrated
   evidence:
@@ -2430,17 +2433,17 @@
   depends_on: *id005
   replaced_by: *id006
   start: '2026-11-27'
-  end: ''
+  end: '2026-11-27'
   folded: *id007
   overview: false
   id: workloads-volume-lost-on-restart
   title: Volume data lost across engine restart
   track: workloads
   kind: defect
-  state: next
+  state: done
   lane: windows-ci
   plain: In 2 of 5 complete native runs, the named volume written before the engine restart is empty afterwards (step 9).
-  notes: 'Fixed when: step 9 passes in 8 of 8 runs.'
+  notes: 'Harness cause: an old static_dir workaround put libpod''s database on a tmpfs. The database now lives on the storage folder; a runsc restart test is required.'
 - outcome: unrated
   evidence:
   - docs/results/1k-platform-next.md
@@ -2449,14 +2452,51 @@
   depends_on: []
   replaced_by: []
   start: '2026-11-27'
-  end: ''
+  end: '2026-11-27'
   folded: []
   overview: false
   id: fs-disown-children-nil-deref
   title: Nil dereference in gofer invalidation
   track: fs
   kind: defect
-  state: next
+  state: done
   lane: windows-ci
   plain: The Sentry panics with a nil dereference in gofer dentry.disownAllChildrenForInvalidation during the bench test in rewrite-mode CI legs.
-  notes: 'Fixed when: the runsc bench test passes in all three CI legs 10 times in a row.'
+  notes: 'Fixed: negative (nil) child entries are skipped during invalidation; bench passed 29 of 30 legs, the miss was the stuck-stub hang.'
+- outcome: unrated
+  evidence: &id008
+  - docs/results/5-podman-windows.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: &id009 []
+  replaced_by: &id010 []
+  start: '2026-11-27'
+  end: ''
+  folded: &id011 []
+  overview: false
+  id: platform-rewrite-glibc-init-crash
+  title: Static glibc crashes at start in rewrite mode
+  track: platform
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: The static glibc fsstress guest dies with SIGSEGV in libc init right after set_tid_address in rewrite mode, every run; native mode runs it.
+  notes: 'Fixed when: fsstress runs in all three CI legs.'
+- outcome: unrated
+  evidence: *id008
+  verdict_quote: ''
+  headline: ''
+  depends_on: *id009
+  replaced_by: *id010
+  start: '2026-11-27'
+  end: ''
+  folded: *id011
+  overview: false
+  id: fs-host-folder-mtime-resolution
+  title: Host-folder writes keep the old mtime
+  track: fs
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: 'On host folders 45-60% of consecutive writes report the same mtime as the previous one (tmpfs: none), which can hide changes from tools that compare mtimes.'
+  notes: 'Fixed when: consecutive writes on a host folder get distinct mtimes like on Linux, and c/storage state survives the acceptance x8 without losing containers.'

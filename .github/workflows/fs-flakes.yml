@@ -1,0 +1,62 @@
+# Stress for the create/lookup races seen in the Podman acceptance (docs/results/5-podman-windows.md, fifth round).
+name: fs-flakes
+on:
+  workflow_dispatch:
+    inputs:
+      iters: {description: iterations per worker, default: "600"}
+      workers: {description: parallel mount namespaces, default: "12"}
+      reps: {description: repetitions, default: "3"}
+jobs:
+  guests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {sparse-checkout: test/guests}
+      - run: |
+          mkdir -p out
+          gcc -static -no-pie -O1 -Wall -o out/fsstress test/guests/fsstress.c
+      - uses: actions/upload-artifact@v4
+        with: {name: fsstress-guest, path: out}
+  stress:
+    needs: guests
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [native, rewrite]
+    env:
+      WINSTUB_FSMODE: ${{ matrix.mode }}
+      WINSTUB_KEEP_AVX512: ${{ matrix.mode == 'rewrite' && '1' || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version-file: go.mod, cache: false}
+      - uses: actions/download-artifact@v4
+        with: {name: fsstress-guest, path: guests}
+      - name: Build
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force C:\ci\bin | Out-Null
+          go build -p 2 -o C:\ci\bin\runsc.exe ./runsc
+          go build -o C:\ci\bin\runsctest.exe ./tools/windows/runsctest
+          $r = 'C:\ci\work\rootfs'
+          foreach ($d in 'bin','etc','proc','dev','tmp') { New-Item -ItemType Directory -Force "$r\$d" | Out-Null }
+          Copy-Item guests\fsstress "$r\bin\fsstress"
+      - name: Stress as a standard user
+        shell: pwsh
+        run: |
+          $iters = if ($env:IT) { $env:IT } else { '600' }; $workers = if ($env:WK) { $env:WK } else { '12' }; $reps = if ($env:RP) { [int]$env:RP } else { 3 }
+          $fail = 0
+          for ($i = 1; $i -le $reps; $i++) {
+            & tools/windows/ci/run-as-standard-user.ps1 `
+              -Program C:\ci\bin\runsctest.exe `
+              -Arguments @('-fsmode', $env:WINSTUB_FSMODE, '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work',"C:\ci\work\std-stress$i",'-only','fsstress','-stress-iters',$iters,'-stress-workers',$workers,'-timeout','900s') `
+              -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 1800
+            if ($LASTEXITCODE -ne 0) { $fail++ }
+          }
+          Write-Host "repetitions failed: $fail of $reps"
+          if ($fail) { exit 1 }
+        env:
+          IT: ${{ inputs.iters }}
+          WK: ${{ inputs.workers }}
+          RP: ${{ inputs.reps }}

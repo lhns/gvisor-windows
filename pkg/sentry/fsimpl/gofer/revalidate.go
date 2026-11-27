@@ -281,12 +281,15 @@ func (d *dentry) disownAllChildrenForInvalidation(ctx context.Context, vfsObj *v
 	d.childrenMu.Lock()
 	defer d.childrenMu.Unlock()
 	for name, child := range d.children {
-		if child == nil { // a cached negative lookup: nothing to invalidate
-			delete(d.children, name)
+		delete(d.children, name)
+		if child == nil {
+			// gvisor-windows: a negative entry. They are cached outside
+			// InteropModeShared, and the directory watcher invalidates
+			// directories in that mode.
+			d.negativeChildren--
 			continue
 		}
 		children = append(children, child)
-		delete(d.children, name)
 		if child.inode.isSynthetic() {
 			child.deleteSynthetic(d, ds)
 		}
