@@ -258,7 +258,6 @@ func (vfs *VirtualFilesystem) CommitDeleteDentry(ctx context.Context, d *Dentry)
 	d.dead = true
 	d.mu.Unlock()
 	if d.isMounted() {
-		log.Warningf("vfs: deleted dentry had a mount on it; stack: %s", debug.Stack())
 		return vfs.forgetDeadMountpoint(ctx, d)
 	}
 	return nil
