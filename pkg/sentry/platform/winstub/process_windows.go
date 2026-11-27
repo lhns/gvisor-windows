@@ -264,7 +264,7 @@ func (as *addressSpace) createThread(t *thread) error {
 	if err != nil {
 		return fmt.Errorf("CreateRemoteThread: %w", err)
 	}
-	t.hThread, t.tid = h, tid
+	t.hThread, t.tid, t.teb, t.dyn = h, tid, 0, nil // a new thread: a new TEB (readTebSlot), no veneer of the old one
 	as.tmu.Lock()
 	as.byTid[tid] = t
 	as.tmu.Unlock()
@@ -629,6 +629,9 @@ func (as *addressSpace) onException(ev *debugEvent, ctx *ctxBuf, seenBP *bool) u
 		}
 		as.park(t, ctx, request{kind: reqFault, sig: 5, code: 128, addr: rip})
 	case excSingleStep:
+		if watchOn && as.watchHit(t, ctx, excAddr) {
+			break
+		}
 		as.park(t, ctx, request{kind: reqFault, sig: 5, code: 2, addr: rip})
 	case excIntDivide, excIntOverflow:
 		as.park(t, ctx, request{kind: reqFault, sig: 8, code: 1, addr: rip})

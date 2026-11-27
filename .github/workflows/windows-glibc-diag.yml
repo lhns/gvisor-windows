@@ -25,8 +25,23 @@ jobs:
         with: {name: phc-guests, path: out}
       - uses: actions/upload-artifact@v4
         with: {name: phc-dis, path: dis}
+  guests-ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {sparse-checkout: test/guests}
+      - run: |
+          mkdir -p out dis
+          gcc -static -no-pie -O1 -Wall -o out/aptrename-ubuntu test/guests/aptrename.c
+          gcc -static -no-pie -O1 -Wall -o out/aptprobe-ubuntu test/guests/phc/aptprobe.c
+          gcc -static -no-pie -O1 -Wall -o out/heapprobe-ubuntu test/guests/phc/heapprobe.c
+          for g in aptrename-ubuntu aptprobe-ubuntu heapprobe-ubuntu; do objdump -d out/$g > dis/$g.txt; nm -n out/$g > dis/$g.nm; done
+      - uses: actions/upload-artifact@v4
+        with: {name: phc-guests-ubuntu, path: out}
+      - uses: actions/upload-artifact@v4
+        with: {name: phc-dis-ubuntu, path: dis}
   run:
-    needs: guests
+    needs: [guests, guests-ubuntu]
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -42,6 +57,8 @@ jobs:
         with: {go-version-file: go.mod, cache: false}
       - uses: actions/download-artifact@v4
         with: {name: phc-guests, path: guests}
+      - uses: actions/download-artifact@v4
+        with: {name: phc-guests-ubuntu, path: guests}
       - name: Build
         shell: pwsh
         run: go build -p 2 -o C:\ci\bin\runsc.exe ./runsc
@@ -49,7 +66,7 @@ jobs:
         shell: pwsh
         run: |
           $cases = Get-Content test/guests/phc/cases.txt | Where-Object { $_ -and -not $_.StartsWith('#') }
-          & test/guests/phc/run.ps1 -Runsc C:\ci\bin\runsc.exe -Guests guests -Work C:\ci\work -Cases $cases -Reps 2
+          & test/guests/phc/run.ps1 -Runsc C:\ci\bin\runsc.exe -Guests guests -Work C:\ci\work -Cases $cases -Reps 2 -Timeout 240
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -58,3 +75,4 @@ jobs:
             C:\ci\work\*.log
             C:\ci\work\*.out
             C:\ci\work\*.err
+            C:\ci\work\*.hang

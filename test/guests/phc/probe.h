@@ -91,6 +91,7 @@ static DIR *probe_opendir(const char *p) {
     int i = probe_find(0);
     if (i >= 0) { probe_dirs[i] = d; probe_hdr[i] = ((size_t *)d)[-1]; probe_prev[i] = ((size_t *)d)[-2]; }
     if (probe_opens == 1) probe_state("first opendir");
+    if (getenv("PROBE_WATCH")) syscall(0x7ffe, (char *)d - 8);
   }
   return d;
 }

@@ -240,7 +240,10 @@ func (as *addressSpace) fsFix(t *thread, rip uint64) (newRip uint64, ok bool) {
 		}
 	}
 	if fsLog && n <= 200 {
-		log.Printf("winstub: FSFIX thread %d: stopped at %#x in the veneer of %#x, back to %#x (restore r%d: %v)", t.idx, rip, info.w0, newRip, r1, restore)
+		var tbi [6]uintptr
+		var tn uint32
+		pNtQueryInformationThread.Call(t.hThread, 0, uintptr(unsafe.Pointer(&tbi[0])), unsafe.Sizeof(tbi), uintptr(unsafe.Pointer(&tn)))
+		log.Printf("winstub: FSFIX pid %d thread %d: stopped at %#x in the veneer of %#x, back to %#x (restore r%d: %v; teb cached %#x, now %#x)", as.wpid, t.idx, rip, info.w0, newRip, r1, restore, t.teb, tbi[1])
 	}
 	if restore {
 		if v, ok := as.readTebSlot(t, stubasm.TebSave); ok {
