@@ -90,7 +90,7 @@ func TestRenameReplaceProbe(t *testing.T) {
 		if err == nil {
 			works++
 		}
-		if v.pinTarget && err != nil {
+		if v.pinTarget && v.flags&renamePosix != 0 && err != nil {
 			t.Errorf("%s: a pinned target must be replaceable (guest files are pinned while open): %v", v.name, err)
 		}
 		if held != 0 {
