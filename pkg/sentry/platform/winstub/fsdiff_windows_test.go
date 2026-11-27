@@ -584,6 +584,7 @@ type fdResult struct {
 	mxcsr uint32
 	mem   []byte
 	err   string
+	frip  uint64 // the rip reported with a signal
 }
 
 func fdWrite(t *testing.T, h *harness, fr memmap.FileRange, data []byte) {
@@ -694,7 +695,8 @@ func runCases(t *testing.T, mode string, interrupt bool, textBase uint64, cases 
 		if rr.err != nil || ac.StateData().Regs.Orig_rax != 500 {
 			why := fmt.Sprintf("%v", rr.err)
 			if rr.si != nil {
-				why = fmt.Sprintf("signal %d at %#x (rip %#x)", rr.si.Signo, rr.si.Addr(), ac.StateData().Regs.Rip)
+				why = fmt.Sprintf("signal %d at %#x", rr.si.Signo, rr.si.Addr())
+				res[i].frip = ac.StateData().Regs.Rip
 			}
 			res[i].err = why
 			continue // (the thread waits in the fault; the next case answers it with new registers)
@@ -781,8 +783,10 @@ func fsCompare(t *testing.T, cases []*fdCase, nat, rew []fdResult) int {
 	for i := range cases {
 		a, b := nat[i], rew[i]
 		var diffs []string
-		if a.err != b.err {
-			diffs = append(diffs, fmt.Sprintf("native %q, rewrite %q", a.err, b.err))
+		// A fault under the jump of a window may be reported at the window start,
+		// up to 6 bytes before (rollsBack; TestFSFaultUnderJump resumes there).
+		if a.err != b.err || b.frip > a.frip || a.frip-b.frip >= 7 {
+			diffs = append(diffs, fmt.Sprintf("native %q (rip %#x), rewrite %q (rip %#x)", a.err, a.frip, b.err, b.frip))
 		} else if a.err == "" {
 			for k := 0; k < 16; k++ {
 				if a.regs[k] != b.regs[k] {
