@@ -113,6 +113,12 @@ func decodeRangeSafe(code []byte, from, end int, list []ins) (res []ins, at int,
 		}
 	}()
 	for off < end {
+		// endbr64 and endbr32: the decoder reads them as a 3-byte instruction and a `cli`
+		if off+4 <= len(code) && code[off] == 0xF3 && code[off+1] == 0x0F && code[off+2] == 0x1E && code[off+3]&^1 == 0xFA {
+			list = append(list, ins{off: off, n: 4, op: x86asm.NOP, cls: clsOK})
+			off += 4
+			continue
+		}
 		inst, err := x86asm.Decode(code[off:], 64)
 		if err == nil && off+inst.Len > len(code) {
 			err = errTruncated // (a truncated instruction at the end of the range)

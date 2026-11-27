@@ -226,3 +226,43 @@ func TestSplitFSAt(t *testing.T) {
 		t.Errorf("a whole instruction is reported split at %d", p)
 	}
 }
+
+// TestDecodeBoundaries: instructions that the decoder once got the length of, which
+// made the sweep swallow the first bytes of the next instruction (an %fs instruction
+// after a vzeroupper was never rewritten).
+func TestDecodeBoundaries(t *testing.T) {
+	fsLoad := []byte{0x64, 0x48, 0x2b, 0x04, 0x25, 0x28, 0, 0, 0} // sub %fs:0x28,%rax
+	for _, c := range []struct {
+		name string
+		code []byte
+		n    int // length of the first instruction
+	}{
+		{"vzeroupper", []byte{0xc5, 0xf8, 0x77}, 3},
+		{"vzeroall", []byte{0xc5, 0xfc, 0x77}, 3},
+		{"vzeroupper, 3-byte VEX", []byte{0xc4, 0xe1, 0x78, 0x77}, 4},
+		{"endbr64", []byte{0xf3, 0x0f, 0x1e, 0xfa}, 4},
+		{"endbr32", []byte{0xf3, 0x0f, 0x1e, 0xfb}, 4},
+		{"vmovdqu", []byte{0xc5, 0xfe, 0x6f, 0x07}, 4},
+	} {
+		for _, next := range [][]byte{{0x48, 0x8b, 0x45, 0xc8}, {0x48, 0x8b}, {0x45, 0xc8}} {
+			code := append(append(append([]byte(nil), c.code...), next...), fsLoad...)
+			// next is not always whole instructions: only the first instruction's length is checked
+			list := decodeRange(code, 0, len(code), nil)
+			if len(list) == 0 || list[0].n != c.n {
+				t.Errorf("%s: length of the first instruction in % x is %v, want %d", c.name, code, list, c.n)
+			}
+		}
+		// followed by whole instructions, the %fs one is found
+		code := append(append(append([]byte(nil), c.code...), 0x48, 0x8b, 0x45, 0xc8), fsLoad...)
+		list := decodeRange(code, 0, len(code), nil)
+		found := false
+		for _, x := range list {
+			if x.off == len(code)-len(fsLoad) && (x.cls == clsFS) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s: the %%fs instruction after it is not found in % x: %v", c.name, code, list)
+		}
+	}
+}
