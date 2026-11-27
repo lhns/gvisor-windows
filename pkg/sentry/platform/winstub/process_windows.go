@@ -414,6 +414,7 @@ func (as *addressSpace) debugLoop() {
 			as.markDead()
 			return
 		}
+		as.nEvents.Add(1)
 		status := uint32(dbgContinue)
 		exited := false
 		as.lastEvent.Store(fmt.Sprintf("handling event %d tid %d code %#x", ev.code(), ev.tid(), ev.u32(16)))

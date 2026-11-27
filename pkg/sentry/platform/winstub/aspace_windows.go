@@ -132,6 +132,8 @@ type addressSpace struct {
 	// diagnostics: threads ended with TerminateThread instead of by themselves
 	nTermFallback atomic.Uint32
 	nThreadReplaced atomic.Uint32
+	// debug-event counts: events handled, %fs instructions run by the debugger, stops moved out of a veneer
+	nEvents, nFSInline, nFSFix atomic.Uint64
 	tmu       sync.Mutex
 	byTid     map[uint32]*thread
 	slots     [stubasm.MaxThreads]*thread

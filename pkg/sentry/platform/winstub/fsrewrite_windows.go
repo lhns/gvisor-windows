@@ -188,6 +188,7 @@ func (as *addressSpace) fsFix(t *thread, rip uint64) (newRip uint64, ok bool) {
 	if info == nil {
 		return rip, false
 	}
+	as.nFSFix.Add(1)
 	newRip, r1, restore := info.unwind(rip)
 	if restore {
 		if v, ok := as.readTebSlot(t, stubasm.TebSave); ok {
@@ -220,6 +221,7 @@ func (as *addressSpace) readTebSlot(t *thread, off uint32) (uint64, bool) {
 // veneer of the thread's own page, and continues the thread there. It reports
 // false if the instruction cannot be run that way.
 func (as *addressSpace) fsRunInline(t *thread, ctx *ctxBuf, rip uint64, orig []byte) bool {
+	as.nFSInline.Add(1)
 	list := []ins{{off: 0, n: len(orig), cls: clsFS}}
 	v, ok := buildFSVeneer(orig, rip, list, 0, 0, 0)
 	if !ok || len(v.code) > stubasm.PgDynSize {
