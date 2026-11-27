@@ -547,7 +547,7 @@ func (g *fdGen) build(pc uint64) *fdCase {
 			if m.index >= 0 {
 				after[m.index] = true
 			}
-			c.regs[ctr] = uint64(30000 + r.Intn(30000))
+			c.regs[ctr] = uint64(150000 + r.Intn(150000))
 		}
 		var code []byte
 		for n := r.Intn(4); n > 0; n-- {
@@ -670,12 +670,15 @@ func runCases(t *testing.T, mode string, interrupt bool, textBase uint64, cases 
 				defer close(done)
 				rnd := rand.New(rand.NewSource(int64(i)))
 				for {
-					select {
-					case <-stop:
-						return
-					case <-time.After(time.Duration(10+rnd.Intn(200)) * time.Microsecond):
-						c.Interrupt()
+					// (a spin: a timer is too coarse to land inside a few instructions)
+					for end := time.Now().Add(time.Duration(5+rnd.Intn(120)) * time.Microsecond); time.Now().Before(end); {
+						select {
+						case <-stop:
+							return
+						default:
+						}
 					}
+					c.Interrupt()
 				}
 			}(c)
 			for {
@@ -724,7 +727,7 @@ func TestFSDifferential(t *testing.T) { fsDifferential(t, false, 3000) }
 // iterations, and interrupts the rewritten one over and over: the thread is stopped
 // in all places of the veneers and put back as the Sentry does after a signal; the
 // final state must be that of the uninterrupted native run.
-func TestFSDifferentialInterrupt(t *testing.T) { fsDifferential(t, true, 100) }
+func TestFSDifferentialInterrupt(t *testing.T) { fsDifferential(t, true, 60) }
 
 func fsDifferential(t *testing.T, loop bool, n int) {
 	if !stubasm.HasFSGSBASE() {
