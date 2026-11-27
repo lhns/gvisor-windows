@@ -40,6 +40,7 @@ var (
 	stressWorkers = flag.Int("stress-workers", 6, "fsstress: parallel mount namespaces")
 	stressStrace  = flag.Bool("stress-strace", false, "fsstress: run with runsc --strace")
 	stressIters   = flag.Int("stress-iters", 600, "fsstress: iterations per worker")
+	winstubDebug  = flag.Bool("winstub-debug", false, "WINSTUB_DEBUG=1 for runsc (patching log lines in stderr)")
 	gcSecs        = flag.Int("gc-secs", 20, "gogc: seconds to run")
 	fsMode   = flag.String("fsmode", "", "WINSTUB_FSMODE for runsc (native or rewrite)")
 	fpMode   = flag.String("fpmode", "", "WINSTUB_FPMODE for runsc (fxsave)")
@@ -53,6 +54,9 @@ type result struct {
 func main() {
 	flag.Parse()
 	// (the CI runs this as another user, whose environment cannot be set from outside)
+	if *winstubDebug {
+		os.Setenv("WINSTUB_DEBUG", "1")
+	}
 	os.Setenv("WINSTUB_TRIPWIRE", "1") // a syscall that runs on Windows fails the test
 	if *fsMode != "" {
 		os.Setenv("WINSTUB_FSMODE", *fsMode)
@@ -748,6 +752,9 @@ func testDebian() error {
 		fmt.Printf("debian ld.so from %s: exit %d stdout %q stderr %q\n", d, r.code, r.stdout, r.stderr)
 		if r.code != 0 {
 			bad++
+			if *winstubDebug {
+				fmt.Println("runsc stderr:", r.stderr)
+			}
 			if b, err := os.ReadFile(filepath.Join(*workDir, "logs", "debian.log")); err == nil {
 				for _, l := range strings.Split(string(b), "\n") {
 					if (strings.Contains(l, " X ") && (strings.Contains(l, "ld-linux") || strings.Contains(l, " echo "))) || strings.Contains(l, "gofer Translate") {

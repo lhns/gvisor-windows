@@ -304,6 +304,11 @@ func (p *Platform) newAS() (*addressSpace, error) {
 		time.Sleep(200 * time.Microsecond)
 	}
 	Trace("as: anchor parked")
+	if as.p.tripwire {
+		if st := uint32(*anchor.u64(stubasm.PgICBStat)); st != 0 {
+			log.Printf("winstub: the instrumentation callback could not be registered: NtSetInformationProcess = %#x", st)
+		}
+	}
 	return as, nil
 }
 
