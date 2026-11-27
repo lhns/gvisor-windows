@@ -29,6 +29,7 @@ import (
 	pkgcontext "gvisor.dev/gvisor/pkg/context"
 	"gvisor.dev/gvisor/pkg/hostarch"
 	"gvisor.dev/gvisor/pkg/sentry/platform"
+	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/stubasm"
 )
 
 const (
@@ -98,10 +99,22 @@ func tlsData() []byte {
 // TestFSInstructions runs %fs accesses of every shape the veneers handle, near
 // the veneer area and far above it (a pointer jump). It works in both modes.
 func TestFSInstructions(t *testing.T) {
-	for _, base := range []uint64{0xC00000, 0x3_0000_0000} {
-		t.Run(fmt.Sprintf("%#x", base), func(t *testing.T) {
+	// full: the veneer area is used up, so the veneers go to the end of the
+	// syscall veneers' space.
+	for _, c := range []struct {
+		base uint64
+		full bool
+	}{{0xC00000, false}, {0x3_0000_0000, false}, {0xC00000, true}, {0x3_0000_0000, true}} {
+		base := c.base
+		t.Run(fmt.Sprintf("%#x full=%v", base, c.full), func(t *testing.T) {
 			h := newHarness(t)
 			mm := h.newMM()
+			if c.full {
+				as := mm.as.(*addressSpace)
+				as.mu.Lock()
+				as.fcur = stubasm.FSVeneers + stubasm.FSVeneersSize
+				as.mu.Unlock()
+			}
 			g := buildFSGuest(base)
 			h.mapAt(mm, base, h.pages(g.code, 2), rx)
 			h.mapAt(mm, 0x700000, h.pages(nil, 4), rw)

@@ -318,7 +318,7 @@ func (as *addressSpace) patchReloc(code []byte, base uint64, list []ins, s int, 
 		}
 	} else {
 		vlen = uint64(len(pre)+23+15) &^ 15
-		if va+vlen > stubasm.VeneersShared {
+		if va+vlen > as.ftop {
 			return false
 		}
 	}

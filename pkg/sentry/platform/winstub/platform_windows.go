@@ -26,6 +26,7 @@ import (
 	pkgcontext "gvisor.dev/gvisor/pkg/context"
 	"gvisor.dev/gvisor/pkg/cpuid"
 	"gvisor.dev/gvisor/pkg/hostarch"
+	"gvisor.dev/gvisor/pkg/sentry/arch"
 	"gvisor.dev/gvisor/pkg/sentry/platform"
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/stubasm"
 )
@@ -201,4 +202,9 @@ func (constructor) New(opts platform.Options) (platform.Platform, error) { retur
 
 func (constructor) PrecompiledSeccompInfo() []platform.SeccompInfo { return nil }
 
-func init() { platform.Register(Name, constructor{}) }
+func init() {
+	platform.Register(Name, constructor{})
+	// Executables load low (0x1000_0000 + up to 512 MiB), within rel32 reach of the
+	// stub's veneers; Linux's 2/3 of the address space is out of reach.
+	arch.PIELoadBase, arch.PIELoadRand = 0x1000_0000, 0x2000_0000
+}

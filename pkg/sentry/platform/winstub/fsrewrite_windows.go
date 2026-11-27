@@ -92,16 +92,27 @@ func (as *addressSpace) fsWindow(code []byte, base uint64, win []ins, a, b, s, m
 	key := fsKey{addr: w0, h: sha256.Sum256(code[w0off : w0off+wlen])}
 	va, cached := as.fsCache[key]
 	if !cached {
-		vlen := uint64(8+len(v.code)+15) &^ 15
-		if as.fcur+vlen > stubasm.FSVeneers+stubasm.FSVeneersSize {
+		vlen := uint64(8+len(v.code)+7) &^ 7
+		switch {
+		case as.fcur+vlen <= stubasm.FSVeneers+stubasm.FSVeneersSize:
+			va = as.fcur
+			as.fcur += vlen
+		case as.ftop-vlen >= as.vcur:
+			// The area is full: take room from the end of the private syscall
+			// veneers, which use little of theirs.
+			as.ftop -= vlen
+			va = as.ftop
+		default:
 			return false
 		}
-		va = as.fcur
-		as.fcur += vlen
 		as.areaWrite(va, binary.LittleEndian.AppendUint64(nil, va+8))
 		as.areaWrite(va+8, v.code)
 		as.fsCache[key] = va
-		as.fsVen = append(as.fsVen, &fsVenInfo{lo: va + 8, hi: va + 8 + uint64(len(v.code)), w0: w0, v: v})
+		vi := &fsVenInfo{lo: va + 8, hi: va + 8 + uint64(len(v.code)), w0: w0, v: v}
+		i := sort.Search(len(as.fsVen), func(i int) bool { return as.fsVen[i].lo > vi.lo })
+		as.fsVen = append(as.fsVen, nil)
+		copy(as.fsVen[i+1:], as.fsVen[i:])
+		as.fsVen[i] = vi
 		v.code = nil
 	}
 	entry := va + 8
@@ -142,7 +153,7 @@ func (as *addressSpace) fsLocate(t *thread, rip uint64) *fsVenInfo {
 	if d := t.dyn; d != nil && rip >= d.lo && rip < d.hi {
 		return d
 	}
-	if rip < stubasm.FSVeneers || rip >= stubasm.FSVeneers+stubasm.FSVeneersSize {
+	if rip < stubasm.Veneers || rip >= stubasm.FSVeneers+stubasm.FSVeneersSize {
 		return nil
 	}
 	as.mu.Lock()

@@ -120,6 +120,7 @@ type addressSpace struct {
 	restartAt map[uint64]uint64
 	ud2Sites  map[uint64]bool
 	fcur      uint64 // next free address in the %fs veneer area
+	ftop      uint64 // end of the free space shared by syscall veneers (up from vcur) and overflowing %fs veneers (down)
 	fsCache   map[fsKey]uint64
 	fsVen     []*fsVenInfo
 	fsUD2     map[uint64][]byte
@@ -146,7 +147,7 @@ func newAddressSpace(p *Platform) *addressSpace {
 	return &addressSpace{
 		p: p, loopDone: make(chan struct{}), started: make(chan error, 1),
 		vcur: stubasm.Veneers, siteCache: map[uint64]siteInfo{}, restartAt: map[uint64]uint64{},
-		ud2Sites: map[uint64]bool{}, fcur: stubasm.FSVeneers, fsCache: map[fsKey]uint64{}, fsUD2: map[uint64][]byte{}, tails: map[uint64][]byte{}, byTid: map[uint32]*thread{}, edges: map[uint64]edge{},
+		ud2Sites: map[uint64]bool{}, fcur: stubasm.FSVeneers, ftop: stubasm.VeneersShared, fsCache: map[fsKey]uint64{}, fsUD2: map[uint64][]byte{}, tails: map[uint64][]byte{}, byTid: map[uint32]*thread{}, edges: map[uint64]edge{},
 	}
 }
 
