@@ -10,7 +10,8 @@
 // gaps in different processes can be lined up (docs/results/3e-signal-latency.md).
 // A gap in the goroutine only points at the Go runtime; in both, at the process
 // or the machine; in every process at once, at the machine. With perCPU, one more
-// heartbeat per processor runs pinned to it at high priority: a gap there alone
+// heartbeat per processor runs pinned to it at THREAD_PRIORITY_TIME_CRITICAL
+// (above any boost a normal thread can get): a gap there alone
 // means that processor (a vCPU the hypervisor did not run, or a storm of
 // interrupts) stopped, while the rest of the machine went on.
 package stallwatch
@@ -96,13 +97,13 @@ func Start(label string, w io.Writer, minGap time.Duration, perCPU bool) *Watch 
 }
 
 // thread runs heartbeat k on a locked OS thread, pinned to processor cpu at
-// THREAD_PRIORITY_HIGHEST if cpu >= 0.
+// THREAD_PRIORITY_TIME_CRITICAL if cpu >= 0.
 func (s *Watch) thread(k, cpu int) {
 	runtime.LockOSThread()
 	if cpu >= 0 {
 		const self = ^uintptr(1) // GetCurrentThread()
 		pAffinity.Call(self, uintptr(1)<<cpu)
-		pPriority.Call(self, 2)
+		pPriority.Call(self, 15)
 	}
 	// CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS
 	h, _, _ := pCreateWT.Call(0, 0, 2, 0x1F0003)

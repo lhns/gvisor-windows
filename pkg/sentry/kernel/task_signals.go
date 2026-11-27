@@ -439,6 +439,9 @@ func (t *Task) Sigtimedwait(set linux.SignalSet, timeout time.Duration) (*linux.
 	t.realSignalMask = 0
 
 	if info := t.dequeueSignalLocked(mask); info != nil {
+		if SigLat && err == linuxerr.ETIMEDOUT { // gvisor-windows
+			sigLatTimedOut(info.Signo)
+		}
 		return info, nil
 	}
 	if err == linuxerr.ETIMEDOUT {

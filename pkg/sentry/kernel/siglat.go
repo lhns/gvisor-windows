@@ -44,6 +44,26 @@ var SigLat, sigLatMin = func() (bool, int64) {
 
 func init() {
 	ktime.TraceLate = SigLat
+	if SigLat {
+		ktime.LateHook = sigLatTick
+	}
+}
+
+// sigLatTimedOut reports a sigtimedwait that timed out although a signal it
+// waited for was pending: the signal did not wake the task.
+func sigLatTimedOut(signo int32) {
+	fmt.Fprintf(os.Stderr, "SIGLAT sigtimedwait timed out with signal %d pending (qpc %.3f ms, %s UTC)\n",
+		signo, float64(profNow())/1e6, time.Now().UTC().Format("15:04:05.000"))
+}
+
+// sigLatTick reports a Sentry timer that ran late or early by the threshold, with
+// the timer clock's reading beside the host's QPC (a gap between the two that
+// changes means the Sentry clock drifted).
+func sigLatTick(late, now int64) {
+	if late >= sigLatMin || -late >= sigLatMin {
+		fmt.Fprintf(os.Stderr, "SIGLAT ktime tick %.2f ms after its expiry (clock %.3f ms, qpc %.3f ms, %s UTC)\n",
+			float64(late)/1e6, float64(now)/1e6, float64(profNow())/1e6, time.Now().UTC().Format("15:04:05.000"))
+	}
 }
 
 type sigLatTrace struct {
