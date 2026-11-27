@@ -77,9 +77,9 @@ flowchart TB
 | `fs-safe-save-keeps-metadata` | Editor safe-saves keep Linux metadata | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/2b-fs-rootfs-and-changes.md |
 | `fs-rootfs-import` | Bring container images onto NTFS | owner-decision | owner | done | n/a | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0015-sandbox-rootfs-as-erofs-image.md |
 | `fs-attribute-cache` | Faster stat walks on host folders | feature | windows-ci | done | mixed | 2026-11-26 | 2026-11-26 | fs-change-notifications |  |  | 1 us per file | docs/results/2c-fs-speed.md |
-| `fs-flaky-negative-cache-test` | Flaky negative-cache test on host folders | defect | windows-ci | next | unrated | 2026-11-26 |  |  |  |  |  | docs/results/1g-platform-memory.md |
+| `fs-flaky-negative-cache-test` | Flaky negative-cache test on host folders | defect | windows-ci | in-progress | unrated | 2026-11-26 |  |  |  |  |  | docs/results/1g-platform-memory.md |
 | `fs-standard-user-delete-rights` | Deletes fail for standard users | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/5-podman-windows.md; docs/results/2c-fs-speed.md |
-| `fs-case-sensitivity-without-admin` | Case-sensitive names without admin | defect | windows-ci | next | unrated | 2026-11-26 |  |  |  |  |  | docs/results/5-podman-windows.md |
+| `fs-case-sensitivity-without-admin` | Case-sensitive names without admin | defect | windows-ci | in-progress | unrated | 2026-11-26 |  |  |  |  |  | docs/results/5-podman-windows.md |
 
 ### Details per node
 

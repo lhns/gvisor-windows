@@ -116,8 +116,8 @@ flowchart TB
         runsc_container_on_windows["runsc · ✔ Run a<br/>container with runsc"]
         platform_busybox_on_windows["platform · ✔ Run<br/>busybox under the<br/>Sentry"]
     end
-    subgraph bd_1["Next"]
-        sentry_profile_small_file_path[/"sentry · ○ Profile the<br/>slow file and exec<br/>path"/]
+    subgraph bd_1["Now (in progress)"]
+        sentry_profile_small_file_path[/"sentry · ▶ Profile the<br/>slow file and exec<br/>path"/]
     end
     subgraph bd_2["Later (blocked or parked)"]
         workloads_podman_on_windows[/"workloads · ⛔ Podman<br/>passes on Windows"/]
@@ -170,7 +170,7 @@ flowchart TB
     class workloads_podman_on_windows blocked
     class runsc_container_on_windows,platform_winstub,platform_busybox_on_windows,fs_windows_directfs,net_netstack_windows_link,platform_static_guest_from_memory,net_bridge_networking,platform_veh_on_guest_stack_unsafe succ
     class platform_fast_process_start vsucc
-    class sentry_profile_small_file_path next
+    class sentry_profile_small_file_path inprog
 ```
 <!-- END GENERATED: overview -->
 
@@ -194,7 +194,7 @@ flowchart TB
 | Veneer addresses differ after clone | ⚠ open | A syscall through a relocated veneer returns into the veneer; after clone into a new address space the veneers sit elsewhere, so the child resumes on a zero page and crashes. |
 | Event waiting on IOCP | ⏸ parked | Waiting for many host events at once (epoll on Linux) moves to Windows completion ports. |
 | Timers and clocks on Windows | ⛔ blocked | The Sentry's clocks and timers run on Windows' high-resolution timers. |
-| Profile the slow file and exec path | ○ next | Creating a file on tmpfs costs about 1 ms and a fork+exec 32 ms on Windows; find where the time goes (syscall round trips, page faults, debug events, Sentry work) and fix the top causes. |
+| Profile the slow file and exec path | ▶ in progress | Creating a file on tmpfs costs about 1 ms and a fork+exec 32 ms on Windows; find where the time goes (syscall round trips, page faults, debug events, Sentry work) and fix the top causes. |
 | Compatibility layer, not security boundary | ✔ done · n/a | The sandbox may open the user's files directly with the user's rights; it isolates containers from each other, not from the user. |
 | Open Windows files directly | ✔ done · successful | The Sentry opens NTFS files itself for bind mounts, with its own caches, instead of going through a file protocol. |
 | Storage that survives restarts | ⛔ blocked | Implement the chosen writable filesystem so data inside the sandbox outlives a restart. |
@@ -224,11 +224,7 @@ flowchart TB
 
 **windows-ci**
 
-- `fs-flaky-negative-cache-test`: Flaky negative-cache test on host folders
 - `workloads-conmon-sync-pipe`: conmon sees no data on its sync pipe
-- `fs-case-sensitivity-without-admin`: Case-sensitive names without admin
-- `platform-veneer-address-in-child`: Veneer addresses differ after clone
-- `sentry-profile-small-file-path`: Profile the slow file and exec path
 <!-- END GENERATED: ready-now -->
 
 ## Running
@@ -238,6 +234,7 @@ flowchart TB
 
 - `ops-syscall-tests-on-windows`: gVisor syscall tests on Windows
 - `workloads-podman-harness`: Serve Podman to Windows clients
+- `sentry-profile-small-file-path`: Profile the slow file and exec path
 <!-- END GENERATED: running -->
 
 ## Built, waiting
@@ -383,9 +380,9 @@ Generated on 2026-11-27.
 Each track has its own page with its tree, node table and per-node details.
 
 - [runsc - runsc](roadmap/tracks/runsc.md): 6 nodes (6 done)
-- [platform - platform](roadmap/tracks/platform.md): 31 nodes (24 done, 1 next, 1 blocked, 4 parked, 1 abandoned)
-- [sentry - sentry](roadmap/tracks/sentry.md): 11 nodes (8 done, 1 next, 1 blocked, 1 parked)
-- [fs - files](roadmap/tracks/fs.md): 15 nodes (12 done, 2 next, 1 blocked)
+- [platform - platform](roadmap/tracks/platform.md): 31 nodes (24 done, 1 in progress, 1 blocked, 4 parked, 1 abandoned)
+- [sentry - sentry](roadmap/tracks/sentry.md): 11 nodes (8 done, 1 in progress, 1 blocked, 1 parked)
+- [fs - files](roadmap/tracks/fs.md): 15 nodes (12 done, 2 in progress, 1 blocked)
 - [net - network](roadmap/tracks/net.md): 4 nodes (4 done)
 - [workloads - workloads](roadmap/tracks/workloads.md): 15 nodes (12 done, 1 in progress, 1 next, 1 blocked)
 - [research - research](roadmap/tracks/research.md): 8 nodes (2 done, 6 abandoned)

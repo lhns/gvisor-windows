@@ -44,7 +44,7 @@ gantt
     Start guest processes fast :platform_fast_process_start, 2026-11-26, 2026-11-26
     Syscalls split across mappings :platform_split_syscall_unpatched, 2026-11-26, 2026-11-26
     Map files not in the memory file :platform_map_files_without_sections, 2026-11-26, 2026-11-26
-    Veneer addresses differ after clone :platform_veneer_address_in_child, 2026-11-27, 2026-11-27
+    Veneer addresses differ after clone :active, platform_veneer_address_in_child, 2026-11-27, 2026-11-27
     section sentry - sentry
     Recover faults in Go :sentry_go_fault_recovery, 2026-11-26, 2026-11-26
     Sentry builds for Windows :sentry_windows_build, 2026-11-26, 2026-11-26
@@ -54,6 +54,7 @@ gantt
     Guest threads and signals :sentry_threads_and_signals, 2026-11-26, 2026-11-26
     Make Linux names resolve on Windows :sentry_unix_shim, 2026-11-26, 2026-11-26
     Dynamic programs, exec and pipes :sentry_dynamic_elf_and_exec, 2026-11-26, 2026-11-26
+    Profile the slow file and exec path :active, sentry_profile_small_file_path, 2026-11-27, 2026-11-27
     section fs - files
     Compatibility layer, not security bound… :fs_compat_layer_not_boundary, 2026-11-26, 2026-11-26
     Test persistent image storage :fs_persistent_image_storage, 2026-11-26, 2026-11-26
@@ -66,9 +67,9 @@ gantt
     Editor safe-saves keep Linux metadata :fs_safe_save_keeps_metadata, 2026-11-26, 2026-11-26
     Bring container images onto NTFS :fs_rootfs_import, 2026-11-26, 2026-11-26
     Faster stat walks on host folders :fs_attribute_cache, 2026-11-26, 2026-11-26
-    Flaky negative-cache test on host folde… :fs_flaky_negative_cache_test, 2026-11-26, 2026-11-27
+    Flaky negative-cache test on host folde… :active, fs_flaky_negative_cache_test, 2026-11-26, 2026-11-27
     Deletes fail for standard users :fs_standard_user_delete_rights, 2026-11-26, 2026-11-26
-    Case-sensitive names without admin :fs_case_sensitivity_without_admin, 2026-11-26, 2026-11-27
+    Case-sensitive names without admin :active, fs_case_sensitivity_without_admin, 2026-11-26, 2026-11-27
     section net - network
     Netstack to Windows sockets :net_netstack_windows_link, 2026-11-26, 2026-11-26
     Publish guest ports on localhost :net_port_forwarding, 2026-11-26, 2026-11-26
@@ -109,5 +110,5 @@ gantt
     gVisor syscall tests on Windows :active, ops_syscall_tests_on_windows, 2026-11-26, 2026-11-27
 ```
 
-Not shown (no `start`): `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-hardware-acceleration`, `platform-no-fsgsbase-fallback`, `platform-binary-translation-fallback`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `sentry-profile-small-file-path`, `fs-persistent-storage-impl`, `workloads-podman-on-windows`, `ops-upstream-merges`, `ops-portable-packaging`, `ops-run-on-a-work-machine`
+Not shown (no `start`): `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-hardware-acceleration`, `platform-no-fsgsbase-fallback`, `platform-binary-translation-fallback`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `fs-persistent-storage-impl`, `workloads-podman-on-windows`, `ops-upstream-merges`, `ops-portable-packaging`, `ops-run-on-a-work-machine`
 <!-- END GENERATED: timeline -->

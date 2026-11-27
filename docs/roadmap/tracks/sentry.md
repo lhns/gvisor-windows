@@ -17,9 +17,9 @@ flowchart TB
     sentry_host_stdio_and_tty["✔ Guest terminal and<br/>stdio"]
     sentry_threads_and_signals["✔ Guest threads and<br/>signals"]
     sentry_dynamic_elf_and_exec["✔ Dynamic programs,<br/>exec and pipes"]
+    sentry_profile_small_file_path[/"▶ Profile the slow<br/>file and exec path"/]
     sentry_event_loop_iocp["⏸ Event waiting on<br/>IOCP"]
     sentry_timers_and_clocks["⛔ Timers and clocks on<br/>Windows"]
-    sentry_profile_small_file_path[/"○ Profile the slow<br/>file and exec path"/]
     sentry_go_fault_recovery ~~~ sentry_unix_shim
     sentry_unix_shim ~~~ sentry_windows_build
     sentry_windows_build ~~~ sentry_memory_file_sections
@@ -27,10 +27,10 @@ flowchart TB
     sentry_windows_build ~~~ sentry_host_stdio_and_tty
     sentry_memory_file_sections ~~~ sentry_threads_and_signals
     sentry_fault_recovery ~~~ sentry_dynamic_elf_and_exec
-    sentry_host_stdio_and_tty ~~~ sentry_event_loop_iocp
-    sentry_threads_and_signals ~~~ sentry_timers_and_clocks
-    sentry_dynamic_elf_and_exec ~~~ sentry_profile_small_file_path
-    sentry_event_loop_iocp ~~~ sentry_profile_small_file_path
+    sentry_host_stdio_and_tty ~~~ sentry_profile_small_file_path
+    sentry_threads_and_signals ~~~ sentry_event_loop_iocp
+    sentry_dynamic_elf_and_exec ~~~ sentry_timers_and_clocks
+    sentry_profile_small_file_path ~~~ sentry_timers_and_clocks
     sentry_go_fault_recovery --> sentry_unix_shim
     sentry_unix_shim --> sentry_windows_build
     sentry_windows_build --> sentry_memory_file_sections
@@ -54,9 +54,9 @@ flowchart TB
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class sentry_go_fault_recovery,sentry_unix_shim,sentry_fault_recovery,sentry_host_stdio_and_tty,sentry_threads_and_signals,sentry_dynamic_elf_and_exec succ
     class sentry_windows_build,sentry_memory_file_sections unrated
+    class sentry_profile_small_file_path inprog
     class sentry_event_loop_iocp parked
     class sentry_timers_and_clocks blocked
-    class sentry_profile_small_file_path next
 ```
 <!-- END GENERATED: track-sentry -->
 
@@ -75,7 +75,7 @@ flowchart TB
 | `sentry-threads-and-signals` | Guest threads and signals | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-winstub |  |  |  | docs/results/1f-exec-signals.md |
 | `sentry-unix-shim` | Make Linux names resolve on Windows | feature | none | done | successful | 2026-11-26 | 2026-11-26 | ops-phase0-go-no-go |  |  | 25 hand-edited shared files | docs/adr/0006-a-linux-abi-shim-for-x-sys-unix.md; docs/results/1b-windows-build.md |
 | `sentry-dynamic-elf-and-exec` | Dynamic programs, exec and pipes | feature | windows-ci | done | successful | 2026-11-26 | 2026-11-26 | platform-static-guest-from-memory |  |  |  | docs/results/1f-exec-signals.md |
-| `sentry-profile-small-file-path` | Profile the slow file and exec path | experiment | windows-ci | next | unrated |  |  | workloads-end-to-end-speed |  |  |  | docs/results/3b-runsc-speed-lifecycle.md |
+| `sentry-profile-small-file-path` | Profile the slow file and exec path | experiment | windows-ci | in-progress | unrated | 2026-11-27 |  | workloads-end-to-end-speed |  |  |  | docs/results/3b-runsc-speed-lifecycle.md |
 
 ### Details per node
 

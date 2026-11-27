@@ -1929,7 +1929,7 @@
   title: Flaky negative-cache test on host folders
   track: fs
   kind: defect
-  state: next
+  state: in-progress
   outcome: unrated
   evidence:
   - docs/results/1g-platform-memory.md
@@ -2059,7 +2059,7 @@
   title: Case-sensitive names without admin
   track: fs
   kind: defect
-  state: next
+  state: in-progress
   lane: windows-ci
   plain: A standard user on the hosted runner cannot set per-directory case sensitivity (access denied), so Linux images with names differing only in case need another way, without an admin setup step.
   notes: 'Fixed when: two names differing only in case coexist in a host folder as a standard user on windows-latest with no admin step, and Podman storage uses it.'
@@ -2078,7 +2078,7 @@
   title: Veneer addresses differ after clone
   track: platform
   kind: defect
-  state: next
+  state: in-progress
   lane: windows-ci
   plain: A syscall through a relocated veneer returns into the veneer; after clone into a new address space the veneers sit elsewhere, so the child resumes on a zero page and crashes.
   notes: 'Fixed when: test/guests/clonesys.c (clonesys, clonesys_ns) passes and podman run starts a container.'
@@ -2088,7 +2088,7 @@
   verdict_quote: ''
   headline: ''
   replaced_by: []
-  start: ''
+  start: '2026-11-27'
   end: ''
   folded: []
   overview: true
@@ -2096,7 +2096,7 @@
   title: Profile the slow file and exec path
   track: sentry
   kind: experiment
-  state: next
+  state: in-progress
   lane: windows-ci
   depends_on:
   - workloads-end-to-end-speed
