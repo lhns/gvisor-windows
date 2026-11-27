@@ -3,7 +3,7 @@ param([Parameter(Mandatory)][string]$Root)
 $ErrorActionPreference = 'Continue'
 if ($env:DIAG_ASPOOL) { $env:GVISOR_ASPOOL = $env:DIAG_ASPOOL }
 $env:GVISOR_ASPOOL = '0'
-$env:RUNSC_EXTRA_FLAGS = if ($env:DIAG_RUNSC_FLAGS) { $env:DIAG_RUNSC_FLAGS } else { '--debug' }
+$env:RUNSC_EXTRA_FLAGS = if ($env:DIAG_RUNSC_FLAGS) { $env:DIAG_RUNSC_FLAGS } else { '--strace --strace-syscalls=link,linkat,symlink,symlinkat,rename,renameat,renameat2,unlink,unlinkat,readlink,readlinkat,mkdtemp,mkdir,mkdirat,lchown,fchownat,chown' }
 $repo = (Resolve-Path "$PSScriptRoot\..\..\..").Path
 $work = "$Root\std"; New-Item -ItemType Directory -Force $work, "$work\results" | Out-Null
 $podman = (Get-ChildItem "$Root\tools" -Recurse -Filter podman.exe | Select-Object -First 1).FullName
