@@ -8,7 +8,7 @@ on:
     paths: ["pkg/sentry/platform/**", "runsc/**", "tools/windows/runsctest/**", ".github/workflows/windows-stability.yml"]
   workflow_dispatch:
     inputs:
-      runs: {description: "runs per mode", default: "100"}
+      runs: {description: "runs per mode", default: "300"}
 jobs:
   busybox:
     runs-on: ubuntu-latest
@@ -52,7 +52,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force out | Out-Null
-          $n = if ('${{ inputs.runs }}' -ne '') { [int]'${{ inputs.runs }}' } else { 100 }
+          $n = if ('${{ inputs.runs }}' -ne '') { [int]'${{ inputs.runs }}' } else { 300 }
           $pass = 0; $hang = 0
           for ($i = 0; $i -lt $n; $i++) {
             $env:RUNSC_HANG_DUMP = "$PWD\out\dump-$i.txt:12"
