@@ -8,11 +8,21 @@ on:
   workflow_dispatch:
     inputs:
       only: {description: 'steps to run, e.g. 4 (default all)', default: ''}
+      runs: {description: 'how many times to run the whole acceptance, in parallel (flakiness)', default: '1'}
 env:
   PODMAN_VERSION: "6.2.0"
   DOCKER_VERSION: "27.3.1"
   COMPOSE_VERSION: "2.29.7"
 jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      runs: ${{ steps.p.outputs.runs }}
+    steps:
+      - id: p
+        run: |
+          n=${{ github.event.inputs.runs || 1 }}
+          echo "runs=$(seq -s, 1 $n | sed 's/^/[/; s/$/]/')" >> $GITHUB_OUTPUT
   image:
     runs-on: ubuntu-latest
     steps:
@@ -42,7 +52,11 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: {name: podman-rootfs, path: podman.erofs, compression-level: 0}
   acceptance:
-    needs: image
+    needs: [image, plan]
+    strategy:
+      fail-fast: false
+      matrix:
+        run: ${{ fromJSON(needs.plan.outputs.runs) }}
     runs-on: windows-latest
     timeout-minutes: 150
     steps:
@@ -86,7 +100,7 @@ jobs:
         shell: pwsh
         run: |
           $only = '${{ github.event.inputs.only }}'
-          $must = 1, 2, 3, 6, 7, 8, 9, 10 | Where-Object { -not $only -or ($only -split '[, ]+') -contains "$_" }
+          $must = 1, 2, 3, 4, 6, 7, 8, 9, 10 | Where-Object { -not $only -or ($only -split '[, ]+') -contains "$_" }
           $t = Get-Content C:\ci\std\results\steps.txt
           $bad = $must | Where-Object { $t -notmatch "^STEP $_ PASS" }
           if ($bad) { "required steps failed: $bad"; exit 1 }
@@ -99,7 +113,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: podman-windows-logs
+          name: podman-windows-logs-${{ matrix.run }}
           path: |
             C:\ci\std\results
             C:\ci\std\engine\logs
