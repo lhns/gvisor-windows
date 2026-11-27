@@ -55,7 +55,7 @@ jobs:
           Copy-Item guests\mountkeep "$r\bin\mountkeep"
           Copy-Item guests\devnull "$r\bin\devnull"
           Copy-Item guests\ovlsub "$r\bin\ovlsub"
-          Copy-Item guestsovlopaque "$rbinovlopaque"
+          Copy-Item guests\ovlopaque "$r\bin\ovlopaque"
       - name: The text of the static guest patched in pieces (seams)
         if: env.FSUD2 == ''
         continue-on-error: true
