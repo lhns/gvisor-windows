@@ -185,7 +185,7 @@ func TestFSInterrupt(t *testing.T) {
 		// The add of this iteration has happened exactly when rip is past it: no
 		// instruction is lost or repeated, whichever way the thread was moved out.
 		want := 0x10 + r.Rcx*(r.Rcx-1)/2
-		if r.Rip >= loop+18 {
+		if r.Rip >= loop+18 && r.Rip < loop+21 { // (rip at the jmp: the inc has happened too)
 			want += r.Rcx
 		}
 		if got := binary.LittleEndian.Uint64(tls.Head().ToSlice()[0x40:]); got != want {
