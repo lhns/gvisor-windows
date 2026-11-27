@@ -227,8 +227,15 @@ func fsMemOp(in x86asm.Inst) bool {
 	if in.Op == x86asm.LEA || in.Op == x86asm.NOP {
 		return false
 	}
+	// (the decoder does not always record the segment of a VEX-encoded operand)
+	pfx := false
+	for _, p := range in.Prefix {
+		if p == x86asm.PrefixFS || p == x86asm.PrefixFS|x86asm.PrefixImplicit {
+			pfx = true
+		}
+	}
 	for _, a := range in.Args {
-		if m, ok := a.(x86asm.Mem); ok && m.Segment == x86asm.FS {
+		if m, ok := a.(x86asm.Mem); ok && (m.Segment == x86asm.FS || pfx && m.Segment == 0) {
 			return true
 		}
 	}
