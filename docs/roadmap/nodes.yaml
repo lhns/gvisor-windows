@@ -2688,7 +2688,7 @@
   - 'Rewrite Podman: all 10 steps 7 of 8, then 8 of 8 (runs 46016231319, 46020575644) (2026-11-27, commit bce41cf19)'
   overview: false
   lane: windows-ci
-  notes: All 10 steps 16 of 16 twice in rewrite and rewrite-fxsave (runs 46026228865, 46037364923).
+  notes: All 10 steps 16 of 16 in rewrite and rewrite-fxsave on the final code (run 46037364923); an earlier batch on older interrupt code also 16 of 16.
   id: workloads-podman-without-fsgsbase
   title: Podman on CPUs without FSGSBASE
   track: workloads
@@ -2774,3 +2774,41 @@
     runs).
   notes: 'Fixed: int3 filler sends a thread returning into a window to its veneer; interrupts wait only while a thread would be reported under the jump. Open: a displaced-instruction fault under the jump
     (no known case).'
+- outcome: unrated
+  verdict_quote: ''
+  headline: ''
+  depends_on: &id016 []
+  replaced_by: &id017 []
+  start: '2026-11-27'
+  end: ''
+  folded: &id018 []
+  overview: false
+  id: platform-fault-under-fs-jump
+  title: Fault reported under a patch jump
+  track: platform
+  kind: defect
+  state: next
+  lane: windows-ci
+  evidence:
+  - docs/results/1q-window-resume.md
+  plain: A fault in an instruction displaced into a veneer can still be reported at an address under the jump; a signal handler returning there with ret would run the jump bytes. No case is known.
+  notes: 'Fixed when: such faults are reported at the window start or end, with a test.'
+- outcome: unrated
+  verdict_quote: ''
+  headline: ''
+  depends_on: *id016
+  replaced_by: *id017
+  start: '2026-11-27'
+  end: ''
+  folded: *id018
+  overview: false
+  id: fs-layers-empty-on-slow-host
+  title: Empty file read during a replace
+  track: fs
+  kind: defect
+  state: next
+  lane: windows-local
+  evidence:
+  - docs/results/1p-rewrite-heap.md
+  plain: On the slow development VM, aptrename saw an empty layers.json in 2 of 5 runs while another process replaced it, which atomic replace should rule out.
+  notes: 'Fixed when: aptrename passes 5 of 5 on the VM with the current build.'

@@ -185,6 +185,7 @@ flowchart TB
 | Start guest processes fast | ✔ done · very-successful | A guest process takes 280-560 ms to start through the Sentry, against 18 ms for a bare stub; profile the gap and keep a pool of ready stubs. |
 | Reuse stub processes across exec | ○ next | Each fork+exec starts two stub processes at about 10 ms each; recycling a stub on release and execve and mapping memory up front would cut process start further. |
 | More room for %fs veneers | ⚠ open | python3 with libpython and libc needs about 8500 %fs veneers against room for about 7000, and 24% of far %fs sites in Rust PIE binaries such as netavark fall back to the 100 us debugger path. |
+| Fault reported under a patch jump | ⚠ open | A fault in an instruction displaced into a veneer can still be reported at an address under the jump; a signal handler returning there with ret would run the jump bytes. No case is known. |
 | Event waiting on IOCP | ⏸ parked | Waiting for many host events at once (epoll on Linux) moves to Windows completion ports. |
 | Timers and clocks on Windows | ○ next | The Sentry's clocks and timers run on Windows' high-resolution timers. |
 | Profile the slow file and exec path | ✔ done · mixed | Creating a file on tmpfs costs about 1 ms and a fork+exec 32 ms on Windows; find where the time goes (syscall round trips, page faults, debug events, Sentry work) and fix the top causes. |
@@ -193,6 +194,7 @@ flowchart TB
 | Open Windows files directly | ✔ done · successful | The Sentry opens NTFS files itself for bind mounts, with its own caches, instead of going through a file protocol. |
 | Overlay with a host-folder upper layer | ⚠ open | Podman uses the slow vfs storage driver because native overlay with its upper layer on a Windows folder fails c/storage's probe: removing a directory in the merged view returns "directory not empty". |
 | Fast layer diffs with overlay | ⚠ open | With overlay, c/storage's native-diff probe fails ("opaque flag erroneously copied up"), so it computes layer diffs the slow way. |
+| Empty file read during a replace | ⚠ open | On the slow development VM, aptrename saw an empty layers.json in 2 of 5 runs while another process replaced it, which atomic replace should rule out. |
 | Netstack to Windows sockets | ✔ done · successful | gVisor's own TCP/IP stack sends guest traffic out through ordinary Windows sockets, like a user-space NAT. |
 | Bridge networking inside gVisor | ✔ done · successful | Podman's default network creates a bridge and veth pairs over netlink; gVisor lacks part of that, so it fails today. Fix it in gVisor itself, first on Linux, then it carries over to Windows. |
 | Podman on gVisor on Linux | ✔ done · mixed ⚠ | Run the acceptance test on stock gVisor on Linux; whatever fails there is a gap in gVisor itself, not in the port. |
@@ -221,6 +223,11 @@ flowchart TB
 - `platform-fs-veneer-capacity`: More room for %fs veneers
 - `fs-overlay-native-diff`: Fast layer diffs with overlay
 - `sentry-waitgroup-panic`: One-off negative WaitGroup panic
+- `platform-fault-under-fs-jump`: Fault reported under a patch jump
+
+**windows-local**
+
+- `fs-layers-empty-on-slow-host`: Empty file read during a replace
 <!-- END GENERATED: ready-now -->
 
 ## Running
@@ -424,9 +431,9 @@ Generated on 2026-11-27.
 Each track has its own page with its tree, node table and per-node details.
 
 - [runsc - runsc](roadmap/tracks/runsc.md): 6 nodes (6 done)
-- [platform - platform](roadmap/tracks/platform.md): 43 nodes (36 done, 3 next, 3 parked, 1 abandoned)
+- [platform - platform](roadmap/tracks/platform.md): 44 nodes (36 done, 4 next, 3 parked, 1 abandoned)
 - [sentry - sentry](roadmap/tracks/sentry.md): 15 nodes (12 done, 2 next, 1 parked)
-- [fs - files](roadmap/tracks/fs.md): 22 nodes (20 done, 1 in progress, 1 next)
+- [fs - files](roadmap/tracks/fs.md): 23 nodes (20 done, 1 in progress, 2 next)
 - [net - network](roadmap/tracks/net.md): 4 nodes (4 done)
 - [workloads - workloads](roadmap/tracks/workloads.md): 22 nodes (22 done)
 - [research - research](roadmap/tracks/research.md): 8 nodes (2 done, 6 abandoned)

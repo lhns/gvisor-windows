@@ -57,6 +57,7 @@ gantt
     glibc heap errors in rewrite mode :platform_rewrite_heap_corruption, 2026-11-27, 2026-11-27
     Measure exception stack use :platform_exception_dispatch_depth, 2026-11-27, 2026-11-27
     Thread resumed inside a patch window :platform_resume_inside_fs_window, 2026-11-27, 2026-11-27
+    Fault reported under a patch jump :platform_fault_under_fs_jump, 2026-11-27, 2026-11-27
     section sentry - sentry
     Recover faults in Go :sentry_go_fault_recovery, 2026-11-26, 2026-11-26
     Sentry builds for Windows :sentry_windows_build, 2026-11-26, 2026-11-26
@@ -94,6 +95,7 @@ gantt
     Layer store unreadable after restart :fs_layer_store_corrupt_after_restart, 2026-11-27, 2026-11-27
     Overlay with a host-folder upper layer :active, fs_overlay_upper_on_host_folder, 2026-11-27, 2026-11-27
     Fast layer diffs with overlay :fs_overlay_native_diff, 2026-11-27, 2026-11-27
+    Empty file read during a replace :fs_layers_empty_on_slow_host, 2026-11-27, 2026-11-27
     section net - network
     Netstack to Windows sockets :net_netstack_windows_link, 2026-11-26, 2026-11-26
     Publish guest ports on localhost :net_port_forwarding, 2026-11-26, 2026-11-26

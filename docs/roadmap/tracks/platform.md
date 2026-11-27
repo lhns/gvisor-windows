@@ -46,6 +46,7 @@ flowchart TB
     platform_rewrite_heap_corruption>"✔ glibc heap errors in<br/>rewrite mode"]
     platform_exception_dispatch_depth[/"✔ Measure exception<br/>stack use"/]
     platform_resume_inside_fs_window>"✔ Thread resumed<br/>inside a patch window"]
+    platform_fault_under_fs_jump>"⚠ Fault reported under<br/>a patch jump"]
     platform_own_vdso["○ Own vDSO for clock<br/>calls"]
     platform_64k_mapping_conflicts["⏸ Handle 64 KB mapping<br/>conflicts"]
     platform_busybox_on_windows["✔ Run busybox under<br/>the Sentry"]
@@ -92,12 +93,15 @@ flowchart TB
     platform_rewrite_mode_slow_engine ~~~ platform_rewrite_heap_corruption
     platform_rewrite_glibc_init_crash ~~~ platform_exception_dispatch_depth
     platform_unrewritten_fs_in_library ~~~ platform_resume_inside_fs_window
-    platform_rewrite_heap_corruption ~~~ platform_own_vdso
-    platform_exception_dispatch_depth ~~~ platform_64k_mapping_conflicts
-    platform_resume_inside_fs_window ~~~ platform_busybox_on_windows
+    platform_rewrite_heap_corruption ~~~ platform_fault_under_fs_jump
+    platform_exception_dispatch_depth ~~~ platform_own_vdso
+    platform_resume_inside_fs_window ~~~ platform_64k_mapping_conflicts
+    platform_fault_under_fs_jump ~~~ platform_busybox_on_windows
     platform_own_vdso ~~~ platform_hardware_acceleration
     platform_64k_mapping_conflicts ~~~ platform_binary_translation_fallback
     platform_busybox_on_windows ~~~ platform_recycle_stubs
+    platform_hardware_acceleration ~~~ platform_recycle_stubs
+    platform_binary_translation_fallback ~~~ platform_recycle_stubs
     platform_trap_cost -.-> platform_veh_on_guest_stack_unsafe
     platform_tls_register -.-> platform_veh_on_guest_stack_unsafe
     platform_trap_cost --> platform_exception_stack
@@ -125,7 +129,7 @@ flowchart TB
     platform_winstub --> platform_hardware_acceleration
     platform_debug_event_cost --> platform_binary_translation_fallback
     platform_no_fsgsbase_fallback --> platform_recycle_stubs
-    linkStyle 46,47 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
+    linkStyle 49,50 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -145,7 +149,7 @@ flowchart TB
     class platform_zpoline_hooks dead
     class platform_fs_base_repair unrated
     class platform_fast_process_start vsucc
-    class platform_fs_veneer_capacity finding
+    class platform_fs_veneer_capacity,platform_fault_under_fs_jump finding
     class platform_own_vdso,platform_recycle_stubs next
     class platform_64k_mapping_conflicts,platform_hardware_acceleration,platform_binary_translation_fallback parked
 ```
@@ -199,6 +203,7 @@ flowchart TB
 | `platform-rewrite-heap-corruption` | glibc heap errors in rewrite mode | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/results/1o-rewrite-correctness.md; docs/results/1p-rewrite-heap.md |
 | `platform-exception-dispatch-depth` | Measure exception stack use | experiment | windows-ci | done | mixed | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/0b-windows.md |
 | `platform-resume-inside-fs-window` | Thread resumed inside a patch window | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/1p-rewrite-heap.md; docs/results/1q-window-resume.md |
+| `platform-fault-under-fs-jump` | Fault reported under a patch jump | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/1q-window-resume.md |
 
 ### Details per node
 
@@ -247,6 +252,7 @@ flowchart TB
 | `platform-rewrite-heap-corruption` | glibc heap errors in rewrite mode |  |  | In rewrite mode, aptrename dies with free(): invalid size and apt inside builds with segfaults or double free; native mode runs them, so a %fs veneer likely computes or clobbers something wrong. | Fixed: Unmap refused any range reaching the sealed %fs veneer area, so released pages stayed mapped in the stub; it now unmaps around stub views. aptrename passes in rewrite; podman rewrite 8 of 8 all steps in the second run. |  |  |  |  |
 | `platform-exception-dispatch-depth` | Measure exception stack use | Dispatch writes 4512 bytes below RSP on every AVX-512 runner CPU whatever the thread dirtied (clean, ymm and zmm/k state all the same) |  | How far below the stack pointer Windows writes when it delivers an exception on AVX-512 CPUs, against what Go reserves; safecopy keeps its stack headroom helper. |  |  |  |  |  |
 | `platform-resume-inside-fs-window` | Thread resumed inside a patch window |  |  | In rewrite mode the platform can move a thread out of a veneer to an address inside the patch window; a Go signal handler then returns there and runs nop filler (one engine crash in 16 rewrite runs). | Fixed: int3 filler sends a thread returning into a window to its veneer; interrupts wait only while a thread would be reported under the jump. Open: a displaced-instruction fault under the jump (no known case). |  |  |  |  |
+| `platform-fault-under-fs-jump` | Fault reported under a patch jump |  |  | A fault in an instruction displaced into a veneer can still be reported at an address under the jump; a signal handler returning there with ret would run the jump bytes. No case is known. | Fixed when: such faults are reported at the window start or end, with a test. |  |  |  |  |
 
 ### Folded items per node
 
