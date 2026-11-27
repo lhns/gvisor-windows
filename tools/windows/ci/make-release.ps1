@@ -43,6 +43,7 @@ Copy-Item "$pm\README-release.md" "$Out\README.md"
 # The zip (Compress-Archive stops at 2 GB). Keep -Zip outside -Out.
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $z = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Zip)
+New-Item -ItemType Directory -Force (Split-Path -Parent $z) | Out-Null
 if (Test-Path $z) { Remove-Item $z }
 [IO.Compression.ZipFile]::CreateFromDirectory((Resolve-Path $Out).Path, $z, [IO.Compression.CompressionLevel]::Optimal, $false)
 Get-Item $z | ForEach-Object { "{0}: {1:N1} MB" -f $_.Name, ($_.Length / 1MB) }
