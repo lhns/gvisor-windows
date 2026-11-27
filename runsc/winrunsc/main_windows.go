@@ -418,15 +418,16 @@ type reportingWriter struct {
 	once sync.Once
 }
 
-// logStall (GVISOR_TEST_LOG_STALL=ms, a test hook) delays every debug log write of a line
-// that mentions a signal, as a stalled disk would (docs/results/3e-signal-latency.md).
+// logStall (GVISOR_TEST_LOG_STALL=ms, a test hook) delays every debug log write of a
+// signal send's line ("Notified of signal"), as a stalled disk would
+// (docs/results/3e-signal-latency.md).
 var logStall = func() time.Duration {
 	ms, _ := strconv.Atoi(os.Getenv("GVISOR_TEST_LOG_STALL"))
 	return time.Duration(ms) * time.Millisecond
 }()
 
 func (r *reportingWriter) Write(p []byte) (int, error) {
-	if logStall > 0 && bytes.Contains(p, []byte("signal")) {
+	if logStall > 0 && bytes.Contains(p, []byte("Notified of signal")) {
 		time.Sleep(logStall)
 	}
 	var t0 int64

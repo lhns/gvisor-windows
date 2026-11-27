@@ -901,7 +901,7 @@ func testClocks() error {
 // testLogStall: a debug log whose disk stalls must not delay timer signals. The Sentry logs
 // while it holds locks (a signal send under the signal mutex logs "Notified of signal"), and a
 // write to the log file on a runner once took 2.6 s (docs/results/3e-signal-latency.md). The
-// test hook GVISOR_TEST_LOG_STALL delays each written line that mentions a signal by 150 ms.
+// test hook GVISOR_TEST_LOG_STALL delays the write of each such line by 150 ms.
 func testLogStall() error {
 	os.Setenv("GVISOR_TEST_LOG_STALL", "150")
 	defer os.Unsetenv("GVISOR_TEST_LOG_STALL")
