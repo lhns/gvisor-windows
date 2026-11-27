@@ -17,7 +17,13 @@
 package winstub
 
 import (
+	"bytes"
+	"debug/elf"
 	"fmt"
+	"math/rand"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
 
 	pkgcontext "gvisor.dev/gvisor/pkg/context"
@@ -201,4 +207,111 @@ func TestFSSeam(t *testing.T) {
 			}
 		}
 	}
+}
+
+// TestFSSeamBinary maps the text of a real Linux program (a Go binary built here) in
+// pieces cut at random pages, mapped in random order, and checks that afterwards every
+// %fs instruction and every syscall instruction that a decoding of the whole text finds
+// has been patched: a site that no piece's decoding saw would run unrewritten (and as
+// such crash or corrupt data in rewrite mode).
+func TestFSSeamBinary(t *testing.T) {
+	exe := filepath.Join(t.TempDir(), "gohello")
+	cmd := exec.Command("go", "build", "-o", exe, ".")
+	cmd.Dir = "../../../../test/guests/gohello"
+	cmd.Env = append(os.Environ(), "GOOS=linux", "GOARCH=amd64", "CGO_ENABLED=0")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Skipf("cannot build a Linux guest: %v\n%s", err, out)
+	}
+	f, err := elf.Open(exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	var code []byte
+	var vaddr uint64
+	for _, p := range f.Progs {
+		if p.Type == elf.PT_LOAD && p.Flags&elf.PF_X != 0 {
+			code = make([]byte, p.Filesz)
+			if _, err := p.ReadAt(code, 0); err != nil {
+				t.Fatal(err)
+			}
+			vaddr = p.Vaddr
+			break
+		}
+	}
+	if len(code) == 0 || vaddr%pageSz != 0 {
+		t.Fatalf("no text segment (%d bytes at %#x)", len(code), vaddr)
+	}
+	truth := scanText(code, 0, true)
+	pages := (len(code) + pageSz - 1) / pageSz
+	for trial := 0; trial < 12; trial++ {
+		rnd := rand.New(rand.NewSource(int64(trial)))
+		// cut points: pieces of 1 to 40 pages
+		type piece struct{ lo, hi int } // in pages
+		var ps []piece
+		for p := 0; p < pages; {
+			n := 1 + rnd.Intn(40)
+			if trial == 0 {
+				n = 1 // every page a piece of its own
+			}
+			ps = append(ps, piece{p, min(p+n, pages)})
+			p += n
+		}
+		rnd.Shuffle(len(ps), func(i, j int) { ps[i], ps[j] = ps[j], ps[i] })
+		if trial == 1 { // from the top down
+			for i := range ps {
+				ps[i] = piece{ps[i].lo, ps[i].hi}
+			}
+			for i := 0; i < len(ps); i++ {
+				for j := i + 1; j < len(ps); j++ {
+					if ps[j].lo > ps[i].lo {
+						ps[i], ps[j] = ps[j], ps[i]
+					}
+				}
+			}
+		}
+		h := newHarness(t)
+		mm := h.newMM()
+		for _, p := range ps {
+			chunk := code[p.lo*pageSz : min(p.hi*pageSz, len(code))]
+			h.mapAt(mm, vaddr+uint64(p.lo)*pageSz, h.pages(chunk, p.hi-p.lo), rx)
+		}
+		as := mm.as.(*addressSpace)
+		got, ok := as.readStub(vaddr, len(code))
+		if !ok {
+			t.Fatal("cannot read the patched text")
+		}
+		missed := map[string]int{}
+		var first []string
+		for _, s := range truth.sites {
+			x := s.win[s.s]
+			if s.fs && !h.p.fsRewrite {
+				continue
+			}
+			if bytes.Equal(got[s.off:s.off+x.n], code[s.off:s.off+x.n]) {
+				kind := "syscall"
+				if s.fs {
+					kind = "%fs"
+				}
+				missed[kind]++
+				if len(first) < 8 {
+					first = append(first, fmt.Sprintf("%s site %#x (page offset %#x): % x", kind, vaddr+uint64(s.off), s.off%pageSz, code[s.off:s.off+x.n]))
+				}
+			}
+		}
+		if len(missed) > 0 {
+			t.Errorf("trial %d (%d pieces): sites left unpatched %v\n  %s", trial, len(ps), missed, joinLines(first))
+		}
+	}
+}
+
+func joinLines(l []string) string {
+	out := ""
+	for i, s := range l {
+		if i > 0 {
+			out += "\n  "
+		}
+		out += s
+	}
+	return out
 }
