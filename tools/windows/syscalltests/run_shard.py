@@ -34,6 +34,7 @@ def main():
     ap.add_argument('--max-runs', type=int, default=400)
     ap.add_argument('--crash-limit', type=int, default=4)
     ap.add_argument('--no-net', action='store_true', help='run the Sentry without a network stack')
+    ap.add_argument('--guest-flags', default='', help='more flags for sentryguest, space separated')
     a = ap.parse_args()
 
     cases = [tuple(l.rstrip('\n').split('\t', 1)) for l in open(a.list) if l.strip()]
@@ -61,7 +62,7 @@ def main():
             f.write(''.join('%s\t%s\n' % c for c in todo))
         log = os.path.join(workdir, 'run%d.log' % run)
         if a.sentryguest:
-            cmd = [a.sentryguest, '-tar', a.tar, '-sysmounts'] + ([] if a.no_net else ['-net']) + ['-stream', '-timeout', '6h',
+            cmd = [a.sentryguest, '-tar', a.tar, '-sysmounts'] + ([] if a.no_net else ['-net']) + a.guest_flags.split() + ['-stream', '-timeout', '6h',
                    '-files', '%s:/list.txt' % lst,
                    '/bin/driver', '-t', str(a.case_timeout), '/list.txt']
         else:

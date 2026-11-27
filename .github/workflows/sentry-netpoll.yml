@@ -52,6 +52,18 @@ jobs:
           grep "^HANDLES" run.log | awk 'NR%12==1' | head -80
           grep "^HANDLES" run.log | tail -3
           grep -E "fatal error|panic:" run.log | head -5
+      - name: The same through run_shard.py, as the syscall-tests workflow does
+        shell: bash
+        env: {MSYS_NO_PATHCONV: "1"}
+        run: |
+          BIN=${{ inputs.binary || 'socket_filesystem_test' }}
+          shard=$(grep -l "^$BIN	" shards/*/list.txt | head -1 | xargs dirname)
+          grep "^$BIN	" "$shard/list.txt" > list2.txt
+          python tools/windows/syscalltests/run_shard.py --list list2.txt --out shard.tsv --sentryguest ./sentryguest.exe --tar "$shard/rootfs.tar" --guest-flags='-handles 5s' | tail -20
+          cut -f3 shard.tsv | sort | uniq -c
       - uses: actions/upload-artifact@v4
         if: always()
-        with: {name: netpoll-log, path: run.log}
+        with: {name: netpoll-log, path: |
+          run.log
+          shard.tsv
+          shard.tsv.out
