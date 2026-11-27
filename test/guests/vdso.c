@@ -4,6 +4,7 @@
 // it made of each kind, so that the caller can check from the Sentry's syscall
 // counters (PROFSTATS) that the vDSO calls never trapped.
 #define _GNU_SOURCE
+#include <cpuid.h>
 #include <elf.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -171,7 +172,9 @@ int main(void) {
       break;
     }
   }
-  fprintf(stderr, "vdso: %ld ns per clock_gettime, worst deviation from the syscall %lld ns\n", per, (long long)worst);
+  unsigned ea, eb, ec, ed = 0;
+  __get_cpuid(0x80000007, &ea, &eb, &ec, &ed);
+  fprintf(stderr, "vdso: %ld ns per clock_gettime; a vDSO read was ahead of a later syscall read by at most %lld ns; invariant TSC %u\n", per, (long long)worst, (ed >> 8) & 1);
   printf("vdso direct syscalls: clock_gettime=%ld gettimeofday=%ld time=%ld getcpu=%ld\n", ncgt, ngtod, ntime, ngetcpu);
   if (fails) {
     printf("vdso FAILED (%d)\n", fails);

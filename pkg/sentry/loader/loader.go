@@ -427,6 +427,10 @@ func Load(ctx context.Context, args LoadArgs, extraAuxv []arch.AuxEntry, vdso *V
 
 	ac.SetIP(uintptr(loaded.entry))
 	ac.SetStack(uintptr(stack.Bottom))
+	// gvisor-windows: map the image before it runs on platforms with costly faults.
+	if mm.EagerExecMap {
+		m.PrefaultImage(ctx, stack.Bottom)
+	}
 
 	name := path.Base(args.Filename)
 	if len(name) > linux.TASK_COMM_LEN-1 {

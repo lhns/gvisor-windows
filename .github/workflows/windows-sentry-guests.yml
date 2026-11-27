@@ -161,6 +161,9 @@ jobs:
               if ($n -gt $direct[$k] + 10) { "FAILED: $k trapped $($n - $direct[$k]) times beyond the guest's $($direct[$k]) direct calls (leg $leg)"; $fail = 1 }
               else { "VDSO $leg ${k}: $n system calls, $($direct[$k]) of them direct" }
             }
+            # Any other call that traps shows in the total (start-up makes about 20).
+            $sum = 0; foreach ($v in $direct.Values) { $sum += $v }
+            if ($o -match 'PROFSTATS syscalls: (\d+) calls' -and [int]$Matches[1] -gt $sum + 50) { "FAILED: $($Matches[1]) system calls in all, $sum of them direct (leg $leg)"; $fail = 1 }
           }
           exit $fail
       - name: Podman-shaped stress

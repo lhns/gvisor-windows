@@ -798,6 +798,14 @@ func (mm *MemoryManager) MProtect(addr hostarch.Addr, length uint64, realPerms h
 
 		// Continue to the next vma.
 		if ar.End <= vseg.End() {
+			// gvisor-windows: map the range again with its new permissions,
+			// rather than one fault per pma on platforms with costly faults
+			// (eager.go); glibc's RELRO mprotect would cost one at once.
+			if didUnmapAS && EagerExecMap {
+				if pseg := mm.pmas.LowerBoundSegment(ar.Start); pseg.Ok() && pseg.Start() < ar.End {
+					mm.mapASLocked(context.Background(), pseg, ar, memmap.PlatformEffectDefault)
+				}
+			}
 			return nil
 		}
 		vseg, _ = vseg.NextNonEmpty()
@@ -895,6 +903,10 @@ func (mm *MemoryManager) Brk(ctx context.Context, addr hostarch.Addr) (hostarch.
 		mm.brk.End = addr
 		if mm.defMLockMode == memmap.MLockEager {
 			mm.populateVMAAndUnlock(ctx, vseg, ar, memmap.PlatformEffectCommit)
+		} else if EagerExecMap && ar.Length() <= hostarch.HugePageSize {
+			// gvisor-windows: as small anonymous mmaps, rather than one fault per
+			// page on platforms with costly faults (eager.go).
+			mm.populateVMAAndUnlock(ctx, vseg, ar, memmap.PlatformEffectDefault)
 		} else {
 			mm.mappingMu.Unlock()
 		}
