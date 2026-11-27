@@ -75,6 +75,7 @@ const (
 	pageExecRW     = 0x40
 	fileMapAllExec = 0xF001F | 0x20
 	fileMapWrite   = 0x2
+	fileMapRead    = 0x4
 	dbgContinue    = 0x00010002
 	dbgNotHandled  = 0x80010001
 	ctxControl     = 0x100001

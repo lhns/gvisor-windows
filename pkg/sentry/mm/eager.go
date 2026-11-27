@@ -36,9 +36,13 @@ var EagerForkCopyLimit uint64
 // writable segments already copied (PrefaultImage). Set by the same platforms.
 var EagerExecMap bool
 
-// prefaultWritableMax bounds the writable mappings PrefaultImage populates: a
-// large bss would be allocated whole.
-const prefaultWritableMax = 2 << 20
+// prefaultWritableMax bounds the writable mappings PrefaultImage populates (a
+// large bss would be allocated whole), prefaultMax the others (the text of a large
+// binary is copied and patched by winstub in full when mapped).
+const (
+	prefaultWritableMax = 2 << 20
+	prefaultMax         = 16 << 20
+)
 
 // PrefaultImage maps what a new process will touch first: every mapping of the
 // image as the access it allows (so a writable private segment is copied now),
@@ -65,7 +69,7 @@ func (mm *MemoryManager) PrefaultImage(ctx context.Context, sp hostarch.Addr) {
 				continue
 			}
 			ar.Start = sp.RoundDown()
-		case at.Write && ar.Length() > prefaultWritableMax:
+		case at.Write && ar.Length() > prefaultWritableMax, ar.Length() > prefaultMax:
 			continue
 		}
 		todo = append(todo, pf{ar, at})
