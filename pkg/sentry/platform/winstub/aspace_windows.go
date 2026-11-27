@@ -130,6 +130,7 @@ type addressSpace struct {
 	lastEvent atomic.Value
 	// diagnostics: threads ended with TerminateThread instead of by themselves
 	nTermFallback atomic.Uint32
+	nThreadReplaced atomic.Uint32
 	tmu       sync.Mutex
 	byTid     map[uint32]*thread
 	slots     [stubasm.MaxThreads]*thread

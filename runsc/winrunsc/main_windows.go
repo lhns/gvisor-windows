@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"gvisor.dev/gvisor/pkg/sentry/platform/winstub"
 	"sync"
 	"time"
 
@@ -54,6 +55,8 @@ func Main() {
 					time.Sleep(d)
 					if w, err := os.Create(file); err == nil {
 						pprof.Lookup("goroutine").WriteTo(w, 2)
+						fmt.Fprintln(w, "===== winstub state")
+						winstub.DumpState(w)
 						w.Close()
 					}
 				}()
