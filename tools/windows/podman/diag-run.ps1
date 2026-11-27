@@ -3,6 +3,8 @@ param([Parameter(Mandatory)][string]$Root)
 $ErrorActionPreference = 'Continue'
 if ($env:DIAG_ASPOOL) { $env:GVISOR_ASPOOL = $env:DIAG_ASPOOL }
 $env:GVISOR_ASPOOL = '0'
+$env:WINSTUB_TRACE = '1'
+$env:WINSTUB_DEBUG = '1'
 $env:RUNSC_EXTRA_FLAGS = if ($env:DIAG_RUNSC_FLAGS) { $env:DIAG_RUNSC_FLAGS } else { '--strace' }
 $repo = (Resolve-Path "$PSScriptRoot\..\..\..").Path
 $work = "$Root\std"; New-Item -ItemType Directory -Force $work, "$work\results" | Out-Null
