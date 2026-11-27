@@ -32,7 +32,7 @@ jobs:
       - id: p
         run: |
           n=${{ inputs.runs || (github.event_name == 'schedule' && 4 || 1) }}
-          echo "modes=$(echo '${{ inputs.modes || 'default' }}' | sed 's/,/","/g; s/^/["/; s/$/"]/')" >> $GITHUB_OUTPUT
+          echo "modes=$(echo '${{ inputs.modes || (github.event_name == 'schedule' && 'native,rewrite,rewrite-fxsave' || 'default') }}' | sed 's/,/","/g; s/^/["/; s/$/"]/')" >> $GITHUB_OUTPUT
           echo "runs=$(seq -s, 1 $n | sed 's/^/[/; s/$/]/')" >> $GITHUB_OUTPUT
   image:
     runs-on: ubuntu-latest
@@ -114,7 +114,7 @@ jobs:
           $only = '${{ inputs.only }}'
           # Step 5 (build-apt) is required in native and, since the heap fix (docs/results/1p-rewrite-heap.md), rewrite
           # modes; in default mode it still failed in ci run 45979763597.
-          $all = if ('${{ matrix.mode }}' -ne 'default') { 1..10 } else { 1, 2, 3, 4, 6, 7, 8, 9, 10 }
+          $all = 1..10
           $must = $all | Where-Object { -not $only -or ($only -split '[, ]+') -contains "$_" }
           $t = Get-Content -Raw C:\ci\std\results\steps.txt
           $bad = $must | Where-Object { $t -notmatch "(?m)^STEP $_ PASS" }
