@@ -94,6 +94,7 @@ func main() {
 		{"aptrename", testAptRename},
 		{"mountkeep", testMountKeep},
 		{"devnull", testDevNull},
+		{"ovlsub", testOvlSub},
 		{"cfr", testCfr},
 		{"debian", testDebian},
 		{"gogc", testGoGC},
@@ -115,7 +116,7 @@ func main() {
 	}
 	failed := 0
 	for _, t := range tests {
-		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "strace" || t.name == "restart" || t.name == "aptrename" || t.name == "mountkeep" || t.name == "devnull" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec" || t.name == "sockfs" || t.name == "fsstress" || t.name == "cfr" || t.name == "debian" || t.name == "gogc")) {
+		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "strace" || t.name == "restart" || t.name == "aptrename" || t.name == "mountkeep" || t.name == "devnull" || t.name == "ovlsub" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec" || t.name == "sockfs" || t.name == "fsstress" || t.name == "cfr" || t.name == "debian" || t.name == "gogc")) {
 			continue
 		}
 		start := time.Now()
@@ -691,6 +692,26 @@ func testDevNull() error {
 	fmt.Print(r.stdout)
 	if r.code != 0 {
 		return fmt.Errorf("devnull exit %d, stderr %q", r.code, r.stderr)
+	}
+	return nil
+}
+
+// testOvlSub runs test/guests/ovlsub: the Sentry's overlay with layers on a host folder, whiteouts as character
+// devices 0:0, RemoveAll of a directory they empty (c/storage's overlay probe; docs/results/2r-step5-overlay.md).
+func testOvlSub() error {
+	dir := filepath.Join(*workDir, "ovlsub")
+	_ = os.RemoveAll(dir)
+	must(os.MkdirAll(dir, 0o755))
+	extraMounts = []map[string]any{{"destination": "/w", "type": "bind", "source": dir, "options": []string{"rbind", "rw"}}}
+	extraCaps = []string{"CAP_SYS_ADMIN", "CAP_MKNOD", "CAP_DAC_OVERRIDE", "CAP_CHOWN", "CAP_FOWNER"}
+	defer func() { extraMounts, extraCaps = nil, nil }()
+	r, err := runsc("ovlsub", []string{"/bin/ovlsub", "/w/ov"}, nil)
+	if err != nil {
+		return err
+	}
+	fmt.Print(r.stdout)
+	if r.code != 0 {
+		return fmt.Errorf("ovlsub exit %d, stderr %q", r.code, r.stderr)
 	}
 	return nil
 }
