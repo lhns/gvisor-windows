@@ -201,10 +201,8 @@ jobs:
               "TIMING2 $m $n median $($t[4]) ms (min $($t[0]), max $($t[8]))" | Tee-Object -Append -FilePath timing.txt
             }
             $o = & ./sentryguest.exe "-tar=out/rootfs.tar" "-timeout=60s" /bin/gopodman 2>&1 | Out-String
-            if ($o -match '(gopodman: \d+ syscall-level ops[^
-]*)') { "TIMING2 $m $($Matches[1])" | Tee-Object -Append -FilePath timing.txt }
-            if ($o -match '(gopodman: 50 children[^
-]*)') { "TIMING2 $m $($Matches[1])" | Tee-Object -Append -FilePath timing.txt }
+            if ($o -match '(gopodman: \d+ syscall-level ops[^\n]*)') { "TIMING2 $m $($Matches[1])" | Tee-Object -Append -FilePath timing.txt }
+            if ($o -match '(gopodman: 50 children[^\n]*)') { "TIMING2 $m $($Matches[1])" | Tee-Object -Append -FilePath timing.txt }
           }
           }
       - name: Trace
