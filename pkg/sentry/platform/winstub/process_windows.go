@@ -200,26 +200,43 @@ func (as *addressSpace) freeThread(t *thread) {
 	}
 }
 
+// replaceStalled re-enables the old rule that ends and recreates a thread that has not
+// run after three seconds (WINSTUB_REPLACE_STALLED=1). It was a workaround for the
+// hang whose cause was a Go stack that moved under a debug-event buffer
+// (docs/results/1l-platform-stability.md); ending a thread that is inside ntdll's
+// start-up can leave the loader lock held, so it is off by default and a thread that
+// does not start in 15 s is an error (docs/results/1m-platform-repair.md).
+var replaceStalled = envInt("WINSTUB_REPLACE_STALLED", 0) != 0
+
 // startThread creates the Windows thread of t; it begins at the page's registers.
 func (as *addressSpace) startThread(t *thread) error {
 	// One thread is created at a time, and the next only after this one runs the
 	// stub's entry code: several threads starting at once in a process under a
-	// debugger sometimes never get past their start. A thread that still has not
-	// run after three seconds is replaced (it sits in ntdll's start-up, before any
-	// stub code, so ending it leaves nothing behind that matters).
+	// debugger sometimes never get past their start.
 	as.createMu.Lock()
 	defer as.createMu.Unlock()
+	wait, tries := 15000, 0
+	if replaceStalled {
+		wait, tries = 3000, 3
+	}
 	for try := 0; ; try++ {
 		if err := as.createThread(t); err != nil {
 			return err
 		}
-		for i := 0; i < 3000 && atomic.LoadUint32(t.u32(stubasm.PgRunning)) == 0; i++ {
+		for i := 0; i < wait && atomic.LoadUint32(t.u32(stubasm.PgRunning)) == 0; i++ {
 			if as.dead.Load() {
 				return nil
 			}
 			time.Sleep(time.Millisecond)
 		}
-		if atomic.LoadUint32(t.u32(stubasm.PgRunning)) != 0 || try >= 3 {
+		if atomic.LoadUint32(t.u32(stubasm.PgRunning)) != 0 {
+			return nil
+		}
+		if try >= tries {
+			if !replaceStalled {
+				as.nThreadReplaced.Add(1) // (counted in the dump: a thread that never started)
+				return fmt.Errorf("winstub: thread %d (tid %d) did not start in %d s", t.idx, t.tid, wait/1000)
+			}
 			return nil
 		}
 		debugf("thread %d (tid %d) never started; replacing it", t.idx, t.tid)
