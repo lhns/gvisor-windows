@@ -241,6 +241,9 @@ type fsRaw struct {
 	rex         byte   // 0 if there is none
 	opc         []byte
 	reg         byte // modrm.reg
+	regx        int  // reg with its extension bit (REX.R, VEX.R)
+	vex         []byte // the VEX prefix (2 or 3 bytes), if any
+	vvvv        int    // VEX.vvvv: may name a general register (BMI)
 	scale       byte // sib.scale bits
 	base, index int  // register numbers, -1 for none
 	disp        int32
@@ -276,8 +279,27 @@ loop:
 	}
 	c0 := b[i]
 	switch c0 {
-	case 0xC4, 0xC5, 0x62, 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xAA, 0xAB, 0xAC, 0xAD, 0xAE, 0xAF, 0xD7, 0x6C, 0x6D, 0x6E, 0x6F:
+	case 0x62, 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xAA, 0xAB, 0xAC, 0xAD, 0xAE, 0xAF, 0xD7, 0x6C, 0x6D, 0x6E, 0x6F:
 		return r, false
+	case 0xC4, 0xC5:
+		n := 2
+		if c0 == 0xC4 {
+			n = 3
+		}
+		if len(r.pre) != 0 || i+n+1 > len(b) {
+			return r, false
+		}
+		r.vex = b[i : i+n]
+		rbit := int(^b[i+1]>>7) & 1
+		if n == 3 {
+			r.rex = 0x40 | (b[i+2]>>7)<<3 | byte(rbit)<<2 | (^b[i+1]>>6&1)<<1 | ^b[i+1]>>5&1
+			r.vvvv = int(^b[i+2]>>3) & 15
+		} else {
+			r.vvvv = int(^b[i+1]>>3) & 15
+		}
+		r.regx = rbit << 3
+		r.opc = b[i+n : i+n+1]
+		i += n + 1
 	case 0x0F:
 		if i+1 >= len(b) {
 			return r, false
@@ -300,6 +322,10 @@ loop:
 	}
 	mod, rm := b[i]>>6, b[i]&7
 	r.reg = (b[i] >> 3) & 7
+	r.regx |= int(r.reg)
+	if len(r.vex) == 0 && r.rex&4 != 0 {
+		r.regx |= 8
+	}
 	i++
 	if mod == 3 {
 		return r, false
@@ -398,12 +424,9 @@ func rewritableFS(in x86asm.Inst, b []byte) bool {
 // their meaning.
 func (r *fsRaw) scratch() (int, bool) {
 	used := uint32(1<<0 | 1<<1 | 1<<2 | 1<<4) // rax, rcx, rdx, rsp
-	reg := int(r.reg)
-	if r.rex&4 != 0 {
-		reg |= 8
-	}
-	used |= 1 << reg
-	if r.rex == 0 && reg >= 4 && reg <= 7 {
+	reg := r.regx
+	used |= 1<<reg | 1<<r.vvvv
+	if r.rex == 0 && len(r.vex) == 0 && reg >= 4 && reg <= 7 {
 		used |= 1 << (reg - 4) // ah, ch, dh, bh: parts of rax, rcx, rdx, rbx
 	}
 	if r.base >= 0 {
@@ -432,7 +455,21 @@ func (r *fsRaw) emit(r1 int) []byte {
 	if r.index >= 0 {
 		idx = r.index
 	}
-	if r.rex != 0 || r1 >= 8 {
+	if len(r.vex) > 0 {
+		out = append(out, r.vex[0])
+		if len(r.vex) == 2 {
+			out = append(out, r.vex[1]) // (a register above r7 cannot be in it: scratch() does not pick one)
+		} else {
+			b1 := r.vex[1] | 0x60
+			if r.index >= 8 {
+				b1 &^= 0x40
+			}
+			if r1 >= 8 {
+				b1 &^= 0x20
+			}
+			out = append(out, b1, r.vex[2])
+		}
+	} else if r.rex != 0 || r1 >= 8 {
 		rex := byte(0x40) | r.rex&0x0C
 		if r.index >= 8 {
 			rex |= 2
