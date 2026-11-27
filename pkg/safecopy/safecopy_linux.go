@@ -52,3 +52,7 @@ func installFaultHandlers() {
 	}
 }
 
+
+// ensureFaultStack is a no-op on Linux, where signal handlers run on the
+// signal stack.
+func ensureFaultStack() {}
