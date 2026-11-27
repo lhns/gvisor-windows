@@ -761,7 +761,7 @@ func fsDifferential(t *testing.T, loop bool, n int) {
 			g.r.Read(areaInit)
 			nat := runCases(t, "native", false, textBase, cases, offs, text, areaInit, dataInit)
 			rew := runCases(t, "rewrite", loop, textBase, cases, offs, text, areaInit, dataInit)
-			bad := fsCompare(t, cases, nat, rew)
+			bad := fsCompare(t, cases, nat, rew, nil)
 			if bad > 0 {
 				t.Errorf("%d of %d cases differ", bad, n)
 			}
@@ -776,16 +776,16 @@ func fsDifferential(t *testing.T, loop bool, n int) {
 	}
 }
 
-// fsCompare reports the cases whose native and rewritten results differ.
-func fsCompare(t *testing.T, cases []*fdCase, nat, rew []fdResult) int {
+// fsCompare reports the cases whose native and rewritten results differ. roll
+// maps the address of an instruction under the jump of a window to the window
+// start, where the rewrite may report a fault of it (rollsBack).
+func fsCompare(t *testing.T, cases []*fdCase, nat, rew []fdResult, roll map[uint64]uint64) int {
 	t.Helper()
 	bad := 0
 	for i := range cases {
 		a, b := nat[i], rew[i]
 		var diffs []string
-		// A fault under the jump of a window may be reported at the window start,
-		// up to 6 bytes before (rollsBack; TestFSFaultUnderJump resumes there).
-		if a.err != b.err || b.frip > a.frip || a.frip-b.frip >= 7 {
+		if a.err != b.err || a.frip != b.frip && roll[a.frip] != b.frip {
 			diffs = append(diffs, fmt.Sprintf("native %q (rip %#x), rewrite %q (rip %#x)", a.err, a.frip, b.err, b.frip))
 		} else if a.err == "" {
 			for k := 0; k < 16; k++ {
@@ -912,7 +912,22 @@ func TestFSRealWindows(t *testing.T) {
 			}
 			nat := runCases(t, "native", false, textBase, cases, offs, text, areaInit, dataInit)
 			rew := runCases(t, "rewrite", false, textBase, cases, offs, text, areaInit, dataInit)
-			bad := fsCompare(t, cases, nat, rew)
+			// A fault under the jump of a window is reported at the window start
+			// (TestFSFaultUnderJump resumes there).
+			minLen := 5
+			if textBase == fdFar {
+				minLen = 7
+			}
+			roll := map[uint64]uint64{}
+			wins, _ := FSWindows(text, minLen)
+			for _, w := range wins {
+				for _, o := range w.Insn {
+					if o-w.Lo > 0 && o-w.Lo < minLen {
+						roll[textBase+uint64(o)] = textBase + uint64(w.Lo)
+					}
+				}
+			}
+			bad := fsCompare(t, cases, nat, rew, roll)
 			ok := 0
 			for _, r := range nat {
 				if r.err == "" {

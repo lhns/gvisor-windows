@@ -244,9 +244,9 @@ jobs:
             @{n='python3-start'; a=@('/usr/bin/python3', '-c', 'pass')},
             @{n='netavark'; a=@('/bin/sh', '/t/nv.sh')}
           )
-          foreach ($leg in 'rewrite', 'rewrite-farlibs') {
-            Set-Leg 'rewrite'
-            $env:WINSTUB_NEARLIBS = if ($leg -eq 'rewrite-farlibs') { '0' } else { '' }
+          $bad = @()
+          foreach ($leg in 'rewrite', 'rewrite-fxsave') {
+            Set-Leg $leg
             foreach ($w in $work) {
               foreach ($ud2 in '', '1') {
                 $env:WINSTUB_FSUD2 = $ud2
@@ -258,10 +258,16 @@ jobs:
                 $dbg = 0; foreach ($m in [regex]::Matches($o, 'PROFSTATS key winstub %fs debugger run: (.*?)\s+(\d+)\s+[\d.]+ ms')) { $dbg += [int64]$m.Groups[2].Value }
                 "FSSHARE $tag : debugger runs $dbg, $([math]::Round($s, 1)) s, exit: $(($o -split "`n" | Select-String 'sentryguest: exit|py \d|nv done|setup \d|teardown \d|Error' | Select-Object -First 8) -join ' / ')" | Tee-Object -Append out/share.txt
                 $o -split "`n" | Select-String 'PROFSTATS key winstub' | ForEach-Object { "  $($_.Line.Trim())" } | Tee-Object -Append out/share.txt
+                if ($ud2) { $total = $dbg } else { $normal = $dbg }
               }
+              # (the all-ud2 count is every %fs execution of the same workload)
+              $share = if ($total) { 100.0 * $normal / $total } else { 100 }
+              "FSSHARE $leg $($w.n): $normal of $total %fs executions on the debugger path ($([math]::Round($share, 4)) %)" | Tee-Object -Append out/share.txt
+              if ($share -ge 1) { $bad += "$leg $($w.n)" }
             }
           }
           $env:WINSTUB_FSUD2 = ''
+          if ($bad) { "1% or more of the %fs executions on the debugger path: $bad"; exit 1 }
       - uses: actions/upload-artifact@v4
         if: always()
         with: {name: fs-share, path: out}
