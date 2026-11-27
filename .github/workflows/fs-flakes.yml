@@ -50,6 +50,16 @@ jobs:
           Copy-Item guests\fsstress "$r\bin\fsstress"
           Copy-Item guests\aptrename "$r\bin\aptrename"
           Copy-Item guests\mountkeep "$r\bin\mountkeep"
+      - name: The text of the static guest patched in pieces (seams)
+        if: env.FSUD2 == ''
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          go test -c -o C:\ci\bin\winstub.test.exe ./pkg/sentry/platform/winstub
+          $env:FSSEAM_ELF = (Resolve-Path guests\aptrename).Path
+          Push-Location pkg/sentry/platform/winstub
+          $a = @('-test.run=^TestFSSeamBinary'+[char]36, '-test.v=true', '-test.timeout=10m'); & C:\ci\bin\winstub.test.exe @a 2>&1 | Select-String -NotMatch 'winstub: (imm site|reloc site|%fs ud2|text |edges|wx)' | Select-Object -Last 60
+          Pop-Location
       - name: A mount on a host folder survives changes from Windows
         shell: pwsh
         run: |
@@ -71,16 +81,6 @@ jobs:
           }
           Write-Host "apt repetitions failed: $fail of 3"
           if ($fail) { exit 1 }
-      - name: The text of the static guest patched in pieces (seams)
-        if: env.FSUD2 == ''
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          go test -c -o C:\ci\bin\winstub.test.exe ./pkg/sentry/platform/winstub
-          $env:FSSEAM_ELF = (Resolve-Path guests\aptrename).Path
-          Push-Location pkg/sentry/platform/winstub
-          & C:\ci\bin\winstub.test.exe '-test.run=^TestFSSeamBinary$' -test.v -test.timeout=10m 2>&1 | Select-String -NotMatch 'winstub: (imm site|reloc site|%fs ud2|text |edges|wx)' | Select-Object -Last 60
-          Pop-Location
       - name: apt rename pattern under CPU load (the guest runs slower than alone)
         if: env.FSUD2 == ''
         continue-on-error: true
