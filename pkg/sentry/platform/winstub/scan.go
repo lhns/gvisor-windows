@@ -18,6 +18,7 @@ package winstub
 
 import (
 	"encoding/binary"
+	"errors"
 	"runtime"
 	"sort"
 	"sync"
@@ -83,6 +84,8 @@ type scanResult struct {
 
 // ---- decoding ------------------------------------------------------------------
 
+var errTruncated = errors.New("truncated instruction")
+
 // decodeRange decodes code linearly from from to end (instructions that start
 // before end), skipping bytes that do not decode.
 func decodeRange(code []byte, from, end int, list []ins) []ins {
@@ -107,6 +110,9 @@ func decodeRangeSafe(code []byte, from, end int, list []ins) (res []ins, at int,
 	}()
 	for off < end {
 		inst, err := x86asm.Decode(code[off:], 64)
+		if err == nil && off+inst.Len > len(code) {
+			err = errTruncated // (a truncated instruction at the end of the range)
+		}
 		if err != nil || inst.Len == 0 {
 			// The decoder knows no BMI/VEX instruction of this kind, but an %fs
 			// access needs a patch whatever it is.
@@ -622,6 +628,11 @@ type fsVeneer struct {
 // buildFSVeneer builds the veneer for the window list[a..b] of code, which is
 // mapped at base.
 func buildFSVeneer(code []byte, base uint64, list []ins, a, b, s int) (*fsVeneer, bool) {
+	for k := a; k <= b; k++ {
+		if list[k].off < 0 || list[k].off+list[k].n > len(code) {
+			return nil, false
+		}
+	}
 	raw, ok := parseFS(code[list[s].off : list[s].off+list[s].n])
 	if !ok {
 		return nil, false
