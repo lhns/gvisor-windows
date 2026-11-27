@@ -33,6 +33,7 @@ def main():
     ap.add_argument('--stall', type=int, default=240)
     ap.add_argument('--max-runs', type=int, default=400)
     ap.add_argument('--crash-limit', type=int, default=4)
+    ap.add_argument('--no-net', action='store_true', help='run the Sentry without a network stack')
     a = ap.parse_args()
 
     cases = [tuple(l.rstrip('\n').split('\t', 1)) for l in open(a.list) if l.strip()]
@@ -42,6 +43,15 @@ def main():
     workdir = tempfile.mkdtemp()
     t_start = time.time()
     no_start = 0
+    def write_out():
+        with open(a.out, 'w') as f:
+            for c in cases:
+                st = done.get(c, ('NOTRUN', '-1', '0'))
+                f.write('%s\t%s\t%s\t%s\t%s\n' % (c[0], c[1], st[0], st[1], st[2]))
+        with open(a.out + '.out', 'w') as f:
+            for c, t in tails.items():
+                f.write('%s\t%s\t%s\n' % (c[0], c[1], t))
+
     for run in range(a.max_runs):
         todo = [c for c in cases if c not in done]
         if not todo:
@@ -51,7 +61,7 @@ def main():
             f.write(''.join('%s\t%s\n' % c for c in todo))
         log = os.path.join(workdir, 'run%d.log' % run)
         if a.sentryguest:
-            cmd = [a.sentryguest, '-tar', a.tar, '-sysmounts', '-net', '-stream', '-timeout', '6h',
+            cmd = [a.sentryguest, '-tar', a.tar, '-sysmounts'] + ([] if a.no_net else ['-net']) + ['-stream', '-timeout', '6h',
                    '-files', '%s:/list.txt' % lst,
                    '/bin/driver', '-t', str(a.case_timeout), '/list.txt']
         else:
@@ -94,6 +104,7 @@ def main():
                     tails[last] = line[2:]
                 elif line.startswith('DONE\t'):
                     finished = True
+        write_out()
         if finished:
             continue
         text = open(log, 'rb').read().decode('utf-8', 'replace')
@@ -127,13 +138,7 @@ def main():
                     tails[c] = 'not run: %s of this binary already killed the kernel %d times; last: %s' % (status, crashes[culprit[0]], tail)
                     skipped += 1
             print('%s: %d more cases not run after %d %ss' % (culprit[0], skipped, crashes[culprit[0]], status), flush=True)
-    with open(a.out, 'w') as f:
-        for c in cases:
-            st = done.get(c, ('NOTRUN', '-1', '0'))
-            f.write('%s\t%s\t%s\t%s\t%s\n' % (c[0], c[1], st[0], st[1], st[2]))
-    with open(a.out + '.out', 'w') as f:
-        for c, t in tails.items():
-            f.write('%s\t%s\t%s\n' % (c[0], c[1], t))
+    write_out()
     counts = {}
     for st in done.values():
         counts[st[0]] = counts.get(st[0], 0) + 1

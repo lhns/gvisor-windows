@@ -14,6 +14,9 @@ on:
       shards:
         description: "Number of shards (matrix has 12 slots; shards beyond this number stay empty)"
         default: "12"
+      net:
+        description: "Give the Sentry a network stack (windows-nat); false runs without one"
+        default: "true"
       from_run:
         description: "Only make the report from the results of this earlier run (id)"
         default: ""
@@ -164,7 +167,7 @@ jobs:
         run: |
           mkdir -p results
           python tools/windows/syscalltests/run_shard.py --list shards/${{ matrix.shard }}/list.txt \
-            --out results/windows-${{ matrix.shard }}.tsv --sentryguest ./sentryguest.exe --tar shards/${{ matrix.shard }}/rootfs.tar
+            --out results/windows-${{ matrix.shard }}.tsv --sentryguest ./sentryguest.exe --tar shards/${{ matrix.shard }}/rootfs.tar ${{ inputs.net == 'false' && '--no-net' || '' }}
       - uses: actions/upload-artifact@v4
         if: always() && env.has == '1'
         with:
