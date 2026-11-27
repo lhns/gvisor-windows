@@ -120,6 +120,14 @@ func decodeRangeSafe(code []byte, from, end int, list []ins) (res []ins, at int,
 		}
 		x := ins{off: off, n: inst.Len, op: inst.Op}
 		classify(inst, code[off:off+inst.Len], &x)
+		if x.cls != clsFS && x.cls != clsFSBad {
+			// (an %fs-prefixed VEX instruction the decoder reads as something else)
+			if n := fsVexLen(code[off:min(len(code), off+16)]); n > 0 {
+				list = append(list, ins{off: off, n: n, cls: clsFS})
+				off += n
+				continue
+			}
+		}
 		if rel, ok := inst.Args[0].(x86asm.Rel); ok {
 			x.hasTgt, x.tgt = true, off+inst.Len+int(rel)
 		}
