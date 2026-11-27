@@ -18,9 +18,9 @@ P pull mirror.gcr.io/library/alpine:3.20
 P run --rm mirror.gcr.io/library/alpine:3.20 echo ok
 $cf = "$work\build"; New-Item -ItemType Directory -Force $cf | Out-Null
 "FROM mirror.gcr.io/library/alpine:3.20`nRUN echo built" | Set-Content "$cf\Containerfile" -Encoding ascii
-foreach ($net in @($null, 'host', 'bridge', 'none')) {
-  "=== build network=$net" | Tee-Object -Append $log
-  if ($net) { P build --network=$net -t diag-build $cf } else { P build -t diag-build $cf }
+foreach ($variant in @(@(), @('--no-cache', '--network=bridge'), @('--no-cache', '--isolation=oci'), @('--no-cache', '--isolation=chroot'), @('--no-cache', '--network=pasta'))) {
+  "=== build $variant" | Tee-Object -Append $log
+  P build @variant -t diag-build $cf
 }
-P info --format '{{.Host.NetworkBackend}} {{.Host.Security.Rootless}}'
+P info
 & "$repo\tools\windows\podman\start-engine.ps1" -Action stop -Runsc "$Root\bin\runsc.exe" -Work "$work\engine" -Name ci
