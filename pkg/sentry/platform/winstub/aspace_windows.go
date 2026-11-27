@@ -561,6 +561,9 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 		if content, err = read(); err != nil {
 			return err
 		}
+		if e != nil && !bytes.Equal(content, e.orig) {
+			e = nil // the file changed since the lookup: these are other bytes
+		}
 		var orig []byte
 		before := as.hist
 		if e == nil && textCacheOn && as.histOK {
