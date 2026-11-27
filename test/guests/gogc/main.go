@@ -12,6 +12,7 @@ import (
 	"runtime/debug"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -74,6 +75,25 @@ func main() {
 			}
 		}()
 	}
+	// Tight loops around an assembly call: one %fs instruction (the reload of g after
+	// the call) that runs again and again, and fails again every time the base is lost.
+	var stop atomic.Bool
+	for f := 0; f < 4; f++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			runtime.LockOSThread()
+			for !stop.Load() {
+				for i := 0; i < 1000; i++ {
+					nop()
+				}
+			}
+		}()
+	}
+	go func() {
+		time.Sleep(time.Until(end))
+		stop.Store(true)
+	}()
 	go func() { // heap shrinks: the scavenger and forced collections
 		for time.Now().Before(end) {
 			time.Sleep(50 * time.Millisecond)

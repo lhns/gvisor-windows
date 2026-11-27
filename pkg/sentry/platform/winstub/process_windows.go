@@ -94,7 +94,10 @@ type thread struct {
 	teb uint64
 	dyn *fsVenInfo
 
-	lastRepairRIP uint64
+	lastRepairRIP  uint64
+	lastRepairAddr uint64
+	repairN        int
+	repairSince    time.Time
 }
 
 func (t *thread) u64(off int) *uint64 { return (*uint64)(unsafe.Add(t.page, off)) }
@@ -180,7 +183,7 @@ func (as *addressSpace) freeThread(t *thread) {
 			}
 		} else {
 			as.nTermFallback.Add(1)
-		pTerminateThread.Call(h, 0)
+			pTerminateThread.Call(h, 0)
 		}
 		// TerminateThread is asynchronous. Until the thread is gone it may still
 		// be waiting on the slot's reply event, and would take the wake-up meant
@@ -568,7 +571,7 @@ func (as *addressSpace) onException(ev *debugEvent, ctx *ctxBuf, seenBP *bool) u
 			return dbgContinue
 		}
 		if !as.p.fsRewrite && (addr < 0x10000 || addr >= 0xFFFF800000000000) && *t.u64(stubasm.PgFS) != 0 {
-			if as.repairFS(t, ctx, rip) {
+			if as.repairFS(t, ctx, rip, addr) {
 				return dbgContinue
 			}
 		}
@@ -650,27 +653,44 @@ func (as *addressSpace) readStub(a uint64, n int) ([]byte, bool) {
 }
 
 // repairFS handles an access violation that looks like a lost %fs base: the CPU
-// loses the base when Windows deschedules the thread. The thread continues in
-// its repair routine, which reloads the base and returns to the instruction.
-func (as *addressSpace) repairFS(t *thread, ctx *ctxBuf, rip uint64) bool {
-	// The base is lost whenever Windows deschedules the thread, and every debug
-	// event of the process stops all its threads, so under a storm of events (a
-	// Go collector with workers on all CPUs) one instruction can be repaired any
-	// number of times. The routine compares the CPU's base with the expected one
-	// each time: a fault with the right base is the guest's own, and when the same
-	// instruction has faulted so three times in a row it is reported.
-	if rip != t.lastRepairRIP {
-		t.lastRepairRIP = rip
-		*t.u64(stubasm.PgEqualN) = 0
-	} else if *t.u64(stubasm.PgEqualN) >= 3 {
-		*t.u64(stubasm.PgEqualN) = 0
-		as.nFSGenuine.Add(1)
+// loses the base when Windows deschedules the thread, and a debug event of any thread
+// can drop the bases of the others. The thread continues in its repair routine, which
+// reloads the base and returns to the instruction.
+//
+// Only an instruction with an %fs prefix depends on the base (the fault address of a
+// lost base is its bare displacement), so any other fault at a low address is the
+// guest's own and is reported at once. A prefixed instruction is repaired every time
+// it faults: whether the base is the expected one cannot be told in the routine, as the
+// event that sent the thread there has dropped it. Only a long unbroken run of repairs
+// of one instruction at one address (a genuine fault with a prefix, which
+// no base can cure) is reported, after at least two seconds.
+func (as *addressSpace) repairFS(t *thread, ctx *ctxBuf, rip, addr uint64) bool {
+	b, ok := as.readStub(rip, 16)
+	if !ok || !hasFSPrefix(b) {
 		return false
+	}
+	now := time.Now()
+	if rip == t.lastRepairRIP && addr == t.lastRepairAddr {
+		t.repairN++
+		if t.repairN >= 1000 && now.Sub(t.repairSince) >= 2*time.Second {
+			t.repairN = 0
+			as.nFSGenuine.Add(1)
+			return false
+		}
+	} else {
+		t.lastRepairRIP, t.lastRepairAddr, t.repairN, t.repairSince = rip, addr, 0, now
 	}
 	as.nFSRepair.Add(1)
 	*t.u64(stubasm.PgRetRIP) = rip
 	*ctx.u64(ctxRipOff) = t.addr + stubasm.PgRepair
-	return ctx.set(t.hThread)
+	for try := 0; try < 3; try++ {
+		if ctx.set(t.hThread) {
+			return true
+		}
+	}
+	// The thread continues at the faulting instruction and faults again: another try.
+	as.nFSRepairFail.Add(1)
+	return true
 }
 
 // park saves the context of t (stopped at a debug event, or suspended) into its

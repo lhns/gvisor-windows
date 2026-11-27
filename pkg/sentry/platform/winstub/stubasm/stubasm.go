@@ -130,8 +130,6 @@ const (
 	PgWaits     = 0x98  // uint32: how often the stub's wait for a reply returned (diagnostics)
 	PgNtTerm    = 0x90  // ntdll!NtTerminateThread; mode 2 on a reply makes the thread end itself
 	PgRegs      = 0x100 // 16 qwords in hardware order: rax rcx rdx rbx rsp rbp rsi rdi r8..r15
-	PgEqualN    = 0x1A0 // %fs repair: how often in a row the CPU's base was the expected one
-	PgScratch2  = 0x1A8
 	PgICBInfo   = 0x1B0 // {version, reserved, callback}: the argument of NtSetInformationProcess
 	PgICBStat   = 0x1C0 // its NTSTATUS
 	PgICBTrip   = 0x1C8 // the guest address the callback caught
@@ -213,49 +211,27 @@ func image() []byte {
 	return img
 }
 
-// RepairCode returns the %fs repair trampoline for the thread page at pg. The
-// controller sends a thread here after an access violation at a low address
-// (the signature of a CPU that dropped the thread's %fs base). It compares the
-// CPU's base with the thread's expected one (PgFS):
-//   - different: the base was lost; write it back, clear PgEqualN, retry the
-//     instruction at PgRetRIP;
-//   - equal: the base is fine, so the fault is the guest's own; count it in
-//     PgEqualN and retry. The controller reports the fault once the count shows
-//     the same instruction faulted with the right base several times in a row.
-//
-// Every register and flag is kept and the guest stack is not touched: rax and rcx
-// are parked in the page, the comparison is done with lea and jrcxz (no flags).
+// RepairCode returns the %fs repair trampoline for the thread page at pg: it
+// restores %fs from the page, then continues at the address in PgRetRIP, keeping
+// every register and flag (S8 method).
 func RepairCode(pg uint64) []byte {
-	var c []byte
-	base := pg + PgRepair
-	// rip-relative instruction with a 32-bit displacement to the page offset off.
-	rip := func(op []byte, off uint64) {
-		c = append(c, op...)
-		next := base + uint64(len(c)) + 4
-		d := uint32(int32(int64(pg+off) - int64(next)))
-		c = append(c, byte(d), byte(d>>8), byte(d>>16), byte(d>>24))
+	u64 := func(v uint64) []byte {
+		b := make([]byte, 8)
+		for i := range b {
+			b[i] = byte(v >> (8 * i))
+		}
+		return b
 	}
-	rip([]byte{0x48, 0x89, 0x05}, PgScratch)    // mov [scratch],rax
-	rip([]byte{0x48, 0x89, 0x0D}, PgScratch2)   // mov [scratch2],rcx
-	c = append(c, 0xF3, 0x48, 0x0F, 0xAE, 0xC0) // rdfsbase rax
-	rip([]byte{0x48, 0x8B, 0x0D}, PgFS)         // mov rcx,[fs]
-	c = append(c, 0x48, 0xF7, 0xD1)             // not rcx
-	c = append(c, 0x48, 0x8D, 0x4C, 0x08, 0x01) // lea rcx,[rax+rcx+1]  (rax - fs)
-	c = append(c, 0xE3, 0)                      // jrcxz equal
-	jrcxz := len(c) - 1
-	c = append(c, 0xB8, 0, 0, 0, 0)             // mov eax,0
-	rip([]byte{0x48, 0x89, 0x05}, PgEqualN)     // mov [equaln],rax
-	rip([]byte{0x48, 0x8B, 0x05}, PgFS)         // mov rax,[fs]
+	var c []byte
+	c = append(c, 0x48, 0xA3) // mov [scratch], rax
+	c = append(c, u64(pg+PgScratch)...)
+	c = append(c, 0x48, 0xA1) // mov rax, [fs slot]
+	c = append(c, u64(pg+PgFS)...)
 	c = append(c, 0xF3, 0x48, 0x0F, 0xAE, 0xD0) // wrfsbase rax
-	c = append(c, 0xEB, 0)                      // jmp restore
-	jmp := len(c) - 1
-	c[jrcxz] = byte(len(c) - jrcxz - 1)
-	rip([]byte{0x48, 0x8B, 0x05}, PgEqualN) // equal: mov rax,[equaln]
-	c = append(c, 0x48, 0x8D, 0x40, 0x01)   // lea rax,[rax+1]
-	rip([]byte{0x48, 0x89, 0x05}, PgEqualN) // mov [equaln],rax
-	c[jmp] = byte(len(c) - jmp - 1)
-	rip([]byte{0x48, 0x8B, 0x05}, PgScratch)  // restore: mov rax,[scratch]
-	rip([]byte{0x48, 0x8B, 0x0D}, PgScratch2) // mov rcx,[scratch2]
-	rip([]byte{0xFF, 0x25}, PgRetRIP)         // jmp [retrip]
+	c = append(c, 0x48, 0xA1)                   // mov rax, [scratch]
+	c = append(c, u64(pg+PgScratch)...)
+	next := pg + PgRepair + uint64(len(c)) + 6
+	rel := uint32(int32(int64(pg+PgRetRIP) - int64(next)))
+	c = append(c, 0xFF, 0x25, byte(rel), byte(rel>>8), byte(rel>>16), byte(rel>>24)) // jmp [retrip]
 	return c
 }

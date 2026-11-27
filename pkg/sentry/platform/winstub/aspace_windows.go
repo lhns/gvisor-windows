@@ -141,15 +141,15 @@ type addressSpace struct {
 	createMu  sync.Mutex // serializes thread creation
 	lastEvent atomic.Value
 	// diagnostics: threads ended with TerminateThread instead of by themselves
-	nTermFallback atomic.Uint32
+	nTermFallback   atomic.Uint32
 	nThreadReplaced atomic.Uint32
 	// debug-event counts: events handled, %fs instructions run by the debugger, stops moved out of a veneer
-	nEvents, nFSInline, nFSFix atomic.Uint64
-	nFSRepair, nFSGenuine atomic.Uint64 // %fs bases restored by the repair routine, faults it reported
-	tmu       sync.Mutex
-	byTid     map[uint32]*thread
-	slots     [stubasm.MaxThreads]*thread
-	freeSlots []int
+	nEvents, nFSInline, nFSFix           atomic.Uint64
+	nFSRepair, nFSGenuine, nFSRepairFail atomic.Uint64 // %fs bases restored by the repair routine, faults it reported
+	tmu                                  sync.Mutex
+	byTid                                map[uint32]*thread
+	slots                                [stubasm.MaxThreads]*thread
+	freeSlots                            []int
 
 	holesDone atomic.Bool
 }
