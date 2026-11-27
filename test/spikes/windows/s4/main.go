@@ -94,15 +94,15 @@ func mkToken(disableMax bool, denySids []string, restrictSids []string, lowIL bo
 	if disableMax {
 		flags |= 1
 	}
-	var dp, rp uintptr
+	var dp, rp unsafe.Pointer // converted in the call: a stored uintptr would not keep the slices alive
 	if len(deny) > 0 {
-		dp = uintptr(unsafe.Pointer(&deny[0]))
+		dp = unsafe.Pointer(&deny[0])
 	}
 	if len(rest) > 0 {
-		rp = uintptr(unsafe.Pointer(&rest[0]))
+		rp = unsafe.Pointer(&rest[0])
 	}
 	var nt uintptr
-	r, _, e := pCreateRestricted.Call(base, flags, uintptr(len(deny)), dp, 0, 0, uintptr(len(rest)), rp, uintptr(unsafe.Pointer(&nt)))
+	r, _, e := pCreateRestricted.Call(base, flags, uintptr(len(deny)), uintptr(dp), 0, 0, uintptr(len(rest)), uintptr(rp), uintptr(unsafe.Pointer(&nt)))
 	if r == 0 {
 		return 0, "CreateRestrictedToken err " + errs(e)
 	}

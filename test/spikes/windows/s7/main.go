@@ -65,9 +65,9 @@ func kindByName(s string) int {
 	panic("kind " + s)
 }
 
-func utf16p(s string) uintptr {
+func utf16p(s string) *uint16 {
 	p, _ := syscall.UTF16PtrFromString(s)
-	return uintptr(unsafe.Pointer(p))
+	return p
 }
 
 func valloc(addr, size, typ, prot uintptr) uintptr {
@@ -76,7 +76,7 @@ func valloc(addr, size, typ, prot uintptr) uintptr {
 }
 
 func marks(name string) *[8]uint64 {
-	m, _, _ := pCreMap.Call(^uintptr(0), 0, 4, 0, 4096, utf16p("Local\\s7m_"+name))
+	m, _, _ := pCreMap.Call(^uintptr(0), 0, 4, 0, 4096, uintptr(unsafe.Pointer(utf16p("Local\\s7m_"+name))))
 	v, _, _ := pMapVw.Call(m, 0xF001F, 0, 0, 4096)
 	return (*[8]uint64)(unsafe.Pointer(v))
 }
@@ -302,7 +302,7 @@ func firstLine(s string) string {
 
 func sidOf(s string) uintptr {
 	var p uintptr
-	r, _, e := pStrToSid.Call(utf16p(s), uintptr(unsafe.Pointer(&p)))
+	r, _, e := pStrToSid.Call(uintptr(unsafe.Pointer(utf16p(s))), uintptr(unsafe.Pointer(&p)))
 	if r == 0 {
 		panic("sid " + s + e.Error())
 	}
@@ -375,8 +375,7 @@ func debugRun(restricted bool, variant, kind string, n int) (res dbgResult) {
 	defer syscall.CloseHandle(pi.Thread)
 
 	ctx := valloc(0, 4096, 0x3000, 4) // 16-byte aligned CONTEXT buffer
-	var ev [64]uint64
-	evp := uintptr(unsafe.Pointer(&ev[0]))
+	evp := valloc(0, 4096, 0x3000, 4) // not a Go stack address: the stack may move
 	threads := map[uint32]uintptr{}
 	seenBP := false
 	var last float64
