@@ -28,6 +28,7 @@ import (
 
 	"golang.org/x/sys/windows"
 	"gvisor.dev/gvisor/pkg/hostarch"
+	"gvisor.dev/gvisor/pkg/safemem"
 	"gvisor.dev/gvisor/pkg/sentry/memmap"
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/stubasm"
 )
@@ -55,15 +56,23 @@ import (
 // textCacheOn can be turned off (WINSTUB_TEXTCACHE=0) to compare.
 var textCacheOn = os.Getenv("WINSTUB_TEXTCACHE") != "0"
 
-// textCacheBytes bounds what the cache keeps (original bytes, sections and state);
-// past it, it starts over.
-const textCacheBytes = 512 << 20
+// textCacheBytes bounds what the cache keeps of the entries with a state (original
+// bytes, sections and state); past it, it starts over. textLightBytes bounds the
+// bytes of the entries seen once (an exec of a PIE or of a dynamic binary lands at
+// a random address and is seen once only); the oldest go first.
+const (
+	textCacheBytes = 128 << 20
+	textLightBytes = 32 << 20
+)
 
 type textCache struct {
-	mu     sync.Mutex
-	m      map[textKey][]*textEntry
-	bytes  int
-	serial uint64
+	mu         sync.Mutex
+	m          map[textKey][]*textEntry
+	bytes      int
+	light      []*textEntry // entries without a state, oldest first (some may have one by now)
+	lightBytes int
+	serial     uint64
+	hits       atomic.Uint64 // patches taken from the cache (diagnostics, tests)
 }
 
 type textKey struct {
@@ -75,6 +84,7 @@ type textKey struct {
 // kept only once a second address space has patched the same: text mapped once,
 // such as the vDSO at its random address, costs just its bytes.
 type textEntry struct {
+	key       textKey
 	orig      []byte
 	after     *patchSnap // nil until the second patch
 	histAfter [32]byte
@@ -140,10 +150,27 @@ func equalFile(f memmap.File, fr memmap.FileRange, orig []byte) bool {
 		return false
 	}
 	off := 0
+	var tmp []byte
 	for !bs.IsEmpty() {
 		b := bs.Head()
 		n := b.Len()
-		if off+n > len(orig) || !bytes.Equal(b.ToSlice(), orig[off:off+n]) {
+		if off+n > len(orig) {
+			return false
+		}
+		var got []byte
+		if b.NeedSafecopy() {
+			// (the pages of a host file may go away under the read)
+			if cap(tmp) < n {
+				tmp = make([]byte, n)
+			}
+			if c, err := safemem.Copy(safemem.BlockFromSafeSlice(tmp[:n]), b); err != nil || c != n {
+				return false
+			}
+			got = tmp[:n]
+		} else {
+			got = b.ToSlice()
+		}
+		if !bytes.Equal(got, orig[off:off+n]) {
 			return false
 		}
 		off += n
@@ -204,7 +231,8 @@ func (as *addressSpace) textStore(lo, hi uint64, orig []byte, before [32]byte, e
 			return
 		}
 		e.after, e.size = snap, e.size+size
-		c.bytes += size
+		c.lightBytes -= len(e.orig)
+		c.bytes += e.size
 		return
 	}
 	c.mu.Lock()
@@ -213,8 +241,8 @@ func (as *addressSpace) textStore(lo, hi uint64, orig []byte, before [32]byte, e
 	// The serial names these bytes: an address space only takes this entry after
 	// comparing them, so equal histories mean equal text.
 	as.histMix('t', lo, hi, c.serial)
-	e = &textEntry{orig: orig, histAfter: as.hist, size: len(orig)}
-	if c.bytes+e.size > textCacheBytes {
+	e = &textEntry{key: textKey{before, lo, hi}, orig: orig, histAfter: as.hist, size: len(orig)}
+	if c.bytes > textCacheBytes {
 		for _, es := range c.m {
 			for _, x := range es {
 				if x.dropped = true; x.users == 0 {
@@ -222,14 +250,35 @@ func (as *addressSpace) textStore(lo, hi uint64, orig []byte, before [32]byte, e
 				}
 			}
 		}
-		c.m, c.bytes = nil, 0
+		c.m, c.bytes, c.light, c.lightBytes = nil, 0, nil, 0
 	}
 	if c.m == nil {
 		c.m = map[textKey][]*textEntry{}
 	}
-	k := textKey{before, lo, hi}
-	c.m[k] = append(c.m[k], e)
-	c.bytes += e.size
+	c.m[e.key] = append(c.m[e.key], e)
+	c.light = append(c.light, e)
+	c.lightBytes += len(orig)
+	for c.lightBytes > textLightBytes && len(c.light) > 0 {
+		x := c.light[0]
+		c.light = c.light[1:]
+		if x.after != nil || x.dropped {
+			continue // has a state now (counted in c.bytes)
+		}
+		c.lightBytes -= len(x.orig)
+		x.dropped = true
+		es := c.m[x.key]
+		for i, y := range es {
+			if y == x {
+				es = append(es[:i:i], es[i+1:]...)
+				break
+			}
+		}
+		if len(es) == 0 {
+			delete(c.m, x.key)
+		} else {
+			c.m[x.key] = es
+		}
+	}
 }
 
 func (e *textEntry) release() {

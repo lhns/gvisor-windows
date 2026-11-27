@@ -551,6 +551,7 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 			as.p.texts.mu.Unlock()
 			if snap != nil {
 				err := as.applySnap(snap, e.histAfter)
+				as.p.texts.hits.Add(1)
 				if traceOn {
 					Trace("text %#x-%#x: cached patch %.3fms (err %v)", lo, hi, float64(qpc()-t0)/1e6, err)
 				}
