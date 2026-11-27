@@ -11,7 +11,9 @@ package winrunsc
 
 import (
 	"runtime/pprof"
+	"bytes"
 	"fmt"
+	"strconv"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -416,8 +418,27 @@ type reportingWriter struct {
 	once sync.Once
 }
 
+// logStall (GVISOR_TEST_LOG_STALL=ms, a test hook) delays every debug log write of a line
+// that mentions a signal, as a stalled disk would (docs/results/3e-signal-latency.md).
+var logStall = func() time.Duration {
+	ms, _ := strconv.Atoi(os.Getenv("GVISOR_TEST_LOG_STALL"))
+	return time.Duration(ms) * time.Millisecond
+}()
+
 func (r *reportingWriter) Write(p []byte) (int, error) {
+	if logStall > 0 && bytes.Contains(p, []byte("signal")) {
+		time.Sleep(logStall)
+	}
+	var t0 int64
+	if kernel.SigLat {
+		t0 = stallwatch.Now()
+	}
 	n, err := r.w.Write(p)
+	if kernel.SigLat {
+		if d := stallwatch.Now() - t0; d >= 5e6 {
+			fmt.Fprintf(os.Stderr, "SIGLAT debug log write took %.2f ms (qpc %.3f ms)\n", float64(d)/1e6, float64(t0+d)/1e6)
+		}
+	}
 	if err != nil {
 		r.once.Do(func() { fmt.Fprintf(os.Stderr, "runsc: the debug log stopped: %v"+string(rune(10)), err) })
 	}
