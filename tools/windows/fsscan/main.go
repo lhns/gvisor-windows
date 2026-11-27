@@ -21,10 +21,10 @@
 //
 //	fsscan file...
 //	fsscan -targets file...
-//	fsscan -audit file objdump-starts.txt objdump-fs.txt
+//	fsscan -audit file objdump-output.txt
 //
 // -audit compares the decoder's instruction boundaries and %fs instructions with
-// those of objdump (the files hold one hex address per line).
+// those of objdump -d (its output is in the file).
 //
 // With -targets it looks for jump tables in the data of each file (runs of 8-byte,
 // absolute 4-byte or table-relative 4-byte entries that point at instruction starts)
@@ -45,8 +45,8 @@ import (
 )
 
 func main() {
-	if len(os.Args) == 5 && os.Args[1] == "-audit" {
-		if err := audit(os.Args[2], os.Args[3], os.Args[4]); err != nil {
+	if len(os.Args) == 4 && os.Args[1] == "-audit" {
+		if err := audit(os.Args[2], os.Args[3]); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
@@ -234,34 +234,36 @@ func targets(path string) error {
 	return nil
 }
 
-// audit compares the decoder with objdump for the executable segments of one file.
-func audit(path, startsFile, fsFile string) error {
+// audit compares the decoder with objdump (its disassembly in disFile) for the
+// executable segments of one file: instruction boundaries, %fs instructions, and the
+// instructions where the two stop agreeing.
+func audit(path, disFile string) error {
 	f, err := elf.Open(path)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	read := func(name string) (map[uint64]bool, error) {
-		b, err := os.ReadFile(name)
+	dis, err := os.ReadFile(disFile)
+	if err != nil {
+		return err
+	}
+	objText := map[uint64]string{} // address -> "bytes-less" text
+	objStarts, objFS := map[uint64]bool{}, map[uint64]bool{}
+	for _, l := range strings.Split(string(dis), "\n") {
+		tab := strings.IndexByte(l, ':')
+		if tab < 1 || len(l) < tab+2 || l[tab+1] != '	' {
+			continue
+		}
+		a, err := strconv.ParseUint(strings.TrimSpace(l[:tab]), 16, 64)
 		if err != nil {
-			return nil, err
+			continue
 		}
-		m := map[uint64]bool{}
-		for _, l := range strings.Fields(string(b)) {
-			v, err := strconv.ParseUint(strings.TrimPrefix(l, "0x"), 16, 64)
-			if err == nil {
-				m[v] = true
-			}
+		text := strings.TrimSpace(l[tab+1:])
+		objText[a] = text
+		objStarts[a] = true
+		if strings.Contains(text, "%fs:") {
+			objFS[a] = true
 		}
-		return m, nil
-	}
-	objStarts, err := read(startsFile)
-	if err != nil {
-		return err
-	}
-	objFS, err := read(fsFile)
-	if err != nil {
-		return err
 	}
 	ourStarts, ourFS := map[uint64]bool{}, map[uint64]bool{}
 	var texts []struct {
@@ -297,50 +299,89 @@ func audit(path, startsFile, fsFile string) error {
 		}
 		return ""
 	}
-	bytesAt := func(a uint64) string { return bytesAtN(a, 16) }
-	diff := func(name string, ours, theirs map[uint64]bool) {
-		var only []uint64
-		for a := range theirs {
-			if !ours[a] {
-				only = append(only, a)
-			}
-		}
-		var bogus []uint64
-		for a := range ours {
-			if !theirs[a] {
-				bogus = append(bogus, a)
-			}
-		}
-		sort.Slice(only, func(i, j int) bool { return only[i] < only[j] })
-		sort.Slice(bogus, func(i, j int) bool { return bogus[i] < bogus[j] })
-		fmt.Printf("%s: %s: decoder %d, objdump %d; only objdump (missed) %d, only decoder (bogus) %d\n", path, name, len(ours), len(theirs), len(only), len(bogus))
-		for i, a := range only {
-			if i >= 12 {
-				break
-			}
-			fmt.Printf("  missed %#x: %s\n", a, bytesAt(a))
-			if name == "%fs instructions" {
-				// where the two decodings part: starts in the 40 bytes before
-				var o, d []string
-				for k := a - 40; k <= a; k++ {
-					if objStarts[k] {
-						o = append(o, fmt.Sprintf("%d", int64(k)-int64(a)))
-					}
-					if ourStarts[k] {
-						d = append(d, fmt.Sprintf("%d", int64(k)-int64(a)))
-					}
-				}
-				fmt.Printf("    before: %s\n    objdump starts %s\n    decoder starts %s\n", bytesAtN(a-40, 48), strings.Join(o, " "), strings.Join(d, " "))
-			}
-		}
-		for i, a := range bogus {
-			if i >= 12 {
-				break
-			}
-			fmt.Printf("  bogus  %#x: %s\n", a, bytesAt(a))
+	// %fs instructions
+	var missed, bogus []uint64
+	for a := range objFS {
+		if !ourFS[a] {
+			missed = append(missed, a)
 		}
 	}
-	diff("instruction starts", ourStarts, objStarts)
-	diff("%fs instructions", ourFS, objFS)
+	for a := range ourFS {
+		if !objFS[a] {
+			bogus = append(bogus, a)
+		}
+	}
+	sort.Slice(missed, func(i, j int) bool { return missed[i] < missed[j] })
+	sort.Slice(bogus, func(i, j int) bool { return bogus[i] < bogus[j] })
+	fmt.Printf("%s: %%fs instructions: decoder %d, objdump %d; only objdump (missed) %d, only decoder (bogus) %d\n", path, len(ourFS), len(objFS), len(missed), len(bogus))
+	for i, a := range missed {
+		if i >= 10 {
+			break
+		}
+		fmt.Printf("  missed %#x: %s  | %s\n", a, bytesAtN(a, 12), objText[a])
+	}
+	for i, a := range bogus {
+		if i >= 10 {
+			break
+		}
+		fmt.Printf("  bogus  %#x: %s\n", a, bytesAtN(a, 12))
+	}
+	// where the boundaries part: the instruction before the first difference of a stretch is
+	// the one the decoder got the length of wrong
+	var all []uint64
+	for a := range objStarts {
+		all = append(all, a)
+	}
+	for a := range ourStarts {
+		if !objStarts[a] {
+			all = append(all, a)
+		}
+	}
+	sort.Slice(all, func(i, j int) bool { return all[i] < all[j] })
+	type grp struct {
+		n   int
+		ex  []string
+	}
+	groups := map[string]*grp{}
+	last, agree := uint64(0), true
+	regions := 0
+	for _, a := range all {
+		if objStarts[a] == ourStarts[a] {
+			agree, last = true, a
+			continue
+		}
+		if agree {
+			regions++
+			key := objText[last]
+			if k := strings.IndexAny(key, " \t"); k > 0 {
+				key = key[:k]
+			}
+			if key == "" {
+				key = "(no instruction)"
+			}
+			g := groups[key]
+			if g == nil {
+				g = &grp{}
+				groups[key] = g
+			}
+			g.n++
+			if len(g.ex) < 2 {
+				g.ex = append(g.ex, fmt.Sprintf("%#x %s | %s", last, bytesAtN(last, 10), objText[last]))
+			}
+		}
+		agree = false
+	}
+	var keys []string
+	for k := range groups {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool { return groups[keys[i]].n > groups[keys[j]].n })
+	fmt.Printf("%s: %d stretches where the instruction boundaries differ; the instruction before each, by mnemonic:\n", path, regions)
+	for i, k := range keys {
+		if i >= 25 {
+			break
+		}
+		fmt.Printf("  %6d %-14s e.g. %s\n", groups[k].n, k, strings.Join(groups[k].ex, "  ;  "))
+	}
 	return nil
 }
