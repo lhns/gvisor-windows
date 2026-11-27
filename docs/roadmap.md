@@ -186,7 +186,7 @@ flowchart TB
 | Windows platform for the Sentry | ✔ done · successful | gVisor's platform interface implemented for Windows: address spaces, context switches and syscall delivery through stub processes. |
 | Run busybox under the Sentry | ✔ done · successful | First end-to-end milestone: gVisor's kernel runs an unmodified busybox shell on Windows. |
 | Use hardware acceleration when available | ⏸ parked | Where the Windows Hypervisor Platform is enabled, a second platform could run guests in a hardware VM, chosen automatically like runsc's autoplatform. |
-| Support CPUs without FSGSBASE | ○ next | On CPUs or VMs without the instruction to set the thread-local register (like the dev VM), rewrite every %fs-prefixed guest instruction into a veneer that reads the base from per-thread storage; chosen automatically by CPUID. |
+| Support CPUs without FSGSBASE | ▶ in progress | On CPUs or VMs without the instruction to set the thread-local register (like the dev VM), rewrite every %fs-prefixed guest instruction into a veneer that reads the base from per-thread storage; chosen automatically by CPUID. |
 | Run a static guest from memory | ✔ done · successful | Thinnest end-to-end slice: the Sentry on Windows runs one embedded static program from its own memory filesystem, without host files, network or threads. |
 | Exceptions overwrite guest stacks | ✔ fixed | Windows writes about 3 KB of exception data below the faulting thread stack pointer, so in-process handlers can corrupt Linux code; faults must go to the Sentry as debugger instead. |
 | Binary translation as a fallback | ⏸ parked | Translate guest code (as the owner's v3compat does with DynamoRIO on Linux) only if debugger faults or unpatchable syscalls prove too slow, or to support CPUs without FSGSBASE. |
@@ -223,11 +223,9 @@ flowchart TB
 
 **windows-ci**
 
-- `platform-no-fsgsbase-fallback`: Support CPUs without FSGSBASE
 - `workloads-conmon-sync-pipe`: conmon sees no data on its sync pipe
 - `platform-rare-hang-under-exec-load`: Rare hang under heavy exec load
 - `sentry-netpoll-failure`: Sentry dies with netpoll failed
-- `platform-unsupported-errno`: Unsupported platform calls return errnos
 <!-- END GENERATED: ready-now -->
 
 ## Running
@@ -236,6 +234,7 @@ flowchart TB
 **windows-ci**
 
 - `workloads-podman-harness`: Serve Podman to Windows clients
+- `platform-no-fsgsbase-fallback`: Support CPUs without FSGSBASE
 - `sentry-profile-small-file-path`: Profile the slow file and exec path
 <!-- END GENERATED: running -->
 
@@ -387,7 +386,7 @@ Generated on 2026-11-27.
 Each track has its own page with its tree, node table and per-node details.
 
 - [runsc - runsc](roadmap/tracks/runsc.md): 6 nodes (6 done)
-- [platform - platform](roadmap/tracks/platform.md): 33 nodes (25 done, 3 next, 1 blocked, 3 parked, 1 abandoned)
+- [platform - platform](roadmap/tracks/platform.md): 33 nodes (25 done, 2 in progress, 1 next, 1 blocked, 3 parked, 1 abandoned)
 - [sentry - sentry](roadmap/tracks/sentry.md): 12 nodes (8 done, 1 in progress, 1 next, 1 blocked, 1 parked)
 - [fs - files](roadmap/tracks/fs.md): 15 nodes (14 done, 1 blocked)
 - [net - network](roadmap/tracks/net.md): 4 nodes (4 done)

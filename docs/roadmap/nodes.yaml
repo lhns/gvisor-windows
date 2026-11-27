@@ -1343,18 +1343,20 @@
   title: Support CPUs without FSGSBASE
   track: platform
   kind: feature
-  state: next
+  state: in-progress
   outcome: unrated
-  evidence: []
+  evidence:
+  - docs/adr/0020-cpus-without-fsgsbase-rewrite-fs-accesses.md
   verdict_quote: ''
   headline: ''
   depends_on:
   - platform-veneer-address-in-child
   replaced_by: []
   lane: windows-ci
-  start: ''
+  start: '2026-11-27'
   end: ''
-  folded: []
+  folded:
+  - Dev VM lacks FSGSBASE, XSAVE, OSXSAVE and AVX; runsc.exe refuses to start (2026-11-27, session record)
   overview: false
   plain: On CPUs or VMs without the instruction to set the thread-local register (like the dev VM), rewrite every %fs-prefixed guest instruction into a veneer that reads the base from per-thread storage;
     chosen automatically by CPUID.
@@ -2162,7 +2164,7 @@
   title: Unsupported platform calls return errnos
   track: platform
   kind: defect
-  state: next
+  state: in-progress
   lane: windows-ci
   plain: arch_prctl(ARCH_SET_GS) and ptrace preparation return a raw error from the platform instead of an errno, so the Sentry panics with "Unknown syscall 158".
   notes: 'Fixed when: arch_prctl_test fails cleanly (EPERM or ENOTSUP) instead of crashing the Sentry.'

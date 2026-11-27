@@ -31,6 +31,7 @@ gantt
     Run busybox under the Sentry :platform_busybox_on_windows, 2026-11-26, 2026-11-26
     Hook syscalls like zpoline :crit, platform_zpoline_hooks, 2026-11-26, 2026-11-26
     Restore the TLS register after switches :platform_fs_base_repair, 2026-11-26, 2026-11-26
+    Support CPUs without FSGSBASE :active, platform_no_fsgsbase_fallback, 2026-11-27, 2026-11-27
     Check what exceptions do to stacks :platform_exception_stack, 2026-11-26, 2026-11-26
     Run a static guest from memory :platform_static_guest_from_memory, 2026-11-26, 2026-11-26
     Exceptions overwrite guest stacks :platform_veh_on_guest_stack_unsafe, 2026-11-26, 2026-11-26
@@ -46,7 +47,7 @@ gantt
     Map files not in the memory file :platform_map_files_without_sections, 2026-11-26, 2026-11-26
     Veneer addresses differ after clone :platform_veneer_address_in_child, 2026-11-27, 2026-11-27
     Rare hang under heavy exec load :platform_rare_hang_under_exec_load, 2026-11-27, 2026-11-27
-    Unsupported platform calls return errnos :platform_unsupported_errno, 2026-11-27, 2026-11-27
+    Unsupported platform calls return errnos :active, platform_unsupported_errno, 2026-11-27, 2026-11-27
     section sentry - sentry
     Recover faults in Go :sentry_go_fault_recovery, 2026-11-26, 2026-11-26
     Sentry builds for Windows :sentry_windows_build, 2026-11-26, 2026-11-26
@@ -113,5 +114,5 @@ gantt
     gVisor syscall tests on Windows :ops_syscall_tests_on_windows, 2026-11-26, 2026-11-27
 ```
 
-Not shown (no `start`): `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-hardware-acceleration`, `platform-no-fsgsbase-fallback`, `platform-binary-translation-fallback`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `fs-persistent-storage-impl`, `workloads-podman-on-windows`, `ops-upstream-merges`, `ops-portable-packaging`, `ops-run-on-a-work-machine`
+Not shown (no `start`): `platform-own-vdso`, `platform-64k-mapping-conflicts`, `platform-hardware-acceleration`, `platform-binary-translation-fallback`, `sentry-event-loop-iocp`, `sentry-timers-and-clocks`, `fs-persistent-storage-impl`, `workloads-podman-on-windows`, `ops-upstream-merges`, `ops-portable-packaging`, `ops-run-on-a-work-machine`
 <!-- END GENERATED: timeline -->
