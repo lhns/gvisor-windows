@@ -11,11 +11,12 @@ Scope: CI, packaging, owner decisions on process.
 flowchart TB
     ops_windows_ci_standard_user["✔ Windows CI as a<br/>standard user"]
     ops_syscall_tests_on_windows["✔ gVisor syscall tests<br/>on Windows"]
+    ops_ci_build_once["✔ Build once, run<br/>suites on demand"]
     ops_upstream_merges["○ Merge upstream<br/>gVisor regularly"]
     ops_portable_packaging["⛔ Portable zip, no<br/>installer"]
-    ops_windows_ci_standard_user ~~~ ops_portable_packaging
+    ops_windows_ci_standard_user ~~~ ops_upstream_merges
     ops_syscall_tests_on_windows ~~~ ops_portable_packaging
-    ops_upstream_merges ~~~ ops_portable_packaging
+    ops_ci_build_once ~~~ ops_portable_packaging
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -32,6 +33,7 @@ flowchart TB
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class ops_windows_ci_standard_user succ
     class ops_syscall_tests_on_windows mixed
+    class ops_ci_build_once unrated
     class ops_upstream_merges next
     class ops_portable_packaging blocked
 ```
@@ -53,6 +55,7 @@ flowchart TB
 | `ops-upstream-merges` | Merge upstream gVisor regularly | tooling | linux-ci | next | unrated |  |  |  |  |  |  |  |
 | `ops-portable-packaging` | Portable zip, no installer | feature | windows-ci | blocked | unrated |  |  | runsc-container-on-windows |  |  |  |  |
 | `ops-run-on-a-work-machine` | Try it on a real work machine | owner-decision | owner | blocked | n/a |  |  | workloads-podman-on-windows |  |  |  |  |
+| `ops-ci-build-once` | Build once, run suites on demand | tooling | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/6-ci.md |
 
 ### Details per node
 
@@ -69,6 +72,7 @@ flowchart TB
 | `ops-upstream-merges` | Merge upstream gVisor regularly |  |  | Regularly take in upstream gVisor's Go branch so the port does not drift. | Done when: a scheduled workflow merges upstream/go into windows or opens an issue on conflict. |  |  |  |  |
 | `ops-portable-packaging` | Portable zip, no installer |  |  | Ship runsc for Windows as a zip or per-user installer that needs no admin. | Done when: a release zip runs from a user folder on a clean Windows machine. |  |  |  |  |
 | `ops-run-on-a-work-machine` | Try it on a real work machine |  |  | All evidence comes from GitHub hosted Windows images; the owner runs runsc.exe once on a work machine to check FSGSBASE and whether security software tolerates the generated stub being debugged. | Done when: the owner reports the result of one run of the published artifact. |  |  |  |  |
+| `ops-ci-build-once` | Build once, run suites on demand |  |  | One ci.yml builds runsc.exe and the test binaries once and calls every Windows suite; worker branches start no runs and dispatch only what they need; heavy repeats run nightly. About 62 to 40 job-minutes per push. | Next lever: merge the 16 small Linux acceptance jobs. Also uploads a runsc-windows package (runsc.exe, hello bundle, README) for trying it on a work machine. |  |  |  |  |
 
 ### Folded items per node
 

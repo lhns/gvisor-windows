@@ -3,6 +3,9 @@
 name: windows-icb
 on:
   workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   probe:
     runs-on: windows-latest

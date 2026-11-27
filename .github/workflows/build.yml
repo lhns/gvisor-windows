@@ -5,7 +5,34 @@ on:
     branches: [windows]
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  triggers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github
+      # Workers don't edit `on:` blocks; a push trigger on another branch starts every suite on every push.
+      - name: A push trigger may only name the branch windows
+        run: |
+          python3 - <<'PY'
+          import glob, sys, yaml
+          bad = []
+          for f in sorted(glob.glob('.github/workflows/*.yml')):
+              d = yaml.safe_load(open(f))
+              on = d.get('on', d.get(True)) or {}
+              if isinstance(on, str): on = {on: None}
+              elif isinstance(on, list): on = {k: None for k in on}
+              if 'push' in on and (on['push'] or {}).get('branches') != ['windows']:
+                  bad.append(f)
+          if bad:
+              print('push: needs branches: [windows] in', ', '.join(bad))
+              sys.exit(1)
+          PY
   build:
     runs-on: ubuntu-latest
     steps:

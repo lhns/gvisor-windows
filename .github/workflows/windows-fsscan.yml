@@ -5,8 +5,12 @@
 name: windows-fsscan
 on:
   push:
+    branches: [windows]
     paths: ["pkg/sentry/platform/winstub/**", "tools/windows/fsscan/**", ".github/workflows/windows-fsscan.yml"]
   workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   scan:
     runs-on: ubuntu-latest

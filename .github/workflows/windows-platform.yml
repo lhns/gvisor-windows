@@ -1,47 +1,57 @@
 # Phase 1c: the winstub platform (pkg/sentry/platform/winstub) on a hosted Windows
 # runner (FSGSBASE): syscalls, faults, interrupts, a second address space. Three
-# legs (ADR 0020): native %fs, forced rewrite mode, rewrite mode without XSAVE.
+# legs (ADR 0020: native %fs, forced rewrite mode, rewrite mode without XSAVE), run
+# in a loop in one job. Called by ci.yml on push; dispatch it alone with
+# `gh workflow run windows-platform --ref <branch> -f only=<test regex> -f legs=native`.
 name: windows-platform
 on:
-  push:
-    paths: ["pkg/**", "runsc/**", "third_party/**", "tools/windows/**", "test/guests/**", "go.mod", ".github/workflows/windows-platform.yml"]
+  workflow_call:
+    inputs:
+      prebuilt: {type: boolean, default: false}
+      only: {type: string, default: ''}
+      legs: {type: string, default: ''}
   workflow_dispatch:
+    inputs:
+      only: {description: 'regexp of the test names to run (default all)', default: ''}
+      legs: {description: 'comma list of legs: native, rewrite, rewrite-fxsave (default all)', default: ''}
+concurrency:
+  group: windows-platform-${{ github.ref }}-${{ inputs.prebuilt && 'ci' || 'solo' }}
+  cancel-in-progress: true
+env:
+  WINSTUB_TRIPWIRE: '1'
+  LEGS: ${{ inputs.legs || 'native,rewrite,rewrite-fxsave' }}
+  ONLY: ${{ inputs.only }}
 jobs:
   platform:
     runs-on: windows-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        mode: [native, rewrite, rewrite-fxsave]
-    env:
-      WINSTUB_FSMODE: ${{ matrix.mode == 'native' && 'native' || 'rewrite' }}
-      WINSTUB_FPMODE: ${{ matrix.mode == 'rewrite-fxsave' && 'fxsave' || '' }}
-      WINSTUB_TRIPWIRE: '1'
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: {go-version-file: go.mod, cache: false}
-      - name: Build
-        shell: pwsh
-        run: |
-          Get-CimInstance Win32_Processor | Select-Object Name, NumberOfLogicalProcessors | Format-List
-          go vet ./pkg/sentry/platform/winstub ./pkg/sentry/platform/winstub/stubasm ./pkg/sentry/platform/winstub/pe
-          go test -c -o winstub.test.exe ./pkg/sentry/platform/winstub
+      - uses: ./.github/actions/winbin
+        with: {prebuilt: "${{ inputs.prebuilt }}", targets: winstub}
       - name: Tests
         shell: pwsh
         working-directory: pkg/sentry/platform/winstub
         env: {WINSTUB_DEBUG: "1"}
         run: |
+          . ../../../../tools/windows/ci/leg.ps1
+          Get-CimInstance Win32_Processor | Select-Object Name, NumberOfLogicalProcessors | Format-List
+          $all = 'TestSyscallsFaultsInterrupt','TestExecuteFault','TestUnmapAndRemap','TestNewThreadsAndSpeed','TestForkedAddressSpace','TestWriteExecute','TestFPState','TestSyscallLatency','TestStubStart','TestStubStartExperiment','TestDecodeAllMatchesSerial','TestSplitSyscall','TestInterruptStorm','TestMapNonSectionFile','TestMemoryRelease','TestSplitSyscallAfterUnmap','TestSplitSyscallWX','TestOversubscribed','TestShareReadOnlySection','TestManyThreads','TestVeneerSurvivesNewAddressSpace','TestFSVeneerEncoding','TestScanFS','TestFSVeneerVEX','TestFSInstructions','TestFSInterrupt','TestFSSpeed','TestAVX512State','TestFSInstructionAfterSplit','TestTripwire','TestSeamRedecode','TestEntryAfterPadding','TestFSDifferential','TestFSDifferentialInterrupt','TestFSSeam','TestFSSeamBinary','TestDecodeBoundaries'
+          $sel = if ($env:ONLY) { $all | Where-Object { $_ -match $env:ONLY } } else { $all }
           $fail = 0
-          foreach ($t in 'TestSyscallsFaultsInterrupt','TestExecuteFault','TestUnmapAndRemap','TestNewThreadsAndSpeed','TestForkedAddressSpace','TestWriteExecute','TestFPState','TestSyscallLatency','TestStubStart','TestStubStartExperiment','TestDecodeAllMatchesSerial','TestSplitSyscall','TestInterruptStorm','TestMapNonSectionFile','TestMemoryRelease','TestSplitSyscallAfterUnmap','TestSplitSyscallWX','TestOversubscribed','TestShareReadOnlySection','TestManyThreads','TestVeneerSurvivesNewAddressSpace','TestFSVeneerEncoding','TestScanFS','TestFSVeneerVEX','TestFSInstructions','TestFSInterrupt','TestFSSpeed','TestAVX512State','TestFSInstructionAfterSplit','TestTripwire','TestSeamRedecode','TestEntryAfterPadding','TestFSDifferential','TestFSDifferentialInterrupt','TestFSSeam','TestFSSeamBinary','TestDecodeBoundaries') {
-            "===== $t" | Tee-Object -Append -FilePath ../../../../tests.txt
-            $a = @(("-test.run=^" + $t + [char]36), "-test.v=true", "-test.timeout=3m"); & ../../../../winstub.test.exe @a 2>&1 | Tee-Object -Append -FilePath ../../../../tests.txt
-            "exit: $LASTEXITCODE" | Tee-Object -Append -FilePath ../../../../tests.txt
-            if ($LASTEXITCODE -ne 0) { $fail = 1 }
+          foreach ($leg in $env:LEGS -split '[, ]+' | Where-Object { $_ }) {
+            Set-Leg $leg
+            $log = "../../../../tests-$leg.txt"
+            "##### leg $leg" | Tee-Object -Append -FilePath $log
+            foreach ($t in $sel) {
+              "===== $t" | Tee-Object -Append -FilePath $log
+              $a = @(("-test.run=^" + $t + [char]36), "-test.v=true", "-test.timeout=3m"); & C:\ci\bin\winstub.test.exe @a 2>&1 | Tee-Object -Append -FilePath $log
+              "exit: $LASTEXITCODE" | Tee-Object -Append -FilePath $log
+              if ($LASTEXITCODE -ne 0) { $fail = 1 }
+            }
           }
           exit $fail
       - name: Cost of a veneer, both modes on this machine
-        if: always() && matrix.mode == 'native'
+        if: always() && env.ONLY == '' && contains(env.LEGS, 'native')
         continue-on-error: true
         shell: pwsh
         working-directory: pkg/sentry/platform/winstub
@@ -49,44 +59,51 @@ jobs:
           foreach ($round in 1..3) {
             foreach ($m in 'native', 'rewrite') {
               $env:WINSTUB_FSMODE = $m
-              & ../../../../winstub.test.exe "-test.run=^TestFSSpeed$" "-test.v=true" 2>&1 | Select-String "FSSPEED" | Tee-Object -Append -FilePath ../../../../tuning.txt
+              & C:\ci\bin\winstub.test.exe "-test.run=^TestFSSpeed$" "-test.v=true" 2>&1 | Select-String "FSSPEED" | Tee-Object -Append -FilePath ../../../../tuning.txt
             }
           }
       - name: Spin policy matrix
-        if: always() && matrix.mode == 'native'
+        if: always() && env.ONLY == '' && contains(env.LEGS, 'native')
         continue-on-error: true
         shell: pwsh
         working-directory: pkg/sentry/platform/winstub
-        env: {WINSTUB_MATRIX: "1"}
+        env: {WINSTUB_MATRIX: "1", WINSTUB_FSMODE: native}
         run: |
           $a = @("-test.run=^TestPolicyMatrix$", "-test.v=true", "-test.timeout=10m")
-          & ../../../../winstub.test.exe @a 2>&1 | Select-String "MATRIX" | Tee-Object -Append -FilePath ../../../../tuning.txt
+          & C:\ci\bin\winstub.test.exe @a 2>&1 | Select-String "MATRIX" | Tee-Object -Append -FilePath ../../../../tuning.txt
       - name: Oversubscription, with and without the spin limit
-        if: always() && matrix.mode == 'native'
+        if: always() && env.ONLY == '' && contains(env.LEGS, 'native')
         continue-on-error: true
         shell: pwsh
         working-directory: pkg/sentry/platform/winstub
+        env: {WINSTUB_FSMODE: native}
         run: |
           foreach ($l in 4, 1000) {
             $env:WINSTUB_SPINLIMIT = "$l"
             "===== spin limit $l" | Tee-Object -Append -FilePath ../../../../tuning.txt
             $a = @("-test.run=^TestOversubscribed$|^TestSyscallLatency$", "-test.v=true")
-            & ../../../../winstub.test.exe @a 2>&1 | Select-String "OVERSUB|LATENCY" | Tee-Object -Append -FilePath ../../../../tuning.txt
+            & C:\ci\bin\winstub.test.exe @a 2>&1 | Select-String "OVERSUB|LATENCY" | Tee-Object -Append -FilePath ../../../../tuning.txt
           }
       - name: Spin tuning
-        if: always() && matrix.mode == 'native'
+        if: always() && env.ONLY == '' && contains(env.LEGS, 'native')
         continue-on-error: true
         shell: pwsh
         working-directory: pkg/sentry/platform/winstub
+        env: {WINSTUB_FSMODE: native}
         run: |
           foreach ($s in 300, 1000, 3000) {
             foreach ($c in 2000, 20000) {
               $env:WINSTUB_STUBSPIN = "$s"; $env:WINSTUB_CTLSPIN = "$c"
               "===== stub spin $s, sentry spin $c" | Tee-Object -Append -FilePath ../../../../tuning.txt
               $a = @("-test.run=^TestSyscallLatency$", "-test.v=true")
-              & ../../../../winstub.test.exe @a 2>&1 | Select-String "LATENCY" | Tee-Object -Append -FilePath ../../../../tuning.txt
+              & C:\ci\bin\winstub.test.exe @a 2>&1 | Select-String "LATENCY" | Tee-Object -Append -FilePath ../../../../tuning.txt
             }
           }
       - uses: actions/upload-artifact@v4
         if: always()
-        with: {name: "winstub-output-${{ matrix.mode }}", path: "tests.txt\ntuning.txt"}
+        with:
+          name: winstub-output
+          path: |
+            tests-*.txt
+            tuning.txt
+          if-no-files-found: ignore

@@ -2,6 +2,9 @@
 name: windows-profile
 on:
   workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   rootfs:
     runs-on: ubuntu-latest

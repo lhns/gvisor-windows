@@ -1,20 +1,42 @@
 # Boot runsc on Windows: "runsc.exe run" with an OCI bundle whose rootfs is a
-# Windows folder, stdio, network and a terminal, all as a standard user.
+# Windows folder, stdio, network and a terminal, all as a standard user. Called by
+# ci.yml on push; dispatch it alone with
+# `gh workflow run windows-runsc --ref <branch> -f only=<runsctest cases> -f legs=native`.
 name: windows-runsc
 on:
-  push:
-    paths: ["pkg/**", "runsc/**", "third_party/**", "tools/windows/**", "test/guests/**", "go.mod", ".github/workflows/windows-runsc.yml"]
+  workflow_call:
+    inputs:
+      prebuilt: {type: boolean, default: false}
+      only: {type: string, default: ''}
+      legs: {type: string, default: ''}
   workflow_dispatch:
+    inputs:
+      only: {description: 'runsctest cases to run, e.g. erofs,hostfs (default: the whole suite)', default: ''}
+      legs: {description: 'comma list of legs: native, rewrite, rewrite-fxsave (default all)', default: ''}
+concurrency:
+  group: windows-runsc-${{ github.ref }}-${{ inputs.prebuilt && 'ci' || 'solo' }}
+  cancel-in-progress: true
 jobs:
   guests:
     runs-on: ubuntu-latest
+    outputs:
+      legs: ${{ steps.legs.outputs.legs }}
     steps:
       - uses: actions/checkout@v4
         with:
           sparse-checkout: |
             test/guests
             tools/windows/bench
+      - id: legs
+        run: echo "legs=$(echo '${{ inputs.legs || 'native,rewrite,rewrite-fxsave' }}' | sed 's/ //g; s/,/","/g; s/^/["/; s/$/"]/')" >> "$GITHUB_OUTPUT"
+      # The guests depend only on these inputs (bump v1 to rebuild: the base images float).
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: out
+          key: runsc-guests-v1-${{ hashFiles('test/guests/**', 'tools/windows/bench/**') }}
       - name: Build guests
+        if: steps.cache.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq busybox-static erofs-utils
@@ -53,24 +75,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: [native, rewrite, rewrite-fxsave]
+        mode: ${{ fromJSON(needs.guests.outputs.legs) }}
     env:
       WINSTUB_FSMODE: ${{ matrix.mode == 'native' && 'native' || 'rewrite' }}
       WINSTUB_FPMODE: ${{ matrix.mode == 'rewrite-fxsave' && 'fxsave' || '' }}
       WINSTUB_KEEP_AVX512: ${{ matrix.mode == 'rewrite' && '1' || '' }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: {go-version-file: go.mod, cache: false}
       - uses: actions/download-artifact@v4
         with: {name: runsc-guests, path: guests}
-      - name: Build
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force C:\ci\bin | Out-Null
-          go vet ./runsc/winrunsc
-          go build -p 2 -o C:\ci\bin\runsc.exe ./runsc
-          go build -o C:\ci\bin\runsctest.exe ./tools/windows/runsctest
+      - uses: ./.github/actions/winbin
+        with: {prebuilt: "${{ inputs.prebuilt }}", targets: "runsc,runsctest"}
       - name: Rootfs folder
         shell: pwsh
         run: |
@@ -85,16 +100,19 @@ jobs:
           [IO.File]::WriteAllText("$r\www\index.html", "hello-from-guest`n")
           Get-ChildItem -Recurse $r | Select-Object FullName, Length | Format-Table -AutoSize | Out-String -Width 200
       - name: Hello as the runner's administrator (diagnostic)
+        if: inputs.only == ''
         shell: pwsh
         continue-on-error: true
         run: |
           C:\ci\bin\runsctest.exe -runsc C:\ci\bin\runsc.exe -rootfs C:\ci\work\rootfs -work C:\ci\work\admin -only hello
       - name: Terminal as the runner's administrator (diagnostic)
+        if: inputs.only == ''
         shell: pwsh
         continue-on-error: true
         run: |
           C:\ci\bin\runsctest.exe -runsc C:\ci\bin\runsc.exe -rootfs C:\ci\work\rootfs -work C:\ci\work\admin -only tty
       - name: Erofs image root as a standard user
+        if: inputs.only == ''
         shell: pwsh
         run: |
           $wargs = @('-fsmode', $env:WINSTUB_FSMODE); if ($env:WINSTUB_FPMODE) { $wargs += '-fpmode', $env:WINSTUB_FPMODE }
@@ -103,6 +121,7 @@ jobs:
             -Arguments ($wargs + @('-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-erofs','-image','C:\ci\work\rootfs.erofs','-only','erofs')) `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 300
       - name: Host-folder rename and the port forwarder API as a standard user
+        if: inputs.only == ''
         shell: pwsh
         run: |
           $wargs = @('-fsmode', $env:WINSTUB_FSMODE); if ($env:WINSTUB_FPMODE) { $wargs += '-fpmode', $env:WINSTUB_FPMODE }
@@ -111,6 +130,7 @@ jobs:
             -Arguments ($wargs + @('-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-hostfs','-only','hostfs,forward,sockfs,fchmod,strace,cfr,restart')) `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 300
       - name: debian loader from the root folder
+        if: inputs.only == ''
         shell: pwsh
         run: |
           $wargs = @('-fsmode', $env:WINSTUB_FSMODE); if ($env:WINSTUB_FPMODE) { $wargs += '-fpmode', $env:WINSTUB_FPMODE }
@@ -119,6 +139,7 @@ jobs:
             -Arguments ($wargs + @('-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-debian','-only','debian')) `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 300
       - name: Case sensitivity as a standard user (known gap, Windows denies the flag, see docs/results/5-podman-windows.md)
+        if: inputs.only == ''
         shell: pwsh
         continue-on-error: true
         run: |
@@ -128,6 +149,7 @@ jobs:
             -Arguments ($wargs + @('-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-case','-only','case')) `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 300
       - name: Phase 0 workloads and start-to-exit as a standard user
+        if: inputs.only == ''
         shell: pwsh
         continue-on-error: true
         run: |
@@ -138,6 +160,7 @@ jobs:
             -Arguments ($wargs + @('-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-bench','-only','bench')) `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 1200
       - name: Container lifecycle commands as a standard user
+        if: inputs.only == ''
         shell: pwsh
         run: |
           $wargs = @('-fsmode', $env:WINSTUB_FSMODE); if ($env:WINSTUB_FPMODE) { $wargs += '-fpmode', $env:WINSTUB_FPMODE }
@@ -146,12 +169,22 @@ jobs:
             -Arguments ($wargs + @('-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-lifecycle','-only','lifecycle')) `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 600
       - name: All tests as a standard user
+        if: inputs.only == ''
         shell: pwsh
         run: |
           $wargs = @('-fsmode', $env:WINSTUB_FSMODE); if ($env:WINSTUB_FPMODE) { $wargs += '-fpmode', $env:WINSTUB_FPMODE }
           & tools/windows/ci/run-as-standard-user.ps1 `
             -Program C:\ci\bin\runsctest.exe `
             -Arguments ($wargs + @('-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std')) `
+            -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 1500
+      - name: Selected cases as a standard user
+        if: inputs.only != ''
+        shell: pwsh
+        run: |
+          $wargs = @('-fsmode', $env:WINSTUB_FSMODE); if ($env:WINSTUB_FPMODE) { $wargs += '-fpmode', $env:WINSTUB_FPMODE }
+          & tools/windows/ci/run-as-standard-user.ps1 `
+            -Program C:\ci\bin\runsctest.exe `
+            -Arguments ($wargs + @('-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std','-only','${{ inputs.only }}')) `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 1500
       - uses: actions/upload-artifact@v4
         if: always()

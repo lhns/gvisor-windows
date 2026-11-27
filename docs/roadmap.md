@@ -258,7 +258,7 @@ Generated on 2026-11-27.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 100 done, 7 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 101 done, 7 abandoned</summary>
 
 - `fs-attribute-cache`: Faster stat walks on host folders (✔ done · mixed). A git-status-like walk of 20000 files takes 1.2-2.4 s through the host folder; an attribute cache fed by the change watcher would bring stat near native.
   - Cold stat walk on a fresh mount is still about 4x native, 99-105 us per file (2026-11-26)
@@ -369,6 +369,7 @@ Generated on 2026-11-27.
 - `fs-host-folder-mtime-resolution`: Host-folder writes keep the old mtime (✔ fixed). On host folders 45-60% of consecutive writes report the same mtime as the previous one (tmpfs: none), which can hide changes from tools that compare mtimes.
 - `fs-layer-store-corrupt-after-restart`: Layer store unreadable after restart (✔ fixed). After a failed apt build, a layer directory (.../var/cache/apt/archives) cannot be removed ("directory not empty") although the Sentry lists it as empty; c/storage retries that removal on every load and fails the whole store, so steps 9-10 fail after the restart.
 - `fs-unix-sockets-on-host-folders`: Unix sockets on host folders (✔ fixed). Binding a Unix socket on a Windows folder and connecting to it (by path or via /proc/self/fd) is refused, so Podman cannot reach conmon's attach socket.
+- `ops-ci-build-once`: Build once, run suites on demand (✔ done · unrated). One ci.yml builds runsc.exe and the test binaries once and calls every Windows suite; worker branches start no runs and dispatch only what they need; heavy repeats run nightly. About 62 to 40 job-minutes per push.
 - `ops-syscall-tests-on-windows`: gVisor syscall tests on Windows (✔ done · mixed). gVisor's own syscall test suite runs against the Windows port to show which Linux calls work.
   - Linux runsc 81.5%, Windows with network 77.3% of 14620 cases (2026-11-27)
 - `platform-avx-on-non-avx-cpu`: glibc runs AVX code on a non-AVX CPU (✔ fixed). On the dev VM a static glibc hello dies with SIGILL on vmovd (AVX) in start-up code, although the CPU has no AVX; busybox runs fine.
@@ -417,5 +418,5 @@ Each track has its own page with its tree, node table and per-node details.
 - [net - network](roadmap/tracks/net.md): 4 nodes (4 done)
 - [workloads - workloads](roadmap/tracks/workloads.md): 20 nodes (17 done, 1 in progress, 1 next, 1 blocked)
 - [research - research](roadmap/tracks/research.md): 8 nodes (2 done, 6 abandoned)
-- [ops - operations](roadmap/tracks/ops.md): 11 nodes (8 done, 1 next, 2 blocked)
+- [ops - operations](roadmap/tracks/ops.md): 12 nodes (9 done, 1 next, 2 blocked)
 <!-- END GENERATED: tracks -->

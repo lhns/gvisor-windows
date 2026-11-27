@@ -1,0 +1,82 @@
+# The Windows suites on every push to `windows`: one job builds every Windows binary once
+# (runsc.exe, tools, compiled test binaries) and the suites download them. Workers on other
+# branches run a suite with `gh workflow run <workflow> --ref <branch>` (docs/results/6-ci.md).
+name: ci
+on:
+  push:
+    branches: [windows]
+    paths: ["pkg/**", "runsc/**", "third_party/**", "tools/**", "test/guests/**", "test/e2e/podman-acceptance/**", "go.mod", "go.sum", ".github/**"]
+  workflow_dispatch:
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  bin:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/gosetup
+        with: {save: "true"}
+      - name: Build every Windows binary
+        shell: pwsh
+        run: ./tools/windows/ci/build-bin.ps1
+      - uses: actions/upload-artifact@v4
+        with: {name: win-bin, path: 'C:\ci\bin', compression-level: 1, retention-days: 3}
+  vet:
+    runs-on: windows-latest
+    env: {CGO_ENABLED: "0"}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/gosetup
+      # These three were never gating (the old steps ended in a build); winstub has known unsafe.Pointer false positives.
+      - name: Vet winstub, winrunsc and sentryguest (informational)
+        continue-on-error: true
+        run: go vet -p 2 ./pkg/sentry/platform/winstub ./pkg/sentry/platform/winstub/stubasm ./pkg/sentry/platform/winstub/pe ./runsc/winrunsc ./tools/windows/sentryguest
+      - run: go vet -p 2 ./pkg/tcpip/winnat/
+  platform:
+    needs: bin
+    uses: ./.github/workflows/windows-platform.yml
+    with: {prebuilt: true}
+  sentry-guests:
+    needs: bin
+    uses: ./.github/workflows/windows-sentry-guests.yml
+    with: {prebuilt: true}
+  runsc:
+    needs: bin
+    uses: ./.github/workflows/windows-runsc.yml
+    with: {prebuilt: true}
+  fs:
+    needs: bin
+    uses: ./.github/workflows/windows-fs.yml
+    with: {prebuilt: true}
+  net:
+    needs: bin
+    uses: ./.github/workflows/windows-net.yml
+    with: {prebuilt: true}
+  sentry:
+    needs: bin
+    uses: ./.github/workflows/windows-sentry.yml
+    with: {prebuilt: true}
+  rootfs:
+    needs: bin
+    uses: ./.github/workflows/windows-rootfs.yml
+    with: {prebuilt: true}
+  podman:
+    needs: bin
+    uses: ./.github/workflows/podman-windows.yml
+    with: {prebuilt: true}
+  # Something to try on another machine: runsc.exe, a hello/busybox bundle and a README.
+  release:
+    needs: [bin, runsc]
+    if: ${{ !cancelled() && needs.bin.result == 'success' }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {sparse-checkout: tools/windows/ci}
+      - uses: actions/download-artifact@v4
+        with: {name: win-bin, path: 'C:\ci\bin'}
+      - uses: actions/download-artifact@v4
+        with: {name: runsc-guests, path: guests}
+      - run: ./tools/windows/ci/make-release.ps1 -Guests guests -Runsc C:\ci\bin\runsc.exe -Out release
+      - uses: actions/upload-artifact@v4
+        with: {name: runsc-windows, path: release, retention-days: 14}
