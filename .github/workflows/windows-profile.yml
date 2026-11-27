@@ -259,6 +259,7 @@ jobs:
                 "FSSHARE $tag : debugger runs $dbg, $([math]::Round($s, 1)) s, exit: $(($o -split "`n" | Select-String 'sentryguest: exit|py \d|nv done|setup \d|teardown \d|Error' | Select-Object -First 8) -join ' / ')" | Tee-Object -Append out/share.txt
                 $o -split "`n" | Select-String 'PROFSTATS key winstub' | ForEach-Object { "  $($_.Line.Trim())" } | Tee-Object -Append out/share.txt
                 if ($ud2) { $total = $dbg } else { $normal = $dbg }
+                if ($o -notmatch 'code 0, signaled false') { $bad += "$tag (did not exit 0)" }
               }
               # (the all-ud2 count is every %fs execution of the same workload)
               $share = if ($total) { 100.0 * $normal / $total } else { 100 }
