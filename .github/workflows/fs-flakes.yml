@@ -22,9 +22,13 @@ jobs:
   stress:
     needs: guests
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [native, rewrite]
     env:
-      WINSTUB_FSMODE: rewrite
-      WINSTUB_KEEP_AVX512: "1"
+      WINSTUB_FSMODE: ${{ matrix.mode }}
+      WINSTUB_KEEP_AVX512: ${{ matrix.mode == 'rewrite' && '1' || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
