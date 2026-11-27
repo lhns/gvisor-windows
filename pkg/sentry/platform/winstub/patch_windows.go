@@ -94,7 +94,7 @@ func decodeRangeSafe(code []byte, from, end int, list []ins) (res []ins, at int,
 			res, at, done = list, off, false
 		}
 	}()
-	for off < end {
+	for ; off < end; {
 		inst, err := x86asm.Decode(code[off:], 64)
 		if err != nil || inst.Len == 0 {
 			off++

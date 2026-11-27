@@ -42,9 +42,9 @@ func Trace(format string, a ...any) {
 }
 
 var (
-	pQPC    = k32.NewProc("QueryPerformanceCounter")
-	pQPF    = k32.NewProc("QueryPerformanceFrequency")
-	qpcFreq float64
+	pQPC     = k32.NewProc("QueryPerformanceCounter")
+	pQPF     = k32.NewProc("QueryPerformanceFrequency")
+	qpcFreq  float64
 )
 
 // qpc returns a high-resolution monotonic time in ns (Go's own clock ticks only

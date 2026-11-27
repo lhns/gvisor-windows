@@ -17,9 +17,9 @@
 package winstub
 
 import (
+	"syscall"
 	"os"
 	"sync/atomic"
-	"syscall"
 	"time"
 	"unsafe"
 

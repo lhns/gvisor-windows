@@ -173,7 +173,7 @@ func (as *addressSpace) freeThread(t *thread) {
 			}
 		} else {
 			as.nTermFallback.Add(1)
-			pTerminateThread.Call(h, 0)
+		pTerminateThread.Call(h, 0)
 		}
 		// TerminateThread is asynchronous. Until the thread is gone it may still
 		// be waiting on the slot's reply event, and would take the wake-up meant
@@ -359,92 +359,42 @@ func (as *addressSpace) debugLoop() {
 	var ctx ctxBuf
 	seenBP := false
 	for {
-		if as.serveCaptures(&ev, &ctx, &seenBP) {
-			return
-		}
-		// A timeout, not INFINITE: captures requested by interrupts are served
-		// here, on the goroutine that handles the events, so that a capture
-		// never overlaps the handling of a thread's own debug event.
-		r, _, e := pWaitDebugEvent.Call(ev.base(), 2)
-		if r == 0 {
-			if e == syscall.Errno(121) { // ERROR_SEM_TIMEOUT
-				continue
-			}
+		if r, _, _ := pWaitDebugEvent.Call(ev.base(), infinite); r == 0 {
 			as.markDead()
 			return
 		}
-		if as.handleEvent(&ev, &ctx, &seenBP) {
+		status := uint32(dbgContinue)
+		exited := false
+		as.lastEvent.Store(fmt.Sprintf("handling event %d tid %d code %#x", ev.code(), ev.tid(), ev.u32(16)))
+		if traceOn && ev.code() != 1 {
+			name := ""
+			if h := uintptr(ev.u64(16)); (ev.code() == 6 || ev.code() == 3) && h != 0 {
+				var buf [260]uint16
+				if n, _ := windows.GetFinalPathNameByHandle(windows.Handle(h), &buf[0], 260, 0); n > 0 {
+					name = windows.UTF16ToString(buf[:])
+				}
+			}
+			Trace("debug event %d (tid %d) %s", ev.code(), ev.tid(), name)
+		}
+		switch ev.code() {
+		case 1: // EXCEPTION_DEBUG_EVENT
+			status = as.onException(&ev, &ctx, &seenBP)
+		case 3, 6: // CREATE_PROCESS, LOAD_DLL: close the file handle
+			if h := uintptr(ev.u64(16)); h != 0 {
+				pCloseHandle.Call(h)
+			}
+		case 4: // EXIT_THREAD
+			as.tmu.Lock()
+			delete(as.byTid, ev.tid())
+			as.tmu.Unlock()
+		case 5: // EXIT_PROCESS
+			exited = true
+		}
+		cr, _, ce := pContinueDebug.Call(uintptr(ev.pid()), uintptr(ev.tid()), uintptr(status))
+		as.lastEvent.Store(fmt.Sprintf("continued event %d tid %d code %#x (status %#x, ContinueDebugEvent ok=%v err=%v)", ev.code(), ev.tid(), ev.u32(16), status, cr != 0, ce))
+		if exited {
+			as.markDead()
 			return
-		}
-	}
-}
-
-// handleEvent handles one debug event and continues it. It reports whether the
-// process has exited.
-func (as *addressSpace) handleEvent(ev *debugEvent, ctx *ctxBuf, seenBP *bool) bool {
-	status := uint32(dbgContinue)
-	exited := false
-	as.lastEvent.Store(fmt.Sprintf("handling event %d tid %d code %#x", ev.code(), ev.tid(), ev.u32(16)))
-	if traceOn && ev.code() != 1 {
-		name := ""
-		if h := uintptr(ev.u64(16)); (ev.code() == 6 || ev.code() == 3) && h != 0 {
-			var buf [260]uint16
-			if n, _ := windows.GetFinalPathNameByHandle(windows.Handle(h), &buf[0], 260, 0); n > 0 {
-				name = windows.UTF16ToString(buf[:])
-			}
-		}
-		Trace("debug event %d (tid %d) %s", ev.code(), ev.tid(), name)
-	}
-	switch ev.code() {
-	case 1: // EXCEPTION_DEBUG_EVENT
-		status = as.onException(ev, ctx, seenBP)
-	case 3, 6: // CREATE_PROCESS, LOAD_DLL: close the file handle
-		if h := uintptr(ev.u64(16)); h != 0 {
-			pCloseHandle.Call(h)
-		}
-	case 4: // EXIT_THREAD
-		as.tmu.Lock()
-		delete(as.byTid, ev.tid())
-		as.tmu.Unlock()
-	case 5: // EXIT_PROCESS
-		exited = true
-	}
-	cr, _, ce := pContinueDebug.Call(uintptr(ev.pid()), uintptr(ev.tid()), uintptr(status))
-	as.lastEvent.Store(fmt.Sprintf("continued event %d tid %d code %#x (status %#x, ContinueDebugEvent ok=%v err=%v)", ev.code(), ev.tid(), ev.u32(16), status, cr != 0, ce))
-	if exited {
-		as.markDead()
-	}
-	return exited
-}
-
-// capReq asks the debugger goroutine to capture a running thread (interrupt).
-type capReq struct {
-	t    *thread
-	ok   bool
-	done chan struct{}
-}
-
-// serveCaptures runs the capture requests of interrupts. Before each one it
-// handles every debug event that is already pending: a thread blocked in a debug
-// event cannot be captured, and capturing one that is about to post an event is
-// avoided as far as possible. It reports whether the process has exited.
-func (as *addressSpace) serveCaptures(ev *debugEvent, ctx *ctxBuf, seenBP *bool) bool {
-	for {
-		select {
-		case req := <-as.capReq:
-			for {
-				if r, _, _ := pWaitDebugEvent.Call(ev.base(), 0); r == 0 {
-					break
-				}
-				if as.handleEvent(ev, ctx, seenBP) {
-					close(req.done)
-					return true
-				}
-			}
-			req.ok = as.capture(req.t)
-			close(req.done)
-		default:
-			return false
 		}
 	}
 }
@@ -485,6 +435,8 @@ func (as *addressSpace) onException(ev *debugEvent, ctx *ctxBuf, seenBP *bool) u
 	if traceOn {
 		Trace("exception %#x at %#x (thread %d)", code, excAddr, t.idx)
 	}
+	t.stopMu.Lock()
+	defer t.stopMu.Unlock()
 	t.mu.Lock()
 	parked := t.parked
 	t.mu.Unlock()
@@ -618,6 +570,8 @@ func (as *addressSpace) parkAs(t *thread, ctx *ctxBuf, req request, resume uint6
 // can be captured exactly (inside the stub's own code, or in ntdll during thread
 // start); the caller retries.
 func (as *addressSpace) interrupt(t *thread) bool {
+	t.stopMu.Lock()
+	defer t.stopMu.Unlock()
 	if t.state() == 1 || !t.started {
 		return true // a request is already there
 	}
@@ -635,35 +589,11 @@ func (as *addressSpace) interrupt(t *thread) bool {
 		return false
 	}
 	t.mu.Lock()
-	parked := t.parked
+	if t.parked {
+		t.mu.Unlock()
+		return true
+	}
 	t.mu.Unlock()
-	if parked {
-		return true
-	}
-	// The capture is done by the debugger goroutine, which also handles the
-	// thread's debug events.
-	req := &capReq{t: t, done: make(chan struct{})}
-	select {
-	case as.capReq <- req:
-	default:
-		return false
-	}
-	select {
-	case <-req.done:
-		return req.ok
-	case <-as.loopDone:
-		return false
-	}
-}
-
-// capture suspends t, saves its context if it is in guest code and redirects it
-// into the stub's park routine. It runs on the debugger goroutine. It reports
-// false if the thread is not (yet) somewhere that can be captured exactly (inside
-// the stub's own code, or in ntdll); the caller retries.
-func (as *addressSpace) capture(t *thread) bool {
-	if t.state() == 1 {
-		return true
-	}
 	if r, _, _ := pSuspendThread.Call(t.hThread); int32(r) == -1 {
 		return false
 	}
