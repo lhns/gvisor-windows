@@ -197,7 +197,7 @@ jobs:
     steps:
       - name: Debian with python3 and netavark
         run: |
-          docker run --name r debian:trixie sh -c 'apt-get update -qq && apt-get install -y -qq --no-install-recommends python3 netavark >/dev/null'
+          docker run --name fsroot debian:trixie sh -c 'apt-get update -qq && apt-get install -y -qq --no-install-recommends python3 netavark >/dev/null'
           mkdir -p t
           cat > t/py.py <<'PY'
           import json, re, sys
@@ -214,8 +214,8 @@ jobs:
           done
           echo nv done
           SH
-          docker cp t r:/t
-          docker export r > fsroot.tar
+          docker cp t fsroot:/t
+          docker export fsroot > fsroot.tar
           ls -l fsroot.tar
       - uses: actions/upload-artifact@v4
         with: {name: fs-guests, path: fsroot.tar, compression-level: 0}
