@@ -670,7 +670,7 @@ func testDebian() error {
 			bad++
 			if b, err := os.ReadFile(filepath.Join(*workDir, "logs", "debian.log")); err == nil {
 				for _, l := range strings.Split(string(b), "\n") {
-					if strings.Contains(l, " X ") && (strings.Contains(l, "ld-linux") || strings.Contains(l, " echo ")) {
+					if (strings.Contains(l, " X ") && (strings.Contains(l, "ld-linux") || strings.Contains(l, " echo "))) || strings.Contains(l, "gofer Translate") {
 						fmt.Println(l)
 					}
 				}
