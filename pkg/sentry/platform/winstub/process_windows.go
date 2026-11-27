@@ -580,6 +580,14 @@ func (as *addressSpace) onException(ev *debugEvent, ctx *ctxBuf, seenBP *bool) u
 				return dbgContinue
 			}
 		}
+		if as.p.fsRewrite {
+			// The %fs base is always zero in this mode: an %fs instruction that runs
+			// natively is one the patcher missed (the %fs tripwire).
+			if b, ok := as.readStub(rip, 16); ok && hasFSPrefix(b) {
+				ctxb, _ := as.readStub(rip-16, 48)
+				log.Printf("winstub: FS TRIPWIRE: an %%fs instruction at %#x ran unrewritten (fault address %#x, thread %d): % x", rip, addr, t.idx, ctxb)
+			}
+		}
 		if debugEnabled {
 			b, _ := as.readStub(rip-24, 48)
 			debugf("guest fault: addr %#x kind %d rip %#x (thread %d) code[-24:+24] % x regs % x", addr, kind, rip, t.idx, b, unsafe.Slice((*byte)(unsafe.Pointer(ctx.u64(ctxRegsOff))), 128))
