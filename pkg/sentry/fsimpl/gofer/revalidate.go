@@ -281,6 +281,10 @@ func (d *dentry) disownAllChildrenForInvalidation(ctx context.Context, vfsObj *v
 	d.childrenMu.Lock()
 	defer d.childrenMu.Unlock()
 	for name, child := range d.children {
+		if child == nil { // a cached negative lookup: nothing to invalidate
+			delete(d.children, name)
+			continue
+		}
 		children = append(children, child)
 		delete(d.children, name)
 		if child.inode.isSynthetic() {
