@@ -766,7 +766,13 @@ func gsMov(load bool, r int, off uint32) []byte {
 // a jump to a veneer replaces for the %fs instruction list[s]: at least minLen
 // bytes, no branch target except at the first instruction, every other
 // instruction copyable (ret/jmp only last), nothing free reports as taken.
-// The shortest such window wins.
+// The %fs instruction is first or starts at least minLen bytes in: a fault of
+// its access is reported at its address (fsFix), which then lies in the filler
+// after the jump, int3, so a thread that returns there (a signal handler that
+// returns with ret, as Go's asyncPreempt does) traps and is sent into the veneer
+// (windowResume) instead of running the jump's bytes. (Interrupts never stop a
+// thread that would be reported inside the jump's bytes, see interrupt; a fault
+// of a displaced instruction still is.) The shortest such window wins.
 func planFSWindow(list []ins, tgt []bool, s, minLen int, free func(lo, hi int) bool) (a, b int, ok bool) {
 	contig := func(i int) bool { return i > 0 && list[i-1].off+list[i-1].n == list[i].off }
 	best := 1 << 30
@@ -779,7 +785,7 @@ func planFSWindow(list []ins, tgt []bool, s, minLen int, free func(lo, hi int) b
 				break
 			}
 			l := list[ib].off + list[ib].n - list[ia].off
-			if l < minLen || l >= best {
+			if fsO := list[s].off - list[ia].off; l < minLen || l >= best || (fsO != 0 && fsO < minLen) {
 				continue
 			}
 			good := true

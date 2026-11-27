@@ -624,7 +624,7 @@ func (as *addressSpace) onException(ev *debugEvent, ctx *ctxBuf, seenBP *bool) u
 			as.park(t, ctx, request{kind: reqFault, sig: 4, code: 1, addr: rip})
 		}
 	case excBreakpoint:
-		if as.fsSplitRun(t, ctx, excAddr) {
+		if as.fsSplitRun(t, ctx, excAddr) || as.windowResume(t, ctx, excAddr) {
 			break
 		}
 		as.park(t, ctx, request{kind: reqFault, sig: 5, code: 128, addr: rip})
@@ -808,7 +808,18 @@ func (as *addressSpace) interrupt(t *thread) bool {
 	rip := *ctx.u64(ctxRipOff)
 	inStub := rip >= stubasm.StubCode && rip < stubasm.StubCode+stubasm.StubCodeSize
 	inRepair := rip >= stubasm.CtlBase
-	if inStub || inRepair || rip < stubasm.AreaLo {
+	// A thread inside an %fs veneer that would be reported inside the bytes of the
+	// jump to it, where a signal handler may return with a plain ret (Go's
+	// asyncPreempt), is caught once it is past them, a few instructions later.
+	// (Refusing every thread in a veneer starves a loop of %fs accesses:
+	// docs/results/1q-window-resume.md.)
+	inJump := false
+	if as.p.fsRewrite {
+		if info := as.fsLocate(t, rip); info != nil {
+			inJump = info.inJump(rip)
+		}
+	}
+	if inStub || inRepair || inJump || rip < stubasm.AreaLo {
 		pResumeThread.Call(t.hThread)
 		return false
 	}

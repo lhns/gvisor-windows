@@ -27,7 +27,7 @@ flowchart TB
     workloads_buildah_thinks_rootless>"✔ buildah picks<br/>rootless isolation"]
     workloads_podman_on_windows[/"✔ Podman passes on<br/>Windows"/]
     workloads_dev_null_eacces>"✔ Rare permission<br/>error opening the null<br/>device"]
-    workloads_podman_without_fsgsbase["⛔ Podman on CPUs<br/>without FSGSBASE"]
+    workloads_podman_without_fsgsbase["✔ Podman on CPUs<br/>without FSGSBASE"]
     workloads_podman_probe[/"✔ Probe Podman inside<br/>the sandbox"/]
     workloads_podman_harness["✔ Serve Podman to<br/>Windows clients"]
     workloads_acceptance_test ~~~ workloads_podman_on_gvisor_linux
@@ -83,10 +83,9 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class workloads_acceptance_test,workloads_acceptance_test_windows,workloads_podman_api_named_pipe,workloads_podman_probe,workloads_podman_harness unrated
+    class workloads_acceptance_test,workloads_acceptance_test_windows,workloads_podman_api_named_pipe,workloads_podman_without_fsgsbase,workloads_podman_probe,workloads_podman_harness unrated
     class workloads_podman_on_gvisor_linux,workloads_strict_bar_linux,workloads_end_to_end_speed mixed
     class workloads_gvisor_bridge_netlink,workloads_gvisor_port_publishing,workloads_gvisor_cgroupfs_readonly,workloads_overlay_userxattr,workloads_conmon_sync_pipe,workloads_conmon_attach_second_cause,workloads_tty_through_windows_client,workloads_isolation_flake,workloads_volume_lost_on_restart,workloads_buildah_thinks_rootless,workloads_podman_on_windows,workloads_dev_null_eacces succ
-    class workloads_podman_without_fsgsbase blocked
 ```
 <!-- END GENERATED: track-workloads -->
 
@@ -116,7 +115,7 @@ flowchart TB
 | `workloads-volume-lost-on-restart` | Volume data lost across engine restart | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
 | `workloads-buildah-thinks-rootless` | buildah picks rootless isolation | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/adr/0002-what-done-means.md |
 | `workloads-dev-null-eacces` | Rare permission error opening the null device | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/results/2r-step5-overlay.md |
-| `workloads-podman-without-fsgsbase` | Podman on CPUs without FSGSBASE | feature | windows-ci | blocked | unrated | 2026-11-27 |  | workloads-podman-on-windows, platform-unrewritten-fs-in-library, platform-rewrite-heap-corruption, platform-resume-inside-fs-window |  |  |  | docs/results/5-podman-windows.md |
+| `workloads-podman-without-fsgsbase` | Podman on CPUs without FSGSBASE | feature | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 | workloads-podman-on-windows, platform-unrewritten-fs-in-library, platform-rewrite-heap-corruption, platform-resume-inside-fs-window |  |  |  | docs/results/5-podman-windows.md; docs/results/1q-window-resume.md; docs/results/1p-rewrite-heap.md |
 
 ### Details per node
 
@@ -143,7 +142,7 @@ flowchart TB
 | `workloads-volume-lost-on-restart` | Volume data lost across engine restart |  |  | In 2 of 5 complete native runs, the named volume written before the engine restart is empty afterwards (step 9). | Harness cause: an old static_dir workaround put libpod's database on a tmpfs. The database now lives on the storage folder; a runsc restart test is required. |  |  |  |  |
 | `workloads-buildah-thinks-rootless` | buildah picks rootless isolation |  |  | Without BUILDAH_ISOLATION=oci every build fails in pasta, because buildah resolves the default isolation to rootless inside the sandbox, although euid, uid_map and capabilities all look rootful. | Fixed in the Sentry: the root user namespace now has Linux's fixed inode 0xEFFFFFFD in /proc/self/ns/user, which c/storage checks; BUILDAH_ISOLATION=oci removed, native 8 of 8 with all 10 steps. |  |  |  |  |
 | `workloads-dev-null-eacces` | Rare permission error opening the null device |  |  | Intermittently, apt's unprivileged _apt user gets "cannot create /dev/null: Permission denied" inside a build container, so step 5 fails; dpkg's "cannot stat" of an extracted .deb also still shows up rarely. | Not reproduced on current windows: step 5 passed 80 of 80 native runs; the failures were on heads before the mount-keeping and atomic-replace fixes. A devnull guest test guards it. |  |  |  |  |
-| `workloads-podman-without-fsgsbase` | Podman on CPUs without FSGSBASE |  |  | The same acceptance in rewrite mode, which older CPUs and this development VM need because they cannot set the %fs base from user mode. | Done when: podman-windows modes=rewrite,rewrite-fxsave passes all 10 steps 8 of 8. |  |  |  |  |
+| `workloads-podman-without-fsgsbase` | Podman on CPUs without FSGSBASE |  |  | The same acceptance in rewrite mode, which older CPUs and this development VM need because they cannot set the %fs base from user mode. | All 10 steps 16 of 16 twice in rewrite and rewrite-fxsave (runs 46026228865, 46037364923). |  |  |  |  |
 
 ### Folded items per node
 

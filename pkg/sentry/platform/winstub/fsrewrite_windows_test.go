@@ -156,7 +156,8 @@ func TestFSInstructions(t *testing.T) {
 
 // TestFSInterrupt interrupts a loop of %fs accesses over and over: the thread
 // is stopped inside veneers at all kinds of places, and must come out with its
-// registers and its progress intact.
+// registers and its progress intact, never at an address under the jump to a
+// veneer, and soon (a thread that is mostly in veneers is still caught).
 func TestFSInterrupt(t *testing.T) {
 	h := newHarness(t)
 	mm := h.newMM()
@@ -165,9 +166,20 @@ func TestFSInterrupt(t *testing.T) {
 	a.emit(bytes.Repeat([]byte{0x90}, 64)...) // (the sites in the first bytes of a text range are handled by the debugger)
 	loop := a.emit(0x64, 0x48, 0x8b, 0x04, 0x25, 0x28, 0, 0, 0) // mov %fs:0x28,%rax
 	a.emit(0x64, 0x48, 0x01, 0x0c, 0x25, 0x40, 0, 0, 0)         // add %rcx,%fs:0x40
-	a.emit(0x48, 0xff, 0xc1)                                    // inc %rcx
-	a.emit(0xeb, byte(256-int(a.pc()+2-loop)))                  // jmp loop
+	win := a.emit(0x64, 0x48, 0x8b, 0x02)                       // mov %fs:(%rdx),%rax: first in a window, so
+	inc := a.emit(0x48, 0xff, 0xc1)                             // inc %rcx is under the jump in rewrite mode
+	jmp := a.emit(0xeb, byte(256-int(a.pc()+2-loop)))           // jmp loop
 	end := a.pc()
+	for _, minLen := range []int{5, 7} { // (the inc lies under a jump of either length)
+		wins, _ := FSWindows(a.b, minLen)
+		planned := false
+		for _, w := range wins {
+			planned = planned || uint64(w.Lo) == win-base && uint64(w.Hi) == jmp-base
+		}
+		if !planned {
+			t.Fatalf("no window [mov %%fs:(%%rdx); inc] planned (jump of %d bytes): %+v", minLen, wins)
+		}
+	}
 	h.mapAt(mm, base, h.pages(a.b, 1), rx)
 	tfr := h.pages(tlsData(), 1)
 	h.mapAt(mm, tlsBase, tfr, rw)
@@ -179,9 +191,10 @@ func TestFSInterrupt(t *testing.T) {
 	defer c.Release()
 	ac := newAC(loop, 0)
 	r := &ac.StateData().Regs
-	r.Fs_base = tlsBase
+	r.Fs_base, r.Rdx = tlsBase, 0x28
 	r.Rbx, r.Rsi, r.Rdi = 0xb1b1b1b1b1b1b1b1, 0x5151515151515151, 0xd1d1d1d1d1d1d1d1
 	var last uint64
+	t0 := time.Now()
 	for i := 0; i < 400; i++ {
 		go func() {
 			time.Sleep(time.Duration(20+rand.Intn(300)) * time.Microsecond)
@@ -197,14 +210,23 @@ func TestFSInterrupt(t *testing.T) {
 		if r.Rip < loop || r.Rip >= end {
 			t.Fatalf("interrupt %d: rip %#x outside the loop [%#x,%#x)", i, r.Rip, loop, end)
 		}
+		if h.p.fsRewrite && r.Rip > win && r.Rip <= inc {
+			t.Fatalf("interrupt %d: rip %#x is under the jump of the window at %#x", i, r.Rip, win)
+		}
 		if r.Rcx < last {
 			t.Fatalf("interrupt %d: rcx went back from %d to %d", i, last, r.Rcx)
 		}
 		last = r.Rcx
 		// The add of this iteration has happened exactly when rip is past it: no
 		// instruction is lost or repeated, whichever way the thread was moved out.
-		want := 0x10 + r.Rcx*(r.Rcx-1)/2
-		if r.Rip >= loop+18 && r.Rip < loop+21 { // (rip at the jmp: the inc has happened too)
+		// (rcx passes 2^32 within seconds: halve the even factor, or the product wraps.)
+		want := uint64(0x10)
+		if r.Rcx%2 == 0 {
+			want += r.Rcx / 2 * (r.Rcx - 1)
+		} else {
+			want += (r.Rcx - 1) / 2 * r.Rcx
+		}
+		if r.Rip >= win && r.Rip < jmp { // (past the add, not yet past the inc)
 			want += r.Rcx
 		}
 		if got := binary.LittleEndian.Uint64(tls.Head().ToSlice()[0x40:]); got != want {
@@ -213,6 +235,66 @@ func TestFSInterrupt(t *testing.T) {
 	}
 	if last == 0 {
 		t.Fatalf("no progress")
+	}
+	if d := time.Since(t0); d > 10*time.Second {
+		t.Errorf("400 interrupts took %v (0.3 s when no veneer refuses them)", d)
+	}
+}
+
+// TestFSReturnIntoWindow: the %fs access of a window faults, so the thread
+// stops inside the veneer and the platform reports the address of the %fs
+// instruction, an inner instruction start of the window. A signal handler that
+// returns there with a plain ret (Go's asyncPreempt: it pushes the reported pc
+// and jumps to its handler) must continue with that instruction, not with the
+// bytes of the jump that replaced the window (a Podman engine died that way,
+// docs/results/1q-window-resume.md).
+func TestFSReturnIntoWindow(t *testing.T) {
+	h := newHarness(t)
+	mm := h.newMM()
+	const base, stackAt = 0xC00000, 0x700000
+	a := &asm{base: base}
+	a.emit(bytes.Repeat([]byte{0x90}, 64)...) // (the sites in the first bytes of a text range are handled by the debugger)
+	start := a.emit(append([]byte{0xba}, le32(fsFaultOff)...)...) // mov $fsFaultOff,%edx: the window's first instruction
+	addInsn := a.emit(0x64, 0x48, 0x01, 0x0a)                     // add %rcx,%fs:(%rdx)
+	report := a.emit(0xb8, 0xf4, 1, 0, 0, 0x0f, 0x05)             // mov $500,%eax; syscall
+	a.emit(0xeb, byte(256-int(a.pc()+2-report)))                 // (never run: makes report a branch target, so
+	// the window cannot take it along and begins at the mov: the add is an inner instruction start)
+	retInsn := a.emit(0xc3) // the "handler": ret
+	h.mapAt(mm, base, h.pages(a.b, 1), rx)
+	h.mapAt(mm, tlsBase, h.pages(tlsData(), 1), rw)
+	sfr := h.pages(nil, 1)
+	h.mapAt(mm, stackAt, sfr, rw)
+	c := h.p.NewContext(pkgcontext.Background())
+	defer c.Release()
+	ac := newAC(start, stackAt+pageSz-64)
+	r := &ac.StateData().Regs
+	r.Fs_base, r.Rcx = tlsBase, 7
+	res := h.sw(c, mm, ac)
+	if res.err != platform.ErrContextSignal || res.si.Addr() != tlsBase+fsFaultOff {
+		t.Fatalf("want the fault of the add, got %v %+v", res.err, res.si)
+	}
+	if r.Rip != addInsn {
+		t.Fatalf("fault at rip %#x, want the add at %#x", r.Rip, addInsn)
+	}
+	cfr := h.pages(le64(0x100), 1)
+	h.mapAt(mm, tlsBase+fsFaultOff, cfr, rw)
+	// The handler's call: push the reported pc, continue at the handler.
+	r.Rsp -= 8
+	st, err := h.mf.MapInternal(sfr, hostarch.ReadWrite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	binary.LittleEndian.PutUint64(st.Head().ToSlice()[r.Rsp-stackAt:], r.Rip)
+	r.Rip = retInsn
+	if nr := h.syscall(c, mm, ac); nr != 500 {
+		t.Fatalf("after the ret: syscall %d at %#x, want 500", nr, r.Rip)
+	}
+	cnt, err := h.mf.MapInternal(cfr, hostarch.Read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := binary.LittleEndian.Uint64(cnt.Head().ToSlice()); got != 0x107 || r.Rdx != fsFaultOff {
+		t.Errorf("after the ret: counter %#x (want 0x107: the add ran once), rdx %#x", got, r.Rdx)
 	}
 }
 

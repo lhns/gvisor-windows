@@ -185,7 +185,6 @@ flowchart TB
 | Start guest processes fast | ✔ done · very-successful | A guest process takes 280-560 ms to start through the Sentry, against 18 ms for a bare stub; profile the gap and keep a pool of ready stubs. |
 | Reuse stub processes across exec | ○ next | Each fork+exec starts two stub processes at about 10 ms each; recycling a stub on release and execve and mapping memory up front would cut process start further. |
 | More room for %fs veneers | ⚠ open | python3 with libpython and libc needs about 8500 %fs veneers against room for about 7000, and 24% of far %fs sites in Rust PIE binaries such as netavark fall back to the 100 us debugger path. |
-| Thread resumed inside a patch window | ⚠ open | In rewrite mode the platform can move a thread out of a veneer to an address inside the patch window; a Go signal handler then returns there and runs nop filler (one engine crash in 16 rewrite runs). |
 | Event waiting on IOCP | ⏸ parked | Waiting for many host events at once (epoll on Linux) moves to Windows completion ports. |
 | Timers and clocks on Windows | ○ next | The Sentry's clocks and timers run on Windows' high-resolution timers. |
 | Profile the slow file and exec path | ✔ done · mixed | Creating a file on tmpfs costs about 1 ms and a fork+exec 32 ms on Windows; find where the time goes (syscall round trips, page faults, debug events, Sentry work) and fix the top causes. |
@@ -198,7 +197,6 @@ flowchart TB
 | Bridge networking inside gVisor | ✔ done · successful | Podman's default network creates a bridge and veth pairs over netlink; gVisor lacks part of that, so it fails today. Fix it in gVisor itself, first on Linux, then it carries over to Windows. |
 | Podman on gVisor on Linux | ✔ done · mixed ⚠ | Run the acceptance test on stock gVisor on Linux; whatever fails there is a gap in gVisor itself, not in the port. |
 | Podman passes on Windows | ✔ done · successful | The bar for enough features: an unmodified Podman engine passes the acceptance test on gVisor on Windows. |
-| Podman on CPUs without FSGSBASE | ⛔ blocked | The same acceptance in rewrite mode, which older CPUs and this development VM need because they cannot set the %fs base from user mode. |
 | Pick gVisor as the base | ✔ done · unrated | Of all ways to run Linux code on Windows without admin, gVisor's user-space Linux kernel is the only one that already runs containers. |
 | Name it gvisor-windows | ✔ done · n/a | The project is an unofficial fork of gVisor's Go branch called gvisor-windows. |
 | Go or no-go after Phase 0 | ✔ done · n/a | Go: the owner asked for the full project; ADR 0004 lists the conditions. |
@@ -223,7 +221,6 @@ flowchart TB
 - `platform-fs-veneer-capacity`: More room for %fs veneers
 - `fs-overlay-native-diff`: Fast layer diffs with overlay
 - `sentry-waitgroup-panic`: One-off negative WaitGroup panic
-- `platform-resume-inside-fs-window`: Thread resumed inside a patch window
 <!-- END GENERATED: ready-now -->
 
 ## Running
@@ -255,7 +252,7 @@ Generated on 2026-11-27.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 109 done, 7 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 111 done, 7 abandoned</summary>
 
 - `fs-attribute-cache`: Faster stat walks on host folders (✔ done · mixed). A git-status-like walk of 20000 files takes 1.2-2.4 s through the host folder; an attribute cache fed by the change watcher would bring stat near native.
   - Cold stat walk on a fresh mount is still about 4x native, 99-105 us per file (2026-11-26)
@@ -380,6 +377,7 @@ Generated on 2026-11-27.
 - `platform-rare-hang-under-exec-load`: Rare hang under heavy exec load (✔ fixed). A guest that forks many children hangs now and then: about 1 in 50 gopodman runs, and 9 in 48 fork+exec loops through runsc.exe with the exclusive root cache (2 in 48 with the shared cache); the shell waits in wait4 with no child task. Syscall-test runs show the same root: a stub process that never finishes starting (one thread in a kernel wait), and newAS/Release wait forever on it. The Podman engine also hangs in vforkStop (2 of 8 runs): the vfork child never gets its new address space.
   - Debug loop no longer waits forever after TerminateProcess; unverified because CI did not reproduce the hang (2026-11-27)
   - Bounded anchor waits, thread restart and stub abandonment: 98 of 100 pass with the exclusive cache, 16 of 16 shared (2026-11-27)
+- `platform-resume-inside-fs-window`: Thread resumed inside a patch window (✔ fixed). In rewrite mode the platform can move a thread out of a veneer to an address inside the patch window; a Go signal handler then returns there and runs nop filler (one engine crash in 16 rewrite runs).
 - `platform-rewrite-glibc-init-crash`: Static glibc crashes at start in rewrite mode (✔ fixed). The static glibc fsstress guest dies with SIGSEGV in libc init right after set_tid_address in rewrite mode, every run; native mode runs it.
 - `platform-rewrite-heap-corruption`: glibc heap errors in rewrite mode (✔ fixed). In rewrite mode, aptrename dies with free(): invalid size and apt inside builds with segfaults or double free; native mode runs them, so a %fs veneer likely computes or clobbers something wrong.
 - `platform-rewrite-mode-slow-engine`: Podman engine stalls in rewrite mode (✔ fixed). With %fs rewriting, the Podman engine answers version after 29-52 s instead of 2 s and then goes silent; no acceptance run completed in 8 tries.
@@ -412,6 +410,8 @@ Generated on 2026-11-27.
   - Graceful engine stop via runsc kill TERM; GODEBUG and stale env workarounds removed; no GC crash or hang in 16 runs (2026-11-27)
   - Native: steps 1-4 and 6-8 pass 8 of 8; steps 9-10 fail only after a failed build left an undeletable layer directory (2026-11-27)
 - `workloads-podman-on-windows`: Podman passes on Windows (✔ done · successful). The bar for enough features: an unmodified Podman engine passes the acceptance test on gVisor on Windows.
+- `workloads-podman-without-fsgsbase`: Podman on CPUs without FSGSBASE (✔ done · unrated). The same acceptance in rewrite mode, which older CPUs and this development VM need because they cannot set the %fs base from user mode.
+  - Rewrite Podman: all 10 steps 7 of 8, then 8 of 8 (runs 46016231319, 46020575644) (2026-11-27)
 - `workloads-tty-through-windows-client`: Interactive TTY through the Windows client (✔ fixed). The Windows podman client says "The input device is not a TTY" inside the ConPTY test driver, so the interactive step cannot type into the container.
 - `workloads-volume-lost-on-restart`: Volume data lost across engine restart (✔ fixed). In 2 of 5 complete native runs, the named volume written before the engine restart is empty afterwards (step 9).
 
@@ -424,11 +424,11 @@ Generated on 2026-11-27.
 Each track has its own page with its tree, node table and per-node details.
 
 - [runsc - runsc](roadmap/tracks/runsc.md): 6 nodes (6 done)
-- [platform - platform](roadmap/tracks/platform.md): 43 nodes (35 done, 4 next, 3 parked, 1 abandoned)
+- [platform - platform](roadmap/tracks/platform.md): 43 nodes (36 done, 3 next, 3 parked, 1 abandoned)
 - [sentry - sentry](roadmap/tracks/sentry.md): 15 nodes (12 done, 2 next, 1 parked)
 - [fs - files](roadmap/tracks/fs.md): 22 nodes (20 done, 1 in progress, 1 next)
 - [net - network](roadmap/tracks/net.md): 4 nodes (4 done)
-- [workloads - workloads](roadmap/tracks/workloads.md): 22 nodes (21 done, 1 blocked)
+- [workloads - workloads](roadmap/tracks/workloads.md): 22 nodes (22 done)
 - [research - research](roadmap/tracks/research.md): 8 nodes (2 done, 6 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 12 nodes (9 done, 3 next)
 <!-- END GENERATED: tracks -->

@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       only: {description: 'steps to run, e.g. 4 (default all)', default: ''}
-      modes: {description: 'comma list of fs modes to compare: default, native, rewrite (rewrite also keeps AVX-512)', default: 'default'}
+      modes: {description: 'comma list of fs modes to compare: default, native, rewrite (rewrite also keeps AVX-512), rewrite-fxsave', default: 'default'}
       runs: {description: 'how many times to run the whole acceptance, in parallel (flakiness)', default: '1'}
 concurrency:
   group: podman-windows-${{ github.ref }}-${{ inputs.prebuilt && 'ci' || github.event_name }}
@@ -112,8 +112,9 @@ jobs:
         shell: pwsh
         run: |
           $only = '${{ inputs.only }}'
-          # Step 5 (build-apt) is required in native mode only: it still fails in default and rewrite mode (ci run 45979763597).
-          $all = if ('${{ matrix.mode }}' -notlike 'rewrite*') { 1..10 } else { 1, 2, 3, 4, 6, 7, 8, 9, 10 }
+          # Step 5 (build-apt) is required in native and, since the heap fix (docs/results/1p-rewrite-heap.md), rewrite
+          # modes; in default mode it still failed in ci run 45979763597.
+          $all = if ('${{ matrix.mode }}' -ne 'default') { 1..10 } else { 1, 2, 3, 4, 6, 7, 8, 9, 10 }
           $must = $all | Where-Object { -not $only -or ($only -split '[, ]+') -contains "$_" }
           $t = Get-Content -Raw C:\ci\std\results\steps.txt
           $bad = $must | Where-Object { $t -notmatch "(?m)^STEP $_ PASS" }

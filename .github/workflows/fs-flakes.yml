@@ -134,6 +134,9 @@ jobs:
         shell: pwsh
         run: |
           $iters = if ($env:IT) { $env:IT } else { '600' }; $workers = if ($env:WK) { $env:WK } else { '12' }; $reps = if ($env:RP) { [int]$env:RP } else { 3 }
+          # Every %fs instruction goes through the debugger in the ud2 leg: a quarter of the iterations keeps it a
+          # correctness check within the deadline (600 took about 11 min per phase, ci run 46016193396).
+          if ($env:FSUD2) { $iters = [string][math]::Max(1, [math]::Floor([int]$iters / 4)) }
           $fail = 0
           for ($i = 1; $i -le $reps; $i++) {
             & tools/windows/ci/run-as-standard-user.ps1 `

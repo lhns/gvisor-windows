@@ -47,6 +47,7 @@ type fsVenInfo struct {
 	lo, hi uint64 // code range (the entry is lo)
 	w0     uint64 // guest address of the window it replaces
 	v      *fsVeneer
+	jlen   uint64 // length of the jump at w0 (0: the thread's own veneer, fsRunInline)
 }
 
 type fsKey struct {
@@ -127,7 +128,10 @@ func (as *addressSpace) fsWindow(code []byte, base uint64, win []ins, a, b, s, m
 		as.fsPut(va, binary.LittleEndian.AppendUint64(nil, va+8))
 		as.fsPut(va+8, v.code)
 		as.fsCache[key] = va
-		vi := &fsVenInfo{lo: va + 8, hi: va + 8 + uint64(len(v.code)), w0: w0, v: v}
+		vi := &fsVenInfo{lo: va + 8, hi: va + 8 + uint64(len(v.code)), w0: w0, v: v, jlen: 7}
+		if minLen == 5 {
+			vi.jlen = 5
+		}
 		i := sort.Search(len(as.fsVen), func(i int) bool { return as.fsVen[i].lo > vi.lo })
 		as.fsVen = append(as.fsVen, nil)
 		copy(as.fsVen[i+1:], as.fsVen[i:])
@@ -144,7 +148,7 @@ func (as *addressSpace) fsWindow(code []byte, base uint64, win []ins, a, b, s, m
 		j = binary.LittleEndian.AppendUint32(j, uint32(va))
 	}
 	for len(j) < wlen {
-		j = append(j, 0x90)
+		j = append(j, 0xCC) // (planFSWindow: the other instruction starts are here)
 	}
 	copy(code[w0off:], j)
 	cl.add(w0off, w0off+wlen)
@@ -157,6 +161,25 @@ func (as *addressSpace) fsWindow(code []byte, base uint64, win []ins, a, b, s, m
 		}
 	}
 	return true
+}
+
+// windowResume handles the int3 a thread hits when it enters a patched %fs
+// window at one of its inner instruction starts, which the platform reports
+// as the thread's address when it stops inside the veneer (fsFix) and which a
+// signal handler may return to with a plain ret: the thread continues in the
+// veneer at that instruction.
+func (as *addressSpace) windowResume(t *thread, ctx *ctxBuf, a uint64) bool {
+	as.mu.Lock()
+	target, ok := as.restartAt[a]
+	as.mu.Unlock()
+	if !ok || a < stubasm.GuestMin {
+		return false
+	}
+	if b, ok := as.readStub(a, 1); !ok || b[0] != 0xCC {
+		return false
+	}
+	*ctx.u64(ctxRipOff) = target
+	return ctx.set(t.hThread)
 }
 
 // fsUD2At returns the original bytes of a %fs instruction left as ud2 at a.
@@ -210,6 +233,16 @@ func (info *fsVenInfo) unwind(rip uint64) (newRip uint64, r1 int, restore bool) 
 		o = bd.o
 	}
 	return info.w0 + uint64(o), 0, false
+}
+
+// inJump reports whether a thread stopped at rip inside the veneer would be
+// reported at an address inside the bytes of the jump that replaced the window
+// (a displaced instruction there, or the end of the %fs instruction): a thread
+// returning there with a plain ret would run the jump's bytes. Every other inner
+// instruction start lies in the int3 filler (windowResume).
+func (info *fsVenInfo) inJump(rip uint64) bool {
+	r, _, _ := info.unwind(rip)
+	return r > info.w0 && r < info.w0+info.jlen
 }
 
 // fsFix is called with the stop address of a thread about to be parked. If the

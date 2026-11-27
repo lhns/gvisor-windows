@@ -12,10 +12,12 @@ if ($FsMode -eq 'native-probe' -or $FsMode -eq 'native-diag') { $env:WINSTUB_FSM
 if ($FsMode -eq 'native-diag') { $env:RUNSC_EXTRA_FLAGS = '--strace --strace-syscalls=mknod,mknodat,open,openat,chmod,fchmod,fchmodat,setuid,setresuid,setgid,setresgid,setgroups,execve,mount,umount2,unshare,setns,pivot_root,chroot,rename,renameat,renameat2,symlink,symlinkat,link,linkat,unlink,unlinkat,rmdir,mkdir,mkdirat,stat,lstat,newfstatat,statx,access,faccessat,faccessat2,readlink,readlinkat,getdents64' }
 if ($FsMode -eq 'goavx512off') { $env:ENGINE_GODEBUG = 'cpu.avx512=off' }
 if ($FsMode -eq 'rewrite') { $env:WINSTUB_FSMODE = 'rewrite'; $env:WINSTUB_KEEP_AVX512 = '1' }
+# Rewrite mode as on a CPU without XSAVE (the development VM): fxsave, and no XSAVE or AVX for the guest.
+if ($FsMode -eq 'rewrite-fxsave') { $env:WINSTUB_FSMODE = 'rewrite'; $env:WINSTUB_FPMODE = 'fxsave' }
 # State of the platform (goroutines, stub threads, debug-event counts) 20 s after the start, while the engine is still coming up.
 New-Item -ItemType Directory -Force "$Root\std\engine\logs" | Out-Null
 $env:RUNSC_HANG_DUMP = "$Root\std\engine\logs\state-20s.txt:20"
-"fsmode=$FsMode WINSTUB_FSMODE=$env:WINSTUB_FSMODE WINSTUB_KEEP_AVX512=$env:WINSTUB_KEEP_AVX512"
+"fsmode=$FsMode WINSTUB_FSMODE=$env:WINSTUB_FSMODE WINSTUB_KEEP_AVX512=$env:WINSTUB_KEEP_AVX512 WINSTUB_FPMODE=$env:WINSTUB_FPMODE"
 $acceptStart = Get-Date
 $repo = (Resolve-Path "$PSScriptRoot\..\..\..").Path
 $work = "$Root\std"; New-Item -ItemType Directory -Force $work, "$work\share" | Out-Null

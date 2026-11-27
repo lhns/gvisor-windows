@@ -1,0 +1,2 @@
+# Local builds of runsc for Windows; CI publishes them as artifacts.
+/*.exe

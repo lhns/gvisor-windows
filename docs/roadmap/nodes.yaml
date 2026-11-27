@@ -2672,6 +2672,8 @@
 - outcome: unrated
   evidence:
   - docs/results/5-podman-windows.md
+  - docs/results/1q-window-resume.md
+  - docs/results/1p-rewrite-heap.md
   verdict_quote: ''
   headline: ''
   depends_on:
@@ -2681,17 +2683,17 @@
   - platform-resume-inside-fs-window
   replaced_by: []
   start: '2026-11-27'
-  end: ''
+  end: '2026-11-27'
   folded:
   - 'Rewrite Podman: all 10 steps 7 of 8, then 8 of 8 (runs 46016231319, 46020575644) (2026-11-27, commit bce41cf19)'
   overview: false
   lane: windows-ci
-  notes: 'Done when: podman-windows modes=rewrite,rewrite-fxsave passes all 10 steps 8 of 8.'
+  notes: All 10 steps 16 of 16 twice in rewrite and rewrite-fxsave (runs 46026228865, 46037364923).
   id: workloads-podman-without-fsgsbase
   title: Podman on CPUs without FSGSBASE
   track: workloads
   kind: feature
-  state: blocked
+  state: done
   plain: The same acceptance in rewrite mode, which older CPUs and this development VM need because they cannot set the %fs base from user mode.
 - outcome: unrated
   evidence:
@@ -2753,12 +2755,13 @@
 - outcome: unrated
   evidence:
   - docs/results/1p-rewrite-heap.md
+  - docs/results/1q-window-resume.md
   verdict_quote: ''
   headline: ''
   depends_on: []
   replaced_by: []
   start: '2026-11-27'
-  end: ''
+  end: '2026-11-27'
   folded: []
   overview: false
   lane: windows-ci
@@ -2766,7 +2769,8 @@
   title: Thread resumed inside a patch window
   track: platform
   kind: defect
-  state: next
+  state: done
   plain: In rewrite mode the platform can move a thread out of a veneer to an address inside the patch window; a Go signal handler then returns there and runs nop filler (one engine crash in 16 rewrite
     runs).
-  notes: 'Fixed when: the platform never hands back an address inside a window (run to its end or back to its start) and rewrite Podman passes 16 of 16.'
+  notes: 'Fixed: int3 filler sends a thread returning into a window to its veneer; interrupts wait only while a thread would be reported under the jump. Open: a displaced-instruction fault under the jump
+    (no known case).'
