@@ -21,6 +21,7 @@ import (
 	"errors"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/stubasm"
@@ -60,6 +61,12 @@ type ins struct {
 	rkind   uint8
 	rdst    uint8
 	ripDisp int32
+	// What a window may do with the instruction when it starts under the jump
+	// (see effects; all false for instructions the decoder does not know).
+	noFault bool   // it cannot fault: register operands only (or lea, nop)
+	reexec  bool   // running it again gives the same result: writes registers only
+	precise bool   // a fault or a stop at it leaves no part of it done
+	rd, wr  uint16 // general registers it reads and writes (reexec)
 }
 
 // scanSite is what the patcher needs to know about one syscall or %fs
@@ -219,6 +226,7 @@ func decodeAll(code []byte) []ins {
 
 // classify sets the class of a decoded instruction (b holds its bytes).
 func classify(in x86asm.Inst, b []byte, x *ins) {
+	defer effects(in, x)
 	if fsMemOp(in) {
 		x.cls = clsFSBad
 		if rewritableFS(in, b) {
@@ -240,6 +248,121 @@ func classify(in x86asm.Inst, b []byte, x *ins) {
 	case x86asm.RET, x86asm.LRET, x86asm.JMP, x86asm.LJMP:
 		x.cls = clsLastOnly
 	}
+}
+
+// gpr returns the number of the general register r (0 for rax..al..ah) and
+// whether writing it as a destination replaces the whole register; -1 if r is
+// none.
+func gpr(r x86asm.Reg) (int, bool) {
+	switch {
+	case r >= x86asm.AL && r <= x86asm.R15B:
+		i := int(r - x86asm.AL)
+		if i >= 4 {
+			i -= 4 // (al cl dl bl ah ch dh bh spl bpl sil dil r8b..: ah..bh are rax..rbx)
+		}
+		return i, false
+	case r >= x86asm.AX && r <= x86asm.R15W:
+		return int(r - x86asm.AX), false
+	case r >= x86asm.EAX && r <= x86asm.R15L:
+		return int(r - x86asm.EAX), true
+	case r >= x86asm.RAX && r <= x86asm.R15:
+		return int(r - x86asm.RAX), true
+	}
+	return -1, false
+}
+
+// effects fills in what planFSWindow needs to know about an instruction that a
+// window displaces under the bytes of the jump, where a thread must never be
+// reported (a signal handler returning there with a plain ret would run the
+// jump's bytes). A thread stopped at such an instruction (a fault, an interrupt)
+// is reported at the window start instead when the instructions before it can
+// run again (reexec: they only write registers that none of them reads) and it
+// left nothing half done (precise; not so for string instructions, gathers, or a
+// relocated rip-relative load, which takes two instructions in the veneer).
+// Otherwise the instruction must not fault (noFault), and interrupts wait until
+// the thread is past it.
+func effects(in x86asm.Inst, x *ins) {
+	var rd, wr uint16
+	memDst, other := false, false
+	hasMem := false
+	for i, a := range in.Args {
+		if a == nil {
+			break
+		}
+		switch a := a.(type) {
+		case x86asm.Reg:
+			n, full := gpr(a)
+			if n < 0 {
+				other = true
+				continue
+			}
+			if i == 0 {
+				wr |= 1 << n
+				if !full {
+					rd |= 1 << n // (a partial write keeps the rest)
+				}
+			} else {
+				rd |= 1 << n
+			}
+		case x86asm.Mem:
+			hasMem = true
+			memDst = memDst || i == 0
+			for _, r := range []x86asm.Reg{a.Base, a.Index} {
+				if n, _ := gpr(r); n >= 0 {
+					rd |= 1 << n
+				}
+			}
+		}
+	}
+	name := in.Op.String()
+	switch in.Op {
+	case x86asm.CMP, x86asm.TEST:
+		rd |= wr // (they write only flags, which no re-executable instruction reads)
+		wr, memDst = 0, false
+	}
+	switch in.Op {
+	case x86asm.MOV, x86asm.MOVZX, x86asm.MOVSX, x86asm.MOVSXD, x86asm.LEA, x86asm.CMP, x86asm.TEST, x86asm.NOP:
+		x.reexec = !memDst && !other && rd&wr == 0
+	}
+	switch in.Op {
+	case x86asm.LEA, x86asm.NOP:
+		x.noFault = !other
+	case x86asm.MOV, x86asm.MOVZX, x86asm.MOVSX, x86asm.MOVSXD, x86asm.ADD, x86asm.ADC, x86asm.SUB, x86asm.SBB,
+		x86asm.AND, x86asm.OR, x86asm.XOR, x86asm.CMP, x86asm.TEST, x86asm.INC, x86asm.DEC, x86asm.NEG, x86asm.NOT,
+		x86asm.SHL, x86asm.SHR, x86asm.SAR, x86asm.ROL, x86asm.ROR, x86asm.IMUL, x86asm.XCHG, x86asm.BSWAP,
+		x86asm.CBW, x86asm.CWDE, x86asm.CDQE, x86asm.CWD, x86asm.CDQ, x86asm.CQO, x86asm.BT, x86asm.BSF, x86asm.BSR:
+		x.noFault = !hasMem && !other
+	default:
+		if strings.HasPrefix(name, "SET") || strings.HasPrefix(name, "CMOV") {
+			x.noFault = !hasMem && !other
+		}
+	}
+	x.precise = x.cls != clsRip && !strings.Contains(name, "GATHER") && !strings.Contains(name, "SCATTER")
+	switch in.Op {
+	case x86asm.MOVSB, x86asm.MOVSW, x86asm.MOVSD, x86asm.MOVSQ, x86asm.STOSB, x86asm.STOSW, x86asm.STOSD, x86asm.STOSQ,
+		x86asm.LODSB, x86asm.LODSW, x86asm.LODSD, x86asm.LODSQ, x86asm.SCASB, x86asm.SCASW, x86asm.SCASD, x86asm.SCASQ,
+		x86asm.CMPSB, x86asm.CMPSW, x86asm.CMPSD, x86asm.CMPSQ, x86asm.INSB, x86asm.INSW, x86asm.INSD,
+		x86asm.OUTSB, x86asm.OUTSW, x86asm.OUTSD:
+		x.precise = false
+	}
+	x.rd, x.wr = rd, wr
+}
+
+// rollsBack reports whether a thread stopped at list[k] (k > a) of the window
+// list[a..] may be reported at the window start instead: list[k] left nothing
+// half done and list[a..k-1] can run again (see effects).
+func rollsBack(list []ins, a, k int) bool {
+	if !list[k].precise {
+		return false
+	}
+	var rd, wr uint16
+	for i := a; i < k; i++ {
+		if !list[i].reexec {
+			return false
+		}
+		rd, wr = rd|list[i].rd, wr|list[i].wr
+	}
+	return rd&wr == 0
 }
 
 // ripClass recognizes `mov (%rip-relative),%reg` and `lea (%rip-relative),%reg`,
@@ -766,13 +889,14 @@ func gsMov(load bool, r int, off uint32) []byte {
 // a jump to a veneer replaces for the %fs instruction list[s]: at least minLen
 // bytes, no branch target except at the first instruction, every other
 // instruction copyable (ret/jmp only last), nothing free reports as taken.
-// The %fs instruction is first or starts at least minLen bytes in: a fault of
-// its access is reported at its address (fsFix), which then lies in the filler
-// after the jump, int3, so a thread that returns there (a signal handler that
-// returns with ret, as Go's asyncPreempt does) traps and is sent into the veneer
-// (windowResume) instead of running the jump's bytes. (Interrupts never stop a
-// thread that would be reported inside the jump's bytes, see interrupt; a fault
-// of a displaced instruction still is.) The shortest such window wins.
+// A thread stopped inside the veneer is reported at the instruction it stands
+// for (fsFix). If that one starts after the jump, in its int3 filler, a thread
+// that returns there (a signal handler that returns with ret, as Go's
+// asyncPreempt does) traps and is sent into the veneer (windowResume). One that
+// starts under the jump's bytes must either be reported at the window start
+// (rollsBack) or never fault (noFault; interrupts wait until the thread is past
+// it, see interrupt). The %fs instruction always faults. The shortest such
+// window wins.
 func planFSWindow(list []ins, tgt []bool, s, minLen int, free func(lo, hi int) bool) (a, b int, ok bool) {
 	contig := func(i int) bool { return i > 0 && list[i-1].off+list[i-1].n == list[i].off }
 	best := 1 << 30
@@ -785,19 +909,20 @@ func planFSWindow(list []ins, tgt []bool, s, minLen int, free func(lo, hi int) b
 				break
 			}
 			l := list[ib].off + list[ib].n - list[ia].off
-			if fsO := list[s].off - list[ia].off; l < minLen || l >= best || (fsO != 0 && fsO < minLen) {
+			if l < minLen || l >= best {
 				continue
 			}
 			good := true
-			for k := ia; k <= ib; k++ {
+			for k := ia; k <= ib && good; k++ {
 				c := list[k].cls
 				if k != s && c != clsOK && c != clsRip && !(c == clsLastOnly && k == ib) {
 					good = false
-					break
 				}
 				if k > ia && tgt[k] {
 					good = false
-					break
+				}
+				if o := list[k].off - list[ia].off; o > 0 && o < minLen && !rollsBack(list, ia, k) && (k == s || !list[k].noFault) {
+					good = false
 				}
 			}
 			if good && free(list[ia].off, list[ib].off+list[ib].n) {
@@ -811,7 +936,12 @@ func planFSWindow(list []ins, tgt []bool, s, minLen int, free func(lo, hi int) b
 // ---- veneers ------------------------------------------------------------------------
 
 // fsBound maps an instruction start in a veneer to the one it came from.
-type fsBound struct{ v, o uint32 }
+// roll: a thread stopped at it is reported at the window start when the
+// instruction lies under the jump (rollsBack).
+type fsBound struct {
+	v, o uint32
+	roll bool
+}
 
 // fsVeneer is the code for one %fs window (ADR 0020):
 //
@@ -860,7 +990,7 @@ func buildFSVeneer(code []byte, base uint64, list []ins, a, b, s int) (*fsVeneer
 	var c []byte
 	displace := func(k int) bool {
 		x := list[k]
-		v.bnd = append(v.bnd, fsBound{uint32(len(c)), uint32(x.off - w0)})
+		v.bnd = append(v.bnd, fsBound{uint32(len(c)), uint32(x.off - w0), k > a && rollsBack(list, a, k)})
 		if x.cls != clsRip {
 			c = append(c, code[x.off:x.off+x.n]...)
 			return true
@@ -889,7 +1019,7 @@ func buildFSVeneer(code []byte, base uint64, list []ins, a, b, s int) (*fsVeneer
 	for k := a; k < s; k++ {
 		displace(k)
 	}
-	v.bnd = append(v.bnd, fsBound{uint32(len(c)), v.fsO})
+	v.bnd = append(v.bnd, fsBound{uint32(len(c)), v.fsO, s > a && rollsBack(list, a, s)})
 	c = append(c, gsMov(false, r1, stubasm.TebSave)...)
 	v.saved = uint32(len(c))
 	c = append(c, gsMov(true, r1, stubasm.TebFS)...)
@@ -909,7 +1039,7 @@ func buildFSVeneer(code []byte, base uint64, list []ins, a, b, s int) (*fsVeneer
 	for k := s + 1; k <= b; k++ {
 		displace(k)
 	}
-	v.bnd = append(v.bnd, fsBound{uint32(len(c)), v.winLen})
+	v.bnd = append(v.bnd, fsBound{v: uint32(len(c)), o: v.winLen})
 	c = append(c, 0xFF, 0x25, 0, 0, 0, 0)
 	c = binary.LittleEndian.AppendUint64(c, base+uint64(w0)+uint64(v.winLen))
 	v.code = c

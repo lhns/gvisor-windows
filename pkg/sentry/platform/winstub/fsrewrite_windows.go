@@ -229,28 +229,39 @@ func (as *addressSpace) fsLocate(t *thread, rip uint64) *fsVenInfo {
 func (info *fsVenInfo) unwind(rip uint64) (newRip uint64, r1 int, restore bool) {
 	v := info.v
 	off := uint32(rip - info.lo)
+	o := uint32(0)
 	switch {
 	case off == v.restore:
-		// the instruction has completed: continue after it
-		return info.w0 + uint64(v.afterO), v.r1, true
+		o, r1, restore = v.afterO, v.r1, true // the instruction has completed: continue after it
 	case off >= v.saved && off < v.restore:
-		return info.w0 + uint64(v.fsO), v.r1, true
-	}
-	o := uint32(0)
-	for _, bd := range v.bnd {
-		if bd.v > off {
-			break
+		o, r1, restore = v.fsO, v.r1, true
+	default:
+		for _, bd := range v.bnd {
+			if bd.v > off {
+				break
+			}
+			o = bd.o
 		}
-		o = bd.o
 	}
-	return info.w0 + uint64(o), 0, false
+	// An instruction under the jump's bytes: back to the window start if the
+	// instructions before it can run again (rollsBack).
+	if o > 0 && uint64(o) < info.jlen {
+		for _, bd := range v.bnd {
+			if bd.o == o && bd.roll {
+				o = 0
+				break
+			}
+		}
+	}
+	return info.w0 + uint64(o), r1, restore
 }
 
 // inJump reports whether a thread stopped at rip inside the veneer would be
 // reported at an address inside the bytes of the jump that replaced the window
-// (a displaced instruction there, or the end of the %fs instruction): a thread
-// returning there with a plain ret would run the jump's bytes. Every other inner
-// instruction start lies in the int3 filler (windowResume).
+// (a displaced instruction there that cannot fault and does not roll back, or
+// the end of the %fs instruction): a thread returning there with a plain ret
+// would run the jump's bytes. Every other inner instruction start lies in the
+// int3 filler (windowResume).
 func (info *fsVenInfo) inJump(rip uint64) bool {
 	r, _, _ := info.unwind(rip)
 	return r > info.w0 && r < info.w0+info.jlen
