@@ -35,7 +35,8 @@ jobs:
           cp out/libplug.so $R/lib/
           cp out/ld-musl $R/lib/ld-musl-x86_64.so.1
           ln -s ld-musl-x86_64.so.1 $R/lib/libc.musl-x86_64.so.1
-          cp /bin/busybox $R/bin/busybox
+          docker run --rm -v "$PWD:/w" -w /w debian:bookworm sh -c 'apt-get update -qq && apt-get install -y -qq busybox-static >/dev/null && cp /bin/busybox out/busybox'
+          cp out/busybox $R/bin/busybox
           for a in sh cat wc sort uniq grep sed sleep kill true false echo printf; do ln -s busybox $R/bin/$a; done
           cp -a out/glibclibs/. $R/
           cp $G/t/*.sh $R/t/
