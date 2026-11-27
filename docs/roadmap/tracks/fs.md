@@ -9,13 +9,16 @@ Scope: host files, bind mounts, image storage.
 <!-- BEGIN GENERATED: track-fs -->
 ```mermaid
 flowchart TB
+    fs_compat_layer_not_boundary{{"✔ Compatibility layer,<br/>not security boundary"}}
     fs_persistent_image_storage[/"✔ Test persistent<br/>image storage"/]
     fs_windows_directfs["✔ Open Windows files<br/>directly"]
     fs_change_notifications["✔ Windows changes<br/>reach the guest"]
     fs_linux_metadata_on_ntfs["✔ Linux file metadata<br/>on NTFS"]
     fs_handles_do_not_block_users["✔ Files stay editable<br/>on Windows"]
-    fs_root_filesystem_source["✔ Root filesystem from<br/>an erofs image"]
+    fs_persistent_storage_choice{{"✔ Choose the<br/>persistent storage"}}
     fs_safe_save_keeps_metadata>"✔ Editor safe-saves<br/>keep Linux metadata"]
+    fs_rootfs_import{{"✔ Bring container<br/>images onto NTFS"}}
+    fs_root_filesystem_source["✔ Root filesystem from<br/>an erofs image"]
     fs_attribute_cache["✔ Faster stat walks on<br/>host folders"]
     fs_flaky_negative_cache_test>"✔ Flaky negative-cache<br/>test on host folders"]
     fs_standard_user_delete_rights>"✔ Deletes fail for<br/>standard users"]
@@ -29,14 +32,18 @@ flowchart TB
     fs_overlay_upper_on_host_folder>"✔ Overlay with a host-<br/>folder upper layer"]
     fs_overlay_native_diff>"✔ Fast layer diffs<br/>with overlay"]
     fs_layers_empty_on_slow_host>"✔ Empty file read<br/>during a replace"]
-    fs_persistent_image_storage ~~~ fs_change_notifications
+    fs_compat_layer_not_boundary ~~~ fs_windows_directfs
+    fs_persistent_image_storage ~~~ fs_windows_directfs
+    fs_windows_directfs ~~~ fs_change_notifications
     fs_windows_directfs ~~~ fs_linux_metadata_on_ntfs
     fs_windows_directfs ~~~ fs_handles_do_not_block_users
-    fs_change_notifications ~~~ fs_root_filesystem_source
+    fs_change_notifications ~~~ fs_persistent_storage_choice
     fs_linux_metadata_on_ntfs ~~~ fs_safe_save_keeps_metadata
-    fs_handles_do_not_block_users ~~~ fs_attribute_cache
-    fs_root_filesystem_source ~~~ fs_flaky_negative_cache_test
-    fs_safe_save_keeps_metadata ~~~ fs_standard_user_delete_rights
+    fs_handles_do_not_block_users ~~~ fs_rootfs_import
+    fs_persistent_storage_choice ~~~ fs_root_filesystem_source
+    fs_safe_save_keeps_metadata ~~~ fs_attribute_cache
+    fs_rootfs_import ~~~ fs_flaky_negative_cache_test
+    fs_root_filesystem_source ~~~ fs_standard_user_delete_rights
     fs_attribute_cache ~~~ fs_case_sensitivity_without_admin
     fs_flaky_negative_cache_test ~~~ fs_persistent_storage_impl
     fs_standard_user_delete_rights ~~~ fs_unix_sockets_on_host_folders
@@ -47,12 +54,16 @@ flowchart TB
     fs_disown_children_nil_deref ~~~ fs_overlay_upper_on_host_folder
     fs_host_folder_mtime_resolution ~~~ fs_overlay_native_diff
     fs_layer_store_corrupt_after_restart ~~~ fs_layers_empty_on_slow_host
+    fs_overlay_upper_on_host_folder ~~~ fs_layers_empty_on_slow_host
+    fs_compat_layer_not_boundary --> fs_windows_directfs
     fs_windows_directfs --> fs_change_notifications
     fs_windows_directfs --> fs_linux_metadata_on_ntfs
     fs_windows_directfs --> fs_handles_do_not_block_users
+    fs_windows_directfs --> fs_persistent_storage_choice
     fs_windows_directfs --> fs_root_filesystem_source
+    fs_rootfs_import --> fs_root_filesystem_source
     fs_change_notifications --> fs_attribute_cache
-    fs_windows_directfs --> fs_persistent_storage_impl
+    fs_persistent_storage_choice --> fs_persistent_storage_impl
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -67,8 +78,9 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
+    class fs_compat_layer_not_boundary,fs_persistent_storage_choice,fs_rootfs_import decided
     class fs_persistent_image_storage,fs_attribute_cache mixed
-    class fs_windows_directfs,fs_change_notifications,fs_linux_metadata_on_ntfs,fs_handles_do_not_block_users,fs_root_filesystem_source,fs_safe_save_keeps_metadata,fs_flaky_negative_cache_test,fs_standard_user_delete_rights,fs_case_sensitivity_without_admin,fs_unix_sockets_on_host_folders,fs_copied_file_too_short,fs_disown_children_nil_deref,fs_host_folder_mtime_resolution,fs_layer_store_corrupt_after_restart,fs_overlay_upper_on_host_folder,fs_overlay_native_diff,fs_layers_empty_on_slow_host succ
+    class fs_windows_directfs,fs_change_notifications,fs_linux_metadata_on_ntfs,fs_handles_do_not_block_users,fs_safe_save_keeps_metadata,fs_root_filesystem_source,fs_flaky_negative_cache_test,fs_standard_user_delete_rights,fs_case_sensitivity_without_admin,fs_unix_sockets_on_host_folders,fs_copied_file_too_short,fs_disown_children_nil_deref,fs_host_folder_mtime_resolution,fs_layer_store_corrupt_after_restart,fs_overlay_upper_on_host_folder,fs_overlay_native_diff,fs_layers_empty_on_slow_host succ
     class fs_persistent_storage_impl unrated
 ```
 <!-- END GENERATED: track-fs -->

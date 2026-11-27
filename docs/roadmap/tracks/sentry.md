@@ -24,7 +24,7 @@ flowchart TB
     sentry_pasta_in_sandbox>"✔ pasta networking<br/>inside the sandbox"]
     sentry_waitgroup_panic>"⚠ One-off negative<br/>WaitGroup panic"]
     sentry_event_loop_iocp["⏸ Event waiting on<br/>IOCP"]
-    sentry_go_fault_recovery ~~~ sentry_unix_shim
+    sentry_go_fault_recovery ~~~ sentry_windows_build
     sentry_unix_shim ~~~ sentry_windows_build
     sentry_windows_build ~~~ sentry_memory_file_sections
     sentry_windows_build ~~~ sentry_fault_recovery
@@ -38,7 +38,6 @@ flowchart TB
     sentry_profile_small_file_path ~~~ sentry_pasta_in_sandbox
     sentry_netpoll_failure ~~~ sentry_waitgroup_panic
     sentry_fchmod_std_stream ~~~ sentry_event_loop_iocp
-    sentry_go_fault_recovery --> sentry_unix_shim
     sentry_unix_shim --> sentry_windows_build
     sentry_windows_build --> sentry_memory_file_sections
     sentry_windows_build --> sentry_fault_recovery

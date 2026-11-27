@@ -108,9 +108,6 @@ flowchart TB
     platform_exception_stack --> platform_veh_on_guest_stack_unsafe
     platform_exception_stack --> platform_debug_event_cost
     platform_elf_alignment_survey --> platform_syscall_site_survey
-    platform_4k_section_views --> platform_stub_controller
-    platform_tls_register --> platform_stub_controller
-    platform_restricted_stub --> platform_stub_controller
     platform_debug_event_cost --> platform_stub_controller
     platform_syscall_site_survey --> platform_stub_controller
     platform_faults_per_exec --> platform_stub_controller

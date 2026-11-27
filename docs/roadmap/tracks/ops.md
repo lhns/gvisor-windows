@@ -9,14 +9,29 @@ Scope: CI, packaging, owner decisions on process.
 <!-- BEGIN GENERATED: track-ops -->
 ```mermaid
 flowchart TB
+    ops_name_and_fork{{"✔ Name it gvisor-<br/>windows"}}
+    ops_linux_tests_on_actions{{"✔ Run Linux tests on<br/>GitHub Actions"}}
+    ops_borrow_code{{"✔ Borrow code, check<br/>licenses later"}}
+    ops_podman_only_the_bar{{"✔ Podman only as the<br/>bar"}}
+    ops_phase0_go_no_go{{"✔ Go or no-go after<br/>Phase 0"}}
     ops_windows_ci_standard_user["✔ Windows CI as a<br/>standard user"]
+    ops_syscall_test_strategy{{"✔ Choose how to run<br/>gVisor's tests"}}
     ops_syscall_tests_on_windows["✔ gVisor syscall tests<br/>on Windows"]
     ops_upstream_merges["✔ Merge upstream<br/>gVisor regularly"]
     ops_portable_packaging["✔ Portable zip, no<br/>installer"]
     ops_ci_build_once["✔ Build once, run<br/>suites on demand"]
-    ops_windows_ci_standard_user ~~~ ops_portable_packaging
+    ops_name_and_fork ~~~ ops_podman_only_the_bar
+    ops_linux_tests_on_actions ~~~ ops_phase0_go_no_go
+    ops_borrow_code ~~~ ops_phase0_go_no_go
+    ops_podman_only_the_bar ~~~ ops_windows_ci_standard_user
+    ops_phase0_go_no_go ~~~ ops_syscall_test_strategy
+    ops_windows_ci_standard_user ~~~ ops_syscall_tests_on_windows
+    ops_syscall_test_strategy ~~~ ops_upstream_merges
+    ops_syscall_test_strategy ~~~ ops_portable_packaging
     ops_syscall_tests_on_windows ~~~ ops_ci_build_once
     ops_upstream_merges ~~~ ops_ci_build_once
+    ops_portable_packaging ~~~ ops_ci_build_once
+    ops_phase0_go_no_go --> ops_windows_ci_standard_user
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
     classDef mixed fill:#ffd37a,stroke:#c98a00,color:#111
@@ -31,6 +46,7 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
+    class ops_name_and_fork,ops_linux_tests_on_actions,ops_borrow_code,ops_podman_only_the_bar,ops_phase0_go_no_go,ops_syscall_test_strategy decided
     class ops_windows_ci_standard_user succ
     class ops_syscall_tests_on_windows mixed
     class ops_upstream_merges,ops_portable_packaging,ops_ci_build_once unrated
