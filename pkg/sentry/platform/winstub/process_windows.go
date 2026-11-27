@@ -808,11 +808,18 @@ func (as *addressSpace) interrupt(t *thread) bool {
 	rip := *ctx.u64(ctxRipOff)
 	inStub := rip >= stubasm.StubCode && rip < stubasm.StubCode+stubasm.StubCodeSize
 	inRepair := rip >= stubasm.CtlBase
-	// A thread inside an %fs veneer would be reported at an address inside the
-	// window, which a signal handler may return to with a plain ret (Go's
-	// asyncPreempt): it is caught once it is out, a few instructions later.
-	inVeneer := as.p.fsRewrite && as.fsLocate(t, rip) != nil
-	if inStub || inRepair || inVeneer || rip < stubasm.AreaLo {
+	// A thread inside an %fs veneer that would be reported inside the bytes of the
+	// jump to it, where a signal handler may return with a plain ret (Go's
+	// asyncPreempt), is caught once it is past them, a few instructions later.
+	// (Refusing every thread in a veneer starves a loop of %fs accesses:
+	// docs/results/1q-window-resume.md.)
+	inJump := false
+	if as.p.fsRewrite {
+		if info := as.fsLocate(t, rip); info != nil {
+			inJump = info.inJump(rip)
+		}
+	}
+	if inStub || inRepair || inJump || rip < stubasm.AreaLo {
 		pResumeThread.Call(t.hThread)
 		return false
 	}

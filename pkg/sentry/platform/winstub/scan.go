@@ -771,8 +771,8 @@ func gsMov(load bool, r int, off uint32) []byte {
 // after the jump, int3, so a thread that returns there (a signal handler that
 // returns with ret, as Go's asyncPreempt does) traps and is sent into the veneer
 // (windowResume) instead of running the jump's bytes. (Interrupts never stop a
-// thread inside a veneer, see interrupt; other inner addresses are reported only
-// for a fault of a displaced instruction.) The shortest such window wins.
+// thread that would be reported inside the jump's bytes, see interrupt; a fault
+// of a displaced instruction still is.) The shortest such window wins.
 func planFSWindow(list []ins, tgt []bool, s, minLen int, free func(lo, hi int) bool) (a, b int, ok bool) {
 	contig := func(i int) bool { return i > 0 && list[i-1].off+list[i-1].n == list[i].off }
 	best := 1 << 30
