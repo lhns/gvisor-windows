@@ -133,6 +133,9 @@ function Start-Engine {
   $sock | Set-Content (Join-Path $Work 'sock.path')
   $args = @('--debug', "--debug-log=$logs\", '--network=windows-nat', '--overlay2=root:memory', '--in-sandbox-cgroup=v2', "--pipe-forward=8888:$pipe", "--unix-forward=8888:$sock") + @($env:RUNSC_EXTRA_FLAGS -split ' ' | Where-Object { $_ }) + @('run', '-bundle', $bundle, "podman-$Name")
   $stamp = Get-Date -Format "HHmmss"
+  # A sandbox still alive after 6 minutes (an acceptance takes about 5) writes the stacks of its goroutines and the
+  # winstub state (hang hunt, runsc/winrunsc); the file is uploaded with the logs.
+  $env:RUNSC_HANG_DUMP = (Join-Path $logs "hang-$stamp.txt") + ":360"
   $p = Start-Process -FilePath $Runsc -ArgumentList $args -PassThru -WindowStyle Hidden `
     -RedirectStandardOutput (Join-Path $logs "engine-$stamp.out") -RedirectStandardError (Join-Path $logs "engine-$stamp.err")
   $p.Id | Set-Content $pidFile
