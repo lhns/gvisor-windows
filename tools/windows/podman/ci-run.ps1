@@ -6,6 +6,10 @@ if ($FsMode -eq 'native') { $env:WINSTUB_FSMODE = 'native' }
 if ($FsMode -eq 'native-replace') { $env:WINSTUB_FSMODE = 'native'; $env:WINSTUB_REPLACE_STALLED = '1' }
 # Native filesystem mode with the overlay storage driver (kernel overlay in the Sentry on the host-folder storage).
 if ($FsMode -eq 'native-overlay') { $env:WINSTUB_FSMODE = 'native'; $StorageDriver = 'overlay' }
+# Step 5 diagnostics (docs/results/2r-step5-overlay.md): native mode plus a probe in the build (state of /dev/null and the mounts when apt fails);
+# native-diag adds the runsc strace of the file system calls of the whole sandbox (large logs).
+if ($FsMode -eq 'native-probe' -or $FsMode -eq 'native-diag') { $env:WINSTUB_FSMODE = 'native'; $env:ACC_STEP5_PROBE = '1' }
+if ($FsMode -eq 'native-diag') { $env:RUNSC_EXTRA_FLAGS = '--strace --strace-syscalls=mknod,mknodat,open,openat,chmod,fchmod,fchmodat,setuid,setresuid,setgid,setresgid,setgroups,execve,mount,umount2,unshare,setns,pivot_root,chroot,rename,renameat,renameat2,symlink,symlinkat,link,linkat,unlink,unlinkat,rmdir,mkdir,mkdirat,stat,lstat,newfstatat,statx,access,faccessat,faccessat2,readlink,readlinkat,getdents64' }
 if ($FsMode -eq 'goavx512off') { $env:ENGINE_GODEBUG = 'cpu.avx512=off' }
 if ($FsMode -eq 'rewrite') { $env:WINSTUB_FSMODE = 'rewrite'; $env:WINSTUB_KEEP_AVX512 = '1' }
 # State of the platform (goroutines, stub threads, debug-event counts) 20 s after the start, while the engine is still coming up.
