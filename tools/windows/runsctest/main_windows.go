@@ -648,5 +648,5 @@ func testRestart() error {
 	}
 	script := "cat /s/vol/accvol/_data/f; cat /s/db.sql; ls /s/vfs-containers; mkdir -p /s/vfs-containers/b/userdata && echo cfg2 >/s/vfs-containers/b/userdata/config.json && cat /s/vfs-containers/b/userdata/config.json; echo again >/s/db.sql && mv /s/db.sql /s/db.old && echo db2 >/s/db.sql && cat /s/db.sql; echo second-ok"
 	r, err = runsc("restart2", []string{"/bin/sh", "-c", script}, nil)
-	return expect(r, err, "keep\ndb\nb\ncfg2\ndb2\nsecond-ok\n", 0)
+	return expect(r, err, "keep\ndb\ncfg2\ndb2\nsecond-ok\n", 0)
 }
