@@ -21,7 +21,7 @@ flowchart TB
     workloads_end_to_end_speed[/"✔ Measure end-to-end<br/>speed on Windows"/]
     workloads_conmon_sync_pipe>"✔ conmon sees no data<br/>on its sync pipe"]
     workloads_conmon_attach_second_cause>"✔ Second attach-socket<br/>failure"]
-    workloads_tty_through_windows_client>"⚠ Interactive TTY<br/>through the Windows<br/>client"]
+    workloads_tty_through_windows_client>"✔ Interactive TTY<br/>through the Windows<br/>client"]
     workloads_isolation_flake>"⚠ Isolation step<br/>failed once"]
     workloads_podman_on_windows[/"⛔ Podman passes on<br/>Windows"/]
     workloads_podman_probe[/"✔ Probe Podman inside<br/>the sandbox"/]
@@ -75,8 +75,8 @@ flowchart TB
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class workloads_acceptance_test,workloads_acceptance_test_windows,workloads_podman_api_named_pipe,workloads_podman_probe unrated
     class workloads_podman_on_gvisor_linux,workloads_strict_bar_linux,workloads_end_to_end_speed mixed
-    class workloads_gvisor_bridge_netlink,workloads_gvisor_port_publishing,workloads_gvisor_cgroupfs_readonly,workloads_overlay_userxattr,workloads_conmon_sync_pipe,workloads_conmon_attach_second_cause succ
-    class workloads_tty_through_windows_client,workloads_isolation_flake finding
+    class workloads_gvisor_bridge_netlink,workloads_gvisor_port_publishing,workloads_gvisor_cgroupfs_readonly,workloads_overlay_userxattr,workloads_conmon_sync_pipe,workloads_conmon_attach_second_cause,workloads_tty_through_windows_client succ
+    class workloads_isolation_flake finding
     class workloads_podman_on_windows blocked
     class workloads_podman_harness inprog
 ```
@@ -103,7 +103,7 @@ flowchart TB
 | `workloads-conmon-sync-pipe` | conmon sees no data on its sync pipe | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-27 | platform-veneer-address-in-child |  |  |  | docs/results/5-podman-windows.md |
 | `workloads-overlay-userxattr` | Overlay mounts with userxattr rejected | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
 | `workloads-conmon-attach-second-cause` | Second attach-socket failure | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
-| `workloads-tty-through-windows-client` | Interactive TTY through the Windows client | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/5-podman-windows.md |
+| `workloads-tty-through-windows-client` | Interactive TTY through the Windows client | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
 | `workloads-isolation-flake` | Isolation step failed once | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/5-podman-windows.md |
 
 ### Details per node
@@ -126,8 +126,8 @@ flowchart TB
 | `workloads-conmon-sync-pipe` | conmon sees no data on its sync pipe |  |  | Every podman run fails with "conmon bytes \"\": found \x00": conmon reads nothing from its sync pipe while creating the first container inside the sandbox on Windows. | Fixed: containers are created and started; podman run -d -p works end to end (step 7 passes). |  |  |  |  |
 | `workloads-overlay-userxattr` | Overlay mounts with userxattr rejected |  |  | podman build fails: the Sentry overlay rejects the userxattr option (or the layer setup) when Podman storage sits on a Windows folder. | Fixed when: podman build of a small Containerfile passes inside the Windows sandbox. |  |  |  |  |
 | `workloads-conmon-attach-second-cause` | Second attach-socket failure |  |  | Even with container directories on a tmpfs, Podman's connect to conmon's attach socket is refused; a second cause is not isolated. | No separate cause: with the host-folder socket fix, podman run --rm alpine echo ok prints ok. |  |  |  |  |
-| `workloads-tty-through-windows-client` | Interactive TTY through the Windows client |  |  | The Windows podman client says "The input device is not a TTY" inside the ConPTY test driver, so the interactive step cannot type into the container. | Fixed when: acceptance step 4 (podman run -it with typing, Ctrl-C and exit code) passes. |  |  |  |  |
-| `workloads-isolation-flake` | Isolation step failed once |  |  | Acceptance step 10 failed once: one container saw the other container's file; not reproduced since. | Fixed when: step 10 passes 20 runs in a row, or the cause is found and fixed. |  |  |  |  |
+| `workloads-tty-through-windows-client` | Interactive TTY through the Windows client |  |  | The Windows podman client says "The input device is not a TTY" inside the ConPTY test driver, so the interactive step cannot type into the container. | Fixed in the harness: ttydrive now sets STARTF_USESTDHANDLES with NULL handles so the child gets the pseudoconsole; step 4 passed 7 of 7 runs. |  |  |  |  |
+| `workloads-isolation-flake` | Isolation step failed once |  |  | Steps fail now and then: /dev/null missing in a container for a moment, a just-created config.json missing, and one job that hung; about 1 run in 4 also loses the sandbox to the Go GC crash. | Fixed when: step 10 passes 20 runs in a row, or the cause is found and fixed. |  |  |  |  |
 
 ### Folded items per node
 

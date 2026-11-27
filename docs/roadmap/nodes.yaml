@@ -2298,8 +2298,8 @@
   kind: defect
   state: next
   lane: windows-ci
-  plain: Podman's Go GC crashed at address 0xfffffffffffffff8, which is Go's %fs:-8 load with a zero base, so the cause is more likely a missed %fs repair than lost AVX-512 state; AVX-512 stays hidden from
-    guests in native mode.
+  plain: 'The engine dies in about 1 run in 4: Go GC SIGSEGV at 0xfffffffffffffff8 (Go %fs:-8 with a zero base) in its AVX-512 path. Guests run CPUID natively, so hiding AVX-512 in the Sentry cannot work;
+    the zero base points at a missed %fs repair in native mode.'
   notes: 'Fixed when: a guest keeps zmm and k registers across syscalls, faults and interrupts on an AVX-512 runner, and the CPUID workaround in runsc/boot/loader.go is removed.'
 - outcome: unrated
   evidence:
@@ -2329,17 +2329,17 @@
   depends_on: []
   replaced_by: []
   start: '2026-11-27'
-  end: ''
+  end: '2026-11-27'
   folded: []
   overview: false
   id: workloads-tty-through-windows-client
   title: Interactive TTY through the Windows client
   track: workloads
   kind: defect
-  state: next
+  state: done
   lane: windows-ci
   plain: The Windows podman client says "The input device is not a TTY" inside the ConPTY test driver, so the interactive step cannot type into the container.
-  notes: 'Fixed when: acceptance step 4 (podman run -it with typing, Ctrl-C and exit code) passes.'
+  notes: 'Fixed in the harness: ttydrive now sets STARTF_USESTDHANDLES with NULL handles so the child gets the pseudoconsole; step 4 passed 7 of 7 runs.'
 - outcome: unrated
   evidence:
   - docs/results/5-podman-windows.md
@@ -2357,7 +2357,7 @@
   kind: defect
   state: next
   lane: windows-ci
-  plain: 'Acceptance step 10 failed once: one container saw the other container''s file; not reproduced since.'
+  plain: 'Steps fail now and then: /dev/null missing in a container for a moment, a just-created config.json missing, and one job that hung; about 1 run in 4 also loses the sandbox to the Go GC crash.'
   notes: 'Fixed when: step 10 passes 20 runs in a row, or the cause is found and fixed.'
 - outcome: unrated
   evidence:

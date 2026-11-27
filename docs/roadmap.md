@@ -189,7 +189,7 @@ flowchart TB
 | Start guest processes fast | ✔ done · very-successful | A guest process takes 280-560 ms to start through the Sentry, against 18 ms for a bare stub; profile the gap and keep a pool of ready stubs. |
 | Rare hang under heavy exec load | ⚠ open | A guest that forks many children hangs now and then: about 1 in 50 gopodman runs, and 9 in 48 fork+exec loops through runsc.exe with the exclusive root cache (2 in 48 with the shared cache); the shell waits in wait4 with no child task. |
 | Reuse stub processes across exec | ○ next | Each fork+exec starts two stub processes at about 10 ms each; recycling a stub on release and execve and mapping memory up front would cut process start further. |
-| AVX-512 state lost across stops | ⚠ open | Podman's Go GC crashed at address 0xfffffffffffffff8, which is Go's %fs:-8 load with a zero base, so the cause is more likely a missed %fs repair than lost AVX-512 state; AVX-512 stays hidden from guests in native mode. |
+| AVX-512 state lost across stops | ⚠ open | The engine dies in about 1 run in 4: Go GC SIGSEGV at 0xfffffffffffffff8 (Go %fs:-8 with a zero base) in its AVX-512 path. Guests run CPUID natively, so hiding AVX-512 in the Sentry cannot work; the zero base points at a missed %fs repair in native mode. |
 | glibc runs AVX code on a non-AVX CPU | ⚠ open | On the dev VM a static glibc hello dies with SIGILL on vmovd (AVX) in start-up code, although the CPU has no AVX; busybox runs fine. |
 | More room for %fs veneers | ⚠ open | python3 with libpython and libc needs about 8500 %fs veneers against room for about 7000, and 24% of far %fs sites in Rust PIE binaries such as netavark fall back to the 100 us debugger path. |
 | Event waiting on IOCP | ⏸ parked | Waiting for many host events at once (epoll on Linux) moves to Windows completion ports. |
@@ -205,8 +205,7 @@ flowchart TB
 | Podman on gVisor on Linux | ✔ done · mixed ⚠ | Run the acceptance test on stock gVisor on Linux; whatever fails there is a gap in gVisor itself, not in the port. |
 | Podman passes on Windows | ⛔ blocked | The bar for enough features: an unmodified Podman engine passes the acceptance test on gVisor on Windows. |
 | Serve Podman to Windows clients | ▶ in progress | The test harness runs the Podman engine on runsc and exposes its API to the stock Windows clients. |
-| Interactive TTY through the Windows client | ⚠ open | The Windows podman client says "The input device is not a TTY" inside the ConPTY test driver, so the interactive step cannot type into the container. |
-| Isolation step failed once | ⚠ open | Acceptance step 10 failed once: one container saw the other container's file; not reproduced since. |
+| Isolation step failed once | ⚠ open | Steps fail now and then: /dev/null missing in a container for a moment, a just-created config.json missing, and one job that hung; about 1 run in 4 also loses the sandbox to the Go GC crash. |
 | Pick gVisor as the base | ✔ done · unrated | Of all ways to run Linux code on Windows without admin, gVisor's user-space Linux kernel is the only one that already runs containers. |
 | Name it gvisor-windows | ✔ done · n/a | The project is an unofficial fork of gVisor's Go branch called gvisor-windows. |
 | Go or no-go after Phase 0 | ✔ done · n/a | Go: the owner asked for the full project; ADR 0004 lists the conditions. |
@@ -228,7 +227,6 @@ flowchart TB
 - `platform-recycle-stubs`: Reuse stub processes across exec
 - `platform-avx512-state-lost`: AVX-512 state lost across stops
 - `fs-copied-file-too-short`: Copied library reads as too short
-- `workloads-tty-through-windows-client`: Interactive TTY through the Windows client
 - `workloads-isolation-flake`: Isolation step failed once
 - `platform-fs-veneer-capacity`: More room for %fs veneers
 
@@ -268,7 +266,7 @@ Generated on 2026-11-27.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 87 done, 7 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 88 done, 7 abandoned</summary>
 
 - `fs-attribute-cache`: Faster stat walks on host folders (✔ done · mixed). A git-status-like walk of 20000 files takes 1.2-2.4 s through the host folder; an attribute cache fed by the change watcher would bring stat near native.
   - Cold stat walk on a fresh mount is still about 4x native, 99-105 us per file (2026-11-26)
@@ -396,6 +394,7 @@ Generated on 2026-11-27.
 - `workloads-end-to-end-speed`: Measure end-to-end speed on Windows (✔ done · mixed). Run the Phase 0 workloads (fork+exec loop, untar of small files, a CPU job) through runsc.exe on Windows and compare with runsc and native on Linux.
 - `workloads-overlay-userxattr`: Overlay mounts with userxattr rejected (✔ fixed). podman build fails: the Sentry overlay rejects the userxattr option (or the layer setup) when Podman storage sits on a Windows folder.
   - Overlay upperdir must be tmpfs; /var/tmp is now a tmpfs in the engine spec (2026-11-27)
+- `workloads-tty-through-windows-client`: Interactive TTY through the Windows client (✔ fixed). The Windows podman client says "The input device is not a TTY" inside the ConPTY test driver, so the interactive step cannot type into the container.
 
 </details>
 <!-- END GENERATED: done-by-month -->
@@ -410,7 +409,7 @@ Each track has its own page with its tree, node table and per-node details.
 - [sentry - sentry](roadmap/tracks/sentry.md): 14 nodes (11 done, 1 next, 1 blocked, 1 parked)
 - [fs - files](roadmap/tracks/fs.md): 17 nodes (15 done, 1 next, 1 blocked)
 - [net - network](roadmap/tracks/net.md): 4 nodes (4 done)
-- [workloads - workloads](roadmap/tracks/workloads.md): 18 nodes (14 done, 1 in progress, 2 next, 1 blocked)
+- [workloads - workloads](roadmap/tracks/workloads.md): 18 nodes (15 done, 1 in progress, 1 next, 1 blocked)
 - [research - research](roadmap/tracks/research.md): 8 nodes (2 done, 6 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 11 nodes (8 done, 1 next, 2 blocked)
 <!-- END GENERATED: tracks -->

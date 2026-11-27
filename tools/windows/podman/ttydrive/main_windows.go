@@ -61,6 +61,9 @@ func startConPTY(cmdline string, cols, rows int16) (*conpty, error) {
 	}
 	si := windows.StartupInfoEx{ProcThreadAttributeList: attrs.List()}
 	si.StartupInfo.Cb = uint32(unsafe.Sizeof(si))
+	// With the flag and NULL handles the child gets the pseudoconsole's handles on its standard streams;
+	// without it the child saw redirected standard handles when this process had none of its own.
+	si.StartupInfo.Flags = windows.STARTF_USESTDHANDLES
 	cl, err := windows.UTF16PtrFromString(cmdline)
 	if err != nil {
 		return nil, err
@@ -165,9 +168,9 @@ func main() {
 	defer c.close()
 	go func() {
 		time.Sleep(*hello)
-		c.write("hello")
+		c.write("hello\r")
 		time.Sleep(*intr)
-		c.write("")
+		c.write("\x03")
 	}()
 	code, err := c.exitCode(*timeout)
 	time.Sleep(500 * time.Millisecond)
