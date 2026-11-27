@@ -13,6 +13,7 @@
 package main
 
 import (
+	"strconv"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -36,6 +37,8 @@ var (
 	image    = flag.String("image", "", "erofs image of the same rootfs (enables the erofs test)")
 	only     = flag.String("only", "", "comma-separated test names (default all)")
 	timeout  = flag.Duration("timeout", 120*time.Second, "per test")
+	stressWorkers = flag.Int("stress-workers", 6, "fsstress: parallel mount namespaces")
+	stressIters   = flag.Int("stress-iters", 300, "fsstress: iterations per worker")
 	fsMode   = flag.String("fsmode", "", "WINSTUB_FSMODE for runsc (native or rewrite)")
 	fpMode   = flag.String("fpmode", "", "WINSTUB_FPMODE for runsc (fxsave)")
 )
@@ -79,6 +82,7 @@ func main() {
 		{"case", testCase},
 		{"lifecycle", testLifecycle},
 		{"sockfs", testSockfs},
+		{"fsstress", testFsStress},
 		{"bench", testBench},
 		{"forward", testForward},
 		{"mounts", func() error { return profileRun("mounts", "cat /proc/self/mountinfo; pwd; ls -la /tmp") }},
@@ -97,7 +101,7 @@ func main() {
 	}
 	failed := 0
 	for _, t := range tests {
-		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "strace" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec" || t.name == "sockfs")) {
+		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "strace" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec" || t.name == "sockfs" || t.name == "fsstress")) {
 			continue
 		}
 		start := time.Now()
@@ -594,6 +598,32 @@ func testSockfs() error {
 				return fmt.Errorf("sockfs on %s: %q missing; stdout %q", where, want, r.stdout)
 			}
 		}
+	}
+	return nil
+}
+
+// testFsStress runs test/guests/fsstress: parallel mount namespaces creating container-like
+// directories on a tmpfs and on a host-folder bind mount (docs/results/5-podman-windows.md, fifth round).
+func testFsStress() error {
+	dir := filepath.Join(*workDir, "fsstress")
+	_ = os.RemoveAll(dir)
+	must(os.MkdirAll(dir, 0o755))
+	extraMounts = []map[string]any{{"destination": "/w", "type": "bind", "source": dir, "options": []string{"rbind", "rw"}}}
+	defer func() { extraMounts = nil }()
+	bad := 0
+	for _, where := range []string{"/tmp/fs", "/w/fs"} {
+		r, err := runsc("fsstress", []string{"/bin/fsstress", where, strconv.Itoa(*stressWorkers), strconv.Itoa(*stressIters)}, nil)
+		if err != nil {
+			return err
+		}
+		fmt.Println("fsstress on", where, "exit", r.code, "stderr", r.stderr)
+		fmt.Print(r.stdout)
+		if r.code != 0 {
+			bad++
+		}
+	}
+	if bad > 0 {
+		return fmt.Errorf("fsstress: %d of 2 runs failed", bad)
 	}
 	return nil
 }
