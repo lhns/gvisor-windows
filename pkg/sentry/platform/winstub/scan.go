@@ -830,6 +830,44 @@ func ScanFS(code []byte) FSReport {
 	return rep
 }
 
+// FSWindow is a window of several instructions that a patch replaces by one jump
+// (the instructions after the first are only reachable through the veneer).
+type FSWindow struct {
+	Lo, Hi int   // the bytes the window covers
+	Insn   []int // offsets of the instructions in it, the first is Lo
+}
+
+// FSWindows returns the windows the patcher would plan for the %fs instructions of
+// code that are shorter than minLen (the others are patched in place), and the
+// offsets of all decoded instructions.
+func FSWindows(code []byte, minLen int) (wins []FSWindow, starts []int) {
+	scan := scanText(code, 0, true)
+	for i := range scan.sites {
+		site := &scan.sites[i]
+		if !site.fs {
+			continue
+		}
+		x := site.win[site.s]
+		if x.cls == clsFSBad || x.n >= minLen {
+			continue
+		}
+		win, tgt := site.win[:site.n], site.tgt[:site.n]
+		a, b, ok := planFSWindow(win, tgt, site.s, minLen, func(int, int) bool { return true })
+		if !ok {
+			continue
+		}
+		w := FSWindow{Lo: win[a].off, Hi: win[b].off + win[b].n}
+		for k := a; k <= b; k++ {
+			w.Insn = append(w.Insn, win[k].off)
+		}
+		wins = append(wins, w)
+	}
+	for _, x := range decodeAll(code) {
+		starts = append(starts, x.off)
+	}
+	return
+}
+
 // splitFSAt reports whether the last bytes of code are the start of a
 // %fs-prefixed instruction that continues in the next piece of text, and where it
 // starts (-1 if not). The decoder cannot see such an instruction in either piece.

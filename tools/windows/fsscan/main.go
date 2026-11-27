@@ -20,10 +20,17 @@
 // 7-byte jump (code above 2 GiB, e.g. shared libraries).
 //
 //	fsscan file...
+//	fsscan -targets file...
+//
+// With -targets it looks for jump tables in the data of each file (runs of 8-byte,
+// absolute 4-byte or table-relative 4-byte entries that point at instruction starts)
+// and counts the %fs windows whose inside is the target of one: a jump there lands in
+// the middle of a patch window, which the scan of the text cannot see.
 package main
 
 import (
 	"debug/elf"
+	"encoding/binary"
 	"fmt"
 	"os"
 
@@ -31,6 +38,14 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "-targets" {
+		for _, f := range os.Args[2:] {
+			if err := targets(f); err != nil {
+				fmt.Fprintf(os.Stderr, "%s: %v\n", f, err)
+			}
+		}
+		return
+	}
 	var tot winstub.FSReport
 	var textBytes int
 	fmt.Printf("%-44s %9s %7s | %6s %7s %6s | %6s %7s %6s | %6s %5s\n", "file", "text", "%fs", "near-D", "near-W", "near-N", "far-D", "far-W", "far-N", "unsupp", "rip")
@@ -93,4 +108,114 @@ func scanFile(path string) (winstub.FSReport, int, error) {
 		n += len(b)
 	}
 	return rep, n, nil
+}
+
+// targets reports, for one ELF file, the %fs windows (near: 5-byte jump, far:
+// 7-byte jump) whose interior instruction starts are jump table targets.
+func targets(path string) error {
+	f, err := elf.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	type seg struct {
+		v uint64
+		b []byte
+	}
+	var text, data []seg
+	for _, p := range f.Progs {
+		if p.Type != elf.PT_LOAD {
+			continue
+		}
+		b := make([]byte, p.Filesz)
+		if _, err := p.ReadAt(b, 0); err != nil {
+			return err
+		}
+		if p.Flags&elf.PF_X != 0 {
+			text = append(text, seg{p.Vaddr, b})
+		} else {
+			data = append(data, seg{p.Vaddr, b})
+		}
+	}
+	isStart := map[uint64]bool{}
+	var lo, hi uint64 = ^uint64(0), 0
+	type win struct {
+		w    winstub.FSWindow
+		base uint64
+	}
+	var wins [2][]win
+	for _, t := range text {
+		lo, hi = min(lo, t.v), max(hi, t.v+uint64(len(t.b)))
+		for j, minLen := range []int{5, 7} {
+			ws, starts := winstub.FSWindows(t.b, minLen)
+			if j == 0 {
+				for _, o := range starts {
+					isStart[t.v+uint64(o)] = true
+				}
+			}
+			for _, w := range ws {
+				wins[j] = append(wins[j], win{w, t.v})
+			}
+		}
+	}
+	tgt := map[uint64]bool{}
+	in := func(a uint64) bool { return a >= lo && a < hi && isStart[a] }
+	for _, d := range data {
+		b := d.b
+		for q := 0; q+8 <= len(b); q += 8 {
+			if v := binary.LittleEndian.Uint64(b[q:]); in(v) {
+				tgt[v] = true
+			}
+		}
+		for q := 0; q+12 <= len(b); q += 4 {
+			// absolute 32-bit entries
+			if in(uint64(binary.LittleEndian.Uint32(b[q:]))) && in(uint64(binary.LittleEndian.Uint32(b[q+4:]))) && in(uint64(binary.LittleEndian.Uint32(b[q+8:]))) {
+				for k := q; k+4 <= len(b); k += 4 {
+					v := uint64(binary.LittleEndian.Uint32(b[k:]))
+					if !in(v) {
+						break
+					}
+					tgt[v] = true
+				}
+			}
+			// entries relative to the start of the table
+			base := d.v + uint64(q)
+			ok := true
+			for k := 0; k < 3 && ok; k++ {
+				ok = in(base + uint64(int64(int32(binary.LittleEndian.Uint32(b[q+4*k:])))))
+			}
+			if ok {
+				for k := q; k+4 <= len(b); k += 4 {
+					v := base + uint64(int64(int32(binary.LittleEndian.Uint32(b[k:]))))
+					if !in(v) {
+						break
+					}
+					tgt[v] = true
+				}
+			}
+		}
+	}
+	for j, name := range []string{"near (5-byte jump)", "far (7-byte jump)"} {
+		hits, inside := 0, 0
+		for _, w := range wins[j] {
+			hit := false
+			for _, o := range w.w.Insn[1:] {
+				a := w.base + uint64(o)
+				if tgt[a] {
+					hit = true
+					if hits < 8 {
+						fmt.Printf("  %s: window %#x-%#x entered at %#x\n", name, w.base+uint64(w.w.Lo), w.base+uint64(w.w.Hi), a)
+					}
+				}
+			}
+			if hit {
+				hits++
+			}
+			if len(w.w.Insn) > 1 {
+				inside++
+			}
+		}
+		fmt.Printf("%s: %s: %d windows, %d with a jump table target in the middle (%d jump table targets in all)\n", path, name, len(wins[j]), hits, len(tgt))
+	}
+	return nil
 }

@@ -31,5 +31,11 @@ jobs:
             echo "=== python3"; ./fsscan $(pick "$(readlink -f /usr/bin/python3)" /usr/lib/x86_64-linux-gnu/libpython3.*.so.1.0)
             echo "=== podman stack"; ./fsscan $(pick "$(command -v podman)" "$(command -v conmon)" "$(command -v crun)" /usr/lib/podman/netavark /usr/libexec/podman/netavark "$(command -v netavark)" /usr/lib/podman/aardvark-dns /usr/libexec/podman/aardvark-dns)
           } 2>&1 | tee fsscan.txt
+      - name: Jump table targets inside windows
+        run: |
+          pick() { for f in "$@"; do [ -e "$f" ] && echo "$f"; done; }
+          ./fsscan -targets $(pick /lib/x86_64-linux-gnu/libc.so.6 /lib64/ld-linux-x86-64.so.2 /lib/x86_64-linux-gnu/libm.so.6 /usr/bin/busybox /bin/bash /usr/lib/x86_64-linux-gnu/libsqlite3.so.0 "$(readlink -f /usr/bin/python3)") 2>&1 | tee targets.txt
+          gcc -static -no-pie -O1 -o /tmp/aptrename test/guests/aptrename.c && ./fsscan -targets /tmp/aptrename 2>&1 | tee -a targets.txt
       - uses: actions/upload-artifact@v4
-        with: {name: fsscan, path: fsscan.txt}
+        with: {name: fsscan, path: "fsscan.txt
+targets.txt"}
