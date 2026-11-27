@@ -407,7 +407,7 @@ loop:
 // fsVexLen returns the length of the %fs-prefixed VEX instruction at the start
 // of b, or 0 if there is none (or it cannot be rewritten).
 func fsVexLen(b []byte) int {
-	if len(b) < 8 || b[0] != 0x64 || (b[1] != 0xC4 && b[1] != 0xC5) {
+	if len(b) < 5 || b[0] != 0x64 || (b[1] != 0xC4 && b[1] != 0xC5) {
 		return 0
 	}
 	r, ok := parseFS(b)
