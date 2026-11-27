@@ -468,6 +468,8 @@
   - workloads-volume-lost-on-restart
   - platform-rewrite-glibc-init-crash
   - fs-host-folder-mtime-resolution
+  - fs-layer-store-corrupt-after-restart
+  - platform-unrewritten-fs-in-library
   replaced_by: []
   lane: windows-ci
   start: ''
@@ -1234,6 +1236,7 @@
   - Runtime -p via the forwarder expose API works as a standard user (2026-11-26, commit 61c8b8f92)
   - Steps 1, 2 and 7 pass; nginx published with -p answers on 127.0.0.1 (2026-11-27, commit 159f62dc1)
   - Eight of ten acceptance steps pass; tty and build remain (2026-11-27, commit 0f4d0b353)
+  - 'Native: 7 of 8 runs pass every step but the build; no hangs or GC crashes in 16 runs (2026-11-27, commit 74e8f4a70)'
   overview: false
   plain: The test harness runs the Podman engine on runsc and exposes its API to the stock Windows clients.
   notes: Engine runs on runsc.exe with the erofs podman image; step 1 passes. Gap list in docs/results/5-podman-windows.md.
@@ -2329,7 +2332,7 @@
   state: next
   lane: windows-ci
   plain: '"libc.so.6: file too short" in podman build was an unpatched read syscall at a MapFile seam in Debian ld.so; a gofer change fills whole executable VMAs, which fixes bind mounts; from the root
-    folder it still needs the platform seam fix. apt renames on the storage folder still fail intermittently.'
+    folder it still needs the platform seam fix. apt renames on the storage folder still fail intermittently. Latest: dpkg cannot stat the archive apt just moved under /tmp/apt-dpkg-install-*.'
   notes: 'Fixed when: a guest that copy_file_range-s into a host-folder file can read it from another process, and podman build of a debian RUN step passes.'
 - outcome: unrated
   evidence:
@@ -2508,3 +2511,41 @@
   lane: windows-ci
   plain: 'On host folders 45-60% of consecutive writes report the same mtime as the previous one (tmpfs: none), which can hide changes from tools that compare mtimes.'
   notes: 'Fixed: the Sentry records the time of each guest write and reports max(host, last write); 0 repeated mtimes over 20000 writes.'
+- outcome: unrated
+  evidence: &id010
+  - docs/results/5-podman-windows.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: &id011 []
+  replaced_by: &id012 []
+  start: '2026-11-27'
+  end: ''
+  folded: &id013 []
+  overview: false
+  id: fs-layer-store-corrupt-after-restart
+  title: Layer store unreadable after restart
+  track: fs
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: After an engine restart c/storage reports the primary layer store as corrupted (layers.json written by rename on the storage folder), so all images are gone in 1 of 8 native and 2 of 8 rewrite
+    runs.
+  notes: 'Fixed when: step 9 passes 8 of 8 in both modes.'
+- outcome: unrated
+  evidence: *id010
+  verdict_quote: ''
+  headline: ''
+  depends_on: *id011
+  replaced_by: *id012
+  start: '2026-11-27'
+  end: ''
+  folded: *id013
+  overview: false
+  id: platform-unrewritten-fs-in-library
+  title: Unrewritten %fs site in a library
+  track: platform
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: In rewrite mode the engine once died at start with SIGSEGV addr=0x28 during a cgo call, which looks like a %fs:0x28 stack-canary access with a zero base in a shared library.
+  notes: 'Fixed when: the tripwire (or a %fs equivalent) reports such misses and rewrite mode starts the engine 8 of 8 times.'

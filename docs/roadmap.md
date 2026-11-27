@@ -191,13 +191,15 @@ flowchart TB
 | Reuse stub processes across exec | ○ next | Each fork+exec starts two stub processes at about 10 ms each; recycling a stub on release and execve and mapping memory up front would cut process start further. |
 | AVX-512 state lost across stops | ⚠ open | Podman's Go GC crashed at 0xfffffffffffffff8; a likely cause was found: a straddling instruction at a text-piece start swallowed Go's mov %fs:-8 load, now fixed. AVX-512 stays hidden until repeated acceptance runs are clean. |
 | More room for %fs veneers | ⚠ open | python3 with libpython and libc needs about 8500 %fs veneers against room for about 7000, and 24% of far %fs sites in Rust PIE binaries such as netavark fall back to the 100 us debugger path. |
+| Unrewritten %fs site in a library | ⚠ open | In rewrite mode the engine once died at start with SIGSEGV addr=0x28 during a cgo call, which looks like a %fs:0x28 stack-canary access with a zero base in a shared library. |
 | Event waiting on IOCP | ⏸ parked | Waiting for many host events at once (epoll on Linux) moves to Windows completion ports. |
 | Timers and clocks on Windows | ⛔ blocked | The Sentry's clocks and timers run on Windows' high-resolution timers. |
 | Profile the slow file and exec path | ✔ done · mixed | Creating a file on tmpfs costs about 1 ms and a fork+exec 32 ms on Windows; find where the time goes (syscall round trips, page faults, debug events, Sentry work) and fix the top causes. |
 | Compatibility layer, not security boundary | ✔ done · n/a | The sandbox may open the user's files directly with the user's rights; it isolates containers from each other, not from the user. |
 | Open Windows files directly | ✔ done · successful | The Sentry opens NTFS files itself for bind mounts, with its own caches, instead of going through a file protocol. |
 | Storage that survives restarts | ⛔ blocked | Implement the chosen writable filesystem so data inside the sandbox outlives a restart. |
-| Copied library reads as too short | ⚠ open | "libc.so.6: file too short" in podman build was an unpatched read syscall at a MapFile seam in Debian ld.so; a gofer change fills whole executable VMAs, which fixes bind mounts; from the root folder it still needs the platform seam fix. apt renames on the storage folder still fail intermittently. |
+| Copied library reads as too short | ⚠ open | "libc.so.6: file too short" in podman build was an unpatched read syscall at a MapFile seam in Debian ld.so; a gofer change fills whole executable VMAs, which fixes bind mounts; from the root folder it still needs the platform seam fix. apt renames on the storage folder still fail intermittently. Latest: dpkg cannot stat the archive apt just moved under /tmp/apt-dpkg-install-*. |
+| Layer store unreadable after restart | ⚠ open | After an engine restart c/storage reports the primary layer store as corrupted (layers.json written by rename on the storage folder), so all images are gone in 1 of 8 native and 2 of 8 rewrite runs. |
 | Netstack to Windows sockets | ✔ done · successful | gVisor's own TCP/IP stack sends guest traffic out through ordinary Windows sockets, like a user-space NAT. |
 | Bridge networking inside gVisor | ✔ done · successful | Podman's default network creates a bridge and veth pairs over netlink; gVisor lacks part of that, so it fails today. Fix it in gVisor itself, first on Linux, then it carries over to Windows. |
 | Podman on gVisor on Linux | ✔ done · mixed ⚠ | Run the acceptance test on stock gVisor on Linux; whatever fails there is a gap in gVisor itself, not in the port. |
@@ -227,6 +229,8 @@ flowchart TB
 - `fs-copied-file-too-short`: Copied library reads as too short
 - `workloads-isolation-flake`: Isolation step failed once
 - `platform-fs-veneer-capacity`: More room for %fs veneers
+- `fs-layer-store-corrupt-after-restart`: Layer store unreadable after restart
+- `platform-unrewritten-fs-in-library`: Unrewritten %fs site in a library
 <!-- END GENERATED: ready-now -->
 
 ## Running
@@ -408,9 +412,9 @@ Generated on 2026-11-27.
 Each track has its own page with its tree, node table and per-node details.
 
 - [runsc - runsc](roadmap/tracks/runsc.md): 6 nodes (6 done)
-- [platform - platform](roadmap/tracks/platform.md): 39 nodes (30 done, 4 next, 1 blocked, 3 parked, 1 abandoned)
+- [platform - platform](roadmap/tracks/platform.md): 40 nodes (30 done, 5 next, 1 blocked, 3 parked, 1 abandoned)
 - [sentry - sentry](roadmap/tracks/sentry.md): 14 nodes (12 done, 1 blocked, 1 parked)
-- [fs - files](roadmap/tracks/fs.md): 19 nodes (17 done, 1 next, 1 blocked)
+- [fs - files](roadmap/tracks/fs.md): 20 nodes (17 done, 2 next, 1 blocked)
 - [net - network](roadmap/tracks/net.md): 4 nodes (4 done)
 - [workloads - workloads](roadmap/tracks/workloads.md): 19 nodes (16 done, 1 in progress, 1 next, 1 blocked)
 - [research - research](roadmap/tracks/research.md): 8 nodes (2 done, 6 abandoned)
