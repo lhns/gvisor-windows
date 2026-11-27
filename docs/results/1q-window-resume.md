@@ -16,7 +16,7 @@ A Podman engine (rewrite mode) died with a fault at the nop filler of a patched 
 
 ## Results
 
-- windows-platform, full suite, native, rewrite and rewrite-fxsave: green (run 46037345150). `TestFSInterrupt` 0.27 / 0.38 s.
+- windows-platform, full suite, native, rewrite and rewrite-fxsave: green (run 46039571910 on 0baf27c31). `TestFSInterrupt` 0.28 / 0.38 / 0.47 s.
 - fs-flakes, all legs: green (run 46036042807). rewrite-ud2 fsstress at 150 iterations: 2m10 to 2m19 per repetition, 3 of 3.
 - podman-windows `modes=rewrite,rewrite-fxsave runs=8` on 6ba947a86: all 10 steps 16 of 16 (run 46037364923; before the interrupt change, run 46026228865 also 16 of 16).
 
