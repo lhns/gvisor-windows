@@ -82,6 +82,7 @@ func TestRenameReplaceProbe(t *testing.T) {
 			if err := fs.Pin(dst.ID); err != nil {
 				t.Logf("pin: %v", err)
 			}
+			fs.pinByName(dst.ID) // what Rename does before replacing a pinned file
 			defer fs.Unpin(dst.ID)
 		}
 		np, _ := handlePath(sh)
@@ -106,4 +107,32 @@ func TestRenameReplaceProbe(t *testing.T) {
 		}
 	}
 	t.Logf("%d of %d variants replaced the target", works, len(variants))
+}
+
+// TestRenameDirectoryOverPinnedFiles: a pinned file (a guest descriptor is open) must not stop the
+// directory above it from being renamed, nor the file from being replaced by rename.
+func TestRenameDirectoryOverPinnedFiles(t *testing.T) {
+	fs, _ := newFS(t, Options{})
+	root := fs.Root()
+	d := mustCreate(t, fs, root, "layer", Spec{Mode: SIFDIR | 0o755})
+	f := mustCreate(t, fs, d.ID, "layers.json", Spec{Mode: 0o644})
+	if err := fs.Pin(f.ID); err != nil {
+		t.Fatal(err)
+	}
+	defer fs.Unpin(f.ID)
+	if err := fs.Rename(root, "layer", root, "layer.old", 0); err != nil {
+		t.Fatalf("rename of a directory holding a pinned file: %v", err)
+	}
+	d2, err := fs.Lookup(root, "layer.old")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmp := mustCreate(t, fs, d2.ID, ".tmp-layers.json", Spec{Mode: 0o644})
+	fs.WriteAt(tmp.ID, []byte("new"), 0)
+	if err := fs.Rename(d2.ID, ".tmp-layers.json", d2.ID, "layers.json", 0); err != nil {
+		t.Fatalf("replace of a pinned file: %v", err)
+	}
+	if a, err := fs.Lookup(d2.ID, "layers.json"); err != nil || a.ID != tmp.ID {
+		t.Errorf("layers.json is %+v %v, want the new file", a, err)
+	}
 }

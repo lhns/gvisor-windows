@@ -55,8 +55,9 @@ type FS struct {
 }
 
 type pin struct {
-	h    windows.Handle
-	refs int
+	h      windows.Handle
+	refs   int
+	byName bool
 }
 
 // Attr is what stat reports.
@@ -182,25 +183,39 @@ func (fs *FS) Pin(id ID) error {
 	if err != nil {
 		return err
 	}
-	// A handle opened by file ID makes Windows refuse to replace the file by
-	// rename (access denied, whatever the access and sharing, even with only
-	// FILE_READ_ATTRIBUTES: TestRenameReplaceProbe), and every c/storage
-	// rewrite of layers.json, which the guest had open, then fell back to
-	// delete + rename. A handle opened by name does not have that effect, so
-	// reopen the file by its path (and keep the ID handle if the name has
-	// moved on in the meantime).
-	if p, perr := handlePath(h); perr == nil {
-		if nh, nerr := ntOpen(0, p, fileReadData|fileWriteData|fileReadAttributes|fileWriteAttributes|fileReadEA|fileWriteEA|deleteAccess, shareAll, windows.FILE_OPEN, windows.FILE_NON_DIRECTORY_FILE|windows.FILE_OPEN_REPARSE_POINT, 0); nerr == nil {
-			if a, aerr := fs.attrOf(nh); aerr == nil && a.ID == id {
-				windows.CloseHandle(h)
-				h = nh
-			} else {
-				windows.CloseHandle(nh)
-			}
-		}
-	}
 	fs.pins[id] = &pin{h: h, refs: 1}
 	return nil
+}
+
+// pinByName makes the pin of id hold a handle opened by name instead of by
+// file ID. A handle opened by ID makes Windows refuse to replace the file by
+// rename (access denied whatever the access and sharing: TestRenameReplaceProbe),
+// so every c/storage rewrite of layers.json, which the guest had open, fell
+// back to delete + rename (a window in which the file is missing; a stop in
+// it left the store without layers). A handle opened by name allows the
+// replace but blocks renaming the directories above the file, so the pin is
+// switched only when the file is about to be replaced.
+func (fs *FS) pinByName(id ID) {
+	fs.pinMu.Lock()
+	defer fs.pinMu.Unlock()
+	p, ok := fs.pins[id]
+	if !ok || p.byName {
+		return
+	}
+	path, err := handlePath(p.h)
+	if err != nil {
+		return
+	}
+	nh, err := ntOpen(0, path, fileReadData|fileWriteData|fileReadAttributes|fileWriteAttributes|fileReadEA|fileWriteEA|deleteAccess, shareAll, windows.FILE_OPEN, windows.FILE_NON_DIRECTORY_FILE|windows.FILE_OPEN_REPARSE_POINT, 0)
+	if err != nil {
+		return
+	}
+	if a, aerr := fs.attrOf(nh); aerr != nil || a.ID != id {
+		windows.CloseHandle(nh)
+		return
+	}
+	windows.CloseHandle(p.h)
+	p.h, p.byName = nh, true
 }
 
 // Unpin releases a Pin.
@@ -734,6 +749,9 @@ func (fs *FS) Rename(oldDir ID, oldName string, newDir ID, newName string, flags
 		}
 		dstDir := ta.Mode&SIFMT == SIFDIR
 		targetFile = !dstDir
+		if targetFile && flags&RenameNoReplace == 0 {
+			fs.pinByName(ta.ID)
+		}
 		switch {
 		case srcDir && !dstDir:
 			return unix.ENOTDIR
