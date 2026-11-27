@@ -223,6 +223,22 @@ func (as *addressSpace) fsFix(t *thread, rip uint64) (newRip uint64, ok bool) {
 	}
 	n := as.nFSFix.Add(1)
 	newRip, r1, restore := info.unwind(rip)
+	// The Sentry hands newRip back, inside the window the jump replaced: it must lead
+	// into the veneer again (patchText registered it, unless the entry was purged since).
+	if newRip > info.w0 && newRip < info.w0+uint64(info.v.winLen) {
+		as.mu.Lock()
+		_, had := as.restartAt[newRip]
+		for _, bd := range info.v.bnd {
+			if bd.o == uint32(newRip-info.w0) {
+				as.restartAt[newRip] = info.lo + uint64(bd.v)
+				break
+			}
+		}
+		as.mu.Unlock()
+		if fsLog && !had {
+			log.Printf("winstub: FSFIX: no restart entry for %#x (registered now)", newRip)
+		}
+	}
 	if fsLog && n <= 200 {
 		log.Printf("winstub: FSFIX thread %d: stopped at %#x in the veneer of %#x, back to %#x (restore r%d: %v)", t.idx, rip, info.w0, newRip, r1, restore)
 	}
