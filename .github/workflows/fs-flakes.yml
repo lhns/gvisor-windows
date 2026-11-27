@@ -80,9 +80,9 @@ jobs:
           $fail = 0
           for ($i = 1; $i -le 2; $i++) {
             & tools/windows/ci/run-as-standard-user.ps1 `
-              -Program C:\ciinunsctest.exe `
-              -Arguments @('-fsmode', $env:WINSTUB_FSMODE, '-runsc','C:\ciinunsc.exe','-rootfs','C:\ci\workootfs','-work',"C:\ci\work\std-load$i",'-only','aptrename','-stress-iters','200','-timeout','900s') `
-              -GrantPath C:\ciin -WritablePath C:\ci\work -TimeoutSeconds 1200
+              -Program C:\ci\bin\runsctest.exe `
+              -Arguments @('-fsmode', $env:WINSTUB_FSMODE, '-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work',"C:\ci\work\std-load$i",'-only','aptrename','-stress-iters','200','-timeout','900s') `
+              -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 1200
             if ($LASTEXITCODE -ne 0) { $fail++ }
           }
           $spin | Stop-Process -Force
