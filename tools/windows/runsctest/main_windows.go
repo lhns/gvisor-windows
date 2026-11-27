@@ -93,6 +93,7 @@ func main() {
 		{"fsstress", testFsStress},
 		{"aptrename", testAptRename},
 		{"mountkeep", testMountKeep},
+		{"devnull", testDevNull},
 		{"cfr", testCfr},
 		{"debian", testDebian},
 		{"gogc", testGoGC},
@@ -114,7 +115,7 @@ func main() {
 	}
 	failed := 0
 	for _, t := range tests {
-		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "strace" || t.name == "restart" || t.name == "aptrename" || t.name == "mountkeep" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec" || t.name == "sockfs" || t.name == "fsstress" || t.name == "cfr" || t.name == "debian" || t.name == "gogc")) {
+		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "strace" || t.name == "restart" || t.name == "aptrename" || t.name == "mountkeep" || t.name == "devnull" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec" || t.name == "sockfs" || t.name == "fsstress" || t.name == "cfr" || t.name == "debian" || t.name == "gogc")) {
 			continue
 		}
 		start := time.Now()
@@ -669,6 +670,27 @@ func testAptRename() error {
 	fmt.Print(r.stdout)
 	if r.code != 0 {
 		return fmt.Errorf("aptrename exit %d, stderr %q", r.code, r.stderr)
+	}
+	return nil
+}
+
+// testDevNull runs test/guests/devnull: an unprivileged uid (after setgroups/setgid/setuid and exec) opens a mknod'd
+// /dev/null on a tmpfs mounted in a host folder, and apt's download-rename-symlink-stat pattern, in a loop
+// (docs/results/2r-step5-overlay.md).
+func testDevNull() error {
+	dir := filepath.Join(*workDir, "devnull")
+	_ = os.RemoveAll(dir)
+	must(os.MkdirAll(dir, 0o755))
+	extraMounts = []map[string]any{{"destination": "/w", "type": "bind", "source": dir, "options": []string{"rbind", "rw"}}}
+	extraCaps = []string{"CAP_SYS_ADMIN", "CAP_MKNOD", "CAP_DAC_OVERRIDE", "CAP_CHOWN", "CAP_FOWNER", "CAP_SETUID", "CAP_SETGID"}
+	defer func() { extraMounts, extraCaps = nil, nil }()
+	r, err := runsc("devnull", []string{"/bin/devnull", "/w/dn", strconv.Itoa(*stressIters)}, nil)
+	if err != nil {
+		return err
+	}
+	fmt.Print(r.stdout)
+	if r.code != 0 {
+		return fmt.Errorf("devnull exit %d, stderr %q", r.code, r.stderr)
 	}
 	return nil
 }
