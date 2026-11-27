@@ -47,3 +47,9 @@ Fix: when a piece is mapped in rewrite mode and its last bytes (up to 14) hold t
 ## Tools added
 
 `windows-stability` (fork+exec N times, three modes, dumps of failures), `windows-glibc-diag` (static glibc guest, disassembly, debug run), `tools/windows/disasm`, the 20 s state dump of the Podman engine (`ci-run.ps1`), the state dump's list of the hottest `%fs` ud2 sites with the reason.
+
+## 6. Follow-ups after the coordinator's second round
+
+- Hangs "not converging" (Podman 3 of 8, dump with `ContinueDebugEvent ok=false`, `replaced threads 3`): that is exactly the signature of section 1 (a loop that continued the wrong event); the run named (45952884948) belongs to a branch without the heap-buffer fix. This branch had no hang in 300+300+300 fork+exec runs and none in 8 Podman engine runs (4 native, 4 rewrite). To make a failed continue loud anyway, the loop now ends the stub (terminates the process, marks it dead, the tasks fail) after three failed `ContinueDebugEvent` in a row. The 3-second "replace a thread that has not run" rule is unchanged: with the cause fixed it fired in none of the runs here; switching it off was not tested.
+- Native-mode GC crash (`ScanSpanPackedAVX512`, fault address 0xfffffffffffffff8): seen here in 2 of 4 native Podman runs (the `%fs:-8` load with a zero base). Mitigation, not the `rdfsbase` redesign: the repair path gave up after 20 repairs of one instruction within 5 ms; now 2000 within 20 ms. Not verified (no reproduction without Podman was built; the `rdfsbase`-compare trampoline needs flag-preserving code in the stub and was not started).
+- Unpatched syscall across adjacent ranges (the `debian` case, repatching from the seam instead of the 48-byte zone, `ProcessInstrumentationCallback`): not started.

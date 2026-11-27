@@ -403,6 +403,7 @@ func (as *addressSpace) debugLoop() {
 	as.started <- nil
 	ev, ctx := newDebugEvent(), newCtxBuf()
 	seenBP := false
+	fails := 0 // consecutive ContinueDebugEvent failures
 	for {
 		// A bounded wait: a Release that terminated the process must not depend on
 		// the exit event ever arriving (a dump of a hung fork+exec loop showed an
@@ -454,6 +455,17 @@ func (as *addressSpace) debugLoop() {
 		}
 		cr, _, ce := pContinueDebug.Call(uintptr(ev.pid()), uintptr(ev.tid()), uintptr(status))
 		as.lastEvent.Store(fmt.Sprintf("continued event %d tid %d code %#x (status %#x, ContinueDebugEvent ok=%v err=%v)", ev.code(), ev.tid(), ev.u32(16), status, cr != 0, ce))
+		if cr != 0 {
+			fails = 0
+		} else if fails++; !exited && fails >= 3 {
+			// A debug event that cannot be continued leaves the process frozen
+			// for good: end this address space (the tasks using it fail) rather
+			// than hang.
+			debugf("ContinueDebugEvent for event %d tid %d failed: %v; ending the stub", ev.code(), ev.tid(), ce)
+			pTerminateProcess.Call(as.h, 1)
+			as.markDead()
+			return
+		}
 		if exited {
 			as.markDead()
 			return
@@ -602,14 +614,20 @@ func (as *addressSpace) readStub(a uint64, n int) ([]byte, bool) {
 // its repair routine, which reloads the base and returns to the instruction.
 func (as *addressSpace) repairFS(t *thread, ctx *ctxBuf, rip uint64) bool {
 	now := time.Now()
-	if rip == t.lastRepairRIP && now.Sub(t.lastRepair) < 5*time.Millisecond {
+	// The base is lost whenever Windows deschedules the thread, and every debug
+	// event of the process stops all its threads, so under a storm of events (a
+	// Go collector with workers on all CPUs) one instruction can be repaired many
+	// times in a row. Only a long run of repairs of the same instruction in quick
+	// succession means a genuine fault at a low address (it costs a fraction of a
+	// second to report one).
+	if rip == t.lastRepairRIP && now.Sub(t.lastRepair) < 20*time.Millisecond {
 		t.repairN++
 	} else {
 		t.repairN = 0
 	}
 	t.lastRepairRIP, t.lastRepair = rip, now
-	if t.repairN >= 20 {
-		return false // a genuine fault at a low address
+	if t.repairN >= 2000 {
+		return false
 	}
 	*t.u64(stubasm.PgRetRIP) = rip
 	*ctx.u64(ctxRipOff) = t.addr + stubasm.PgRepair
