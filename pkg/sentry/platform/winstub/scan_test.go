@@ -17,6 +17,7 @@
 package winstub
 
 import (
+	"bytes"
 	"testing"
 
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/x86asm"
@@ -56,14 +57,15 @@ func TestFSVeneerEncoding(t *testing.T) {
 		{0xf0, 0x64, 0x48, 0x0f, 0xb1, 0x0c, 0x25, 0x40, 0, 0, 0},    // lock cmpxchg %rcx,%fs:0x40
 		{0x64, 0x0f, 0x10, 0x04, 0x25, 0x40, 0, 0, 0},                // movups %fs:0x40,%xmm0
 		{0x64, 0x0f, 0xb6, 0x04, 0x25, 0x28, 0, 0, 0},                // movzbl %fs:0x28,%eax
-		{0x64, 0xc4, 0xe2, 0xfb, 0xf7, 0x04, 0x25, 0x98, 0x06, 0, 0}, // mulx/shlx-style BMI2 op on %fs:0x698 (glibc)
-		{0x64, 0xc5, 0xf8, 0x10, 0x04, 0x25, 0x40, 0, 0, 0},          // vmovups %fs:0x40,%xmm0
-		{0x64, 0xc4, 0xe2, 0xf9, 0xf7, 0x41, 0xf8},                   // BMI2 op on %fs:-8(%rcx)
 	}
 	for _, orig := range cases {
 		in, _ := decodeAt(t, orig)
-		var x ins
-		classify(in, orig, &x)
+		l := decodeRange(orig, 0, len(orig), nil)
+		if len(l) != 1 {
+			t.Errorf("% x: %d instructions", orig, len(l))
+			continue
+		}
+		x := l[0]
 		if x.cls != clsFS {
 			t.Errorf("% x (%v): class %d, want clsFS", orig, in.Op, x.cls)
 			continue
@@ -172,5 +174,35 @@ func TestScanFS(t *testing.T) {
 	}
 	if rep.Rip != 1 {
 		t.Errorf("windows with a rip-relative load: %d, want 1", rep.Rip)
+	}
+}
+
+// TestFSVeneerVEX checks the veneers of VEX-encoded %fs instructions byte for
+// byte (the decoder does not know them all).
+func TestFSVeneerVEX(t *testing.T) {
+	cases := []struct{ orig, want []byte }{
+		{ // BMI2 op on %fs:0x698 (glibc)
+			[]byte{0x64, 0xc4, 0xe2, 0xfb, 0xf7, 0x04, 0x25, 0x98, 0x06, 0, 0},
+			[]byte{0xc4, 0xe2, 0xfb, 0xf7, 0x84, 0x23, 0x98, 0x06, 0, 0},
+		},
+		{ // vmovups %fs:0x40,%xmm0
+			[]byte{0x64, 0xc5, 0xf8, 0x10, 0x04, 0x25, 0x40, 0, 0, 0},
+			[]byte{0xc5, 0xf8, 0x10, 0x84, 0x23, 0x40, 0, 0, 0},
+		},
+		{ // BMI2 op on %fs:-8(%rcx)
+			[]byte{0x64, 0xc4, 0xe2, 0xf9, 0xf7, 0x41, 0xf8},
+			[]byte{0x48, 0x8d, 0x5c, 0x0b, 0x00, 0xc4, 0xe2, 0xf9, 0xf7, 0x84, 0x23, 0xf8, 0xff, 0xff, 0xff},
+		},
+	}
+	for _, c := range cases {
+		l := decodeRange(c.orig, 0, len(c.orig), nil)
+		if len(l) != 1 || l[0].n != len(c.orig) || l[0].cls != clsFS {
+			t.Errorf("% x: decoded as %+v", c.orig, l)
+			continue
+		}
+		v, ok := buildFSVeneer(c.orig, 0x400000, l, 0, 0, 0)
+		if !ok || !bytes.Contains(v.code, c.want) {
+			t.Errorf("% x: veneer % x does not contain % x", c.orig, v.code, c.want)
+		}
 	}
 }
