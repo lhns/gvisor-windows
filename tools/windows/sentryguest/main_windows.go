@@ -90,6 +90,7 @@ func main() {
 	tarPath := flag.String("tar", "", "fill the tmpfs from this tar; the first argument is then a path inside it")
 	extraFiles := flag.String("files", "", "comma-separated hostfile:/guest/path pairs copied into the tmpfs after the tar")
 	withNet := flag.Bool("net", false, "give the guest lo and eth0 (user-space NAT, as --network=windows-nat)")
+	handleEvery := flag.Duration("handles", 0, "print the process's handle count, goroutines and memory to stderr this often (0: off)")
 	stream := flag.Bool("stream", false, "print the guest's output while it runs (so a crash of the Sentry loses little)")
 	sysMounts := flag.Bool("sysmounts", false, "mount /proc, /sys, /dev and /dev/pts")
 	envList := flag.String("env", "PATH=/bin:/usr/bin:/", "comma-separated environment of the guest")
@@ -237,6 +238,9 @@ func main() {
 	winstub.Trace("boot: process created")
 	fdt.DecRef(ctx)
 	k.StartProcess(tg)
+	if *handleEvery > 0 {
+		go monitorHandles(*handleEvery)
+	}
 	var streamed int
 	stopStream := make(chan struct{})
 	streamDone := make(chan struct{})
