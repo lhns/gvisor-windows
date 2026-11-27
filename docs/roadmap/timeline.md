@@ -59,6 +59,8 @@ gantt
     Dynamic programs, exec and pipes :sentry_dynamic_elf_and_exec, 2026-11-26, 2026-11-26
     Profile the slow file and exec path :sentry_profile_small_file_path, 2026-11-27, 2026-11-27
     Sentry dies with netpoll failed :sentry_netpoll_failure, 2026-11-27, 2026-11-27
+    fchmod on a standard stream fails :sentry_fchmod_std_stream, 2026-11-27, 2026-11-27
+    pasta networking inside the sandbox :sentry_pasta_in_sandbox, 2026-11-27, 2026-11-27
     section fs - files
     Compatibility layer, not security bound… :fs_compat_layer_not_boundary, 2026-11-26, 2026-11-26
     Test persistent image storage :fs_persistent_image_storage, 2026-11-26, 2026-11-26
@@ -74,6 +76,7 @@ gantt
     Flaky negative-cache test on host folde… :fs_flaky_negative_cache_test, 2026-11-26, 2026-11-27
     Deletes fail for standard users :fs_standard_user_delete_rights, 2026-11-26, 2026-11-26
     Case-sensitive names without admin :fs_case_sensitivity_without_admin, 2026-11-26, 2026-11-27
+    Unix sockets on host folders :fs_unix_sockets_on_host_folders, 2026-11-27, 2026-11-27
     section net - network
     Netstack to Windows sockets :net_netstack_windows_link, 2026-11-26, 2026-11-26
     Publish guest ports on localhost :net_port_forwarding, 2026-11-26, 2026-11-26
@@ -94,6 +97,7 @@ gantt
     Measure end-to-end speed on Windows :workloads_end_to_end_speed, 2026-11-27, 2026-11-27
     conmon sees no data on its sync pipe :workloads_conmon_sync_pipe, 2026-11-26, 2026-11-27
     Overlay mounts with userxattr rejected :workloads_overlay_userxattr, 2026-11-26, 2026-11-27
+    Second attach-socket failure :workloads_conmon_attach_second_cause, 2026-11-27, 2026-11-27
     section research - research
     Pick gVisor as the base :research_gvisor_base, 2026-11-17, 2026-11-26
     Revive LKL or nommu UML :crit, research_lkl_nommu, 2026-11-26, 2026-11-26

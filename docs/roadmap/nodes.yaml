@@ -456,6 +456,10 @@
   - fs-case-sensitivity-without-admin
   - platform-rare-hang-under-exec-load
   - sentry-netpoll-failure
+  - fs-unix-sockets-on-host-folders
+  - workloads-conmon-attach-second-cause
+  - sentry-fchmod-std-stream
+  - sentry-pasta-in-sandbox
   replaced_by: []
   lane: windows-ci
   start: ''
@@ -1220,6 +1224,7 @@
   folded:
   - Podman 6.2.0 pulls and stores images on a Windows folder; steps 1-2 pass (2026-11-26, commit 61c8b8f92)
   - Runtime -p via the forwarder expose API works as a standard user (2026-11-26, commit 61c8b8f92)
+  - Steps 1, 2 and 7 pass; nginx published with -p answers on 127.0.0.1 (2026-11-27, commit 159f62dc1)
   overview: false
   plain: The test harness runs the Podman engine on runsc and exposes its API to the stock Windows clients.
   notes: Engine runs on runsc.exe with the erofs podman image; step 1 passes. Gap list in docs/results/5-podman-windows.md.
@@ -2019,7 +2024,7 @@
   - platform-veneer-address-in-child
   replaced_by: []
   start: '2026-11-26'
-  end: ''
+  end: '2026-11-27'
   folded:
   - 'Cause 1 fixed: FIFO opens on host folders were rejected by policy, now in-Sentry named pipes (2026-11-27, commit 9ab48dea3)'
   overview: false
@@ -2027,10 +2032,10 @@
   title: conmon sees no data on its sync pipe
   track: workloads
   kind: defect
-  state: next
+  state: done
   lane: windows-ci
   plain: 'Every podman run fails with "conmon bytes \"\": found \x00": conmon reads nothing from its sync pipe while creating the first container inside the sandbox on Windows.'
-  notes: 'Remaining cause: crun clone through glibc syscall() lands in a relocated veneer whose address differs in the child address space (platform). Fixed when: podman run --rm alpine echo ok passes.'
+  notes: 'Fixed: containers are created and started; podman run -d -p works end to end (step 7 passes).'
 - outcome: unrated
   evidence:
   - docs/results/5-podman-windows.md
@@ -2191,3 +2196,79 @@
   overview: false
   plain: Each fork+exec starts two stub processes at about 10 ms each; recycling a stub on release and execve and mapping memory up front would cut process start further.
   notes: 'Done when: the 100x fork+exec loop through runsc.exe is at least 4x faster than the 3.47 s baseline in docs/results/3b.'
+- outcome: unrated
+  evidence:
+  - docs/results/5-podman-windows.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-27'
+  end: ''
+  folded: []
+  overview: false
+  id: fs-unix-sockets-on-host-folders
+  title: Unix sockets on host folders
+  track: fs
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: Binding a Unix socket on a Windows folder and connecting to it (by path or via /proc/self/fd) is refused, so Podman cannot reach conmon's attach socket.
+  notes: 'Fixed when: test/guests/unixsock.c (runsctest -only sockfs) connects on a host-folder bind mount and podman exec/attach work.'
+- outcome: unrated
+  evidence:
+  - docs/results/5-podman-windows.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-27'
+  end: ''
+  folded: []
+  overview: false
+  id: workloads-conmon-attach-second-cause
+  title: Second attach-socket failure
+  track: workloads
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: Even with container directories on a tmpfs, Podman's connect to conmon's attach socket is refused; a second cause is not isolated.
+  notes: 'Fixed when: podman run --rm alpine echo ok (attached) passes.'
+- outcome: unrated
+  evidence:
+  - docs/results/5-podman-windows.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-27'
+  end: ''
+  folded: []
+  overview: false
+  id: sentry-fchmod-std-stream
+  title: fchmod on a standard stream fails
+  track: sentry
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: conmon logs "Failed to chmod stderr" and container logs are lost, so the compose check cannot read them.
+  notes: 'Fixed when: fchmod on the stdio of a guest started by runsc behaves like Linux and compose logs reach podman logs.'
+- outcome: unrated
+  evidence:
+  - docs/results/5-podman-windows.md
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-27'
+  end: ''
+  folded: []
+  overview: false
+  id: sentry-pasta-in-sandbox
+  title: pasta networking inside the sandbox
+  track: sentry
+  kind: defect
+  state: next
+  lane: windows-ci
+  plain: 'buildah RUN uses pasta, which fails: /proc/sys/net/ipv4/ip_local_port_range is missing and switching into the namespace returns EPERM.'
+  notes: 'Fixed when: podman build with a RUN step that needs network passes inside the Windows sandbox.'

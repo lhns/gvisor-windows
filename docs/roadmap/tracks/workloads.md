@@ -19,7 +19,8 @@ flowchart TB
     workloads_podman_api_named_pipe["✔ Podman API on a<br/>named pipe"]
     workloads_overlay_userxattr>"✔ Overlay mounts with<br/>userxattr rejected"]
     workloads_end_to_end_speed[/"✔ Measure end-to-end<br/>speed on Windows"/]
-    workloads_conmon_sync_pipe>"⚠ conmon sees no data<br/>on its sync pipe"]
+    workloads_conmon_sync_pipe>"✔ conmon sees no data<br/>on its sync pipe"]
+    workloads_conmon_attach_second_cause>"⚠ Second attach-socket<br/>failure"]
     workloads_podman_on_windows[/"⛔ Podman passes on<br/>Windows"/]
     workloads_podman_probe[/"✔ Probe Podman inside<br/>the sandbox"/]
     workloads_podman_harness["▶ Serve Podman to<br/>Windows clients"]
@@ -33,10 +34,10 @@ flowchart TB
     workloads_strict_bar_linux ~~~ workloads_overlay_userxattr
     workloads_gvisor_cgroupfs_readonly ~~~ workloads_end_to_end_speed
     workloads_podman_api_named_pipe ~~~ workloads_conmon_sync_pipe
-    workloads_overlay_userxattr ~~~ workloads_conmon_sync_pipe
-    workloads_end_to_end_speed ~~~ workloads_conmon_sync_pipe
+    workloads_overlay_userxattr ~~~ workloads_conmon_attach_second_cause
+    workloads_end_to_end_speed ~~~ workloads_conmon_attach_second_cause
     workloads_conmon_sync_pipe ~~~ workloads_podman_on_windows
-    workloads_conmon_sync_pipe ~~~ workloads_podman_probe
+    workloads_conmon_attach_second_cause ~~~ workloads_podman_probe
     workloads_podman_on_windows ~~~ workloads_podman_harness
     workloads_podman_probe ~~~ workloads_podman_harness
     workloads_acceptance_test --> workloads_podman_on_gvisor_linux
@@ -48,6 +49,7 @@ flowchart TB
     workloads_podman_api_named_pipe --> workloads_podman_on_windows
     workloads_conmon_sync_pipe --> workloads_podman_on_windows
     workloads_overlay_userxattr --> workloads_podman_on_windows
+    workloads_conmon_attach_second_cause --> workloads_podman_on_windows
     workloads_podman_probe --> workloads_podman_harness
     linkStyle 17 stroke:#e69500,stroke-width:3px,stroke-dasharray:2 3
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
@@ -66,8 +68,8 @@ flowchart TB
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
     class workloads_acceptance_test,workloads_acceptance_test_windows,workloads_podman_api_named_pipe,workloads_podman_probe unrated
     class workloads_podman_on_gvisor_linux,workloads_strict_bar_linux,workloads_end_to_end_speed mixed
-    class workloads_gvisor_bridge_netlink,workloads_gvisor_port_publishing,workloads_gvisor_cgroupfs_readonly,workloads_overlay_userxattr succ
-    class workloads_conmon_sync_pipe finding
+    class workloads_gvisor_bridge_netlink,workloads_gvisor_port_publishing,workloads_gvisor_cgroupfs_readonly,workloads_overlay_userxattr,workloads_conmon_sync_pipe succ
+    class workloads_conmon_attach_second_cause finding
     class workloads_podman_on_windows blocked
     class workloads_podman_harness inprog
 ```
@@ -80,7 +82,7 @@ flowchart TB
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `workloads-acceptance-test` | Write the Podman acceptance test | tooling | linux-ci | done | unrated | 2026-11-26 | 2026-11-26 | research-gvisor-base |  |  |  | test/e2e/podman-acceptance/run.sh; docs/results/0a-linux.md |
 | `workloads-podman-on-gvisor-linux` | Podman on gVisor on Linux | experiment | linux-ci | done | mixed | 2026-11-26 | 2026-11-26 | workloads-acceptance-test |  | workloads-gvisor-bridge-netlink, workloads-gvisor-port-publishing |  | docs/results/0a-linux.md |
-| `workloads-podman-on-windows` | Podman passes on Windows | experiment | windows-ci | blocked | unrated |  |  | runsc-container-on-windows, workloads-acceptance-test-windows, net-port-forwarding, fs-persistent-storage-choice, fs-change-notifications, fs-linux-metadata-on-ntfs, net-bridge-networking, workloads-gvisor-cgroupfs-readonly, net-nftables-thread-safety, platform-split-syscall-unpatched, workloads-podman-api-named-pipe, fs-standard-user-delete-rights, workloads-conmon-sync-pipe, workloads-overlay-userxattr, fs-case-sensitivity-without-admin, platform-rare-hang-under-exec-load, sentry-netpoll-failure |  |  |  |  |
+| `workloads-podman-on-windows` | Podman passes on Windows | experiment | windows-ci | blocked | unrated |  |  | runsc-container-on-windows, workloads-acceptance-test-windows, net-port-forwarding, fs-persistent-storage-choice, fs-change-notifications, fs-linux-metadata-on-ntfs, net-bridge-networking, workloads-gvisor-cgroupfs-readonly, net-nftables-thread-safety, platform-split-syscall-unpatched, workloads-podman-api-named-pipe, fs-standard-user-delete-rights, workloads-conmon-sync-pipe, workloads-overlay-userxattr, fs-case-sensitivity-without-admin, platform-rare-hang-under-exec-load, sentry-netpoll-failure, fs-unix-sockets-on-host-folders, workloads-conmon-attach-second-cause, sentry-fchmod-std-stream, sentry-pasta-in-sandbox |  |  |  |  |
 | `workloads-acceptance-test-windows` | Acceptance test for Windows | tooling | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 | workloads-acceptance-test |  |  |  | docs/results/5-podman-windows.md |
 | `workloads-podman-harness` | Serve Podman to Windows clients | tooling | windows-ci | in-progress | unrated | 2026-11-26 |  | runsc-container-on-windows, net-port-forwarding, workloads-podman-probe |  |  |  | docs/results/5-podman-windows.md |
 | `workloads-gvisor-bridge-netlink` | Bridge networking fails in gVisor | defect | linux-ci | done | unrated | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/results/0a-linux.md; docs/results/0c-linux-strict-bar.md; docs/results/1n-bridge-networking.md |
@@ -91,8 +93,9 @@ flowchart TB
 | `workloads-podman-api-named-pipe` | Podman API on a named pipe | feature | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 | runsc-windows-boot |  |  |  | docs/results/5-podman-windows.md |
 | `workloads-podman-probe` | Probe Podman inside the sandbox | experiment | windows-ci | done | unrated | 2026-11-26 | 2026-11-26 | platform-busybox-on-windows, platform-map-files-without-sections |  |  |  | docs/results/5-podman-windows.md |
 | `workloads-end-to-end-speed` | Measure end-to-end speed on Windows | experiment | windows-ci | done | mixed | 2026-11-27 | 2026-11-27 | runsc-windows-boot |  |  | 16x to 170x slower | docs/results/3b-runsc-speed-lifecycle.md |
-| `workloads-conmon-sync-pipe` | conmon sees no data on its sync pipe | defect | windows-ci | next | unrated | 2026-11-26 |  | platform-veneer-address-in-child |  |  |  | docs/results/5-podman-windows.md |
+| `workloads-conmon-sync-pipe` | conmon sees no data on its sync pipe | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-27 | platform-veneer-address-in-child |  |  |  | docs/results/5-podman-windows.md |
 | `workloads-overlay-userxattr` | Overlay mounts with userxattr rejected | defect | windows-ci | done | unrated | 2026-11-26 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
+| `workloads-conmon-attach-second-cause` | Second attach-socket failure | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/5-podman-windows.md |
 
 ### Details per node
 
@@ -111,8 +114,9 @@ flowchart TB
 | `workloads-podman-api-named-pipe` | Podman API on a named pipe |  |  | Expose the Podman engine API on a Windows named pipe owned by the user, instead of a loopback TCP port. | Done for the docker CLI; stock podman 5.3.1 cannot dial npipe, so the podman client uses a forwarded AF_UNIX socket. |  |  |  |  |
 | `workloads-podman-probe` | Probe Podman inside the sandbox |  |  | Right after busybox works, run podman --version and podman info inside the sandbox; their failures are the real gap list. | Done when: the gap list is written up in docs/results. |  |  |  |  |
 | `workloads-end-to-end-speed` | Measure end-to-end speed on Windows | CPU-bound work runs at native speed, but small-file and process-creation workloads are 16x to 170x slower than na | 16x to 170x slower | Run the Phase 0 workloads (fork+exec loop, untar of small files, a CPU job) through runsc.exe on Windows and compare with runsc and native on Linux. | Done when: a table of Windows vs Linux runsc vs native is in docs/results. |  |  |  |  |
-| `workloads-conmon-sync-pipe` | conmon sees no data on its sync pipe |  |  | Every podman run fails with "conmon bytes \"\": found \x00": conmon reads nothing from its sync pipe while creating the first container inside the sandbox on Windows. | Remaining cause: crun clone through glibc syscall() lands in a relocated veneer whose address differs in the child address space (platform). Fixed when: podman run --rm alpine echo ok passes. |  |  |  |  |
+| `workloads-conmon-sync-pipe` | conmon sees no data on its sync pipe |  |  | Every podman run fails with "conmon bytes \"\": found \x00": conmon reads nothing from its sync pipe while creating the first container inside the sandbox on Windows. | Fixed: containers are created and started; podman run -d -p works end to end (step 7 passes). |  |  |  |  |
 | `workloads-overlay-userxattr` | Overlay mounts with userxattr rejected |  |  | podman build fails: the Sentry overlay rejects the userxattr option (or the layer setup) when Podman storage sits on a Windows folder. | Fixed when: podman build of a small Containerfile passes inside the Windows sandbox. |  |  |  |  |
+| `workloads-conmon-attach-second-cause` | Second attach-socket failure |  |  | Even with container directories on a tmpfs, Podman's connect to conmon's attach socket is refused; a second cause is not isolated. | Fixed when: podman run --rm alpine echo ok (attached) passes. |  |  |  |  |
 
 ### Folded items per node
 
@@ -121,6 +125,7 @@ flowchart TB
 - `workloads-podman-harness`: Serve Podman to Windows clients
   - Podman 6.2.0 pulls and stores images on a Windows folder; steps 1-2 pass (2026-11-26, commit 61c8b8f92)
   - Runtime -p via the forwarder expose API works as a standard user (2026-11-26, commit 61c8b8f92)
+  - Steps 1, 2 and 7 pass; nginx published with -p answers on 127.0.0.1 (2026-11-27, commit 159f62dc1)
 - `workloads-conmon-sync-pipe`: conmon sees no data on its sync pipe
   - Cause 1 fixed: FIFO opens on host folders were rejected by policy, now in-Sentry named pipes (2026-11-27, commit 9ab48dea3)
 - `workloads-overlay-userxattr`: Overlay mounts with userxattr rejected

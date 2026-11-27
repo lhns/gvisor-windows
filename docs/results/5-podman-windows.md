@@ -89,3 +89,27 @@ CI: strace diagnostics https://github.com/lhns/gvisor-windows/actions/runs/45909
 **Per step.** Steps 3 to 10 still fail at container creation (crun, defect 1.2); steps 1 and 2 pass as before. The acceptance workflow was not re-run to a result different from the second round, because the first container start needs the platform fix.
 
 Verdict update: the conmon failure was a FIFO on the host folder (fixed in the Sentry), and the next blocker is a platform bug, a `clone` child in a new address space resuming inside the parent's veneer (reproducer `clonesys`), not a Sentry gap.
+
+## Third round (branch podman-windows-3; veneer, conmon FIFOs, /var/tmp tmpfs, case-sensitive folders merged)
+CI: https://github.com/lhns/gvisor-windows/actions/runs/45924051831 (Podman 6.2.0, standard user). Earlier runs of the round: 45921171038, 45922552504; reproducer run 45923294271.
+
+| step | result | what happens |
+|---|---|---|
+| 1 engine-reachable | PASS | |
+| 2 pull | PASS | |
+| 3 run-exit-code | FAIL (126) | containers are created and started now (crun's clone survives), then `failed to connect to container's attach socket ... dial unixpacket /proc/self/fd/N: connect: connection refused` |
+| 4 interactive-tty | FAIL | same attach failure |
+| 5 build-apt | FAIL | the RUN step: `setup network: pasta failed ... Unable to parse /proc/sys/net/ipv4/ip_local_port_range / Couldn't switch to pasta namespaces: Operation not permitted`, then `error running container: did not get container start message from parent: EOF` |
+| 6 bind-mount | FAIL | attach socket |
+| 7 port-publish | **PASS** | `podman run -d -p 8080:80 nginx` through the gateway forwarder API and netavark's nftables DNAT; nginx answers at 127.0.0.1:8080 on Windows |
+| 8 compose | FAIL | both services start on the compose network and the cli container exits 0; the check fails because the logs are lost: `[conmon:w]: Failed to chmod stderr` (conmon's fchmod on its log stream) |
+| 9 restart-persist | FAIL | volume run needs attach |
+| 10 isolation | FAIL | `exec` needs attach |
+
+The required steps (1, 2, 7) are checked by a strict workflow step; the acceptance step itself stays `continue-on-error` only so that the logs are uploaded.
+
+Findings and gaps:
+- **Attach socket (blocks 3, 4, 6, 9, 10).** Minimal reproducer `test/guests/unixsock.c` (`runsctest -only sockfs`, in the `windows-runsc` host-folder step, prints only): a `SOCK_SEQPACKET` socket bound and listening on a host-folder bind mount refuses `connect` (`Connection refused`), both by path and through `/proc/self/fd/N` of an O_PATH descriptor; on tmpfs both work. Owner: fs (`fsimpl/gofer`, bound endpoints are lost on host-folder dentries, possibly by the revalidation that became the default). Trying `cache=exclusive` on the storage mount changed nothing (reverted). Putting the container directories (`vfs-containers`) on a tmpfs did not fix Podman's failure either, so there is a second cause not yet isolated: conmon binds `userdata/attach` with a path longer than the 108 bytes of `sun_path` (via `/proc/self/fd`), and podman connects through `/proc/self/fd/N`; this needs the strace of conmon (`podman-diag`'s `--strace` run lost its log: the debug log stayed at 925 bytes, a logging deadlock with `--strace` to be looked at).
+- **conmon: `Failed to chmod stderr` (step 8 logs).** fchmod of a std stream (pipe or /dev/null) is refused. Owner: Sentry.
+- **pasta (step 5).** Buildah RUN uses pasta: `/proc/sys/net/ipv4/ip_local_port_range` is missing in the Sentry's procfs (reproducer: `cat /proc/sys/net/ipv4/ip_local_port_range` in the guest) and pasta's namespace switch fails with EPERM. Owner: Sentry (procfs sysctl) and netns/setns. Workaround to try: `build --network=host`-style, not applied (strict mode).
+- **Podman 6 needs cgroup v2**: `--in-sandbox-cgroup=v2` and a `cgroup2` mount are in the engine spec (round 2).

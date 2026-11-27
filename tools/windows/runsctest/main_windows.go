@@ -67,6 +67,7 @@ func main() {
 		{"hostfs", testHostfs},
 		{"case", testCase},
 		{"lifecycle", testLifecycle},
+		{"sockfs", testSockfs},
 		{"bench", testBench},
 		{"forward", testForward},
 		{"mounts", func() error { return profileRun("mounts", "cat /proc/self/mountinfo; pwd; ls -la /tmp") }},
@@ -85,7 +86,7 @@ func main() {
 	}
 	failed := 0
 	for _, t := range tests {
-		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec")) {
+		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec" || t.name == "sockfs")) {
 			continue
 		}
 		start := time.Now()
@@ -560,4 +561,23 @@ func rootfsOptions() string {
 		return "file-mode=0755," + o
 	}
 	return "file-mode=0755"
+}
+// testSockfs is the reproducer for conmon's attach socket (Podman: "dial unixpacket
+// /proc/self/fd/N: connect: connection refused"): test/guests/unixsock binds a
+// SOCK_SEQPACKET socket and connects to it directly and through /proc/self/fd, on tmpfs
+// (control) and on a host-folder bind mount. It prints, it does not fail.
+func testSockfs() error {
+	dir := filepath.Join(*workDir, "sockfs")
+	_ = os.RemoveAll(dir)
+	must(os.MkdirAll(dir, 0o755))
+	extraMounts = []map[string]any{{"destination": "/w", "type": "bind", "source": dir, "options": []string{"rbind", "rw"}}}
+	defer func() { extraMounts = nil }()
+	for _, where := range []string{"/tmp", "/w"} {
+		r, err := runsc("sockfs", []string{"/bin/unixsock", where}, nil)
+		if err != nil {
+			return err
+		}
+		fmt.Println("sockfs on", where, r.stdout, r.code, r.stderr)
+	}
+	return nil
 }
