@@ -242,10 +242,8 @@ func (in *instance) closeLog() {
 // container not yet started). On failure it prints the error and returns the
 // exit code.
 func newInstance(id, bundle string, terminal bool) (ret *instance, code int) {
-	// Logs must not reach stderr, which belongs to the container. The platform
-	// logs with the standard library's log: send it to the same (asynchronous) log.
+	// Logs must not reach stderr, which belongs to the container.
 	log.SetTarget(discard{})
-	log.CopyStandardLogTo(log.Warning)
 	in := &instance{}
 	defer func() {
 		if ret == nil {
