@@ -22,7 +22,7 @@ flowchart TB
     sentry_netpoll_failure>"✔ Sentry stalls after<br/>many socket tests"]
     sentry_fchmod_std_stream>"✔ fchmod on a standard<br/>stream fails"]
     sentry_pasta_in_sandbox>"✔ pasta networking<br/>inside the sandbox"]
-    sentry_waitgroup_panic>"⚠ One-off negative<br/>WaitGroup panic"]
+    sentry_waitgroup_panic>"⏸ One-off negative<br/>WaitGroup panic"]
     sentry_epoll_timeout_overshoot>"✔ Rare long epoll<br/>timeout overshoot"]
     sentry_host_io_under_locks>"✔ Host writes that<br/>block for seconds"]
     sentry_sh_wait_status_flake>"✔ Flaky shell wait<br/>status test"]
@@ -67,8 +67,7 @@ flowchart TB
     class sentry_go_fault_recovery,sentry_unix_shim,sentry_fault_recovery,sentry_host_stdio_and_tty,sentry_threads_and_signals,sentry_dynamic_elf_and_exec,sentry_timers_and_clocks,sentry_netpoll_failure,sentry_fchmod_std_stream,sentry_pasta_in_sandbox,sentry_epoll_timeout_overshoot,sentry_host_io_under_locks,sentry_sh_wait_status_flake succ
     class sentry_windows_build,sentry_memory_file_sections unrated
     class sentry_profile_small_file_path mixed
-    class sentry_waitgroup_panic finding
-    class sentry_event_loop_iocp parked
+    class sentry_waitgroup_panic,sentry_event_loop_iocp parked
 ```
 <!-- END GENERATED: track-sentry -->
 
@@ -91,7 +90,7 @@ flowchart TB
 | `sentry-netpoll-failure` | Sentry stalls after many socket tests | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/4-syscall-tests.md |
 | `sentry-fchmod-std-stream` | fchmod on a standard stream fails | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
 | `sentry-pasta-in-sandbox` | pasta networking inside the sandbox | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
-| `sentry-waitgroup-panic` | One-off negative WaitGroup panic | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/0b-windows.md |
+| `sentry-waitgroup-panic` | One-off negative WaitGroup panic | defect | windows-ci | parked | unrated | 2026-11-27 |  |  |  |  |  | docs/results/0b-windows.md |
 | `sentry-epoll-timeout-overshoot` | Rare long epoll timeout overshoot | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-28 |  |  |  |  | docs/results/3d-clocks-upstream.md; docs/results/3e-signal-latency.md |
 | `sentry-host-io-under-locks` | Host writes that block for seconds | defect | windows-ci | done | unrated | 2026-11-28 | 2026-11-28 |  |  |  |  | docs/results/3e-signal-latency.md; docs/results/1t-pie-cache.md; docs/results/1u-veneer-reclaim.md |
 | `sentry-sh-wait-status-flake` | Flaky shell wait status test | defect | windows-ci | done | unrated | 2026-11-28 | 2026-11-28 |  |  |  |  | docs/results/3e-signal-latency.md; docs/results/1t-pie-cache.md |
@@ -114,7 +113,7 @@ flowchart TB
 | `sentry-netpoll-failure` | Sentry stalls after many socket tests |  |  | After a few hundred socket test cases in one kernel the Sentry dies with "fatal error: runtime: netpoll failed" or stalls; about 1,700 syscall-test cases fail only because of this. | Cause found: not a handle leak or the netpoller; a stub process that never starts (about 1 per 100-1500 guest processes) leaves the Sentry waiting forever in newAS/Release. Moved to the platform hang defect. |  |  |  |  |
 | `sentry-fchmod-std-stream` | fchmod on a standard stream fails |  |  | conmon logs "Failed to chmod stderr" and container logs are lost, so the compose check cannot read them. | Fixed: pipefs refused every mode change with EPERM; it now keeps the mode like Linux. fchmod test required in windows-runsc. |  |  |  |  |
 | `sentry-pasta-in-sandbox` | pasta networking inside the sandbox |  |  | buildah RUN uses pasta, which fails: /proc/sys/net/ipv4/ip_local_port_range is missing and switching into the namespace returns EPERM. | ip_local_port_range now printed with a tab; the setns EPERM is pasta dropping its capabilities, not a Sentry bug. Builds use BUILDAH_ISOLATION=oci. |  |  |  |  |
-| `sentry-waitgroup-panic` | One-off negative WaitGroup panic |  |  | A "negative WaitGroup counter" panic seen once in safecopy tests is not explained by stack overrun and did not recur in 1600 runs. | Fixed when: the cause is found, or it does not recur for a month; pkg/safecopy tests run on every push to windows (windows-sentry in ci.yml). |  |  |  |  |
+| `sentry-waitgroup-panic` | One-off negative WaitGroup panic |  |  | A "negative WaitGroup counter" panic seen once in safecopy tests is not explained by stack overrun and did not recur in 1600 runs. | Parked: seen once in a safecopy probe run after the R8 clobber fix (6d2e5b791); not reproduced in 1600 targeted runs; stack overrun ruled out by S9. Safecopy tests run on every push to windows; reopen with the log if it recurs. |  |  |  |  |
 | `sentry-epoll-timeout-overshoot` | Rare long epoll timeout overshoot |  |  | A 30 ms timer signal meant to interrupt epoll_wait took 212 ms once in about 12 leg runs (rewrite-fxsave); the clocks test now retries, so CI would hide a repeat. | Fixed: the timer goroutine sent signals under a Sentry lock while blocked on a synchronous runsc debug-log write; runsc now writes its debug log asynchronously. A logstall test reproduced it; signal latency p99 is about 1 ms in all modes, and the retry is gone. |  |  |  |  |
 | `sentry-host-io-under-locks` | Host writes that block for seconds |  |  | A WriteFile to the debug log blocked for seconds on CI runners, mostly at the first boot; any other host I/O done while holding a Sentry lock would stall the guest the same way. | Fixed the three named cases: dropAllCaches stats after releasing renameMu, Pin/pinByName open outside pinMu, MapFile reads text before as.mu. Lower-risk items in 1t stay as they are. |  |  |  |  |
 | `sentry-sh-wait-status-flake` | Flaky shell wait status test |  |  | The sentry-guests case sh_wait_status sometimes gets 2 instead of 143 from wait on a killed background job (native and rewrite-fxsave). | The test was racy: the guest root had no /dev, so the background job failed to open /dev/null before the kill; 30 of 30 in every mode after the fix. |  |  |  |  |

@@ -188,7 +188,7 @@ flowchart TB
 | Start guest processes fast | ✔ done · very-successful | A guest process takes 280-560 ms to start through the Sentry, against 18 ms for a bare stub; profile the gap and keep a pool of ready stubs. |
 | Event waiting on IOCP | ⏸ parked | Waiting for many host events at once (epoll on Linux) moves to Windows completion ports. |
 | Profile the slow file and exec path | ✔ done · mixed | Creating a file on tmpfs costs about 1 ms and a fork+exec 32 ms on Windows; find where the time goes (syscall round trips, page faults, debug events, Sentry work) and fix the top causes. |
-| One-off negative WaitGroup panic | ⚠ open | A "negative WaitGroup counter" panic seen once in safecopy tests is not explained by stack overrun and did not recur in 1600 runs. |
+| One-off negative WaitGroup panic | ⏸ parked | A "negative WaitGroup counter" panic seen once in safecopy tests is not explained by stack overrun and did not recur in 1600 runs. |
 | Compatibility layer, not security boundary | ✔ done · n/a | The sandbox may open the user's files directly with the user's rights; it isolates containers from each other, not from the user. |
 | Open Windows files directly | ✔ done · successful | The Sentry opens NTFS files itself for bind mounts, with its own caches, instead of going through a file protocol. |
 | Netstack to Windows sockets | ✔ done · successful | gVisor's own TCP/IP stack sends guest traffic out through ordinary Windows sockets, like a user-space NAT. |
@@ -205,9 +205,7 @@ flowchart TB
 ## Ready now
 
 <!-- BEGIN GENERATED: ready-now -->
-**windows-ci**
-
-- `sentry-waitgroup-panic`: One-off negative WaitGroup panic
+_None._
 <!-- END GENERATED: ready-now -->
 
 ## Running
@@ -440,7 +438,7 @@ Each track has its own page with its tree, node table and per-node details.
 
 - [runsc - runsc](roadmap/tracks/runsc.md): 6 nodes (6 done)
 - [platform - platform](roadmap/tracks/platform.md): 46 nodes (42 done, 3 parked, 1 abandoned)
-- [sentry - sentry](roadmap/tracks/sentry.md): 18 nodes (16 done, 1 next, 1 parked)
+- [sentry - sentry](roadmap/tracks/sentry.md): 18 nodes (16 done, 2 parked)
 - [fs - files](roadmap/tracks/fs.md): 23 nodes (23 done)
 - [net - network](roadmap/tracks/net.md): 5 nodes (5 done)
 - [workloads - workloads](roadmap/tracks/workloads.md): 23 nodes (23 done)

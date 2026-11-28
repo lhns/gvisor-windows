@@ -2031,8 +2031,8 @@
   lane: owner
   depends_on: []
   plain: All evidence comes from GitHub hosted Windows images; the owner runs runsc.exe once on a work machine to check FSGSBASE and whether security software tolerates the generated stub being debugged.
-  notes: 'Ready: download the release zip (or the latest ci run on windows) and run its hello bundle; the Podman bundle test belongs to lhns/podman-portable. Done when: the owner reports the result of one
-    run.'
+  notes: 'Defender with real-time protection already tolerated the debugged stubs on the development VM. What the work machine adds: corporate security software and native mode (FSGSBASE). Report: does
+    podman-portable.exe v0.4.0 start (SmartScreen or a security product blocking it?), does `podman-portable.exe podman run --rm alpine echo ok` print ok, and which CPU mode status reports.'
 - outcome: unrated
   evidence:
   - docs/results/5-podman-windows.md
@@ -2770,12 +2770,13 @@
   folded: []
   overview: false
   lane: windows-ci
-  notes: 'Fixed when: the cause is found, or it does not recur for a month; pkg/safecopy tests run on every push to windows (windows-sentry in ci.yml).'
+  notes: 'Parked: seen once in a safecopy probe run after the R8 clobber fix (6d2e5b791); not reproduced in 1600 targeted runs; stack overrun ruled out by S9. Safecopy tests run on every push to windows;
+    reopen with the log if it recurs.'
   id: sentry-waitgroup-panic
   title: One-off negative WaitGroup panic
   track: sentry
   kind: defect
-  state: next
+  state: parked
   plain: A "negative WaitGroup counter" panic seen once in safecopy tests is not explained by stack overrun and did not recur in 1600 runs.
 - outcome: unrated
   evidence:
@@ -2879,7 +2880,8 @@
   - docs/results/1p-rewrite-heap.md
   - docs/results/5-podman-windows.md
   plain: Podman has passed in rewrite-fxsave mode only on CI runners that force it; on the development VM (no FSGSBASE, XSAVE or AVX) only runsc bundles ran, because the engine opens a network listener.
-  notes: Owner allowed the run. All 10 steps passed with podman-portable v0.4.0 in rewrite-fxsave mode; run.ps1 now also works under Windows PowerShell 5.1.
+  notes: Owner allowed the run. All 10 steps passed with podman-portable v0.4.0 in rewrite-fxsave mode; run.ps1 now also works under Windows PowerShell 5.1. Microsoft Defender real-time protection, behaviour
+    monitoring and tamper protection were on during the run.
 - outcome: unrated
   verdict_quote: ''
   headline: ''
