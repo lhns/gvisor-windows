@@ -344,3 +344,9 @@ Verdict: an unmodified Podman 6.2.0 engine passes all ten acceptance steps on gV
 Run 46041026851 on `windows` 233a84a4e, all ten steps required in every mode: native 8 of 8, rewrite 8 of 8, rewrite-fxsave 8 of 8. On the development VM (no FSGSBASE, XSAVE or AVX), `aptrename` passed 200 rounds 5 of 5 with that build's `runsc.exe`.
 
 Verdict: an unmodified Podman 6.2.0 engine passes all ten acceptance steps on gVisor on Windows as a standard user in all three CPU modes, 24 of 24 runs on the merged head, under the conditions listed in ADR 0002.
+
+## Thirteenth round: overlay default, speed work and upstream merge together (2026-11-27)
+
+Run 46064357443 on `windows` 030754bf2 (overlay as the default storage driver, ADR 0021; fork+exec work, ADR 0022; the first upstream merge), all ten steps required: native 8 of 8, rewrite 8 of 8, rewrite-fxsave 8 of 8. windows-stability on the same head passed.
+
+Verdict: with overlay as the default storage driver and the fork+exec changes, an unmodified Podman 6.2.0 engine still passes all ten acceptance steps in all three CPU modes, 24 of 24 runs.
