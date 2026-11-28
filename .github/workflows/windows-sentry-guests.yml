@@ -110,7 +110,7 @@ jobs:
             @{n='fork_exec'; a=@('/bin/exec','forkexec'); out="child: argc=4 a2=a b a3=c X=1 auxv=ok${nl}forkexec: waited=1 exited=1 status=9${nl}forkexec: enoent child status=11${nl}forkexec: sum=6 wait=-1 errno_echild=1${nl}"; code=0},
             @{n='sh_pipes'; a=@('/bin/busybox','sh','-c','echo a | cat; echo $((1+2)); for i in 1 2 3; do echo $i; done | wc -l'); out="a${nl}3${nl}3${nl}"; code=0},
             @{n='sh_pipeline_tools'; a=@('/bin/busybox','sh','/t/pipes.sh'); out="a${nl}X${nl}done${nl}"; code=0},
-            @{n='sh_wait_status'; a=@('/bin/busybox','sh','/t/wait.sh'); out="st=3${nl}Terminated${nl}sig=143${nl}bg=143${nl}pipe=2${nl}done${nl}"; code=0},
+            @{n='sh_wait_status'; flags=@('-sysmounts'); a=@('/bin/busybox','sh','/t/wait.sh'); out="st=3${nl}Terminated${nl}sig=143${nl}bg=143${nl}pipe=2${nl}done${nl}"; code=0},
             @{n='sig_self'; a=@('/bin/signals','self'); out="self ok${nl}"; code=0},
             @{n='sig_alarm'; a=@('/bin/signals','alarm'); out="alarm ok${nl}"; code=0},
             @{n='sig_segv'; a=@('/bin/signals','segv'); out="segv ok${nl}"; code=0},
@@ -135,6 +135,7 @@ jobs:
             foreach ($c in $cases) {
               $a = @("-code=$($c.code)", "-timeout=120s")
               if (-not $c.noout) { $a += "-check", "-out=$($c.out)" }
+              if ($c.flags) { $a += $c.flags }
               if ($c.tar) { $a += "-tar=out/rootfs.tar"; $a += $c.a } else { $a += "out/$($c.n)" }
               $pass = 0
               for ($it = 0; $it -lt [int]$env:ITER; $it++) {
@@ -155,14 +156,14 @@ jobs:
           # A killed background job must be reported as 143 by wait: many tries in one shell, then
           # whole runs with the Sentry's strace, keeping the failing ones.
           . tools/windows/ci/leg.ps1
-          $loop = 'i=0; while [ $i -lt 200 ]; do sleep 30 & p=$!; kill $p; wait $p; s=$?; [ $s = 143 ] || echo "iter $i bg=$s"; i=$((i+1)); done 2>/t/x.err; echo loop done'
+          $loop = 'i=0; while [ $i -lt 200 ]; do sleep 30 & p=$!; kill $p; wait $p; s=$?; [ $s = 143 ] || echo "iter $i bg=$s"; i=$((i+1)); done 2>/dev/null; echo loop done'
           foreach ($leg in $env:LEGS -split '[, ]+' | Where-Object { $_ }) {
             Set-Leg $leg -KeepAvx512
-            $o = & ./sentryguest.exe "-tar=out/rootfs.tar" "-timeout=300s" /bin/busybox sh -c $loop 2>&1 | Out-String
+            $o = & ./sentryguest.exe -sysmounts "-tar=out/rootfs.tar" "-timeout=300s" /bin/busybox sh -c $loop 2>&1 | Out-String
             "WAITLOOP $leg : $(@($o -split "`n" | Select-String 'iter \d+ bg=').Count) bad of 200, finished: $($o -match 'loop done'); $(($o -split "`n" | Select-String 'iter \d+ bg=' | Select-Object -First 5) -join ' / ')" | Tee-Object -Append -FilePath waitdiag.txt
             $bad = 0
             for ($i = 0; $i -lt [int]$env:ITER -and $bad -lt 3; $i++) {
-              $o = & ./sentryguest.exe -strace "-tar=out/rootfs.tar" "-timeout=120s" /bin/busybox sh /t/wait.sh 2>&1 | Out-String
+              $o = & ./sentryguest.exe -strace -sysmounts "-tar=out/rootfs.tar" "-timeout=120s" /bin/busybox sh /t/wait.sh 2>&1 | Out-String
               if ($o -notmatch 'bg=143') {
                 $bad++
                 "WAITSTRACE $leg run $i failed: $(($o -split "`n" | Select-String '^bg=') -join ' ')" | Tee-Object -Append -FilePath waitdiag.txt
