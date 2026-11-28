@@ -159,35 +159,7 @@ func TestTextRelocate(t *testing.T) {
 	if h.p.fsRewrite && len(want.fsVen) != 2 {
 		t.Fatalf("%d %%fs veneers, want one per piece", len(want.fsVen))
 	}
-	for _, c := range []struct {
-		name string
-		g, w any
-	}{
-		{"cursors", []any{got.nsites, got.vcur, got.fcur, got.ftop, got.gcur}, []any{want.nsites, want.vcur, want.fcur, want.ftop, want.gcur}},
-		{"siteCache", got.siteCache, want.siteCache}, {"restartAt", got.restartAt, want.restartAt},
-		{"ud2Sites", got.ud2Sites, want.ud2Sites}, {"fsCache", got.fsCache, want.fsCache}, {"fsUD2", got.fsUD2, want.fsUD2},
-		{"tails", got.tails, want.tails}, {"heads", got.heads, want.heads}, {"edges", got.edges, want.edges},
-		{"fsVen", got.fsVen, want.fsVen}, {"relAt", got.relAt, want.relAt}, {"absAt", got.absAt, want.absAt},
-		{"shared", got.shared, want.shared},
-	} {
-		if !reflect.DeepEqual(c.g, c.w) && !(reflect.ValueOf(c.g).Len() == 0 && reflect.ValueOf(c.w).Len() == 0) {
-			t.Errorf("%s differs: relocated %v, patched %v", c.name, c.g, c.w)
-		}
-	}
-	for i := range got.text {
-		if !bytes.Equal(got.text[i], want.text[i]) {
-			t.Errorf("text of piece %d differs", i)
-		}
-	}
-	if a, b := got.area, want.area; !bytes.Equal(a, b) {
-		t.Errorf("the used stub area differs (%d and %d bytes)", len(a), len(b))
-		for j := range min(len(a), len(b)) {
-			if a[j] != b[j] {
-				t.Logf("first difference at byte %d: % x vs % x", j, a[j:min(j+16, len(a))], b[j:min(j+16, len(b))])
-				break
-			}
-		}
-	}
+	compareStates(t, got, want)
 	if !bytes.Equal(got.text[0], want.text[0]) {
 		t.Logf("low piece: % x vs % x", got.text[0][:48], want.text[0][:48])
 	}
@@ -250,6 +222,87 @@ func TestTextRelocate(t *testing.T) {
 	for _, w := range []uint64{41, 500} {
 		if nr := h.syscall(cx, far, ac); nr != w {
 			t.Fatalf("piece out of reach: syscall %d, want %d", nr, w)
+		}
+	}
+}
+
+// compareStates reports how the state of a relocated address space differs from
+// that of one that patched at the same places.
+func compareStates(t *testing.T, got, want patchState) {
+	t.Helper()
+	for _, c := range []struct {
+		name string
+		g, w any
+	}{
+		{"cursors", []any{got.nsites, got.vcur, got.fcur, got.ftop, got.gcur}, []any{want.nsites, want.vcur, want.fcur, want.ftop, want.gcur}},
+		{"siteCache", got.siteCache, want.siteCache}, {"restartAt", got.restartAt, want.restartAt},
+		{"ud2Sites", got.ud2Sites, want.ud2Sites}, {"fsCache", got.fsCache, want.fsCache}, {"fsUD2", got.fsUD2, want.fsUD2},
+		{"tails", got.tails, want.tails}, {"heads", got.heads, want.heads}, {"edges", got.edges, want.edges},
+		{"fsVen", got.fsVen, want.fsVen}, {"relAt", got.relAt, want.relAt}, {"absAt", got.absAt, want.absAt},
+		{"shared", got.shared, want.shared},
+	} {
+		if !reflect.DeepEqual(c.g, c.w) && !(reflect.ValueOf(c.g).Len() == 0 && reflect.ValueOf(c.w).Len() == 0) {
+			t.Errorf("%s differs: relocated %v, patched %v", c.name, c.g, c.w)
+		}
+	}
+	for i := range got.text {
+		if !bytes.Equal(got.text[i], want.text[i]) {
+			t.Errorf("text of piece %d differs", i)
+		}
+	}
+	if a, b := got.area, want.area; !bytes.Equal(a, b) {
+		t.Errorf("the used stub area differs (%d and %d bytes)", len(a), len(b))
+		for j := range min(len(a), len(b)) {
+			if a[j] != b[j] {
+				t.Logf("first difference at byte %d: % x vs % x", j, a[j:min(j+16, len(a))], b[j:min(j+16, len(b))])
+				break
+			}
+		}
+	}
+}
+
+// TestTextRelocateOntoAnother: two pieces with the same bytes, the region's delta
+// apart, so that the first one's shared veneer moves to where the second one's
+// was in the cached state. The relocated state must still equal a fresh patch, and
+// both sites must continue in their own veneers.
+func TestTextRelocateOntoAnother(t *testing.T) {
+	h := newHarness(t)
+	code, _, withPost, _ := relocPiece(41)
+	fr := h.pages(code, relocMinLen/pageSz)
+	const lo, dd = 0x1000_0000, 0x10_0000
+	place := func(mm *testMM, base uint64) {
+		t.Helper()
+		h.mapAt(mm, base, fr, rx)
+		h.mapAt(mm, base+dd, fr, rx)
+	}
+	for i := 0; i < 2; i++ {
+		place(h.newMM(), lo)
+	}
+	relocs := h.p.texts.relocs.Load()
+	moved := h.newMM()
+	place(moved, lo+dd)
+	if n := h.p.texts.relocs.Load() - relocs; n != 2 {
+		t.Fatalf("%d pieces relocated, want 2", n)
+	}
+	textCacheOn = false
+	fresh := h.newMM()
+	place(fresh, lo+dd)
+	textCacheOn = true
+	got, want := stateOf(t, moved, lo+dd, lo+2*dd), stateOf(t, fresh, lo+dd, lo+2*dd)
+	if len(want.shared) != 2 {
+		t.Fatalf("%d shared veneers, want 2", len(want.shared))
+	}
+	compareStates(t, got, want)
+	cx := h.p.NewContext(pkgcontext.Background())
+	defer cx.Release()
+	for _, base := range []uint64{lo + dd, lo + 2*dd} {
+		ac := newAC(base+uint64(withPost), 0)
+		if nr := h.syscall(cx, moved, ac); nr != 0 {
+			t.Fatalf("piece at %#x: syscall %d, want 0", base, nr)
+		}
+		ac.StateData().Regs.Rax = 77
+		if nr := h.syscall(cx, moved, ac); nr != 501 || ac.StateData().Regs.Rdi != 77 {
+			t.Fatalf("piece at %#x: syscall %d rdi %d, want 501 77", base, nr, ac.StateData().Regs.Rdi)
 		}
 	}
 }

@@ -204,17 +204,36 @@ func (as *addressSpace) relocSnap(s *patchSnap, d [2]uint64) (*patchSnap, string
 			binary.LittleEndian.PutUint64(b, binary.LittleEndian.Uint64(b)+dd)
 		}
 	}
+	// A moved veneer may land where another one of the state was (two sites with
+	// the same bytes the region's delta apart): find every piece before moving any.
+	idx := make([]int, len(s.shared))
 	for i, sh := range s.shared {
+		idx[i] = -1
 		if d[regionOf(sh.w0)] == 0 {
 			continue
 		}
-		to := shared[i].va
-		j := slices.IndexFunc(n.area, func(a areaPiece) bool { return a.addr == sh.va && uint64(len(a.b)) == sh.vlen })
-		if j < 0 {
+		taken := func(j int) bool { return slices.Contains(idx[:i], j) }
+		for j, a := range n.area {
+			if a.addr == sh.va && uint64(len(a.b)) == sh.vlen && !taken(j) {
+				idx[i] = j
+				break
+			}
+		}
+		if idx[i] < 0 {
 			return nil, "shared veneer outside the stub area kept"
 		}
-		n.area[j].addr = to
-		b := field(shared[i].post, 8)
+	}
+	for i, j := range idx {
+		if j >= 0 {
+			n.area[j].addr = shared[i].va
+		}
+	}
+	for i, sh := range s.shared {
+		if idx[i] < 0 {
+			continue
+		}
+		to, a := shared[i].va, n.area[idx[i]]
+		b := a.b[shared[i].post-to : shared[i].post-to+8]
 		binary.LittleEndian.PutUint64(b, binary.LittleEndian.Uint64(b)-sh.va+to)
 		if sh.slot != 0 {
 			b := field(sh.slot, 8)
