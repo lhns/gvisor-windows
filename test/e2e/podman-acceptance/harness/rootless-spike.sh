@@ -5,7 +5,7 @@
 #      STORAGE_DRIVER=overlay|vfs  SOCK (unix socket for the client)  SHARE_DIR
 set -u
 GV=${GV:?}; ROOTFS=${ROOTFS:?}; WORK=${WORK:?}; NET=${NET:-host}; STORAGE_DRIVER=${STORAGE_DRIVER:-overlay}
-export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-$HOME/xdg}; mkdir -p "$XDG_RUNTIME_DIR"; chmod 700 "$XDG_RUNTIME_DIR"
+export XDG_RUNTIME_DIR=$HOME/xdg; mkdir -p "$XDG_RUNTIME_DIR"; chmod 700 "$XDG_RUNTIME_DIR"
 SOCK=${SOCK:-$HOME/podman.sock}; SHARE_DIR=${SHARE_DIR:-$HOME/share}
 HERE=$(cd "$(dirname "$0")" && pwd)
 mkdir -p "$WORK"/{state,logs,storage,bundle} "$SHARE_DIR"
