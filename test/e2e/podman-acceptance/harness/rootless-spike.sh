@@ -5,6 +5,7 @@
 #      STORAGE_DRIVER=overlay|vfs  SOCK (unix socket for the client)  SHARE_DIR
 set -u
 GV=${GV:?}; ROOTFS=${ROOTFS:?}; WORK=${WORK:?}; NET=${NET:-host}; STORAGE_DRIVER=${STORAGE_DRIVER:-overlay}
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-$HOME/xdg}; mkdir -p "$XDG_RUNTIME_DIR"; chmod 700 "$XDG_RUNTIME_DIR"
 SOCK=${SOCK:-$HOME/podman.sock}; SHARE_DIR=${SHARE_DIR:-$HOME/share}
 HERE=$(cd "$(dirname "$0")" && pwd)
 mkdir -p "$WORK"/{state,logs,storage,bundle} "$SHARE_DIR"
@@ -21,9 +22,9 @@ mkspec() {
     echo "10.0.2.2 gateway.containers.internal host.containers.internal" >>"$ROOTFS/etc/hosts"
     echo "nameserver 10.0.2.3" >"$ROOTFS/etc/resolv.conf"
   fi
-  python3 - "$ROOTFS" "$WORK" "$SHARE_DIR" "$STORAGE_DRIVER" >"$WORK/bundle/config.json" <<'PY'
+  python3 - "$ROOTFS" "$WORK" "$SHARE_DIR" "$STORAGE_DRIVER" "$NET" >"$WORK/bundle/config.json" <<'PY'
 import json, sys
-root, work, share, drv = sys.argv[1:5]
+root, work, share, drv, net = sys.argv[1:6]
 caps = ['CAP_'+c for c in "CHOWN DAC_OVERRIDE DAC_READ_SEARCH FOWNER FSETID KILL SETGID SETUID SETPCAP LINUX_IMMUTABLE NET_BIND_SERVICE NET_BROADCAST NET_ADMIN NET_RAW IPC_LOCK IPC_OWNER SYS_MODULE SYS_RAWIO SYS_CHROOT SYS_PTRACE SYS_PACCT SYS_ADMIN SYS_BOOT SYS_NICE SYS_RESOURCE SYS_TIME SYS_TTY_CONFIG MKNOD LEASE AUDIT_WRITE AUDIT_CONTROL SETFCAP MAC_OVERRIDE MAC_ADMIN SYSLOG WAKE_ALARM BLOCK_SUSPEND AUDIT_READ PERFMON BPF CHECKPOINT_RESTORE".split()]
 def m(d, t, s, o=None):
     x = {"destination": d, "type": t, "source": s}
@@ -44,7 +45,8 @@ spec = {"ociVersion":"1.0.2",
   "env":["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin","HOME=/root","TERM=xterm","container=podman","CONTAINERS_STORAGE_CONF=/etc/containers/storage.conf","STORAGE_DRIVER="+drv],
   "cwd":"/","capabilities":{"bounding":caps,"effective":caps,"permitted":caps,"inheritable":caps}},
  "root":{"path":root,"readonly":False},"hostname":"podman-spike","mounts":mounts,
- "linux":{"namespaces":[{"type":t} for t in ("pid","network","ipc","uts","mount")],
+ "linux":{"namespaces":[{"type":t} for t in ("pid","ipc","uts","mount") if True]
+   + ([{"type":"network"}] if net in ("sandbox","none") else []),
   "devices":[{"path":"/dev/"+n,"type":"c","major":a,"minor":b,"fileMode":438,"uid":0,"gid":0} for n,a,b in
    (("null",1,3),("zero",1,5),("full",1,7),("random",1,8),("urandom",1,9),("tty",5,0))]}}
 print(json.dumps(spec, indent=1))
