@@ -902,7 +902,7 @@ func testClocks() error {
 func testLogStall() error {
 	os.Setenv("GVISOR_TEST_LOG_STALL", "150")
 	defer os.Unsetenv("GVISOR_TEST_LOG_STALL")
-	r, err := runsc("logstall", []string{"/bin/clocks", "noretry", "sleep", "ptimer", "itimer", "timeouts"}, nil)
+	r, err := runsc("logstall", []string{"/bin/clocks", "sleep", "ptimer", "itimer", "timeouts"}, nil)
 	if err != nil {
 		return err
 	}

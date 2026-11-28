@@ -41,14 +41,12 @@ func (l *lockedBuf) Write(p []byte) (int, error) {
 var (
 	withinRe = regexp.MustCompile(`^  (\S.*?)\s+(-?[\d.]+) ms \(want ([\d.]+)\)$`)
 	sampleRe = regexp.MustCompile(`^siglat (\w+) (-?[\d.]+) ([\d.]+)$`)
-	// a try of the timeouts group's EINTR check that missed (the check prints no within line then)
-	missRe = regexp.MustCompile(`^  epoll_wait interrupted by a timer: try \d+ took (-?[\d.]+) ms`)
 	// the window of a traced signal: from the timer's expiry to the handler's return
 	windowRe = regexp.MustCompile(`total ([\d.]+) ms: timer late (-?[\d.]+),.* fire qpc ([\d.]+) ms, qpc ([\d.]+) ms`)
 )
 
-// testSiglat (dispatch only, -only siglat) measures timer signal latency without the
-// retry of the timeouts group: fresh sandboxes running the whole clocks guest, then
+// testSiglat (dispatch only, -only siglat) measures timer signal latency: fresh
+// sandboxes running the whole clocks guest, then
 // sandboxes looping the timeouts and siglat groups, with the Sentry's trace
 // (GVISOR_SIGLAT) and stall watches in runsc and in this process. It prints the
 // latency distribution per kind and every outlier with what the traces saw around
@@ -73,10 +71,10 @@ func testSiglat() error {
 	}
 	var runs []run
 	for i := 0; i < *siglatBoots; i++ {
-		runs = append(runs, run{fmt.Sprintf("boot%d", i), []string{"/bin/clocks", "noretry"}})
+		runs = append(runs, run{fmt.Sprintf("boot%d", i), []string{"/bin/clocks"}})
 	}
 	for i := 0; i < *siglatLoops; i++ {
-		runs = append(runs, run{fmt.Sprintf("loop%d", i), []string{"/bin/clocks", "noretry", fmt.Sprintf("repeat=%d", *siglatRep), "timeouts", "siglat"}})
+		runs = append(runs, run{fmt.Sprintf("loop%d", i), []string{"/bin/clocks", fmt.Sprintf("repeat=%d", *siglatRep), "timeouts", "siglat"}})
 	}
 	var bad []string
 	for _, rn := range runs {
@@ -103,10 +101,6 @@ func testSiglat() error {
 					kind = "other timer signals"
 				}
 				samples[kind] = append(samples[kind], got-want)
-			} else if m := missRe.FindStringSubmatch(l); m != nil {
-				v, _ := strconv.ParseFloat(m[1], 64)
-				samples["timeouts: epoll_wait EINTR"] = append(samples["timeouts: epoll_wait EINTR"], v-30)
-				notes = append(notes, rn.name+": "+l)
 			} else if m := sampleRe.FindStringSubmatch(l); m != nil {
 				v, _ := strconv.ParseFloat(m[2], 64)
 				samples["siglat "+m[1]] = append(samples["siglat "+m[1]], v)

@@ -1,10 +1,10 @@
 /* Sleeps, clocks, timerfd, POSIX timers, interval timers and timeouts:
- *   clocks [noretry] [repeat=N] [GROUP...]
+ *   clocks [repeat=N] [GROUP...]
  * Without a group every group but siglat runs. Each check prints its measurement; a failed check
  * is reported and the run goes on, the exit code is 1 if any failed. Prints "clocks ok" at the end.
  * Tolerances are generous (CI runners are noisy): a wait of T ms returns within [T-1, T+100] ms.
- * noretry: the timer-interrupted epoll_wait gets one try, not three; repeat=N runs the groups N
- * times; siglat measures timer signal latency (docs/results/3e-signal-latency.md). */
+ * repeat=N runs the groups N times; siglat measures timer signal latency
+ * (docs/results/3e-signal-latency.md). */
 #define _GNU_SOURCE
 #include <errno.h>
 #include <poll.h>
@@ -29,7 +29,6 @@
 #define SLACK_LO 1.0  /* ms a wait may undershoot */
 
 static int failed;
-static int noretry;
 
 static void bad(const char *what, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
 static void bad(const char *what, const char *fmt, ...) {
@@ -635,24 +634,15 @@ static void t_timeouts(void) {
 	t0 = now_ms(CLOCK_MONOTONIC);
 	rc = epoll_wait(ep, out, 2, 0);
 	if (rc != 0 || now_ms(CLOCK_MONOTONIC) - t0 > 20) bad("epoll_wait 0", "rc %d or slow", rc);
-	/* A timer signal after 30 ms ends a 2 s epoll_wait with EINTR (a stalled runner gets 3 tries). */
+	/* A timer signal after 30 ms ends a 2 s epoll_wait with EINTR. */
 	handler(SIGALRM, on_alrm);
-	int e = 0;
-	int tries = noretry ? 1 : 3;
-	for (int try = 0; try < tries; try++) {
-		struct itimerval it = {{0, 0}, {0, 30000}};
-		setitimer(ITIMER_REAL, &it, NULL);
-		t0 = now_ms(CLOCK_MONOTONIC);
-		rc = epoll_wait(ep, out, 2, 2000);
-		e = errno;
-		double el = now_ms(CLOCK_MONOTONIC) - t0;
-		if (rc == -1 && e == EINTR && el < 30 + SLACK_HI) {
-			WITHIN("epoll_wait interrupted by a timer", el, 30);
-			break;
-		}
-		printf("  epoll_wait interrupted by a timer: try %d took %.2f ms, rc %d\n", try, el, rc);
-		if (try == tries - 1) bad("epoll_wait EINTR", "rc %d errno %d after %.2f ms", rc, e, el);
-	}
+	struct itimerval it = {{0, 0}, {0, 30000}};
+	setitimer(ITIMER_REAL, &it, NULL);
+	t0 = now_ms(CLOCK_MONOTONIC);
+	rc = epoll_wait(ep, out, 2, 2000);
+	int e = errno;
+	if (rc != -1 || e != EINTR) bad("epoll_wait EINTR", "rc %d errno %d", rc, e);
+	WITHIN("epoll_wait interrupted by a timer", now_ms(CLOCK_MONOTONIC) - t0, 30);
 	close(ep);
 
 	/* sigtimedwait and the futex-based waits */
@@ -753,9 +743,7 @@ int main(int argc, char **argv) {
 	setvbuf(stdout, NULL, _IOLBF, 0);
 	int repeat = 1, named = 0, want[NGROUPS] = {0};
 	for (int i = 1; i < argc; i++) {
-		if (!strcmp(argv[i], "noretry"))
-			noretry = 1;
-		else if (!strncmp(argv[i], "repeat=", 7))
+		if (!strncmp(argv[i], "repeat=", 7))
 			repeat = atoi(argv[i] + 7);
 		else
 			for (unsigned g = 0; g < NGROUPS; g++)
