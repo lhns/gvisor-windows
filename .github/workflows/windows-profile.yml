@@ -2,11 +2,14 @@
 name: windows-profile
 on:
   workflow_dispatch:
+    inputs:
+      jobs: {description: 'comma list of jobs: profile, runsc-profile, fs-share, dyn-forkexec (default all)', default: ''}
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   rootfs:
+    if: inputs.jobs == '' || contains(format(',{0},', inputs.jobs), ',profile,')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,6 +32,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: {name: rootfs, path: rootfs.tar, compression-level: 0}
   profile:
+    if: inputs.jobs == '' || contains(format(',{0},', inputs.jobs), ',profile,')
     needs: rootfs
     runs-on: windows-latest
     steps:
@@ -84,6 +88,7 @@ jobs:
         if: always()
         with: {name: profile, path: out}
   runsc-guests:
+    if: inputs.jobs == '' || contains(format(',{0},', inputs.jobs), ',runsc-profile,')
     runs-on: ubuntu-latest
     steps:
       - name: busybox and the Phase 0 tarball
@@ -102,6 +107,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: {name: runsc-guests, path: out}
   runsc-profile:
+    if: inputs.jobs == '' || contains(format(',{0},', inputs.jobs), ',runsc-profile,')
     needs: runsc-guests
     runs-on: windows-latest
     steps:
@@ -193,6 +199,7 @@ jobs:
   # (docs/results/1s-veneers.md). The same workload runs normally and with every %fs
   # instruction through the debugger (WINSTUB_FSUD2=1), whose count is the total.
   fs-guests:
+    if: inputs.jobs == '' || contains(format(',{0},', inputs.jobs), ',fs-share,') || contains(format(',{0},', inputs.jobs), ',dyn-forkexec,')
     runs-on: ubuntu-latest
     steps:
       - name: Debian with python3 and netavark
@@ -219,12 +226,15 @@ jobs:
           done
           echo nv done
           SH
+          # A static PIE (only the executable lands at a random address) for the text cache loops.
+          echo 'int main(void) { return 0; }' > t/true.c && gcc -O1 -static-pie -o t/true_spie t/true.c && file t/true_spie
           docker cp t fsroot:/t
           docker export fsroot > fsroot.tar
           ls -l fsroot.tar
       - uses: actions/upload-artifact@v4
         with: {name: fs-guests, path: fsroot.tar, compression-level: 0}
   fs-share:
+    if: inputs.jobs == '' || contains(format(',{0},', inputs.jobs), ',fs-share,')
     needs: fs-guests
     runs-on: windows-latest
     steps:
@@ -273,3 +283,72 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with: {name: fs-share, path: out}
+  # Fork+exec of dynamic and PIE programs, which land at random addresses
+  # (docs/results/1t-pie-cache.md): wall time and the text cache's hits and misses.
+  dyn-forkexec:
+    if: inputs.jobs == '' || contains(format(',{0},', inputs.jobs), ',dyn-forkexec,')
+    needs: fs-guests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {name: fs-guests, path: dl}
+      - uses: ./.github/actions/winbin
+        with: {targets: sentryguest}
+      - name: Loops
+        shell: pwsh
+        run: |
+          . tools/windows/ci/leg.ps1
+          New-Item -ItemType Directory -Force out | Out-Null
+          $work = [ordered]@{
+            'bash-true100' = @('/bin/bash', '-c', 'for i in $(seq 100); do /bin/true; done');
+            'bash-python20' = @('/bin/bash', '-c', 'for i in $(seq 20); do /usr/bin/python3 -c pass; done');
+            'bash-spie100' = @('/bin/bash', '-c', 'for i in $(seq 100); do /t/true_spie; done');
+            'busybox-true100' = @('/bin/busybox', 'sh', '-c', 'i=0; while [ $i -lt 100 ]; do /bin/busybox true; i=$((i+1)); done')
+          }
+          $g = @('-sysmounts', '-timeout=600s', '-tar=dl/fsroot.tar', '-env=PATH=/usr/bin:/bin,HOME=/tmp')
+          foreach ($leg in 'native', 'rewrite', 'rewrite-fxsave') {
+            Set-Leg $leg
+            foreach ($name in $work.Keys) {
+              foreach ($tc in '', 'reloc-off', '0') {
+                $env:WINSTUB_TEXTCACHE = if ($tc -eq '0') { '0' } else { '' }
+                $env:WINSTUB_TEXTRELOC = if ($tc -eq 'reloc-off') { '0' } else { '' }
+                $t = @()
+                for ($i = 0; $i -lt 5; $i++) {
+                  $o = & C:\ci\bin\sentryguest.exe @g @($work[$name]) 2>&1 | Out-String
+                  if ($o -match 'code 0, signaled false.*run ([0-9.]+)(ms|s)') { $v = [double]$Matches[1]; if ($Matches[2] -eq 'ms') { $v /= 1000 }; $t += $v } else { "no time in $leg $name run $i"; ($o -split "`n" | Select-Object -Last 15) -join "`n" }
+                }
+                $m = ($t | Sort-Object)[[int]($t.Count / 2)]
+                "DYNFORKEXEC $leg $name textcache=$(if ($tc -eq '0') { 'off' } elseif ($tc) { 'on,relocation-off' } else { 'on' }) median=$m s (runs: $($t -join ' '))" | Tee-Object -Append out/loops.txt
+              }
+              $env:WINSTUB_TEXTCACHE = ''; $env:WINSTUB_TEXTRELOC = ''
+              $env:GVISOR_PROFSTATS = '1'
+              $o = & C:\ci\bin\sentryguest.exe -profstats @g @($work[$name]) 2>&1 | Out-String
+              Remove-Item Env:GVISOR_PROFSTATS
+              $o -split "`n" | Select-String 'PROFSTATS key winstub (text|syscall site)' | ForEach-Object { "  $leg $name $($_.Line.Trim())" } | Tee-Object -Append out/loops.txt
+            }
+          }
+      - name: Many execs (the shared veneer area fills)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          . tools/windows/ci/leg.ps1
+          Set-Leg rewrite
+          $env:GVISOR_PROFSTATS = '1'
+          foreach ($n in 300, 1000) {
+            $t0 = Get-Date
+            $o = & C:\ci\bin\sentryguest.exe -profstats -sysmounts -timeout=1200s '-tar=dl/fsroot.tar' '-env=PATH=/usr/bin:/bin,HOME=/tmp' /bin/bash -c "for i in `$(seq $n); do /bin/true; done" 2>&1 | Out-String
+            "MANYEXEC rewrite $n x /bin/true: $([math]::Round(((Get-Date) - $t0).TotalSeconds, 2)) s, $(($o -split "`n" | Select-String 'sentryguest: exit') -join ' ')" | Tee-Object -Append out/many.txt
+            $o -split "`n" | Select-String 'PROFSTATS key winstub (text|syscall site)' | ForEach-Object { "  $($_.Line.Trim())" } | Tee-Object -Append out/many.txt
+          }
+      - name: Text operations of two execs (trace)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $env:WINSTUB_TRACE = '1'
+          & C:\ci\bin\sentryguest.exe -sysmounts -timeout=300s '-tar=dl/fsroot.tar' '-env=PATH=/usr/bin:/bin,HOME=/tmp' /bin/bash -c '/bin/true; /bin/true; /t/true_spie; /t/true_spie; /usr/bin/python3 -c pass; /usr/bin/python3 -c pass; /usr/bin/python3 -c pass' *> out/trace-dyn.txt
+          Get-Content out/trace-dyn.txt | Select-String 'text 0x|text history|as: release|MapFile' | Select-Object -First 3000 | ForEach-Object { $_.Line } | Out-File -Encoding utf8 out/trace-dyn-text.txt
+          Get-Content out/trace-dyn-text.txt | Select-String 'text 0x' | Select-Object -First 300 | ForEach-Object { $_.Line }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: dyn-forkexec, path: out}

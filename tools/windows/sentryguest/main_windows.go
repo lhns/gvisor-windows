@@ -64,6 +64,7 @@ import (
 	"gvisor.dev/gvisor/pkg/sentry/pgalloc"
 	"gvisor.dev/gvisor/pkg/sentry/platform"
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub"
+	"gvisor.dev/gvisor/pkg/sentry/strace"
 	_ "gvisor.dev/gvisor/pkg/sentry/syscalls/linux" // registers the syscall table
 	ktime "gvisor.dev/gvisor/pkg/sentry/time"
 	"gvisor.dev/gvisor/pkg/sentry/usage"
@@ -101,6 +102,7 @@ func main() {
 	cpuProf := flag.String("cpuprofile", "", "write a Go CPU profile of the Sentry process to this file")
 	profStats := flag.Bool("profstats", false, "print per-syscall counts and time (kernel.ProfStats)")
 	asPool := flag.Int("aspool", 0, "address spaces kept ready (0: none)")
+	straceOn := flag.Bool("strace", false, "log every system call of the guest to stderr")
 	flag.Parse()
 	kernel.ProfStats = kernel.ProfStats || *profStats
 	if *cpuProf != "" {
@@ -111,9 +113,15 @@ func main() {
 	if flag.NArg() < 1 {
 		fail("usage: sentryguest [flags] guest [args...]")
 	}
+	if *verbose || *straceOn {
+		log.SetTarget(log.GoogleEmitter{Writer: &log.Writer{Next: os.Stderr}})
+	}
 	if *verbose {
 		log.SetLevel(log.Debug)
-		log.SetTarget(log.GoogleEmitter{Writer: &log.Writer{Next: os.Stderr}})
+	}
+	if *straceOn {
+		strace.Initialize()
+		strace.EnableAll(strace.SinkTypeLog)
 	}
 	var image []byte
 	guestPath := "/guest"

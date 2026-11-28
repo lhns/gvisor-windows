@@ -221,13 +221,19 @@ func (fs *FS) pinByName(id ID) {
 // Unpin releases a Pin.
 func (fs *FS) Unpin(id ID) {
 	fs.pinMu.Lock()
-	defer fs.pinMu.Unlock()
+	var h windows.Handle
 	if p, ok := fs.pins[id]; ok {
 		p.refs--
 		if p.refs <= 0 {
-			windows.CloseHandle(p.h)
+			h = p.h
 			delete(fs.pins, id)
 		}
+	}
+	fs.pinMu.Unlock()
+	// (outside pinMu, which every file operation of the mount takes: closing a
+	// file the guest wrote can take milliseconds with a filter driver)
+	if h != 0 {
+		windows.CloseHandle(h)
 	}
 }
 

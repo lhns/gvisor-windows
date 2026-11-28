@@ -2900,7 +2900,7 @@
   depends_on: *id021
   replaced_by: *id022
   start: '2026-11-28'
-  end: ''
+  end: '2026-11-28'
   folded: *id023
   overview: false
   lane: windows-ci
@@ -2908,11 +2908,14 @@
   title: Patched-text cache for PIE programs
   track: platform
   kind: defect
-  state: next
+  state: done
   evidence:
   - docs/results/1r-platform-speed.md
+  - docs/results/1t-pie-cache.md
+  - docs/adr/0024-text-cache-relative-to-region-bases.md
   plain: The patched-text cache is keyed by address, so PIE and dynamically linked programs loaded at random addresses miss it; the 4 to 6 times fork+exec gain was measured with static busybox.
-  notes: 'Fixed when: a dynamic or PIE fork+exec loop hits the cache, with its own before and after numbers.'
+  notes: 'Fixed: a fetch fault cleared the cache flag for every dynamic library, and keys were absolute; keys are now relative to region bases with relocation (ADR 0024). 100 dynamic PIE fork+exec: 0.53
+    vs 0.92 s in rewrite mode.'
 - outcome: unrated
   verdict_quote: ''
   headline: ''
@@ -2930,15 +2933,17 @@
   state: next
   evidence:
   - docs/results/3e-signal-latency.md
+  - docs/results/1t-pie-cache.md
   plain: A WriteFile to the debug log blocked for seconds on CI runners, mostly at the first boot; any other host I/O done while holding a Sentry lock would stall the guest the same way.
-  notes: 'Fixed when: the cause of the multi-second writes is known and no host I/O under Sentry locks remains on hot paths, or it is shown to be harmless.'
+  notes: 'Surveyed in 1t: high risk is dropAllCaches holding renameMu while stat-ing every cached inode; medium: pinMu across NtCreateFile/CloseHandle, MapFile reading text under as.mu. Fixed when those
+    three no longer do host I/O under the lock.'
 - outcome: unrated
   verdict_quote: ''
   headline: ''
   depends_on: *id024
   replaced_by: *id025
   start: '2026-11-28'
-  end: ''
+  end: '2026-11-28'
   folded: *id026
   overview: false
   lane: windows-ci
@@ -2946,11 +2951,12 @@
   title: Flaky shell wait status test
   track: sentry
   kind: defect
-  state: next
+  state: done
   evidence:
   - docs/results/3e-signal-latency.md
+  - docs/results/1t-pie-cache.md
   plain: The sentry-guests case sh_wait_status sometimes gets 2 instead of 143 from wait on a killed background job (native and rewrite-fxsave).
-  notes: 'Fixed when: the case passes 30 runs in a row in all modes.'
+  notes: 'The test was racy: the guest root had no /dev, so the background job failed to open /dev/null before the kill; 30 of 30 in every mode after the fix.'
 - verdict_quote: feasible with 1 known fix (host networking works today, 9 of 10 steps pass)
   headline: ''
   depends_on: &id027 []
@@ -2991,3 +2997,23 @@
     yet.
   notes: 'Fixed: three seccomp gaps under windows-nat on Linux (resolv.conf read by Go resolver, now a --nat-dns upstream; protocol-0 sockets; an MPTCP listener) plus nftables for this mode; the rootless
     spike passes all 10 strict steps as an ordinary user.'
+- outcome: unrated
+  verdict_quote: ''
+  headline: ''
+  depends_on: []
+  replaced_by: []
+  start: '2026-11-28'
+  end: ''
+  folded: []
+  overview: false
+  lane: windows-ci
+  id: platform-shared-veneers-fill
+  title: Shared veneer area fills up
+  track: platform
+  kind: defect
+  state: next
+  evidence:
+  - docs/results/1t-pie-cache.md
+  plain: Shared veneers (where a syscall returns into) are allocated per site address and never freed; after about 500 dynamic execs at new addresses in one sandbox the 224 KiB area is full and those sites
+    fall back to the slow debugger path.
+  notes: 'Fixed when: 1000 dynamic execs in one sandbox keep the relocated-cache speed (no area-full fallbacks).'

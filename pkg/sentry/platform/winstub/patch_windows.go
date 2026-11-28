@@ -25,6 +25,7 @@ import (
 	"unsafe"
 
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/stubasm"
+	"gvisor.dev/gvisor/pkg/sentry/profkeys"
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/x86asm"
 )
 
@@ -248,11 +249,13 @@ func (as *addressSpace) patchImm(code []byte, base uint64, list []ins, s int, tg
 		var e []byte
 		if sysno == sysGetcpu && kind == 32 && isVDSOGetcpu(code, pv.off) {
 			// The vDSO's getcpu is a bare syscall: answer it in the stub.
+			as.absAt = append(as.absAt, absRec{entry + 2, regionOf(a)})
 			e = append(e, 0x48, 0xB9)
 			e = binary.LittleEndian.AppendUint64(e, a+2) // movabs $ret,%rcx
 			e = append(e, 0xE9)                          // jmp rel32 to GetcpuCode
 			e = binary.LittleEndian.AppendUint32(e, uint32(int32(int64(stubasm.StubCode+stubasm.OffGetcpu)-int64(entry+uint64(len(e))+4))))
 		} else {
+			as.absAt = append(as.absAt, absRec{entry + 7, regionOf(a)})
 			e = []byte{0xB8}
 			e = binary.LittleEndian.AppendUint32(e, sysno)
 			e = append(e, 0x48, 0xB9)
@@ -386,6 +389,9 @@ func (as *addressSpace) patchReloc(code []byte, base uint64, list []ins, s int, 
 		if va == 0 {
 			return false
 		}
+		if profkeys.On {
+			profkeys.Count("winstub syscall site: shared veneer", 0)
+		}
 	} else {
 		vlen = uint64(len(pre)+23+15) &^ 15
 		if va+vlen > as.ftop {
@@ -393,18 +399,21 @@ func (as *addressSpace) patchReloc(code []byte, base uint64, list []ins, s int, 
 		}
 	}
 	var j []byte
+	var slot uint64
 	if minLen == 5 {
 		if !near(w0) {
 			return false
 		}
 		j = []byte{0xE9}
 		j = binary.LittleEndian.AppendUint32(j, uint32(int32(int64(va)-int64(w0+5))))
+		as.relAt = append(as.relAt, relRec{w0 + 1, va})
 	} else {
 		idx, ok := as.newSlot()
 		if !ok {
 			return false
 		}
-		as.areaWrite(stubasm.TrapPtrs+8*idx, binary.LittleEndian.AppendUint64(nil, va))
+		slot = stubasm.TrapPtrs + 8*idx
+		as.areaWrite(slot, binary.LittleEndian.AppendUint64(nil, va))
 		j = []byte{0xFF, 0x24, 0x25}
 		j = binary.LittleEndian.AppendUint32(j, uint32(stubasm.TrapPtrs+8*idx))
 	}
@@ -428,8 +437,15 @@ func (as *addressSpace) patchReloc(code []byte, base uint64, list []ins, s int, 
 		v = append(v, 0x41, 0xFF, 0xE3)
 	}
 	as.areaWrite(va, v)
+	// What a relocated copy of this patch must change (textreloc_windows.go).
+	r := regionOf(w0)
 	if len(post) == 0 {
 		as.vcur += vlen
+		as.absAt = append(as.absAt, absRec{va + uint64(len(pre)) + 2, r})
+	} else {
+		as.absAt = append(as.absAt, absRec{va + uint64(len(pre)) + 23 + uint64(len(post)) + 2, r})
+		as.shared = append(as.shared, sharedRec{w0: w0, va: va, vlen: vlen, post: va + uint64(len(pre)) + 2, slot: slot,
+			window: append([]byte(nil), code[list[bestA].off:list[bestA].off+bestL]...)})
 	}
 	copy(code[list[bestA].off:], j)
 	// A restarted syscall re-enters the trampoline from the veneer; the registers

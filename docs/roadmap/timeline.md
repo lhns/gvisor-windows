@@ -61,6 +61,7 @@ gantt
     Thread resumed inside a patch window :platform_resume_inside_fs_window, 2026-11-27, 2026-11-27
     Fault reported under a patch jump :platform_fault_under_fs_jump, 2026-11-27, 2026-11-27
     Patched-text cache for PIE programs :platform_text_cache_pie, 2026-11-28, 2026-11-28
+    Shared veneer area fills up :platform_shared_veneers_fill, 2026-11-28, 2026-11-28
     section sentry - sentry
     Recover faults in Go :sentry_go_fault_recovery, 2026-11-26, 2026-11-26
     Sentry builds for Windows :sentry_windows_build, 2026-11-26, 2026-11-26
