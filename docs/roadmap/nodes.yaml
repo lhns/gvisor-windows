@@ -1119,6 +1119,7 @@
   - 'Published gvisor-windows v0.2.0 by hand from the gated assets of release run 46110083701: its publish step was refused because workflow files on windows changed during the gates; podman-portable v0.2.0
     and v0.3.0 were published by its release workflow (2026-11-28, commit c3a491380)'
   - 'podman-portable v0.4.0: the engine pipe name carries the user (a constant name blocked a second user on one machine); two-user isolation tests on Windows and Linux (2026-11-28, commit c3a491380)'
+  - Release dry run after the artifact renames passed every gate and built release-assets (run 46148937476) (2026-11-28, commit f80702000)
   overview: false
   plain: Ship runsc for Windows as a zip or per-user installer that needs no admin.
   notes: The Podman bundle moved to lhns/podman-portable (ADR 0023); this repo ships runsc.exe plus a hello bundle, tested from a fresh standard user profile. Draft releases come from release.yml after

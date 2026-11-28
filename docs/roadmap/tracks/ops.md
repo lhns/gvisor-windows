@@ -100,6 +100,7 @@ flowchart TB
   - Published gvisor-windows v0.1.0 (pre-release, runsc for Windows and Linux) from release run 46093187743 and podman-portable v0.1.0 (single exe and zip) (2026-11-28, commit b907ae6aa)
   - Published gvisor-windows v0.2.0 by hand from the gated assets of release run 46110083701: its publish step was refused because workflow files on windows changed during the gates; podman-portable v0.2.0 and v0.3.0 were published by its release workflow (2026-11-28, commit c3a491380)
   - podman-portable v0.4.0: the engine pipe name carries the user (a constant name blocked a second user on one machine); two-user isolation tests on Windows and Linux (2026-11-28, commit c3a491380)
+  - Release dry run after the artifact renames passed every gate and built release-assets (run 46148937476) (2026-11-28, commit f80702000)
 - `ops-ci-build-once`: Build once, run suites on demand
   - Owner decision: CI on push only, no scheduled test runs; repeats are dispatched when needed (2026-11-28, commit 8760b32fc)
   - Artifacts: one download per run (runsc-windows-amd64-<shortsha>), job hand-offs as tmp- with 1-day retention or from cache, logs only on failure with results in job summaries (2026-11-28, commit 01a68d038)
