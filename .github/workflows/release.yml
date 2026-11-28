@@ -98,10 +98,18 @@ jobs:
           echo "Built from ${{ github.sha }}." >> notes.md
       - uses: actions/upload-artifact@v4
         with: {name: release-assets, path: "dist\nnotes.md", retention-days: 7}
-      - name: Draft release
+      - name: Release
         if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # GitHub refuses the Actions token a tag on a commit whose workflow files differ from the
+          # default branch head (it counts as a workflow change), so a push to windows during the gates
+          # makes the create fail. Say so instead of the bare "Resource not accessible by integration".
+          diff=$(gh api "repos/${{ github.repository }}/compare/${{ github.sha }}...${{ github.event.repository.default_branch }}" --jq '[.files[]?.filename|select(startswith(".github/workflows/"))]|length')
+          if [ "$diff" != 0 ]; then
+            echo "::error::workflow files changed on the default branch since ${{ github.sha }}; the Actions token cannot tag it. Publish the release-assets artifact by hand: gh release create ${{ inputs.version }} --target ${{ github.sha }} --prerelease --notes-file notes.md dist/*"
+            exit 1
+          fi
           gh release create "${{ inputs.version }}" --repo "${{ github.repository }}" --prerelease --target "${{ github.sha }}" \
             --title "${{ inputs.version }}" --notes-file notes.md dist/*
