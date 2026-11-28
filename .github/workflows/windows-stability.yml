@@ -3,6 +3,9 @@
 # full output and a state dump (goroutines and stub threads) in the artifact.
 name: windows-stability
 on:
+  workflow_call:
+    inputs:
+      runs: {type: string, default: "300"}
   workflow_dispatch:
     inputs:
       runs: {description: "runs per mode", default: "300"}

@@ -9,12 +9,13 @@ on:
       prebuilt: {type: boolean, default: false}
       only: {type: string, default: ''}
       legs: {type: string, default: ''}
+      group: {type: string, default: ''}   # concurrency group suffix of a caller other than ci.yml
   workflow_dispatch:
     inputs:
       only: {description: 'runsctest cases to run, e.g. erofs,hostfs (default: the whole suite)', default: ''}
       legs: {description: 'comma list of legs: native, rewrite, rewrite-fxsave (default all)', default: ''}
 concurrency:
-  group: windows-runsc-${{ github.ref }}-${{ inputs.prebuilt && 'ci' || 'solo' }}
+  group: windows-runsc-${{ github.ref }}-${{ inputs.group || (inputs.prebuilt && 'ci' || 'solo') }}
   cancel-in-progress: true
 jobs:
   guests:

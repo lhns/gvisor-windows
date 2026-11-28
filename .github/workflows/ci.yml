@@ -65,57 +65,10 @@ jobs:
     needs: bin
     uses: ./.github/workflows/podman-windows.yml
     with: {prebuilt: true}
-  # The Podman engine's root image, built on Linux (cached with the podman workflow's image).
-  podman-image:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/podman-image
-        with: {podman-version: "6.2.0"}   # keep equal to PODMAN_VERSION in podman-windows.yml
-      - uses: actions/upload-artifact@v4
-        with: {name: podman-engine-image, path: podman.erofs, compression-level: 0, retention-days: 3}
-  # Something to try on another machine: gvisor-windows-<sha>.zip with runsc.exe, a hello bundle, the Podman
-  # engine (erofs image, podman-engine.ps1) and a README.
+  # Something to try on another machine: runsc.exe, a hello bundle, README, NOTICE, LICENSE as a zip, tested
+  # as a fresh standard user (the Podman bundle lives in lhns/podman-portable, ADR 0023).
   release:
-    needs: [bin, runsc, podman-image]
-    if: ${{ !cancelled() && needs.bin.result == 'success' && needs.podman-image.result == 'success' }}
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-        with: {sparse-checkout: "tools/windows"}
-      - uses: actions/download-artifact@v4
-        with: {name: win-bin, path: 'C:\ci\bin'}
-      - uses: actions/download-artifact@v4
-        with: {name: runsc-guests, path: guests}
-      - uses: actions/download-artifact@v4
-        with: {name: podman-engine-image, path: image}
-      - shell: pwsh
-        run: ./tools/windows/ci/make-release.ps1 -Guests guests -Runsc C:\ci\bin\runsc.exe -Image image\podman.erofs -Out release -Zip "zip\gvisor-windows-$('${{ github.sha }}'.Substring(0, 8)).zip"
-      - uses: actions/upload-artifact@v4
-        with: {name: gvisor-windows-zip, path: zip, compression-level: 0, retention-days: 14}
-  # A clean machine: a fresh runner, the zip extracted into a standard user's profile, the engine driven by the stock podman client.
-  release-test:
-    needs: release
-    runs-on: windows-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-        with: {sparse-checkout: "tools/windows"}
-      - uses: actions/download-artifact@v4
-        with: {name: gvisor-windows-zip, path: 'C:\rt\zip'}
-      - name: Stock podman remote client
-        shell: pwsh
-        run: |
-          $v = '6.2.0'
-          Invoke-WebRequest "https://github.com/containers/podman/releases/download/v$v/podman-remote-release-windows_amd64.zip" -OutFile C:\rt\podman.zip
-          Expand-Archive C:\rt\podman.zip C:\rt\podman
-          Get-ChildItem -Recurse C:\rt\podman -Filter podman.exe | ForEach-Object { $_.FullName; & $_.FullName --version }
-      - name: Extract, run and drive the engine as a standard user
-        shell: pwsh
-        run: |
-          $zip = (Get-ChildItem C:\rt\zip -Filter 'gvisor-windows-*.zip').FullName
-          $podman = (Get-ChildItem -Recurse C:\rt\podman -Filter podman.exe | Select-Object -First 1).FullName
-          & tools/windows/ci/run-as-standard-user.ps1 `
-            -Program 'C:\Program Files\PowerShell\7\pwsh.exe' `
-            -Arguments '-NoProfile','-File',"$PWD\tools\windows\ci\release-test.ps1",'-Zip',$zip,'-Podman',$podman `
-            -GrantPath C:\rt,$PWD -TimeoutSeconds 1200
+    needs: [bin, runsc]
+    if: ${{ !cancelled() && needs.bin.result == 'success' }}
+    uses: ./.github/workflows/windows-release.yml
+    with: {zip-name: "gvisor-windows-${{ github.sha }}.zip"}

@@ -1102,8 +1102,9 @@
   state: done
   outcome: unrated
   evidence:
-  - tools/windows/podman/README-release.md
+  - tools/windows/ci/README-release.md
   - tools/windows/ci/release-test.ps1
+  - docs/adr/0023-podman-bundle-in-its-own-repo.md
   verdict_quote: ''
   headline: ''
   depends_on:
@@ -1116,8 +1117,8 @@
   - CI uploads a runsc-windows package (runsc.exe, hello bundle, README) on each push to windows (2026-11-27, commit 20ac3fb3b)
   overview: false
   plain: Ship runsc for Windows as a zip or per-user installer that needs no admin.
-  notes: CI builds gvisor-windows-<sha>.zip (runsc.exe, Podman engine image, podman-engine.ps1 start/stop/status, README); release-test extracts it into a fresh standard user profile and runs hello, the
-    engine, podman version and podman run (run 46044621936). Publishing a GitHub Release is the owner's call.
+  notes: The Podman bundle moved to lhns/podman-portable (ADR 0023); this repo ships runsc.exe plus a hello bundle, tested from a fresh standard user profile. Draft releases come from release.yml after
+    the heavy suites pass on the same sha.
 - id: sentry-fault-recovery
   title: Port fault recovery to Windows
   track: sentry
@@ -1721,7 +1722,7 @@
   plain: The prototype under tools/windows/stubproto duplicates the platform code; once its test guests run under the Sentry, delete it.
   notes: 'Done when: tools/windows/stubproto and its workflow are removed and its guests run through the Sentry in CI.'
 - outcome: unrated
-  evidence: &id001
+  evidence:
   - docs/results/1g-platform-memory.md
   - docs/adr/0016-memory-file-on-extent-sections.md
   verdict_quote: ''
@@ -1930,7 +1931,9 @@
   plain: A git-status-like walk of 20000 files takes 1.2-2.4 s through the host folder; an attribute cache fed by the change watcher would bring stat near native.
   notes: 'Done when: a 20000-file stat walk through the backend is within 2x of native on windows-latest.'
 - outcome: unrated
-  evidence: *id001
+  evidence:
+  - docs/results/1g-platform-memory.md
+  - docs/adr/0016-memory-file-on-extent-sections.md
   verdict_quote: ''
   headline: ''
   depends_on: []
@@ -1992,10 +1995,10 @@
   - docs/results/3b-runsc-speed-lifecycle.md
   verdict_quote: CPU-bound work runs at native speed, but small-file and process-creation workloads are 16x to 170x slower than na
   headline: 16x to 170x slower
-  replaced_by: &id002 []
+  replaced_by: &id001 []
   start: '2026-11-27'
   end: '2026-11-27'
-  folded: &id003 []
+  folded: &id002 []
   overview: false
   id: workloads-end-to-end-speed
   title: Measure end-to-end speed on Windows
@@ -2011,10 +2014,10 @@
   evidence: []
   verdict_quote: ''
   headline: ''
-  replaced_by: *id002
+  replaced_by: *id001
   start: ''
   end: ''
-  folded: *id003
+  folded: *id002
   overview: false
   id: ops-run-on-a-work-machine
   title: Try it on a real work machine
@@ -2024,7 +2027,8 @@
   lane: owner
   depends_on: []
   plain: All evidence comes from GitHub hosted Windows images; the owner runs runsc.exe once on a work machine to check FSGSBASE and whether security software tolerates the generated stub being debugged.
-  notes: 'Ready: download the gvisor-windows-zip artifact of the latest ci run on windows and follow its README. Done when: the owner reports the result of one run.'
+  notes: 'Ready: download the release zip (or the latest ci run on windows) and run its hello bundle; the Podman bundle test belongs to lhns/podman-portable. Done when: the owner reports the result of one
+    run.'
 - outcome: unrated
   evidence:
   - docs/results/5-podman-windows.md
@@ -2443,11 +2447,11 @@
   - docs/results/1l-platform-stability.md
   verdict_quote: ''
   headline: ''
-  depends_on: &id004 []
-  replaced_by: &id005 []
+  depends_on: &id003 []
+  replaced_by: &id004 []
   start: '2026-11-27'
   end: '2026-11-27'
-  folded: &id006 []
+  folded: &id005 []
   overview: false
   id: platform-rewrite-mode-slow-engine
   title: Podman engine stalls in rewrite mode
@@ -2462,11 +2466,11 @@
   - docs/results/5-podman-windows.md
   verdict_quote: ''
   headline: ''
-  depends_on: *id004
-  replaced_by: *id005
+  depends_on: *id003
+  replaced_by: *id004
   start: '2026-11-27'
   end: '2026-11-27'
-  folded: *id006
+  folded: *id005
   overview: false
   id: workloads-volume-lost-on-restart
   title: Volume data lost across engine restart
@@ -2501,11 +2505,11 @@
   - docs/results/1l-platform-stability.md
   verdict_quote: ''
   headline: ''
-  depends_on: &id007 []
-  replaced_by: &id008 []
+  depends_on: &id006 []
+  replaced_by: &id007 []
   start: '2026-11-27'
   end: '2026-11-27'
-  folded: &id009 []
+  folded: &id008 []
   overview: false
   id: platform-rewrite-glibc-init-crash
   title: Static glibc crashes at start in rewrite mode
@@ -2520,11 +2524,11 @@
   - docs/results/5-podman-windows.md
   verdict_quote: ''
   headline: ''
-  depends_on: *id007
-  replaced_by: *id008
+  depends_on: *id006
+  replaced_by: *id007
   start: '2026-11-27'
   end: '2026-11-27'
-  folded: *id009
+  folded: *id008
   overview: false
   id: fs-host-folder-mtime-resolution
   title: Host-folder writes keep the old mtime
@@ -2539,11 +2543,11 @@
   - docs/results/5-podman-windows.md
   verdict_quote: ''
   headline: ''
-  depends_on: &id010 []
-  replaced_by: &id011 []
+  depends_on: &id009 []
+  replaced_by: &id010 []
   start: '2026-11-27'
   end: '2026-11-27'
-  folded: &id012 []
+  folded: &id011 []
   overview: false
   id: fs-layer-store-corrupt-after-restart
   title: Layer store unreadable after restart
@@ -2561,11 +2565,11 @@
   - docs/results/1o-rewrite-correctness.md
   verdict_quote: ''
   headline: ''
-  depends_on: *id010
-  replaced_by: *id011
+  depends_on: *id009
+  replaced_by: *id010
   start: '2026-11-27'
   end: '2026-11-27'
-  folded: *id012
+  folded: *id011
   overview: false
   id: platform-unrewritten-fs-in-library
   title: Unrewritten %fs site in a library
@@ -2646,11 +2650,11 @@
   - docs/adr/0021-overlay-storage-driver.md
   verdict_quote: ''
   headline: ''
-  depends_on: &id013 []
-  replaced_by: &id014 []
+  depends_on: &id012 []
+  replaced_by: &id013 []
   start: '2026-11-27'
   end: '2026-11-27'
-  folded: &id015 []
+  folded: &id014 []
   overview: false
   lane: windows-ci
   id: fs-overlay-upper-on-host-folder
@@ -2667,11 +2671,11 @@
   - docs/results/2r-step5-overlay.md
   verdict_quote: ''
   headline: ''
-  depends_on: *id013
-  replaced_by: *id014
+  depends_on: *id012
+  replaced_by: *id013
   start: '2026-11-27'
   end: '2026-11-27'
-  folded: *id015
+  folded: *id014
   overview: false
   lane: windows-ci
   id: workloads-dev-null-eacces
@@ -2793,11 +2797,11 @@
 - outcome: unrated
   verdict_quote: ''
   headline: ''
-  depends_on: &id016 []
-  replaced_by: &id017 []
+  depends_on: &id015 []
+  replaced_by: &id016 []
   start: '2026-11-27'
   end: '2026-11-27'
-  folded: &id018 []
+  folded: &id017 []
   overview: false
   id: platform-fault-under-fs-jump
   title: Fault reported under a patch jump
@@ -2814,11 +2818,11 @@
 - outcome: unrated
   verdict_quote: ''
   headline: ''
-  depends_on: *id016
-  replaced_by: *id017
+  depends_on: *id015
+  replaced_by: *id016
   start: '2026-11-27'
   end: '2026-11-27'
-  folded: *id018
+  folded: *id017
   overview: false
   id: fs-layers-empty-on-slow-host
   title: Empty file read during a replace
@@ -2833,11 +2837,11 @@
 - outcome: unrated
   verdict_quote: ''
   headline: ''
-  depends_on: &id019 []
-  replaced_by: &id020 []
+  depends_on: &id018 []
+  replaced_by: &id019 []
   start: '2026-11-27'
   end: '2026-11-28'
-  folded: &id021 []
+  folded: &id020 []
   overview: false
   id: sentry-epoll-timeout-overshoot
   title: Rare long epoll timeout overshoot
@@ -2854,11 +2858,11 @@
 - outcome: unrated
   verdict_quote: ''
   headline: ''
-  depends_on: *id019
-  replaced_by: *id020
+  depends_on: *id018
+  replaced_by: *id019
   start: '2026-11-27'
   end: ''
-  folded: *id021
+  folded: *id020
   overview: false
   id: ops-podman-on-the-dev-vm
   title: Podman on the development VM
@@ -2873,11 +2877,11 @@
 - outcome: unrated
   verdict_quote: ''
   headline: ''
-  depends_on: &id022 []
-  replaced_by: &id023 []
+  depends_on: &id021 []
+  replaced_by: &id022 []
   start: '2026-11-28'
   end: ''
-  folded: &id024 []
+  folded: &id023 []
   overview: false
   lane: windows-ci
   id: workloads-podman-client-on-pipe
@@ -2886,17 +2890,17 @@
   kind: defect
   state: next
   evidence:
-  - tools/windows/podman/README-release.md
+  - tools/windows/ci/README-release.md
   plain: The stock Windows podman client connects over a unix socket path without a drive letter, so the zip only works from drive C:; the docker CLI uses the named pipe.
-  notes: 'Fixed when: podman connects through npipe (if 6.2.0 supports it) or a socket URL that works from any drive, tested by release-test.'
+  notes: Now in lhns/podman-portable (the bundle); fixed when the stock podman client works from any drive, tested by its CI.
 - outcome: unrated
   verdict_quote: ''
   headline: ''
-  depends_on: *id022
-  replaced_by: *id023
+  depends_on: *id021
+  replaced_by: *id022
   start: '2026-11-28'
   end: ''
-  folded: *id024
+  folded: *id023
   overview: false
   lane: windows-ci
   id: platform-text-cache-pie
@@ -2911,11 +2915,11 @@
 - outcome: unrated
   verdict_quote: ''
   headline: ''
-  depends_on: &id025 []
-  replaced_by: &id026 []
+  depends_on: &id024 []
+  replaced_by: &id025 []
   start: '2026-11-28'
   end: ''
-  folded: &id027 []
+  folded: &id026 []
   overview: false
   lane: windows-ci
   id: sentry-host-io-under-locks
@@ -2930,11 +2934,11 @@
 - outcome: unrated
   verdict_quote: ''
   headline: ''
-  depends_on: *id025
-  replaced_by: *id026
+  depends_on: *id024
+  replaced_by: *id025
   start: '2026-11-28'
   end: ''
-  folded: *id027
+  folded: *id026
   overview: false
   lane: windows-ci
   id: sentry-sh-wait-status-flake
