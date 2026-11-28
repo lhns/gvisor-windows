@@ -52,7 +52,7 @@ Shared veneers were the one part that could have forced a refusal: `/bin/true`'s
 
 `TestTextCache` is unchanged and passes.
 
-### Numbers (final product code, run 46100560727; same job, relocation on / off / cache off)
+### Numbers (run 46100560727, the final code but for the fixHead guard; same job, relocation on / off / cache off)
 
 | loop | native | rewrite | rewrite-fxsave |
 |--|--|--|--|
