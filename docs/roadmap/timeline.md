@@ -108,6 +108,7 @@ gantt
     Publish guest ports on localhost :net_port_forwarding, 2026-11-26, 2026-11-26
     Bridge networking inside gVisor :net_bridge_networking, 2026-11-26, 2026-11-26
     Make nftables safe for concurrent use :net_nftables_thread_safety, 2026-11-26, 2026-11-26
+    User-space NAT on rootless Linux :net_linux_nat_seccomp, 2026-11-28, 2026-11-28
     section workloads - workloads
     Write the Podman acceptance test :workloads_acceptance_test, 2026-11-26, 2026-11-26
     Podman on gVisor on Linux :workloads_podman_on_gvisor_linux, 2026-11-26, 2026-11-26
@@ -141,6 +142,7 @@ gantt
     Benchmark gVisor against native Linux :research_gvisor_benchmark, 2026-11-26, 2026-11-26
     Test WHPX on this machine :crit, research_whpx_this_machine, 2026-11-26, 2026-11-26
     Reach host files over a protocol :crit, research_file_protocol, 2026-11-26, 2026-11-26
+    Podman on Linux without root :research_linux_rootless_podman, 2026-11-28, 2026-11-28
     section ops - operations
     Name it gvisor-windows :ops_name_and_fork, 2026-11-26, 2026-11-26
     Run Linux tests on GitHub Actions :ops_linux_tests_on_actions, 2026-11-26, 2026-11-26

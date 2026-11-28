@@ -1383,7 +1383,9 @@ func (s *Sandbox) createSandboxProcess(conf *config.Config, args *Args) error {
 	if ns, ok := specutils.GetNS(specs.NetworkNamespace, args.Spec); ok && conf.Network != config.NetworkNone {
 		log.Infof("Sandbox will be started in the container's network namespace: %+v", ns)
 		nss = append(nss, ns)
-	} else if conf.Network == config.NetworkHost {
+	} else if conf.Network == config.NetworkHost || conf.Network == config.NetworkWindowsNAT {
+		// windows-nat: the user-space NAT dials and listens through host sockets,
+		// so the sandbox must stay in the namespace it was started in.
 		log.Infof("Sandbox will be started in the host network namespace")
 	} else {
 		log.Infof("Sandbox will be started in new network namespace")

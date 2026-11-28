@@ -17,12 +17,13 @@ flowchart TB
     research_gvisor_benchmark[/"✔ Benchmark gVisor<br/>against native Linux"/]
     research_whpx_this_machine[/"✖ Test WHPX on this<br/>machine"/]
     research_file_protocol[/"✖ Reach host files<br/>over a protocol"/]
+    research_linux_rootless_podman[/"✔ Podman on Linux<br/>without root"/]
     research_gvisor_base ~~~ research_flinux_translation
     research_lkl_nommu ~~~ research_qemu_emulation
     research_unkernel ~~~ research_gvisor_benchmark
     research_flinux_translation ~~~ research_whpx_this_machine
     research_qemu_emulation ~~~ research_file_protocol
-    research_gvisor_benchmark ~~~ research_file_protocol
+    research_gvisor_benchmark ~~~ research_linux_rootless_podman
     research_gvisor_base --> research_gvisor_benchmark
     research_gvisor_base --> research_whpx_this_machine
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
@@ -42,6 +43,7 @@ flowchart TB
     class research_gvisor_base unrated
     class research_lkl_nommu,research_unkernel,research_flinux_translation,research_qemu_emulation,research_whpx_this_machine,research_file_protocol dead
     class research_gvisor_benchmark succ
+    class research_linux_rootless_podman mixed
 ```
 <!-- END GENERATED: track-research -->
 
@@ -58,6 +60,7 @@ flowchart TB
 | `research-gvisor-benchmark` | Benchmark gVisor against native Linux | experiment | linux-ci | done | successful | 2026-11-26 | 2026-11-26 | research-gvisor-base |  |  | 5.3 s against 0.9 s | docs/results/0a-linux.md |
 | `research-whpx-this-machine` | Test WHPX on this machine | experiment | windows-local | abandoned | dead-end | 2026-11-26 | 2026-11-26 | research-gvisor-base |  |  |  | docs/results/0b-windows.md |
 | `research-file-protocol` | Reach host files over a protocol | experiment | none | abandoned | dead-end | 2026-11-26 | 2026-11-26 |  |  |  |  | docs/adr/0005-host-files-accessed-directly.md |
+| `research-linux-rootless-podman` | Podman on Linux without root | experiment | linux-ci | done | mixed | 2026-11-28 | 2026-11-28 |  |  |  |  | docs/results/0e-linux-rootless.md |
 
 ### Details per node
 
@@ -71,6 +74,7 @@ flowchart TB
 | `research-gvisor-benchmark` | Benchmark gVisor against native Linux | runsc/systrap was about 5x slower on fork+exec (2000 `/bin/true`: 5.3 s against 0.9 s), 2 to 3 times slower on small-file work on a bind mount, about 1.1x to 1.4x on CPU-bound work | 5.3 s against 0.9 s | Measure how much slower process start, small files and CPU work are inside gVisor than natively. | Done when: the benchmark table is in docs/results/0a-linux.md. |  |  |  |  |
 | `research-whpx-this-machine` | Test WHPX on this machine | WHPX cannot be used on this machine as a standard user (QEMU reports "WHPX: No accelerator found"), so only QEMU software emulation (TCG) works here |  | Check whether QEMU can use the Windows hypervisor here without admin, as a fast stopgap. | Done when: S6 results are in docs/results/0b-windows.md. |  |  |  |  |
 | `research-file-protocol` | Reach host files over a protocol | Here the Sentry is the kernel and runs on the same machine as the files; gVisor has no NFS client. |  | Serving Windows files to the sandbox over NFS, 9P or gVisor's lisafs was rejected: the sandbox runs on the same machine and can open them itself. |  |  |  |  |  |
+| `research-linux-rootless-podman` | Podman on Linux without root | feasible with 1 known fix (host networking works today, 9 of 10 steps pass) |  | This branch's runsc runs an unmodified Podman engine as an ordinary Linux user without Docker; 9 of 10 steps pass with host networking. | Spike for a Linux bundle in lhns/podman-portable. |  |  |  |  |
 
 ### Folded items per node
 

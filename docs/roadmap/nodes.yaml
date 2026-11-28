@@ -2950,3 +2950,42 @@
   - docs/results/3e-signal-latency.md
   plain: The sentry-guests case sh_wait_status sometimes gets 2 instead of 143 from wait on a killed background job (native and rewrite-fxsave).
   notes: 'Fixed when: the case passes 30 runs in a row in all modes.'
+- verdict_quote: feasible with 1 known fix (host networking works today, 9 of 10 steps pass)
+  headline: ''
+  depends_on: &id027 []
+  replaced_by: &id028 []
+  start: '2026-11-28'
+  end: '2026-11-28'
+  folded: &id029 []
+  overview: false
+  lane: linux-ci
+  id: research-linux-rootless-podman
+  title: Podman on Linux without root
+  track: research
+  kind: experiment
+  state: done
+  outcome: mixed
+  evidence:
+  - docs/results/0e-linux-rootless.md
+  plain: This branch's runsc runs an unmodified Podman engine as an ordinary Linux user without Docker; 9 of 10 steps pass with host networking.
+  notes: Spike for a Linux bundle in lhns/podman-portable.
+- verdict_quote: ''
+  headline: ''
+  depends_on: *id027
+  replaced_by: *id028
+  start: '2026-11-28'
+  end: ''
+  folded: *id029
+  overview: false
+  lane: linux-ci
+  id: net-linux-nat-seccomp
+  title: User-space NAT on rootless Linux
+  track: net
+  kind: defect
+  state: next
+  outcome: unrated
+  evidence:
+  - docs/results/0e-linux-rootless.md
+  plain: With --network=windows-nat on Linux the engine starts and answers through the published port, but the sandbox dies from seccomp (SIGSYS) at the first podman pull; the syscall is not identified
+    yet.
+  notes: 'Fixed when: the rootless Linux spike passes the strict steps 7 and 8 (bridge, -p, compose by name) with the user-space NAT.'

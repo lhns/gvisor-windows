@@ -1533,7 +1533,8 @@ func (l *Loader) installSeccompFilters(hostFS filter.HostFSAccess) error {
 	if l.root.conf.DisableSeccomp {
 		log.Warningf("*** SECCOMP WARNING: syscall filter is DISABLED. Running in less secure mode.")
 	} else {
-		hostnet := l.root.conf.Network == config.NetworkHost
+		// windows-nat needs host sockets for its user-space NAT (seccomp must allow them).
+		hostnet := l.root.conf.Network == config.NetworkHost || l.root.conf.Network == config.NetworkWindowsNAT
 		var nvproxyCaps nvconf.DriverCaps
 		nvproxyEnabled := specutils.NVProxyEnabled(l.root.spec, l.root.conf)
 		if nvproxyEnabled {

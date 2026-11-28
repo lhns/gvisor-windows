@@ -4,6 +4,11 @@ on:
     branches: [windows]
     paths: ["pkg/**", "runsc/**", "third_party/**", "go.mod", "test/e2e/podman-acceptance/**", ".github/workflows/podman-acceptance-linux.yml"]
   workflow_dispatch:
+    inputs:
+      spike_rootless:
+        description: "Run only the rootless-runsc spike (docs/results/0e-linux-rootless.md)"
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -16,6 +21,7 @@ jobs:
   # Stage B: the same test against native podman (sanity check of the test).
   acceptance:
     name: acceptance-${{ matrix.name }}
+    if: ${{ !inputs.spike_rootless }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -81,6 +87,7 @@ jobs:
   # Matrix: Podman engine version x cgroups x network mode, all with the store on a host dir.
   strict:
     name: strict-${{ matrix.podman }}-${{ matrix.cg }}-${{ matrix.net }}
+    if: ${{ !inputs.spike_rootless }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
@@ -126,6 +133,7 @@ jobs:
 
   # Which netlink operations does netavark need? Run podman directly inside a --strace sandbox.
   netlink-probe:
+    if: ${{ !inputs.spike_rootless }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -170,6 +178,7 @@ jobs:
   # v: ipt-priv = docker --privileged (rw cgroup mount), ipt-remount = unprivileged plus in-sandbox remount rw.
   bridge:
     name: bridge-${{ matrix.podman }}-${{ matrix.v }}
+    if: ${{ !inputs.spike_rootless }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -237,6 +246,7 @@ jobs:
 
   # Stage C: native vs runc vs runsc
   bench:
+    if: ${{ !inputs.spike_rootless }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -252,6 +262,7 @@ jobs:
   # Stage D: ELF survey (no runsc needed)
   elf:
     name: elf-${{ matrix.image }}
+    if: ${{ !inputs.spike_rootless }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -273,6 +284,7 @@ jobs:
 
   # Stage E: image storage (gate 0a.4)
   storage:
+    if: ${{ !inputs.spike_rootless }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -289,7 +301,7 @@ jobs:
 
   summary:
     needs: [acceptance, strict, netlink-probe, bridge, bench, elf, storage]
-    if: always()
+    if: ${{ always() && !inputs.spike_rootless }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -300,3 +312,82 @@ jobs:
           python3 test/e2e/podman-acceptance/harness/summarize.py all | tee summary.md >>"$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with: {name: summary, path: summary.md, retention-days: 30}
+
+  # Spike (dispatch only): the engine as an unprivileged user in a rootless runsc built from this tree. No docker for the
+  # engine, no root, no docker group; docker is used once, as the runner, to unpack the engine image.
+  spike-rootless:
+    name: spike-rootless-${{ matrix.net }}-${{ matrix.driver }}
+    if: ${{ inputs.spike_rootless }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {net: host,        driver: overlay}
+          - {net: host,        driver: vfs}
+          - {net: windows-nat, driver: overlay}
+    env:
+      PODMAN_IMAGE: quay.io/podman/stable:v6.2.0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version-file: go.mod}
+      - name: Build runsc from this tree
+        run: |
+          mkdir -p "$RESULTS_DIR/out"
+          W=$(mktemp -d); cd "$W"
+          URL=https://storage.googleapis.com/gvisor/releases/release/latest/$(uname -m)
+          wget -q "$URL/gvisor.tar.bz2" && mkdir x && tar -xjf gvisor.tar.bz2 -C x
+          sudo mkdir -p /opt/gv && sudo cp -r x/gvisor-bin /opt/gv/
+          cd "$GITHUB_WORKSPACE"
+          CGO_ENABLED=0 go build -o /tmp/runsc-tree ./runsc && CGO_ENABLED=0 go build -o /tmp/gvisor_sentry-tree ./runsc/cmd/sentry
+          sudo cp /tmp/runsc-tree /opt/gv/runsc; sudo cp /tmp/gvisor_sentry-tree /opt/gv/gvisor-bin/gvisor_sentry
+          sudo chmod -R a+rx /opt/gv
+          /opt/gv/runsc --version | tee "$RESULTS_DIR/out/runsc-version.txt"
+      - name: Unprivileged user and engine rootfs
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq podman socat uidmap strace
+          # Ubuntu 24.04 blocks unprivileged user namespaces by AppArmor; rootless runsc needs one.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          sudo useradd -m -s /bin/bash spike
+          sudo install -d -o spike -g spike -m 700 /run/user/$(id -u spike)  # what a login session provides; the podman client wants it
+          id spike; sudo -u spike sh -c 'sudo -n true' 2>&1 | head -1 || true
+          docker pull -q "$PODMAN_IMAGE"
+          c=$(docker create "$PODMAN_IMAGE" sh)
+          sudo -u spike mkdir -p /home/spike/rootfs
+          docker export "$c" | sudo -u spike tar -x -C /home/spike/rootfs --no-same-owner --exclude='./dev/*' || true
+          ls /home/spike/rootfs | head -30
+          cp test/e2e/podman-acceptance/harness/rootless-spike.sh test/e2e/podman-acceptance/harness/{containers,storage}.conf /tmp/
+          mkdir -p /tmp/rl && cp test/e2e/podman-acceptance/harness/rootless-spike.sh test/e2e/podman-acceptance/harness/{containers,storage}.conf /tmp/rl/
+          cp test/e2e/podman-acceptance/run.sh test/e2e/podman-acceptance/steps.tsv /tmp/rl/
+          chmod -R a+rX /tmp/rl
+      - name: Start engine (rootless runsc, as spike)
+        id: start
+        run: |
+          sudo -u spike -H env -i HOME=/home/spike USER=spike PATH="$PATH" STRACE=0 GV=/opt/gv ROOTFS=/home/spike/rootfs WORK=/home/spike/work NET=${{ matrix.net }} STORAGE_DRIVER=${{ matrix.driver }}             bash /tmp/rl/rootless-spike.sh start 2>&1 | tee "$RESULTS_DIR/out/start.txt"
+          test "${PIPESTATUS[0]}" = 0
+      - name: Acceptance test (as spike)
+        if: steps.start.outcome == 'success'
+        run: |
+          mkdir -p /tmp/rl-out && chmod 777 /tmp/rl-out
+          HN=""; [ "${{ matrix.net }}" = host ] && HN="HOSTNET=1 NETARGS=--network=host"
+          sudo -u spike -H env -i HOME=/home/spike USER=spike PATH="$PATH" STRACE=0 $HN GV=/opt/gv ROOTFS=/home/spike/rootfs WORK=/home/spike/work NET=${{ matrix.net }} STORAGE_DRIVER=${{ matrix.driver }}             XDG_RUNTIME_DIR=/home/spike/xdg CONTAINER_HOST=unix:///home/spike/podman.sock SHARE_DIR=/home/spike/share RESULTS_DIR=/tmp/rl-out             ENGINE_CTL=/tmp/rl/rootless-spike.sh bash /tmp/rl/run.sh || true
+      - name: Diagnostics
+        if: always()
+        run: |
+          cd "$RESULTS_DIR/out"
+          cp -r /tmp/rl-out/. . 2>/dev/null || true
+          sudo dmesg 2>/dev/null | grep -iE 'seccomp|SIGSYS' | tail -20 >dmesg-seccomp.txt || true
+          sudo grep -B6 -m3 'SIGSYS' /home/spike/work/strace.out 2>/dev/null | cut -c1-300 >strace-sigsys.txt || true
+          sudo cp /home/spike/work/runsc.out /home/spike/work/socat.log . 2>/dev/null || true
+          sudo cp /home/spike/work/storage/engine-env.txt . 2>/dev/null || true
+          sudo tar -czf runsc-logs.tgz -C /home/spike/work logs 2>/dev/null || true
+          sudo chmod -R a+r . || true
+          { echo "### spike-rootless-${{ matrix.net }}-${{ matrix.driver }}"; echo '```'; cat runsc-version.txt; cat start.txt | tail -30; cat engine-env.txt; cat steps.txt; echo '```'; } >>"$GITHUB_STEP_SUMMARY" 2>&1 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: spike-rootless-${{ matrix.net }}-${{ matrix.driver }}
+          path: results/out
+          retention-days: 30
