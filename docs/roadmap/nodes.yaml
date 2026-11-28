@@ -2633,10 +2633,10 @@
   lane: windows-ci
   start: '2026-11-27'
   end: '2026-11-27'
-  folded: []
+  folded:
+  - 'Owner decision: CI on push only, no scheduled test runs; repeats are dispatched when needed (2026-11-28, commit 8760b32fc)'
   overview: false
-  plain: One ci.yml builds runsc.exe and the test binaries once and calls every Windows suite; worker branches start no runs and dispatch only what they need; heavy repeats run nightly. About 62 to 40 job-minutes
-    per push.
+  plain: One ci.yml builds runsc.exe and the test binaries once and calls every Windows suite; worker branches start no runs and dispatch only what they need. About 62 to 40 job-minutes per push.
   notes: 'Next lever: merge the 16 small Linux acceptance jobs. Also uploads a runsc-windows package (runsc.exe, hello bundle, README) for trying it on a work machine.'
 - outcome: unrated
   evidence:
@@ -2868,3 +2868,41 @@
   - docs/results/1p-rewrite-heap.md
   plain: Podman has passed in rewrite-fxsave mode only on CI runners that force it; on the development VM (no FSGSBASE, XSAVE or AVX) only runsc bundles ran, because the engine opens a network listener.
   notes: 'Needs the owner''s go-ahead to start the engine on the VM (firewall prompt). Done when: the zip''s README steps run on the VM.'
+- outcome: unrated
+  verdict_quote: ''
+  headline: ''
+  depends_on: &id022 []
+  replaced_by: &id023 []
+  start: '2026-11-28'
+  end: ''
+  folded: &id024 []
+  overview: false
+  lane: windows-ci
+  id: workloads-podman-client-on-pipe
+  title: Podman client over the named pipe
+  track: workloads
+  kind: defect
+  state: next
+  evidence:
+  - tools/windows/podman/README-release.md
+  plain: The stock Windows podman client connects over a unix socket path without a drive letter, so the zip only works from drive C:; the docker CLI uses the named pipe.
+  notes: 'Fixed when: podman connects through npipe (if 6.2.0 supports it) or a socket URL that works from any drive, tested by release-test.'
+- outcome: unrated
+  verdict_quote: ''
+  headline: ''
+  depends_on: *id022
+  replaced_by: *id023
+  start: '2026-11-28'
+  end: ''
+  folded: *id024
+  overview: false
+  lane: windows-ci
+  id: platform-text-cache-pie
+  title: Patched-text cache for PIE programs
+  track: platform
+  kind: defect
+  state: next
+  evidence:
+  - docs/results/1r-platform-speed.md
+  plain: The patched-text cache is keyed by address, so PIE and dynamically linked programs loaded at random addresses miss it; the 4 to 6 times fork+exec gain was measured with static busybox.
+  notes: 'Fixed when: a dynamic or PIE fork+exec loop hits the cache, with its own before and after numbers.'

@@ -60,6 +60,7 @@ gantt
     Measure exception stack use :platform_exception_dispatch_depth, 2026-11-27, 2026-11-27
     Thread resumed inside a patch window :platform_resume_inside_fs_window, 2026-11-27, 2026-11-27
     Fault reported under a patch jump :platform_fault_under_fs_jump, 2026-11-27, 2026-11-27
+    Patched-text cache for PIE programs :platform_text_cache_pie, 2026-11-28, 2026-11-28
     section sentry - sentry
     Recover faults in Go :sentry_go_fault_recovery, 2026-11-26, 2026-11-26
     Sentry builds for Windows :sentry_windows_build, 2026-11-26, 2026-11-26
@@ -128,6 +129,7 @@ gantt
     buildah picks rootless isolation :workloads_buildah_thinks_rootless, 2026-11-27, 2026-11-27
     Rare permission error opening the null… :workloads_dev_null_eacces, 2026-11-27, 2026-11-27
     Podman on CPUs without FSGSBASE :workloads_podman_without_fsgsbase, 2026-11-27, 2026-11-27
+    Podman client over the named pipe :workloads_podman_client_on_pipe, 2026-11-28, 2026-11-28
     section research - research
     Pick gVisor as the base :research_gvisor_base, 2026-11-17, 2026-11-26
     Revive LKL or nommu UML :crit, research_lkl_nommu, 2026-11-26, 2026-11-26

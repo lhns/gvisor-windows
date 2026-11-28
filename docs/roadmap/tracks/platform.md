@@ -50,6 +50,7 @@ flowchart TB
     platform_exception_dispatch_depth[/"✔ Measure exception<br/>stack use"/]
     platform_resume_inside_fs_window>"✔ Thread resumed<br/>inside a patch window"]
     platform_fault_under_fs_jump>"✔ Fault reported under<br/>a patch jump"]
+    platform_text_cache_pie>"⚠ Patched-text cache<br/>for PIE programs"]
     platform_64k_mapping_conflicts["⏸ Handle 64 KB mapping<br/>conflicts"]
     platform_hardware_acceleration["⏸ Use hardware<br/>acceleration when<br/>available"]
     platform_binary_translation_fallback["⏸ Binary translation<br/>as a fallback"]
@@ -98,10 +99,10 @@ flowchart TB
     platform_rewrite_glibc_init_crash ~~~ platform_exception_dispatch_depth
     platform_unrewritten_fs_in_library ~~~ platform_resume_inside_fs_window
     platform_rewrite_heap_corruption ~~~ platform_fault_under_fs_jump
-    platform_exception_dispatch_depth ~~~ platform_64k_mapping_conflicts
-    platform_resume_inside_fs_window ~~~ platform_hardware_acceleration
-    platform_fault_under_fs_jump ~~~ platform_binary_translation_fallback
-    platform_64k_mapping_conflicts ~~~ platform_binary_translation_fallback
+    platform_exception_dispatch_depth ~~~ platform_text_cache_pie
+    platform_resume_inside_fs_window ~~~ platform_64k_mapping_conflicts
+    platform_fault_under_fs_jump ~~~ platform_hardware_acceleration
+    platform_text_cache_pie ~~~ platform_binary_translation_fallback
     platform_trap_cost -.-> platform_veh_on_guest_stack_unsafe
     platform_tls_register -.-> platform_veh_on_guest_stack_unsafe
     platform_trap_cost --> platform_exception_stack
@@ -146,6 +147,7 @@ flowchart TB
     class platform_zpoline_hooks dead
     class platform_fs_base_repair unrated
     class platform_fast_process_start,platform_recycle_stubs vsucc
+    class platform_text_cache_pie finding
     class platform_64k_mapping_conflicts,platform_hardware_acceleration,platform_binary_translation_fallback parked
 ```
 <!-- END GENERATED: track-platform -->
@@ -199,6 +201,7 @@ flowchart TB
 | `platform-exception-dispatch-depth` | Measure exception stack use | experiment | windows-ci | done | mixed | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/0b-windows.md |
 | `platform-resume-inside-fs-window` | Thread resumed inside a patch window | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/1p-rewrite-heap.md; docs/results/1q-window-resume.md |
 | `platform-fault-under-fs-jump` | Fault reported under a patch jump | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/1q-window-resume.md; docs/results/1s-veneers.md |
+| `platform-text-cache-pie` | Patched-text cache for PIE programs | defect | windows-ci | next | unrated | 2026-11-28 |  |  |  |  |  | docs/results/1r-platform-speed.md |
 
 ### Details per node
 
@@ -248,6 +251,7 @@ flowchart TB
 | `platform-exception-dispatch-depth` | Measure exception stack use | Dispatch writes 4512 bytes below RSP on every AVX-512 runner CPU whatever the thread dirtied (clean, ymm and zmm/k state all the same) |  | How far below the stack pointer Windows writes when it delivers an exception on AVX-512 CPUs, against what Go reserves; safecopy keeps its stack headroom helper. |  |  |  |  |  |
 | `platform-resume-inside-fs-window` | Thread resumed inside a patch window |  |  | In rewrite mode the platform can move a thread out of a veneer to an address inside the patch window; a Go signal handler then returns there and runs nop filler (one engine crash in 16 rewrite runs). | Fixed: int3 filler sends a thread returning into a window to its veneer; interrupts wait only while a thread would be reported under the jump. Open: a displaced-instruction fault under the jump (no known case). |  |  |  |  |
 | `platform-fault-under-fs-jump` | Fault reported under a patch jump |  |  | A fault in an instruction displaced into a veneer can still be reported at an address under the jump; a signal handler returning there with ret would run the jump bytes. No case is known. | Fixed: a fault under the jump is reported at the window start only when the earlier displaced instructions re-run with the same result and write nothing the faulting one reads; otherwise the planner refuses the window. TestFSFaultUnderJump covers repair-and-sigreturn. |  |  |  |  |
+| `platform-text-cache-pie` | Patched-text cache for PIE programs |  |  | The patched-text cache is keyed by address, so PIE and dynamically linked programs loaded at random addresses miss it; the 4 to 6 times fork+exec gain was measured with static busybox. | Fixed when: a dynamic or PIE fork+exec loop hits the cache, with its own before and after numbers. |  |  |  |  |
 
 ### Folded items per node
 

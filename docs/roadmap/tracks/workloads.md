@@ -31,6 +31,7 @@ flowchart TB
     workloads_podman_on_windows[/"✔ Podman passes on<br/>Windows"/]
     workloads_dev_null_eacces>"✔ Rare permission<br/>error opening the null<br/>device"]
     workloads_podman_without_fsgsbase["✔ Podman on CPUs<br/>without FSGSBASE"]
+    workloads_podman_client_on_pipe>"⚠ Podman client over<br/>the named pipe"]
     workloads_acceptance_test ~~~ workloads_podman_on_gvisor_linux
     workloads_acceptance_test ~~~ workloads_acceptance_test_windows
     workloads_acceptance_test ~~~ workloads_gvisor_bridge_netlink
@@ -55,7 +56,7 @@ flowchart TB
     workloads_volume_lost_on_restart ~~~ workloads_podman_on_windows
     workloads_buildah_thinks_rootless ~~~ workloads_dev_null_eacces
     workloads_podman_on_windows ~~~ workloads_podman_without_fsgsbase
-    workloads_dev_null_eacces ~~~ workloads_podman_without_fsgsbase
+    workloads_dev_null_eacces ~~~ workloads_podman_client_on_pipe
     workloads_acceptance_test --> workloads_podman_on_gvisor_linux
     workloads_podman_on_gvisor_linux -.-> workloads_gvisor_port_publishing
     workloads_acceptance_test --> workloads_acceptance_test_windows
@@ -91,6 +92,7 @@ flowchart TB
     class workloads_podman_on_gvisor_linux,workloads_strict_bar_linux,workloads_end_to_end_speed mixed
     class workloads_gvisor_bridge_netlink,workloads_gvisor_port_publishing,workloads_gvisor_cgroupfs_readonly,workloads_overlay_userxattr,workloads_conmon_sync_pipe,workloads_conmon_attach_second_cause,workloads_tty_through_windows_client,workloads_isolation_flake,workloads_volume_lost_on_restart,workloads_buildah_thinks_rootless,workloads_podman_on_windows,workloads_dev_null_eacces,workloads_podman_without_fsgsbase succ
     class workloads_bar_host_network decided
+    class workloads_podman_client_on_pipe finding
 ```
 <!-- END GENERATED: track-workloads -->
 
@@ -121,6 +123,7 @@ flowchart TB
 | `workloads-buildah-thinks-rootless` | buildah picks rootless isolation | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/adr/0002-what-done-means.md |
 | `workloads-dev-null-eacces` | Rare permission error opening the null device | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md; docs/results/2r-step5-overlay.md |
 | `workloads-podman-without-fsgsbase` | Podman on CPUs without FSGSBASE | feature | windows-ci | done | successful | 2026-11-27 | 2026-11-27 | workloads-podman-on-windows, platform-unrewritten-fs-in-library, platform-rewrite-heap-corruption, platform-resume-inside-fs-window |  |  | Podman passes without FSGSBASE too | docs/results/5-podman-windows.md; docs/results/1q-window-resume.md; docs/results/1p-rewrite-heap.md |
+| `workloads-podman-client-on-pipe` | Podman client over the named pipe | defect | windows-ci | next | unrated | 2026-11-28 |  |  |  |  |  | tools/windows/podman/README-release.md |
 
 ### Details per node
 
@@ -148,6 +151,7 @@ flowchart TB
 | `workloads-buildah-thinks-rootless` | buildah picks rootless isolation |  |  | Without BUILDAH_ISOLATION=oci every build fails in pasta, because buildah resolves the default isolation to rootless inside the sandbox, although euid, uid_map and capabilities all look rootful. | Fixed in the Sentry: the root user namespace now has Linux's fixed inode 0xEFFFFFFD in /proc/self/ns/user, which c/storage checks; BUILDAH_ISOLATION=oci removed, native 8 of 8 with all 10 steps. |  |  |  |  |
 | `workloads-dev-null-eacces` | Rare permission error opening the null device |  |  | Intermittently, apt's unprivileged _apt user gets "cannot create /dev/null: Permission denied" inside a build container, so step 5 fails; dpkg's "cannot stat" of an extracted .deb also still shows up rarely. | Not reproduced on current windows: step 5 passed 80 of 80 native runs; the failures were on heads before the mount-keeping and atomic-replace fixes. A devnull guest test guards it. |  |  |  |  |
 | `workloads-podman-without-fsgsbase` | Podman on CPUs without FSGSBASE | an unmodified Podman 6.2.0 engine passes all ten acceptance steps on gVisor on Windows as a standard user in all three CPU modes, 24 of 24 runs on the merged head, under the conditions listed in ADR 0002. | Podman passes without FSGSBASE too | The same acceptance in rewrite mode, which older CPUs and this development VM need because they cannot set the %fs base from user mode. | Run 46041026851 on the merged head: native, rewrite and rewrite-fxsave each 8 of 8 with all 10 steps. |  |  |  |  |
+| `workloads-podman-client-on-pipe` | Podman client over the named pipe |  |  | The stock Windows podman client connects over a unix socket path without a drive letter, so the zip only works from drive C:; the docker CLI uses the named pipe. | Fixed when: podman connects through npipe (if 6.2.0 supports it) or a socket URL that works from any drive, tested by release-test. |  |  |  |  |
 
 ### Folded items per node
 
