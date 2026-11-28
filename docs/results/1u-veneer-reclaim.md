@@ -1,6 +1,6 @@
 # 1u: shared veneers reclaimed, host I/O out of Sentry locks
 
-Verdict: shared veneers are now given back when the last address space or cached state holding them goes, so 1000 execs of a dynamic `/bin/true` in one sandbox relocate every piece (1996 of 1996, 0 refused, 0 "area full") at a constant 0.7 ms per relocation, where before 980 relocations were refused after about 500 execs; and the three host I/O calls named in 1t no longer run under mount-wide or address-space locks.
+Verdict: shared veneers are now given back when the last address space or cached state holding them goes, so 1000 execs of a dynamic `/bin/true` in one sandbox relocate every piece (1996 of 1996, 0 refused, 0 "area full") at the same cost per relocation as over 300 execs, where before 980 relocations were refused after about 500 execs; and the three host I/O calls named in 1t no longer run under mount-wide or address-space locks.
 
 Nodes: `platform-shared-veneers-fill`, `sentry-host-io-under-locks`. Design: ADR 0025.
 
