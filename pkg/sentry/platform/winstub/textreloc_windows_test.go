@@ -150,22 +150,32 @@ func TestTextRelocate(t *testing.T) {
 	place(fresh, lo1, hi1)
 	textCacheOn = true
 	got, want := stateOf(t, moved, lo1, hi1), stateOf(t, fresh, lo1, hi1)
-	gv, wv := reflect.ValueOf(got), reflect.ValueOf(want)
-	for i := 0; i < gv.NumField(); i++ {
-		if !reflect.DeepEqual(gv.Field(i).Interface(), wv.Field(i).Interface()) {
-			name := gv.Type().Field(i).Name
-			if g, w := gv.Field(i).Interface(), wv.Field(i).Interface(); name == "text" || name == "area" {
-				t.Errorf("%s differs between the relocated and the patched space", name)
-				if a, b := g.([]byte), w.([]byte); name == "area" && len(a) == len(b) {
-					for j := range a {
-						if a[j] != b[j] {
-							t.Logf("first difference at byte %d of the used area: % x vs % x", j, a[j:min(j+16, len(a))], b[j:min(j+16, len(b))])
-							break
-						}
-					}
-				}
-			} else {
-				t.Errorf("%s differs: relocated %v, patched %v", name, g, w)
+	for _, c := range []struct {
+		name string
+		g, w any
+	}{
+		{"cursors", []any{got.nsites, got.vcur, got.fcur, got.ftop, got.gcur}, []any{want.nsites, want.vcur, want.fcur, want.ftop, want.gcur}},
+		{"siteCache", got.siteCache, want.siteCache}, {"restartAt", got.restartAt, want.restartAt},
+		{"ud2Sites", got.ud2Sites, want.ud2Sites}, {"fsCache", got.fsCache, want.fsCache}, {"fsUD2", got.fsUD2, want.fsUD2},
+		{"tails", got.tails, want.tails}, {"heads", got.heads, want.heads}, {"edges", got.edges, want.edges},
+		{"fsVen", got.fsVen, want.fsVen}, {"relAt", got.relAt, want.relAt}, {"absAt", got.absAt, want.absAt},
+		{"shared", got.shared, want.shared},
+	} {
+		if !reflect.DeepEqual(c.g, c.w) {
+			t.Errorf("%s differs: relocated %v, patched %v", c.name, c.g, c.w)
+		}
+	}
+	for i := range got.text {
+		if !bytes.Equal(got.text[i], want.text[i]) {
+			t.Errorf("text of piece %d differs", i)
+		}
+	}
+	if a, b := got.area, want.area; !bytes.Equal(a, b) {
+		t.Errorf("the used stub area differs (%d and %d bytes)", len(a), len(b))
+		for j := range min(len(a), len(b)) {
+			if a[j] != b[j] {
+				t.Logf("first difference at byte %d: % x vs % x", j, a[j:min(j+16, len(a))], b[j:min(j+16, len(b))])
+				break
 			}
 		}
 	}
