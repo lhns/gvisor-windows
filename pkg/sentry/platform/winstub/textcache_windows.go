@@ -55,7 +55,7 @@ import (
 // (below 4 GiB: executables; above: the mmap area with the interpreter, the
 // libraries and the vDSO), whose address the entry keeps (bases). A PIE or a dynamic
 // program lands elsewhere in every exec, but each region moves as a whole: an entry
-// made at other bases is relocated by the difference (textreloc_windows.go, ADR 0023).
+// made at other bases is relocated by the difference (textreloc_windows.go, ADR 0024).
 //
 // An address space that turns writable memory into text (W^X, JIT) leaves the cache
 // for good (histOK false).

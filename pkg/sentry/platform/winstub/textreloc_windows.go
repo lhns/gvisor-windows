@@ -25,7 +25,7 @@ import (
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/stubasm"
 )
 
-// Relocating a cached patch state (ADR 0023, docs/results/1t-pie-cache.md).
+// Relocating a cached patch state (ADR 0024, docs/results/1t-pie-cache.md).
 //
 // A PIE executable and the mmap area (interpreter, libraries, vDSO) land at random
 // addresses in every exec, each region as a whole. The patch state of a history

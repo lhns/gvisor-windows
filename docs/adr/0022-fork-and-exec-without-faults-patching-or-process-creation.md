@@ -1,6 +1,6 @@
 # 0022. Fork and exec without faults, patching or process creation
 
-- Status: Accepted
+- Status: Accepted; the cache key is superseded by ADR 0024
 - Date: 2026-11-27
 - Supersedes: ADR 0011's one stub process per address space; refines ADR 0012 (what is cached)
 

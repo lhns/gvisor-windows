@@ -156,6 +156,9 @@ func TestTextRelocate(t *testing.T) {
 	if len(want.relAt) == 0 || len(want.absAt) == 0 || len(want.shared) == 0 {
 		t.Fatalf("the pieces were not patched as the test needs: %d rel32 jumps, %d addresses in the stub area, %d shared veneers", len(want.relAt), len(want.absAt), len(want.shared))
 	}
+	if h.p.fsRewrite && len(want.fsVen) != 2 {
+		t.Fatalf("%d %%fs veneers, want one per piece", len(want.fsVen))
+	}
 	for _, c := range []struct {
 		name string
 		g, w any
