@@ -175,6 +175,7 @@ func RegisterFlags(flagSet *flag.FlagSet) {
 	// Flags that control sandbox runtime behavior: network related.
 	flagSet.Var(networkTypePtr(NetworkSandbox), "network", "specifies which network to use: sandbox (default), host, none. Using network inside the sandbox is more secure because it's isolated from the host network.")
 	flagSet.String("publish", "", "with --network=windows-nat: guest TCP ports to publish on 127.0.0.1 of the host, as comma-separated hostPort:guestPort pairs (host port 0 picks a free one), e.g. 8080:80,9000:9000.")
+	flagSet.String("nat-dns", "", "with --network=windows-nat: upstream DNS server (ip:port) for the guest's queries; default is the host resolver (on Linux: the first nameserver of /etc/resolv.conf).")
 	flagSet.String(flagNetworkProxyPath, "", "EXPERIMENTAL. Path of an external SOCK_SEQPACKET Unix domain socket to attach the sandbox's primary network interface to, instead of an AF_PACKET socket.")
 	flagSet.Var(NetgoferModeOff.Ptr(), flagNetgofer, "EXPERIMENTAL. Mode for using netgofer (off|proxy|proxy-loopback, default: off).")
 	flagSet.Var(goferNetworkNamespacePtr(GoferNetworkNamespaceNull), "gofer-network-namespace", "network namespace for gofers: null (default; an empty namespace shared by all gofers using the same --shared-root, which defaults to --root), new (a new empty namespace per gofer), host (the current namespace), or an absolute path to an existing namespace.")

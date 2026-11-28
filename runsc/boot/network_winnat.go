@@ -53,7 +53,7 @@ func setupWindowsNAT(conf *config.Config, s *stack.Stack) error {
 		return err
 	}
 	var nat *winnat.NAT
-	nat, err = winnat.New(winnat.Options{HostLoopback: WindowsNATHostLoopback, GatewayHTTP: forwarderAPI(func() *winnat.NAT { return nat })})
+	nat, err = winnat.New(winnat.Options{UpstreamDNS: conf.NATDNS, HostLoopback: WindowsNATHostLoopback, GatewayHTTP: forwarderAPI(func() *winnat.NAT { return nat })})
 	if err != nil {
 		return fmt.Errorf("creating NAT: %w", err)
 	}

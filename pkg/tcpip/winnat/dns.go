@@ -32,6 +32,9 @@ func (n *NAT) serveDNS(c net.Conn) {
 }
 
 func (n *NAT) answerDNS(query []byte) []byte {
+	if n.opts.UpstreamDNS != "" {
+		return n.forwardDNS(query)
+	}
 	var p dnsmessage.Parser
 	h, err := p.Start(query)
 	if err != nil {
@@ -148,4 +151,23 @@ func (n *NAT) answerDNS(query []byte) []byte {
 		return nil
 	}
 	return resp
+}
+
+// forwardDNS relays one query to opts.UpstreamDNS over UDP and returns the answer.
+func (n *NAT) forwardDNS(query []byte) []byte {
+	c, err := n.opts.Dialer.Dial("udp", n.opts.UpstreamDNS)
+	if err != nil {
+		return nil
+	}
+	defer c.Close()
+	c.SetDeadline(time.Now().Add(5 * time.Second))
+	if _, err := c.Write(query); err != nil {
+		return nil
+	}
+	buf := make([]byte, 4096)
+	m, err := c.Read(buf)
+	if err != nil {
+		return nil
+	}
+	return buf[:m]
 }

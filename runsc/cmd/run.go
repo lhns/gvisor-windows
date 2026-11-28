@@ -17,7 +17,9 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
+	"strings"
 
 	"github.com/google/subcommands"
 	specs "github.com/opencontainers/runtime-spec/specs-go"
@@ -111,6 +113,10 @@ func (r *Run) Execute(_ context.Context, f *flag.FlagSet, args ...any) subcomman
 		// Execution will continue here if no more capabilities are needed...
 	}
 
+	if conf.Network == config.NetworkWindowsNAT && conf.NATDNS == "" {
+		conf.NATDNS = hostNameserver()
+	}
+
 	id, spec, err := r.FetchSpec(conf, f)
 	if err != nil {
 		return util.Errorf("FetchSpec: %v", err)
@@ -162,4 +168,22 @@ func (r *Run) Execute(_ context.Context, f *flag.FlagSet, args ...any) subcomman
 
 	*waitStatus = ws
 	return subcommands.ExitSuccess
+}
+
+// hostNameserver returns the first IPv4 nameserver of /etc/resolv.conf as
+// "ip:53", or "" when there is none (e.g. on Windows).
+func hostNameserver() string {
+	b, err := os.ReadFile("/etc/resolv.conf")
+	if err != nil {
+		return ""
+	}
+	for _, l := range strings.Split(string(b), "\n") {
+		f := strings.Fields(l)
+		if len(f) >= 2 && f[0] == "nameserver" {
+			if ip := net.ParseIP(f[1]); ip != nil && ip.To4() != nil {
+				return net.JoinHostPort(f[1], "53")
+			}
+		}
+	}
+	return ""
 }
