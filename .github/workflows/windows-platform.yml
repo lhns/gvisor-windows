@@ -99,10 +99,14 @@ jobs:
               & C:\ci\bin\winstub.test.exe @a 2>&1 | Select-String "LATENCY" | Tee-Object -Append -FilePath ../../../../tuning.txt
             }
           }
-      - uses: actions/upload-artifact@v4
+      - name: Summary
         if: always()
+        shell: pwsh
+        run: ./tools/windows/ci/summary.ps1 -Title 'platform' -Exits 'tests-*.txt' -Code 'tuning.txt' -Tail 80
+      - uses: actions/upload-artifact@v4
+        if: failure()
         with:
-          name: winstub-output
+          name: logs-windows-platform
           path: |
             tests-*.txt
             tuning.txt

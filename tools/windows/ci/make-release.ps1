@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
-  Packs runsc.exe, a hello/busybox OCI bundle, README, NOTICE and LICENSE into a folder and a zip (the CI "release" artifact).
-.PARAMETER Guests  Folder of the runsc-guests artifact (hello, busybox, ...).
+  Packs runsc.exe, a hello/busybox OCI bundle, README, NOTICE and LICENSE into a folder and a zip (the CI artifact runsc-windows-amd64-<shortsha>).
+.PARAMETER Guests  Folder of the runsc guests (hello, busybox, ...), as windows-runsc builds them.
 .PARAMETER Zip     The zip to write.
 #>
 param([Parameter(Mandatory)][string]$Guests, [Parameter(Mandatory)][string]$Runsc,

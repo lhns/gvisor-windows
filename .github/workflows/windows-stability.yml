@@ -20,7 +20,7 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq busybox-static
           mkdir -p out; cp "$(command -v busybox)" out/busybox
       - uses: actions/upload-artifact@v4
-        with: {name: busybox, path: out}
+        with: {name: tmp-busybox, path: out, retention-days: 1}
   hang:
     needs: busybox
     runs-on: windows-latest
@@ -37,7 +37,7 @@ jobs:
       - uses: actions/setup-go@v5
         with: {go-version-file: go.mod, cache: false}
       - uses: actions/download-artifact@v4
-        with: {name: busybox, path: guests}
+        with: {name: tmp-busybox, path: guests}
       - name: Build
         shell: pwsh
         run: |
@@ -63,7 +63,7 @@ jobs:
               Remove-Item -Recurse -Force C:\ci\work\t-$sp-$i -ErrorAction SilentlyContinue
             }
             $m = ($t | Sort-Object)[[int]($t.Count / 2)]
-            "FORKEXEC ${{ matrix.mode }} spares=$sp median=$m s of 100 (runs: $($t -join ' '))"
+            $l = "FORKEXEC ${{ matrix.mode }} spares=$sp median=$m s of 100 (runs: $($t -join ' '))"; $l; Add-Content $env:GITHUB_STEP_SUMMARY "- $l"
           }
           Remove-Item Env:\WINSTUB_SPARES
       - name: Fork+exec time, each speed-up off in turn (docs/results/1r-platform-speed.md)
@@ -81,7 +81,7 @@ jobs:
               Remove-Item -Recurse -Force C:\ci\work\a-$i -ErrorAction SilentlyContinue
             }
             $m = ($t | Sort-Object)[[int]($t.Count / 2)]
-            "FORKEXEC ${{ matrix.mode }} $name median=$m s of 100 (runs: $($t -join ' '))"
+            $l = "FORKEXEC ${{ matrix.mode }} $name median=$m s of 100 (runs: $($t -join ' '))"; $l; Add-Content $env:GITHUB_STEP_SUMMARY "- $l"
             foreach ($k in $sets[$name].Keys) { Remove-Item "Env:$k" }
           }
       - name: Fork+exec runs
@@ -101,8 +101,8 @@ jobs:
             }
             Remove-Item -Recurse -Force C:\ci\work\w-$i -ErrorAction SilentlyContinue
           }
-          "STABILITY ${{ matrix.mode }} pass=$pass fail=$hang of $n"
+          $l = "STABILITY ${{ matrix.mode }} pass=$pass fail=$hang of $n"; $l; Add-Content $env:GITHUB_STEP_SUMMARY "- **$l**"
           if ($hang -gt 0) { exit 1 }
       - uses: actions/upload-artifact@v4
-        if: always()
-        with: {name: "stability-${{ matrix.mode }}", path: out, if-no-files-found: ignore}
+        if: failure()
+        with: {name: "logs-windows-stability-${{ matrix.mode }}", path: out, if-no-files-found: ignore}

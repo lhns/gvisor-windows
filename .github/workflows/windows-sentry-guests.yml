@@ -35,6 +35,7 @@ jobs:
         with:
           path: out
           key: sentry-guests-v1-${{ hashFiles('test/guests/**') }}
+          enableCrossOsArchive: true   # the Windows job restores it
       - if: steps.cache.outputs.cache-hit != 'true'
         uses: actions/setup-go@v5
         with: {go-version: "1.26.x", cache: false}
@@ -69,15 +70,17 @@ jobs:
           tar -C $R -cf out/rootfs.tar .
           ls -l out/rootfs.tar
           file out/*
-      - uses: actions/upload-artifact@v4
-        with: {name: guests, path: out}
   run:
     needs: guests
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with: {name: guests, path: out}
+      - uses: actions/cache/restore@v4
+        with:
+          path: out
+          key: sentry-guests-v1-${{ hashFiles('test/guests/**') }}
+          enableCrossOsArchive: true
+          fail-on-cache-miss: true
       - uses: ./.github/actions/winbin
         with: {prebuilt: "${{ inputs.prebuilt }}", targets: sentryguest}
       - name: Guests
@@ -292,10 +295,14 @@ jobs:
             "===== trace $n" | Tee-Object -Append -FilePath trace.txt
             & ./sentryguest.exe "-sample" "-timeout=90s" "-code=$(if ($n -eq 'hello_glibc') {7} else {0})" "out/$n" 2>&1 | Tee-Object -Append -FilePath trace.txt
           }
-      - uses: actions/upload-artifact@v4
+      - name: Summary
         if: always()
+        shell: pwsh
+        run: ./tools/windows/ci/summary.ps1 -Title 'sentry-guests' -Exits 'guests-*.txt' -Code 'timing.txt','repeat.txt','waitdiag.txt' -Grep 'TIMING|REPEAT|WAIT'
+      - uses: actions/upload-artifact@v4
+        if: failure()
         with:
-          name: sentry-guests-output
+          name: logs-windows-sentry-guests
           path: |
             guests-*.txt
             trace.txt

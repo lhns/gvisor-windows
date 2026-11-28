@@ -33,7 +33,7 @@ jobs:
         shell: pwsh
         run: ./tools/windows/ci/build-bin.ps1
       - uses: actions/upload-artifact@v4
-        with: {name: win-bin, path: 'C:\ci\bin', compression-level: 1, retention-days: 3}
+        with: {name: tmp-win-bin, path: 'C:\ci\bin', compression-level: 1, retention-days: 1}
   runsc-linux:
     needs: check
     runs-on: ubuntu-latest
@@ -43,7 +43,7 @@ jobs:
         with: {go-version-file: go.mod}
       - run: GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -p 2 -trimpath -o runsc-linux-amd64 ./runsc
       - uses: actions/upload-artifact@v4
-        with: {name: runsc-linux, path: runsc-linux-amd64, compression-level: 1, retention-days: 3}
+        with: {name: tmp-runsc-linux, path: runsc-linux-amd64, compression-level: 1, retention-days: 1}
   # Gates: the same suites ci.yml runs, plus the heavy ones, on this commit.
   runsc:
     needs: bin
@@ -62,7 +62,7 @@ jobs:
   bundle:
     needs: [bin, runsc]
     uses: ./.github/workflows/windows-release.yml
-    with: {zip-name: "runsc-windows-hello-bundle-${{ inputs.version }}.zip"}
+    with: {zip-name: "runsc-windows-hello-bundle-${{ inputs.version }}.zip", artifact-name: tmp-runsc-zip, retention-days: 1}
   publish:
     needs: [bin, runsc-linux, runsc, podman, fs-flakes, stability, bundle]
     runs-on: ubuntu-latest
@@ -72,11 +72,11 @@ jobs:
       - uses: actions/checkout@v4
         with: {sparse-checkout: .github}
       - uses: actions/download-artifact@v4
-        with: {name: win-bin, path: bin}
+        with: {name: tmp-win-bin, path: bin}
       - uses: actions/download-artifact@v4
-        with: {name: runsc-linux, path: dist}
+        with: {name: tmp-runsc-linux, path: dist}
       - uses: actions/download-artifact@v4
-        with: {name: gvisor-windows-zip, path: dist}
+        with: {name: tmp-runsc-zip, path: dist}
       - name: Assets
         run: |
           cp bin/runsc.exe dist/runsc-windows-amd64.exe

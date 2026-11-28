@@ -1,14 +1,14 @@
 name: winbin
 description: The Windows CI binaries in C:\ci\bin, downloaded from the ci run or, when run alone, built.
 inputs:
-  prebuilt: {description: "download the win-bin artifact of this run", default: "false"}
+  prebuilt: {description: "download the tmp-win-bin artifact of this run", default: "false"}
   targets: {description: "what to build when not prebuilt (tools/windows/ci/build-bin.ps1 names)", default: all}
 runs:
   using: composite
   steps:
     - if: inputs.prebuilt == 'true'
       uses: actions/download-artifact@v4
-      with: {name: win-bin, path: 'C:\ci\bin'}
+      with: {name: tmp-win-bin, path: 'C:\ci\bin'}
     - if: inputs.prebuilt != 'true'
       uses: ./.github/actions/gosetup
     - if: inputs.prebuilt != 'true'

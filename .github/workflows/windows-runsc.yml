@@ -36,6 +36,7 @@ jobs:
         with:
           path: out
           key: runsc-guests-v1-${{ hashFiles('test/guests/**', 'tools/windows/bench/**') }}
+          enableCrossOsArchive: true   # the Windows jobs restore it
       - name: Build guests
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
@@ -68,8 +69,6 @@ jobs:
           cp tools/windows/bench/bench.sh out/bench.sh
           W=$PWD; mkdir -p /tmp/bb /tmp/nb && out/busybox --install -s /tmp/bb
           (cd /tmp/nb && PATH=/tmp/bb:$PATH $W/out/busybox sh $W/out/bench.sh $W/out/small.tar /tmp/nb/bind /tmp/nb/root /tmp/nb/shm) | tee out/native.txt || true
-      - uses: actions/upload-artifact@v4
-        with: {name: runsc-guests, path: out}
   run:
     needs: guests
     runs-on: windows-latest
@@ -83,8 +82,14 @@ jobs:
       WINSTUB_KEEP_AVX512: ${{ matrix.mode == 'rewrite' && '1' || '' }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with: {name: runsc-guests, path: guests}
+      - uses: actions/cache/restore@v4
+        with:
+          path: out
+          key: runsc-guests-v1-${{ hashFiles('test/guests/**', 'tools/windows/bench/**') }}
+          enableCrossOsArchive: true
+          fail-on-cache-miss: true
+      - run: Move-Item out guests
+        shell: pwsh
       - uses: ./.github/actions/winbin
         with: {prebuilt: "${{ inputs.prebuilt }}", targets: "runsc,runsctest"}
       - name: Rootfs folder
@@ -100,19 +105,22 @@ jobs:
           [IO.File]::WriteAllText("$r\etc\hostname", "ciguest`n")
           [IO.File]::WriteAllText("$r\www\index.html", "hello-from-guest`n")
           Get-ChildItem -Recurse $r | Select-Object FullName, Length | Format-Table -AutoSize | Out-String -Width 200
-      - name: Hello as the runner's administrator (diagnostic)
+      - id: hello-admin
+        name: Hello as the runner's administrator (diagnostic)
         if: inputs.only == ''
         shell: pwsh
         continue-on-error: true
         run: |
           C:\ci\bin\runsctest.exe -runsc C:\ci\bin\runsc.exe -rootfs C:\ci\work\rootfs -work C:\ci\work\admin -only hello
-      - name: Terminal as the runner's administrator (diagnostic)
+      - id: tty-admin
+        name: Terminal as the runner's administrator (diagnostic)
         if: inputs.only == ''
         shell: pwsh
         continue-on-error: true
         run: |
           C:\ci\bin\runsctest.exe -runsc C:\ci\bin\runsc.exe -rootfs C:\ci\work\rootfs -work C:\ci\work\admin -only tty
-      - name: Erofs image root as a standard user
+      - id: erofs
+        name: Erofs image root as a standard user
         if: inputs.only == ''
         shell: pwsh
         run: |
@@ -121,7 +129,8 @@ jobs:
             -Program C:\ci\bin\runsctest.exe `
             -Arguments ($wargs + @('-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-erofs','-image','C:\ci\work\rootfs.erofs','-only','erofs')) `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 300
-      - name: Host-folder rename and the port forwarder API as a standard user
+      - id: hostfs
+        name: Host-folder rename and the port forwarder API as a standard user
         if: inputs.only == ''
         shell: pwsh
         run: |
@@ -130,7 +139,8 @@ jobs:
             -Program C:\ci\bin\runsctest.exe `
             -Arguments ($wargs + @('-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-hostfs','-only','hostfs,forward,sockfs,fchmod,strace,cfr,restart')) `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 300
-      - name: debian loader from the root folder
+      - id: debian
+        name: debian loader from the root folder
         if: inputs.only == ''
         shell: pwsh
         run: |
@@ -139,7 +149,8 @@ jobs:
             -Program C:\ci\bin\runsctest.exe `
             -Arguments ($wargs + @('-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-debian','-only','debian')) `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 300
-      - name: Case sensitivity as a standard user (known gap, Windows denies the flag, see docs/results/5-podman-windows.md)
+      - id: case
+        name: Case sensitivity as a standard user (known gap, Windows denies the flag, see docs/results/5-podman-windows.md)
         if: inputs.only == ''
         shell: pwsh
         continue-on-error: true
@@ -149,7 +160,8 @@ jobs:
             -Program C:\ci\bin\runsctest.exe `
             -Arguments ($wargs + @('-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-case','-only','case')) `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 300
-      - name: Phase 0 workloads and start-to-exit as a standard user
+      - id: bench
+        name: Phase 0 workloads and start-to-exit as a standard user
         if: inputs.only == ''
         shell: pwsh
         continue-on-error: true
@@ -160,7 +172,8 @@ jobs:
             -Program C:\ci\bin\runsctest.exe `
             -Arguments ($wargs + @('-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-bench','-only','bench')) `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 1200
-      - name: Container lifecycle commands as a standard user
+      - id: lifecycle
+        name: Container lifecycle commands as a standard user
         if: inputs.only == ''
         shell: pwsh
         run: |
@@ -169,7 +182,8 @@ jobs:
             -Program C:\ci\bin\runsctest.exe `
             -Arguments ($wargs + @('-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std-lifecycle','-only','lifecycle')) `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 600
-      - name: All tests as a standard user
+      - id: all
+        name: All tests as a standard user
         if: inputs.only == ''
         shell: pwsh
         run: |
@@ -178,7 +192,8 @@ jobs:
             -Program C:\ci\bin\runsctest.exe `
             -Arguments ($wargs + @('-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std')) `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 1500
-      - name: Selected cases as a standard user
+      - id: selected
+        name: Selected cases as a standard user
         if: inputs.only != ''
         shell: pwsh
         run: |
@@ -187,10 +202,15 @@ jobs:
             -Program C:\ci\bin\runsctest.exe `
             -Arguments ($wargs + @('-runsc','C:\ci\bin\runsc.exe','-rootfs','C:\ci\work\rootfs','-work','C:\ci\work\std','-only','${{ inputs.only }}')) `
             -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 1500
-      - uses: actions/upload-artifact@v4
+      - name: Summary
         if: always()
+        shell: pwsh
+        env: {STEPS: "${{ toJSON(steps) }}"}
+        run: ./tools/windows/ci/summary.ps1 -Title 'runsc ${{ matrix.mode }}' -Steps $env:STEPS
+      - uses: actions/upload-artifact@v4
+        if: failure()
         with:
-          name: runsc-logs-${{ matrix.mode }}
+          name: logs-windows-runsc-${{ matrix.mode }}
           path: |
             C:\ci\work\admin\logs
             C:\ci\work\std\logs

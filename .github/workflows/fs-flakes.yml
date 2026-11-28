@@ -29,7 +29,7 @@ jobs:
           gcc -static -no-pie -O1 -Wall -o out/ovlsub test/guests/ovlsub.c
           gcc -static -no-pie -O1 -Wall -o out/ovlopaque test/guests/ovlopaque.c
       - uses: actions/upload-artifact@v4
-        with: {name: fsstress-guest, path: out}
+        with: {name: tmp-fsstress-guest, path: out, retention-days: 1}
   stress:
     needs: guests
     runs-on: windows-latest
@@ -46,7 +46,7 @@ jobs:
       - uses: actions/setup-go@v5
         with: {go-version-file: go.mod, cache: false}
       - uses: actions/download-artifact@v4
-        with: {name: fsstress-guest, path: guests}
+        with: {name: tmp-fsstress-guest, path: guests}
       - name: Build
         shell: pwsh
         run: |
@@ -106,7 +106,7 @@ jobs:
               -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 900
             if ($LASTEXITCODE -ne 0) { $fail++ }
           }
-          Write-Host "devnull repetitions failed: $fail of 3"
+          Write-Host "devnull repetitions failed: $fail of 3"; Add-Content $env:GITHUB_STEP_SUMMARY "- fs-flakes ${{ matrix.mode }}, devnull and dpkg symlink: $fail of 3 repetitions failed"
           if ($fail) { exit 1 }
       - name: apt rename pattern as a standard user
         shell: pwsh
@@ -119,7 +119,7 @@ jobs:
               -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 900
             if ($LASTEXITCODE -ne 0) { $fail++ }
           }
-          Write-Host "apt repetitions failed: $fail of 3"
+          Write-Host "apt repetitions failed: $fail of 3"; Add-Content $env:GITHUB_STEP_SUMMARY "- fs-flakes ${{ matrix.mode }}, apt rename: $fail of 3 repetitions failed"
           if ($fail) { exit 1 }
       - name: apt rename pattern under CPU load (the guest runs slower than alone)
         if: env.FSUD2 == ''
@@ -136,11 +136,11 @@ jobs:
             if ($LASTEXITCODE -ne 0) { $fail++ }
           }
           $spin | Stop-Process -Force
-          Write-Host "LOAD apt repetitions failed: $fail of 2"
+          Write-Host "LOAD apt repetitions failed: $fail of 2"; Add-Content $env:GITHUB_STEP_SUMMARY "- fs-flakes ${{ matrix.mode }}, apt rename under load: $fail of 2 repetitions failed"
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: failure()
         with:
-          name: fs-flakes-logs-${{ matrix.mode }}
+          name: logs-fs-flakes-${{ matrix.mode }}
           path: |
             C:\ci\work\std-apt*\logs
             C:\ci\work\std-dn*\logs
@@ -160,7 +160,7 @@ jobs:
               -GrantPath C:\ci\bin -WritablePath C:\ci\work -TimeoutSeconds 1800
             if ($LASTEXITCODE -ne 0) { $fail++ }
           }
-          Write-Host "repetitions failed: $fail of $reps"
+          Write-Host "repetitions failed: $fail of $reps"; Add-Content $env:GITHUB_STEP_SUMMARY "- fs-flakes ${{ matrix.mode }}, stress: $fail of $reps repetitions failed"
           if ($fail) { exit 1 }
         env:
           IT: ${{ inputs.iters }}

@@ -30,7 +30,7 @@ jobs:
           tar -C $R -cf rootfs.tar .
           ls -l rootfs.tar
       - uses: actions/upload-artifact@v4
-        with: {name: rootfs, path: rootfs.tar, compression-level: 0}
+        with: {name: tmp-profile-rootfs, path: rootfs.tar, compression-level: 0, retention-days: 1}
   profile:
     if: inputs.jobs == '' || contains(format(',{0},', inputs.jobs), ',profile,')
     needs: rootfs
@@ -40,7 +40,7 @@ jobs:
       - uses: actions/setup-go@v5
         with: {go-version-file: go.mod, cache: false}
       - uses: actions/download-artifact@v4
-        with: {name: rootfs, path: dl}
+        with: {name: tmp-profile-rootfs, path: dl}
       - name: Build
         shell: pwsh
         run: go build -p 2 -o sentryguest.exe ./tools/windows/sentryguest
@@ -86,7 +86,7 @@ jobs:
           }
       - uses: actions/upload-artifact@v4
         if: always()
-        with: {name: profile, path: out}
+        with: {name: results-windows-profile-profile, path: out}
   runsc-guests:
     if: inputs.jobs == '' || contains(format(',{0},', inputs.jobs), ',runsc-profile,')
     runs-on: ubuntu-latest
@@ -105,7 +105,7 @@ jobs:
           PY
           tar -cf out/small.tar -C /tmp/tree .
       - uses: actions/upload-artifact@v4
-        with: {name: runsc-guests, path: out}
+        with: {name: tmp-profile-runsc-guests, path: out, retention-days: 1}
   runsc-profile:
     if: inputs.jobs == '' || contains(format(',{0},', inputs.jobs), ',runsc-profile,')
     needs: runsc-guests
@@ -115,7 +115,7 @@ jobs:
       - uses: actions/setup-go@v5
         with: {go-version-file: go.mod, cache: false}
       - uses: actions/download-artifact@v4
-        with: {name: runsc-guests, path: guests}
+        with: {name: tmp-profile-runsc-guests, path: guests}
       - name: Build
         shell: pwsh
         run: |
@@ -194,7 +194,7 @@ jobs:
           }
       - uses: actions/upload-artifact@v4
         if: always()
-        with: {name: runsc-profile, path: out}
+        with: {name: results-windows-profile-runsc-profile, path: out}
   # Rewrite mode (ADR 0020): how many %fs executions take the debugger path
   # (docs/results/1s-veneers.md). The same workload runs normally and with every %fs
   # instruction through the debugger (WINSTUB_FSUD2=1), whose count is the total.
@@ -232,7 +232,7 @@ jobs:
           docker export fsroot > fsroot.tar
           ls -l fsroot.tar
       - uses: actions/upload-artifact@v4
-        with: {name: fs-guests, path: fsroot.tar, compression-level: 0}
+        with: {name: tmp-profile-fs-guests, path: fsroot.tar, compression-level: 0, retention-days: 1}
   fs-share:
     if: inputs.jobs == '' || contains(format(',{0},', inputs.jobs), ',fs-share,')
     needs: fs-guests
@@ -240,7 +240,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
-        with: {name: fs-guests, path: dl}
+        with: {name: tmp-profile-fs-guests, path: dl}
       - uses: ./.github/actions/winbin
         with: {targets: sentryguest}
       - name: Debugger share of %fs executions
@@ -282,7 +282,7 @@ jobs:
           if ($bad) { "1% or more of the %fs executions on the debugger path: $bad"; exit 1 }
       - uses: actions/upload-artifact@v4
         if: always()
-        with: {name: fs-share, path: out}
+        with: {name: results-windows-profile-fs-share, path: out}
   # Fork+exec of dynamic and PIE programs, which land at random addresses
   # (docs/results/1t-pie-cache.md): wall time and the text cache's hits and misses.
   dyn-forkexec:
@@ -292,7 +292,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
-        with: {name: fs-guests, path: dl}
+        with: {name: tmp-profile-fs-guests, path: dl}
       - uses: ./.github/actions/winbin
         with: {targets: sentryguest}
       - name: Loops
@@ -351,4 +351,4 @@ jobs:
           Get-Content out/trace-dyn-text.txt | Select-String 'text 0x' | Select-Object -First 300 | ForEach-Object { $_.Line }
       - uses: actions/upload-artifact@v4
         if: always()
-        with: {name: dyn-forkexec, path: out}
+        with: {name: results-windows-profile-dyn-forkexec, path: out}
