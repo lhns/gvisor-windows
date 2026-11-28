@@ -30,12 +30,16 @@ jobs:
             tools/windows/bench
       - id: legs
         run: echo "legs=$(echo '${{ inputs.legs || 'native,rewrite,rewrite-fxsave' }}' | sed 's/ //g; s/,/","/g; s/^/["/; s/$/"]/')" >> "$GITHUB_OUTPUT"
-      # The guests depend only on these inputs (bump v1 to rebuild: the base images float).
+      # The guests depend only on these inputs (bump v2 to rebuild: the base images float).
+      # the key is the git object ids of the inputs, not hashFiles: CRLF checkouts on Windows hash differently
+      - id: key
+        shell: bash
+        run: echo "key=runsc-guests-v2-$(git rev-parse HEAD:test/guests HEAD:tools/windows/bench | tr -d '\n')" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v4
         id: cache
         with:
           path: out
-          key: runsc-guests-v1-${{ hashFiles('test/guests/**', 'tools/windows/bench/**') }}
+          key: ${{ steps.key.outputs.key }}
           enableCrossOsArchive: true   # the Windows jobs restore it
       - name: Build guests
         if: steps.cache.outputs.cache-hit != 'true'
@@ -82,10 +86,14 @@ jobs:
       WINSTUB_KEEP_AVX512: ${{ matrix.mode == 'rewrite' && '1' || '' }}
     steps:
       - uses: actions/checkout@v4
+      # the key is the git object ids of the inputs, not hashFiles: CRLF checkouts on Windows hash differently
+      - id: key
+        shell: bash
+        run: echo "key=runsc-guests-v2-$(git rev-parse HEAD:test/guests HEAD:tools/windows/bench | tr -d '\n')" >> "$GITHUB_OUTPUT"
       - uses: actions/cache/restore@v4
         with:
           path: out
-          key: runsc-guests-v1-${{ hashFiles('test/guests/**', 'tools/windows/bench/**') }}
+          key: ${{ steps.key.outputs.key }}
           enableCrossOsArchive: true
           fail-on-cache-miss: true
       - run: Move-Item out guests

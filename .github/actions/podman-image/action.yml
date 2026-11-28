@@ -6,19 +6,23 @@ inputs:
 runs:
   using: composite
   steps:
-    # The image depends only on the podman version, the harness files and the build script (bump v3 to rebuild).
+    # The image depends only on the podman version, the harness files and the build script (bump v4 to rebuild).
+    # the key is git object ids of the inputs, not hashFiles: CRLF checkouts on Windows hash differently
+    - id: key
+      shell: bash
+      run: echo "key=podman-erofs-v4-${{ inputs.podman-version }}-$(git rev-parse HEAD:test/e2e/podman-acceptance/harness HEAD:tools/windows/podman/build-image.sh | tr -d '\n')" >> "$GITHUB_OUTPUT"
     - if: inputs.restore-only != 'true'
       uses: actions/cache@v4
       id: cache
       with:
         path: podman.erofs
-        key: podman-erofs-v3-${{ inputs.podman-version }}-${{ hashFiles('test/e2e/podman-acceptance/harness/**', 'tools/windows/podman/build-image.sh') }}
+        key: ${{ steps.key.outputs.key }}
         enableCrossOsArchive: true
     - if: inputs.restore-only == 'true'
       uses: actions/cache/restore@v4
       with:
         path: podman.erofs
-        key: podman-erofs-v3-${{ inputs.podman-version }}-${{ hashFiles('test/e2e/podman-acceptance/harness/**', 'tools/windows/podman/build-image.sh') }}
+        key: ${{ steps.key.outputs.key }}
         enableCrossOsArchive: true
         fail-on-cache-miss: true
     - if: inputs.restore-only != 'true' && steps.cache.outputs.cache-hit != 'true'

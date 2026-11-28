@@ -35,10 +35,14 @@ jobs:
       - uses: actions/download-artifact@v4
         with: {name: tmp-win-bin, path: 'C:\ci\bin'}
       # the guests windows-runsc built and cached (same key); a miss fails the job
+      # the key is the git object ids of the inputs, not hashFiles: CRLF checkouts on Windows hash differently
+      - id: key
+        shell: bash
+        run: echo "key=runsc-guests-v2-$(git rev-parse HEAD:test/guests HEAD:tools/windows/bench | tr -d '\n')" >> "$GITHUB_OUTPUT"
       - uses: actions/cache/restore@v4
         with:
           path: out
-          key: runsc-guests-v1-${{ hashFiles('test/guests/**', 'tools/windows/bench/**') }}
+          key: ${{ steps.key.outputs.key }}
           enableCrossOsArchive: true
           fail-on-cache-miss: true
       - shell: pwsh
