@@ -65,10 +65,12 @@ type relRec struct{ at, target uint64 }
 
 // sharedRec is a shared veneer (patchReloc): at va, vlen bytes, for the window w0
 // with the original bytes window; post is the field holding its own continuation
-// address, slot the trap table pointer to it (0: the text jumps with rel32).
+// address, slot the trap table pointer to it (0: the text jumps with rel32), v its
+// entry in the platform's registry (veneers_windows.go).
 type sharedRec struct {
 	w0, va, vlen, post, slot uint64
 	window                   []byte
+	v                        *sharedVen
 }
 
 // relFix sets the rel32 at section offset off to v.
@@ -95,7 +97,8 @@ func isStub(a uint64) bool {
 }
 
 // relocSnap returns s moved by d (per region), or nil and why not. The caller holds
-// as.mu; nothing of as changes (but the platform's shared veneer registry may grow).
+// as.mu; nothing of as changes but the shared veneers it holds (those of the new
+// sites, which applying the result needs).
 func (as *addressSpace) relocSnap(s *patchSnap, d [2]uint64) (*patchSnap, string) {
 	if s.inPlace {
 		return nil, "text patched again in place"
@@ -124,19 +127,12 @@ func (as *addressSpace) relocSnap(s *patchSnap, d [2]uint64) (*patchSnap, string
 		if dd == 0 {
 			continue
 		}
-		va := as.p.sharedVeneer(sh.w0+dd, sh.window, sh.vlen)
-		if va == 0 {
+		v := as.sharedVeneer(sh.w0+dd, sh.window, sh.vlen)
+		if v == nil {
 			return nil, "shared veneer area full"
 		}
-		moves = append(moves, move{sh.va, sh.va + sh.vlen, va})
-		shared[i].w0, shared[i].va = sh.w0+dd, va
-	}
-	for _, m := range moves {
-		for _, o := range moves {
-			if m.to < o.hi && o.lo < m.to+(m.hi-m.lo) {
-				return nil, "shared veneer moves onto another" // (copying in order would break)
-			}
-		}
+		moves = append(moves, move{sh.va, sh.va + sh.vlen, v.va})
+		shared[i].w0, shared[i].va, shared[i].v = sh.w0+dd, v.va, v
 	}
 	ra := func(a uint64) uint64 {
 		if isStub(a) {
@@ -185,7 +181,8 @@ func (as *addressSpace) relocSnap(s *patchSnap, d [2]uint64) (*patchSnap, string
 	}
 
 	// The stub area: guest addresses first (at the old places), then the moved
-	// shared veneers with their own address and the pointers to them.
+	// shared veneers (one piece each, snapshot) with their own address and the
+	// pointers to them.
 	n.area = make([]areaPiece, len(s.area))
 	for i, a := range s.area {
 		n.area[i] = areaPiece{a.addr, slices.Clone(a.b)}
@@ -207,17 +204,36 @@ func (as *addressSpace) relocSnap(s *patchSnap, d [2]uint64) (*patchSnap, string
 			binary.LittleEndian.PutUint64(b, binary.LittleEndian.Uint64(b)+dd)
 		}
 	}
+	// A moved veneer may land where another one of the state was (two sites with
+	// the same bytes the region's delta apart): find every piece before moving any.
+	idx := make([]int, len(s.shared))
 	for i, sh := range s.shared {
+		idx[i] = -1
 		if d[regionOf(sh.w0)] == 0 {
 			continue
 		}
-		to := shared[i].va
-		src, dst := field(sh.va, int(sh.vlen)), field(to, int(sh.vlen))
-		if src == nil || dst == nil {
+		taken := func(j int) bool { return slices.Contains(idx[:i], j) }
+		for j, a := range n.area {
+			if a.addr == sh.va && uint64(len(a.b)) == sh.vlen && !taken(j) {
+				idx[i] = j
+				break
+			}
+		}
+		if idx[i] < 0 {
 			return nil, "shared veneer outside the stub area kept"
 		}
-		copy(dst, src)
-		b := field(shared[i].post, 8)
+	}
+	for i, j := range idx {
+		if j >= 0 {
+			n.area[j].addr = shared[i].va
+		}
+	}
+	for i, sh := range s.shared {
+		if idx[i] < 0 {
+			continue
+		}
+		to, a := shared[i].va, n.area[idx[i]]
+		b := a.b[shared[i].post-to : shared[i].post-to+8]
 		binary.LittleEndian.PutUint64(b, binary.LittleEndian.Uint64(b)-sh.va+to)
 		if sh.slot != 0 {
 			b := field(sh.slot, 8)
@@ -226,9 +242,6 @@ func (as *addressSpace) relocSnap(s *patchSnap, d [2]uint64) (*patchSnap, string
 			}
 			binary.LittleEndian.PutUint64(b, to)
 		}
-	}
-	for _, m := range moves {
-		clear(field(m.lo, int(m.hi-m.lo))) // (as in an address space that patched at the new places)
 	}
 
 	// The text: moved views, and the rel32 fields set again in a copy.

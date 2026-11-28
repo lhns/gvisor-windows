@@ -42,6 +42,9 @@ const maxRecycled = 4
 // release releases as: it is emptied and kept as a spare in the background, or
 // terminated.
 func (p *Platform) release(as *addressSpace) {
+	// Its owner's threads are gone: other address spaces may have its shared
+	// veneers' space (now, not after the emptying in the background).
+	as.dropVeneers()
 	if !recycleOn || as.dead.Load() || as.released.Load() {
 		as.kill()
 		return

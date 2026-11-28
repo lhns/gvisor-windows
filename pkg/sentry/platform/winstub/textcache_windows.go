@@ -28,9 +28,6 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
-	"gvisor.dev/gvisor/pkg/hostarch"
-	"gvisor.dev/gvisor/pkg/safemem"
-	"gvisor.dev/gvisor/pkg/sentry/memmap"
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/stubasm"
 )
 
@@ -151,6 +148,7 @@ type patchSnap struct {
 	relAt                              []relRec
 	shared                             []sharedRec
 	inPlace                            bool
+	veneers                            *veneerRegistry // holds the veneers of shared (a cached state)
 }
 
 // textKeyFor returns the key of a patch of [lo,hi) now. A range across the two
@@ -205,47 +203,13 @@ func (as *addressSpace) histMix(op byte, a, b, c uint64) {
 	as.hist = sha256.Sum256(buf[:])
 }
 
-// equalFile reports whether the bytes of fr in f are orig.
-func equalFile(f memmap.File, fr memmap.FileRange, orig []byte) bool {
-	if fr.Length() != uint64(len(orig)) {
-		return false
-	}
-	bs, err := f.MapInternal(fr, hostarch.Read)
-	if err != nil {
-		return false
-	}
-	off := 0
-	var tmp []byte
-	for !bs.IsEmpty() {
-		b := bs.Head()
-		n := b.Len()
-		if off+n > len(orig) {
-			return false
-		}
-		var got []byte
-		if b.NeedSafecopy() {
-			// (the pages of a host file may go away under the read)
-			if cap(tmp) < n {
-				tmp = make([]byte, n)
-			}
-			if c, err := safemem.Copy(safemem.BlockFromSafeSlice(tmp[:n]), b); err != nil || c != n {
-				return false
-			}
-			got = tmp[:n]
-		} else {
-			got = b.ToSlice()
-		}
-		if !bytes.Equal(got, orig[off:off+n]) {
-			return false
-		}
-		off += n
-		bs = bs.Tail()
-	}
-	return off == len(orig)
-}
+// textBufs keeps buffers of text read for a lookup whose patch was then taken
+// from the cache (*[]byte).
+var textBufs sync.Pool
 
-// textLookup returns the cached patch of fr of f under k, or nil. The caller holds as.mu.
-func (as *addressSpace) textLookup(k textKey, f memmap.File, fr memmap.FileRange) *textEntry {
+// textLookup returns the cached patch of the text content under k, or nil. The
+// caller holds as.mu.
+func (as *addressSpace) textLookup(k textKey, content []byte) *textEntry {
 	if !textCacheOn || !as.histOK {
 		return nil
 	}
@@ -258,7 +222,7 @@ func (as *addressSpace) textLookup(k textKey, f memmap.File, fr memmap.FileRange
 	c.mu.Unlock()
 	var hit *textEntry
 	for _, e := range es {
-		if hit == nil && equalFile(f, fr, e.orig) {
+		if hit == nil && bytes.Equal(content, e.orig) {
 			hit = e
 			continue
 		}
@@ -364,6 +328,9 @@ func (s *patchSnap) release() {
 	for _, t := range s.texts {
 		pCloseHandle.Call(t.sec)
 	}
+	if s.veneers != nil {
+		s.veneers.releaseSnap(s.shared)
+	}
 }
 
 // snapshot copies the patch state of as. Every private text section becomes shared
@@ -376,7 +343,9 @@ func (as *addressSpace) snapshot() (*patchSnap, int) {
 		fsUD2: maps.Clone(as.fsUD2), fsSplit: maps.Clone(as.fsSplit), tails: maps.Clone(as.tails), heads: maps.Clone(as.heads),
 		fsWhy: maps.Clone(as.fsWhy), edges: maps.Clone(as.edges),
 		absAt: slices.Clone(as.absAt), relAt: slices.Clone(as.relAt), shared: slices.Clone(as.shared), inPlace: as.inPlace,
+		veneers: &as.p.veneers,
 	}
+	s.veneers.holdSnap(s.shared)
 	size := 0
 	for _, r := range as.areaUsed() {
 		b := make([]byte, r.hi-r.lo)
@@ -401,14 +370,19 @@ func (as *addressSpace) snapshot() (*patchSnap, int) {
 }
 
 // areaUsed returns the parts of the stub area and the big %fs veneer area that
-// patching has written.
+// patching has written for the current patch state. Of the shared syscall
+// veneers, only those of the state: the rest of their area may hold veneers of
+// other owners of the stub, and those of unmapped sites, which as keeps.
 func (as *addressSpace) areaUsed() []rng {
 	r := []rng{
 		{stubasm.TrapPtrs, stubasm.TrapPtrs + 8*uint64(as.nsites)},
 		{stubasm.TrapCode, stubasm.TrapCode + stubasm.EntrySize*uint64(as.nsites)},
 		{stubasm.Veneers, as.vcur},
-		{as.ftop, stubasm.Veneers + stubasm.VeneersSize}, // %fs overflow, then the shared syscall veneers
+		{as.ftop, stubasm.VeneersShared}, // %fs overflow
 		{stubasm.FSVeneers, as.fcur},
+	}
+	for _, sh := range as.shared {
+		r = append(r, rng{sh.va, sh.va + sh.vlen})
 	}
 	if as.fbigView != nil {
 		r = append(r, rng{stubasm.FSBig, as.gcur})
@@ -441,6 +415,7 @@ func (as *addressSpace) applySnap(s *patchSnap, histAfter [32]byte, bases [2]uin
 	as.fsUD2, as.fsSplit, as.tails, as.heads = maps.Clone(s.fsUD2), maps.Clone(s.fsSplit), maps.Clone(s.tails), maps.Clone(s.heads)
 	as.fsWhy, as.edges = maps.Clone(s.fsWhy), maps.Clone(s.edges)
 	as.absAt, as.relAt, as.shared, as.inPlace = slices.Clone(s.absAt), slices.Clone(s.relAt), slices.Clone(s.shared), s.inPlace
+	as.holdVeneers(s.shared)
 	for as.fbigView != nil && as.gcommit < s.gcommit {
 		if _, err := windows.VirtualAlloc(uintptr(as.fbigView)+uintptr(as.gcommit-stubasm.FSBig), uintptr(stubasm.FSBigChunk), windows.MEM_COMMIT, windows.PAGE_READWRITE); err != nil {
 			as.histOK = false

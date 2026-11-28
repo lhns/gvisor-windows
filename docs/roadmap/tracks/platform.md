@@ -51,7 +51,7 @@ flowchart TB
     platform_resume_inside_fs_window>"✔ Thread resumed<br/>inside a patch window"]
     platform_fault_under_fs_jump>"✔ Fault reported under<br/>a patch jump"]
     platform_text_cache_pie>"✔ Patched-text cache<br/>for PIE programs"]
-    platform_shared_veneers_fill>"⚠ Shared veneer area<br/>fills up"]
+    platform_shared_veneers_fill>"✔ Shared veneer area<br/>fills up"]
     platform_64k_mapping_conflicts["⏸ Handle 64 KB mapping<br/>conflicts"]
     platform_hardware_acceleration["⏸ Use hardware<br/>acceleration when<br/>available"]
     platform_binary_translation_fallback["⏸ Binary translation<br/>as a fallback"]
@@ -146,12 +146,11 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class platform_elf_alignment_survey,platform_trap_cost,platform_4k_section_views,platform_exception_stack,platform_veh_on_guest_stack_unsafe,platform_debug_event_cost,platform_faults_per_exec,platform_stub_controller,platform_page_verification,platform_syscall_fast_path,platform_controller_wakeups,platform_winstub,platform_fp_state,platform_static_guest_from_memory,platform_retire_prototype,platform_memory_release,platform_split_syscall_unpatched,platform_map_files_without_sections,platform_own_vdso,platform_busybox_on_windows,platform_veneer_address_in_child,platform_rare_hang_under_exec_load,platform_unsupported_errno,platform_avx512_state_lost,platform_avx_on_non_avx_cpu,platform_fs_veneer_capacity,platform_rewrite_mode_slow_engine,platform_rewrite_glibc_init_crash,platform_unrewritten_fs_in_library,platform_rewrite_heap_corruption,platform_resume_inside_fs_window,platform_fault_under_fs_jump,platform_text_cache_pie succ
+    class platform_elf_alignment_survey,platform_trap_cost,platform_4k_section_views,platform_exception_stack,platform_veh_on_guest_stack_unsafe,platform_debug_event_cost,platform_faults_per_exec,platform_stub_controller,platform_page_verification,platform_syscall_fast_path,platform_controller_wakeups,platform_winstub,platform_fp_state,platform_static_guest_from_memory,platform_retire_prototype,platform_memory_release,platform_split_syscall_unpatched,platform_map_files_without_sections,platform_own_vdso,platform_busybox_on_windows,platform_veneer_address_in_child,platform_rare_hang_under_exec_load,platform_unsupported_errno,platform_avx512_state_lost,platform_avx_on_non_avx_cpu,platform_fs_veneer_capacity,platform_rewrite_mode_slow_engine,platform_rewrite_glibc_init_crash,platform_unrewritten_fs_in_library,platform_rewrite_heap_corruption,platform_resume_inside_fs_window,platform_fault_under_fs_jump,platform_text_cache_pie,platform_shared_veneers_fill succ
     class platform_tls_register,platform_restricted_stub,platform_syscall_site_survey,platform_no_fsgsbase_fallback,platform_exception_dispatch_depth mixed
     class platform_zpoline_hooks dead
     class platform_fs_base_repair unrated
     class platform_fast_process_start,platform_recycle_stubs vsucc
-    class platform_shared_veneers_fill finding
     class platform_64k_mapping_conflicts,platform_hardware_acceleration,platform_binary_translation_fallback parked
 ```
 <!-- END GENERATED: track-platform -->
@@ -206,7 +205,7 @@ flowchart TB
 | `platform-resume-inside-fs-window` | Thread resumed inside a patch window | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/1p-rewrite-heap.md; docs/results/1q-window-resume.md |
 | `platform-fault-under-fs-jump` | Fault reported under a patch jump | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/1q-window-resume.md; docs/results/1s-veneers.md |
 | `platform-text-cache-pie` | Patched-text cache for PIE programs | defect | windows-ci | done | unrated | 2026-11-28 | 2026-11-28 |  |  |  |  | docs/results/1r-platform-speed.md; docs/results/1t-pie-cache.md; docs/adr/0024-text-cache-relative-to-region-bases.md |
-| `platform-shared-veneers-fill` | Shared veneer area fills up | defect | windows-ci | next | unrated | 2026-11-28 |  |  |  |  |  | docs/results/1t-pie-cache.md |
+| `platform-shared-veneers-fill` | Shared veneer area fills up | defect | windows-ci | done | unrated | 2026-11-28 | 2026-11-28 |  |  |  |  | docs/results/1t-pie-cache.md; docs/results/1u-veneer-reclaim.md; docs/adr/0025-shared-veneers-reclaimed.md |
 
 ### Details per node
 
@@ -257,7 +256,7 @@ flowchart TB
 | `platform-resume-inside-fs-window` | Thread resumed inside a patch window |  |  | In rewrite mode the platform can move a thread out of a veneer to an address inside the patch window; a Go signal handler then returns there and runs nop filler (one engine crash in 16 rewrite runs). | Fixed: int3 filler sends a thread returning into a window to its veneer; interrupts wait only while a thread would be reported under the jump. Open: a displaced-instruction fault under the jump (no known case). |  |  |  |  |
 | `platform-fault-under-fs-jump` | Fault reported under a patch jump |  |  | A fault in an instruction displaced into a veneer can still be reported at an address under the jump; a signal handler returning there with ret would run the jump bytes. No case is known. | Fixed: a fault under the jump is reported at the window start only when the earlier displaced instructions re-run with the same result and write nothing the faulting one reads; otherwise the planner refuses the window. TestFSFaultUnderJump covers repair-and-sigreturn. |  |  |  |  |
 | `platform-text-cache-pie` | Patched-text cache for PIE programs |  |  | The patched-text cache is keyed by address, so PIE and dynamically linked programs loaded at random addresses miss it; the 4 to 6 times fork+exec gain was measured with static busybox. | Fixed: a fetch fault cleared the cache flag for every dynamic library, and keys were absolute; keys are now relative to region bases with relocation (ADR 0024). 100 dynamic PIE fork+exec: 0.53 vs 0.92 s in rewrite mode. |  |  |  |  |
-| `platform-shared-veneers-fill` | Shared veneer area fills up |  |  | Shared veneers (where a syscall returns into) are allocated per site address and never freed; after about 500 dynamic execs at new addresses in one sandbox the 224 KiB area is full and those sites fall back to the slow debugger path. | Fixed when: 1000 dynamic execs in one sandbox keep the relocated-cache speed (no area-full fallbacks). |  |  |  |  |
+| `platform-shared-veneers-fill` | Shared veneer area fills up |  |  | Shared veneers (where a syscall returns into) are allocated per site address and never freed; after about 500 dynamic execs at new addresses in one sandbox the 224 KiB area is full and those sites fall back to the slow debugger path. | Fixed: address spaces and cached states hold their veneers until release; idle veneers are reused when the area is full (ADR 0025). 1000 dynamic execs in one sandbox: 0 area-full fallbacks (was 980). |  |  |  |  |
 
 ### Folded items per node
 

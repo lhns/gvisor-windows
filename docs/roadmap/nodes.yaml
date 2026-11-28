@@ -2922,7 +2922,7 @@
   depends_on: &id024 []
   replaced_by: &id025 []
   start: '2026-11-28'
-  end: ''
+  end: '2026-11-28'
   folded: &id026 []
   overview: false
   lane: windows-ci
@@ -2930,13 +2930,13 @@
   title: Host writes that block for seconds
   track: sentry
   kind: defect
-  state: next
+  state: done
   evidence:
   - docs/results/3e-signal-latency.md
   - docs/results/1t-pie-cache.md
+  - docs/results/1u-veneer-reclaim.md
   plain: A WriteFile to the debug log blocked for seconds on CI runners, mostly at the first boot; any other host I/O done while holding a Sentry lock would stall the guest the same way.
-  notes: 'Surveyed in 1t: high risk is dropAllCaches holding renameMu while stat-ing every cached inode; medium: pinMu across NtCreateFile/CloseHandle, MapFile reading text under as.mu. Fixed when those
-    three no longer do host I/O under the lock.'
+  notes: 'Fixed the three named cases: dropAllCaches stats after releasing renameMu, Pin/pinByName open outside pinMu, MapFile reads text before as.mu. Lower-risk items in 1t stay as they are.'
 - outcome: unrated
   verdict_quote: ''
   headline: ''
@@ -3003,7 +3003,7 @@
   depends_on: []
   replaced_by: []
   start: '2026-11-28'
-  end: ''
+  end: '2026-11-28'
   folded: []
   overview: false
   lane: windows-ci
@@ -3011,9 +3011,12 @@
   title: Shared veneer area fills up
   track: platform
   kind: defect
-  state: next
+  state: done
   evidence:
   - docs/results/1t-pie-cache.md
+  - docs/results/1u-veneer-reclaim.md
+  - docs/adr/0025-shared-veneers-reclaimed.md
   plain: Shared veneers (where a syscall returns into) are allocated per site address and never freed; after about 500 dynamic execs at new addresses in one sandbox the 224 KiB area is full and those sites
     fall back to the slow debugger path.
-  notes: 'Fixed when: 1000 dynamic execs in one sandbox keep the relocated-cache speed (no area-full fallbacks).'
+  notes: 'Fixed: address spaces and cached states hold their veneers until release; idle veneers are reused when the area is full (ADR 0025). 1000 dynamic execs in one sandbox: 0 area-full fallbacks (was
+    980).'

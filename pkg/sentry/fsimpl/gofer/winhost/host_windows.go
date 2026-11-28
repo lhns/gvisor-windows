@@ -172,19 +172,38 @@ func (fs *FS) pinned(id ID) (windows.Handle, bool) {
 // Linux does for open files. Pins are counted; each Pin needs an Unpin.
 // A pinned handle is opened with full sharing, so Windows can still rename or
 // delete the file (the name goes away at once; POSIX delete semantics).
+//
+// The open runs outside pinMu, which every file operation of the mount takes; of
+// two Pins that open at once, the second closes its handle.
 func (fs *FS) Pin(id ID) error {
-	fs.pinMu.Lock()
-	defer fs.pinMu.Unlock()
-	if p, ok := fs.pins[id]; ok {
-		p.refs++
+	if fs.pinMore(id) {
 		return nil
 	}
 	h, err := ntOpenByID(fs.root, id, fileReadData|fileWriteData|fileReadAttributes|fileWriteAttributes|fileReadEA|fileWriteEA|deleteAccess, shareAll, windows.FILE_NON_DIRECTORY_FILE)
 	if err != nil {
 		return err
 	}
+	fs.pinMu.Lock()
+	if p, ok := fs.pins[id]; ok {
+		p.refs++
+		fs.pinMu.Unlock()
+		windows.CloseHandle(h)
+		return nil
+	}
 	fs.pins[id] = &pin{h: h, refs: 1}
+	fs.pinMu.Unlock()
 	return nil
+}
+
+// pinMore counts one more Pin of id if it is pinned.
+func (fs *FS) pinMore(id ID) bool {
+	fs.pinMu.Lock()
+	defer fs.pinMu.Unlock()
+	if p, ok := fs.pins[id]; ok {
+		p.refs++
+		return true
+	}
+	return false
 }
 
 // pinByName makes the pin of id hold a handle opened by name instead of by
@@ -195,27 +214,57 @@ func (fs *FS) Pin(id ID) error {
 // it left the store without layers). A handle opened by name allows the
 // replace but blocks renaming the directories above the file, so the pin is
 // switched only when the file is about to be replaced.
+//
+// The opens and queries run outside pinMu; a reference taken under it keeps the
+// pin's handle open meanwhile. The handle by ID is closed before pinByName
+// returns: the replace that follows depends on it.
 func (fs *FS) pinByName(id ID) {
 	fs.pinMu.Lock()
-	defer fs.pinMu.Unlock()
 	p, ok := fs.pins[id]
 	if !ok || p.byName {
+		fs.pinMu.Unlock()
 		return
 	}
-	path, err := handlePath(p.h)
+	p.refs++
+	old := p.h
+	fs.pinMu.Unlock()
+	nh := fs.openPinByName(id, old)
+	fs.pinMu.Lock()
+	p.refs--
+	var cl []windows.Handle
+	if nh != 0 {
+		if p.byName || p.refs <= 0 {
+			cl = append(cl, nh) // (switched by another, or no longer pinned)
+		} else {
+			cl = append(cl, p.h)
+			p.h, p.byName = nh, true
+		}
+	}
+	if p.refs <= 0 && fs.pins[id] == p {
+		cl = append(cl, p.h)
+		delete(fs.pins, id)
+	}
+	fs.pinMu.Unlock()
+	for _, h := range cl {
+		windows.CloseHandle(h)
+	}
+}
+
+// openPinByName opens the file of id, open as h, by its name; 0 if it cannot.
+func (fs *FS) openPinByName(id ID, h windows.Handle) windows.Handle {
+	path, err := handlePath(h)
 	if err != nil {
-		return
+		return 0
 	}
 	nh, err := ntOpen(0, path, fileReadData|fileWriteData|fileReadAttributes|fileWriteAttributes|fileReadEA|fileWriteEA|deleteAccess, shareAll, windows.FILE_OPEN, windows.FILE_NON_DIRECTORY_FILE|windows.FILE_OPEN_REPARSE_POINT, 0)
 	if err != nil {
-		return
+		return 0
 	}
 	if a, aerr := fs.attrOf(nh); aerr != nil || a.ID != id {
 		windows.CloseHandle(nh)
-		return
+		return 0
 	}
-	windows.CloseHandle(p.h)
-	p.h, p.byName = nh, true
+	return nh
 }
 
 // Unpin releases a Pin.
