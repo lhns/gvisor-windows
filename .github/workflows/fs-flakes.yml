@@ -12,7 +12,7 @@ on:
       workers: {description: parallel mount namespaces, default: "12"}
       reps: {description: repetitions, default: "3"}
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: fs-flakes-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 jobs:
   guests:

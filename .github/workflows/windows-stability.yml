@@ -10,7 +10,7 @@ on:
     inputs:
       runs: {description: "runs per mode", default: "300"}
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: windows-stability-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 jobs:
   busybox:
