@@ -19,15 +19,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # The images depend only on these scripts and the image tags below (bump v1 to rebuild:
+      # The images depend only on these scripts and the image tags below (bump v2 to rebuild:
       # podman/stable:latest floats).
+      # the key is the git object ids of the inputs, not hashFiles: CRLF checkouts on Windows hash differently
+      - id: key
+        shell: bash
+        run: echo "key=rootfs-images-v2-$(git rev-parse HEAD:tools/windows/mkrootfs.sh HEAD:tools/windows/synth-xattrs.sh | tr -d '\n')" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v4
         id: cache
         with:
           path: |
             out
             out-versions.txt
-          key: rootfs-images-v1-${{ hashFiles('tools/windows/mkrootfs.sh', 'tools/windows/synth-xattrs.sh') }}
+          key: ${{ steps.key.outputs.key }}
+          enableCrossOsArchive: true   # the Windows job restores it
       - name: Tools
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
@@ -73,12 +78,6 @@ jobs:
           "
           sudo bash tools/windows/synth-xattrs.sh $r
           sudo bash tools/windows/mkrootfs.sh synth $r "$PWD/out"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: erofs-images
-          path: |
-            out/
-            out-versions.txt
   mount:
     needs: images
     runs-on: windows-latest
@@ -86,16 +85,25 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/winbin
         with: {prebuilt: "${{ inputs.prebuilt }}", targets: rootfs}
-      - uses: actions/download-artifact@v4
+      # the key is the git object ids of the inputs, not hashFiles: CRLF checkouts on Windows hash differently
+      - id: key
+        shell: bash
+        run: echo "key=rootfs-images-v2-$(git rev-parse HEAD:tools/windows/mkrootfs.sh HEAD:tools/windows/synth-xattrs.sh | tr -d '\n')" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v4
         with:
-          name: erofs-images
-          path: images
+          path: |
+            out
+            out-versions.txt
+          key: ${{ steps.key.outputs.key }}
+          enableCrossOsArchive: true
+          fail-on-cache-miss: true
       - name: Mount each image with an overlay and check it through the VFS
         shell: bash
         run: |
           set +e
-          ls -la images images/out 2>/dev/null | head -30
-          (cd pkg/sentry/fsimpl/rootfs && GVISOR_EROFS_DIR="$GITHUB_WORKSPACE/images/out" C:/ci/bin/rootfs.test.exe -test.count=1 -test.v -test.timeout=1500s) > rootfs.log 2>&1
+          ls -la out 2>/dev/null | head -30
+          (cd pkg/sentry/fsimpl/rootfs && GVISOR_EROFS_DIR="$GITHUB_WORKSPACE/out" C:/ci/bin/rootfs.test.exe -test.count=1 -test.v -test.timeout=1500s) > rootfs.log 2>&1
           rc=$?
           grep -E "^(\s*--- |FAIL|ok|PASS|panic|fatal)|_test.go:[0-9]+:|^goroutine|\.go:[0-9]+ " rootfs.log | head -150
+          { echo '### rootfs mount tests'; echo '```'; grep -E "^(\s*--- |FAIL|ok|PASS|panic|fatal)" rootfs.log | head -150; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           exit $rc

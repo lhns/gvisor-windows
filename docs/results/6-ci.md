@@ -45,8 +45,8 @@ What the numbers say:
 - `ci.yml` (push to `windows` with path filters, or dispatch) builds once and calls the suites:
   `bin` builds runsc.exe, runsctest, sentryguest, ttydrive, sentrysmoke and the compiled test binaries
   (winstub, winhost, gofer, winnat, rootfs, safecopy, pgalloc) with `tools/windows/ci/build-bin.ps1` and uploads
-  them as `win-bin`; `vet` runs beside it; then platform, sentry-guests, runsc, fs, net, sentry, rootfs and
-  podman-windows run as reusable workflows (`workflow_call`) that download `win-bin`.
+  them as `tmp-win-bin`; `vet` runs beside it; then platform, sentry-guests, runsc, fs, net, sentry, rootfs and
+  podman-windows run as reusable workflows (`workflow_call`) that download `tmp-win-bin`.
 - Each suite stays dispatchable alone (`workflow_dispatch`); then its `winbin` step builds only what it needs.
 - Go cache: composite action `.github/actions/gosetup`; `bin` saves the build and module cache per commit
   (key `go-Windows-<go.sum>-<sha>`, restore prefix `go-Windows-<go.sum>-`), the others only restore it.
@@ -69,10 +69,37 @@ What the numbers say:
   The vets of winstub, winrunsc and sentryguest are informational as before (known unsafe.Pointer reports);
   winnat vet gates.
 
-- `release` job in `ci.yml`: artifact `runsc-windows` on every push to `windows` with `runsc.exe`, a hello/busybox
-  OCI bundle and a README; try it with `runsc.exe --network=none run -bundle bundle hello`
+- `release` job in `ci.yml`: artifact `runsc-windows-amd64-<shortsha>` on every push to `windows` with `runsc.exe`, a hello/busybox
+  OCI bundle, README, NOTICE and LICENSE; try it with `runsc.exe --network=none run -bundle bundle hello`
   (`tools/windows/ci/make-release.ps1`).
 - podman-windows "Steps that must pass": all 10 steps, except step 5 outside native mode (it still fails in default and rewrite mode).
+
+## Artifacts
+
+A successful `ci` run has one download and nothing else that outlives a day:
+
+| artifact | when | kept |
+|--|--|--|
+| `runsc-windows-amd64-<shortsha>` | every ci run: a zip with `runsc.exe`, the hello bundle, README, NOTICE, LICENSE (tested as a standard user by `windows-release`) | 14 days |
+| `tmp-win-bin` | `bin` to the suites (`C:\ciin`) | 1 day |
+| `release-assets` | `release.yml` only: what the release is created from | 7 days |
+| `tmp-runsc-zip`, `tmp-runsc-linux` | `release.yml` hand-offs to its publish job (also `tmp-win-bin`) | 1 day |
+| `logs-<workflow>[-<leg>]` | only when the job failed (`logs-windows-runsc-native`, `logs-windows-platform`, `logs-windows-sentry-guests`, `logs-podman-windows-<mode>-<run>`, `logs-fs-flakes-<mode>`, `logs-windows-stability-<mode>`) | default (90 days) |
+| `results-windows-profile-<job>` | `windows-profile`, whose point is its measurements: always uploaded | default |
+
+Rules for a workflow change: a hand-off between jobs is named `tmp-*` with `retention-days: 1`; guests and images
+that have an input-keyed cache (runsc guests, sentry guests, rootfs erofs images, the Podman erofs image) are not
+uploaded at all: the Linux job saves the cache with `enableCrossOsArchive` and the Windows job restores it with
+`actions/cache/restore` and `fail-on-cache-miss`. The key is built from `git rev-parse HEAD:<input>` (object ids),
+not `hashFiles`, which differs between a Linux and a CRLF Windows checkout; bump the `v2` (`v4` for the Podman
+image) in the key to rebuild, the base images float. The key step is repeated in each producer and consumer. Logs
+are uploaded `if: failure()`. The diagnostic workflows that only run on dispatch (windows-spikes, -dispatch-depth,
+-gcrepro, -fsscan, syscall-survey, syscall-tests, sentry-netpoll, podman-acceptance-linux, podman-diag, glibc-diag)
+keep their output artifacts: the output is their purpose and results docs and `sentry-netpoll` (a run id) name them;
+only their job hand-offs are `tmp-*`.
+On success the numbers are in the job summary (`tools/windows/ci/summary.ps1`: step outcomes of runsc, pass counts
+per leg of platform and sentry-guests, timings, podman-windows steps, stability and fs-flakes repetitions), so
+nobody needs to download anything. After a failure: `gh run download <run> -n logs-windows-runsc-native`.
 
 ## How workers run suites now
 

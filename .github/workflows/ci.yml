@@ -1,5 +1,5 @@
 # The Windows suites on every push to `windows`: one job builds every Windows binary once
-# (runsc.exe, tools, compiled test binaries) and the suites download them. Workers on other
+# (runsc.exe, tools, compiled test binaries) and the suites download them (artifact tmp-win-bin, kept a day). Workers on other
 # branches run a suite with `gh workflow run <workflow> --ref <branch>` (docs/results/6-ci.md).
 name: ci
 on:
@@ -21,7 +21,7 @@ jobs:
         shell: pwsh
         run: ./tools/windows/ci/build-bin.ps1
       - uses: actions/upload-artifact@v4
-        with: {name: win-bin, path: 'C:\ci\bin', compression-level: 1, retention-days: 3}
+        with: {name: tmp-win-bin, path: 'C:\ci\bin', compression-level: 1, retention-days: 1}
   vet:
     runs-on: windows-latest
     env: {CGO_ENABLED: "0"}
@@ -65,10 +65,9 @@ jobs:
     needs: bin
     uses: ./.github/workflows/podman-windows.yml
     with: {prebuilt: true}
-  # Something to try on another machine: runsc.exe, a hello bundle, README, NOTICE, LICENSE as a zip, tested
-  # as a fresh standard user (the Podman bundle lives in lhns/podman-portable, ADR 0023).
+  # The one download of a ci run, the artifact runsc-windows-amd64-<shortsha>: runsc.exe, a hello bundle, README,
+  # NOTICE, LICENSE as a zip, tested as a fresh standard user (the Podman bundle lives in lhns/podman-portable, ADR 0023).
   release:
     needs: [bin, runsc]
     if: ${{ !cancelled() && needs.bin.result == 'success' }}
     uses: ./.github/workflows/windows-release.yml
-    with: {zip-name: "gvisor-windows-${{ github.sha }}.zip"}

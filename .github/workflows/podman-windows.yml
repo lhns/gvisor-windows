@@ -42,8 +42,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/podman-image
         with: {podman-version: "${{ env.PODMAN_VERSION }}"}
-      - uses: actions/upload-artifact@v4
-        with: {name: podman-rootfs, path: podman.erofs, compression-level: 0}
   acceptance:
     needs: [image, plan]
     strategy:
@@ -55,8 +53,8 @@ jobs:
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with: {name: podman-rootfs, path: dl}
+      - uses: ./.github/actions/podman-image
+        with: {podman-version: "${{ env.PODMAN_VERSION }}", restore-only: "true"}
       - uses: ./.github/actions/winbin
         with: {prebuilt: "${{ inputs.prebuilt }}", targets: "runsc,ttydrive"}
       - name: Clients
@@ -76,7 +74,7 @@ jobs:
         continue-on-error: true
         run: |
           New-Item -ItemType Directory -Force C:\ci\std | Out-Null
-          Copy-Item dl\podman.erofs C:\ci\podman.erofs
+          Copy-Item podman.erofs C:\ci\podman.erofs
           icacls C:\ci /grant 'Users:(OI)(CI)M' /Q
           New-Item -ItemType Directory -Force C:\ci\std | Out-Null
           New-Item -ItemType Directory -Force C:\ci\std\engine\storage | Out-Null
@@ -100,11 +98,12 @@ jobs:
         shell: pwsh
         run: |
           Get-Content C:\ci\std\results\steps.txt -ErrorAction SilentlyContinue
+          ./tools/windows/ci/summary.ps1 -Title 'podman-windows ${{ matrix.mode }} run ${{ matrix.run }}' -Code C:\ci\std\results\steps.txt -Tail 40
           Get-ChildItem C:\ci\std\engine\logs -ErrorAction SilentlyContinue | ForEach-Object { "--- $($_.Name)"; Get-Content $_.FullName -Tail 40 }
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: failure()
         with:
-          name: podman-windows-logs-${{ matrix.mode }}-${{ matrix.run }}
+          name: logs-podman-windows-${{ matrix.mode }}-${{ matrix.run }}
           path: |
             C:\ci\std\results
             C:\ci\std\engine\logs

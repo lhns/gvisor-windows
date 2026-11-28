@@ -1,6 +1,8 @@
 # The runsc zip (runsc.exe, hello/busybox bundle, README, NOTICE, LICENSE) and its clean-machine test: the zip
 # extracted into a fresh standard user's profile, hello and a busybox shell command run. Called by ci.yml and
-# release.yml; both provide the win-bin artifact (runsc.exe) and the runsc-guests artifact (hello, busybox).
+# release.yml; both provide the tmp-win-bin artifact (runsc.exe) and the runsc guests cache (hello, busybox; saved
+# by windows-runsc). called from ci.yml it uploads the artifact runsc-windows-amd64-<shortsha> (14 days); called
+# from release.yml (github.workflow is the caller's) a one-day tmp-runsc-zip that release.yml's publish job reads.
 name: windows-release
 on:
   workflow_call:
@@ -13,17 +15,41 @@ concurrency:
 jobs:
   bundle:
     runs-on: windows-latest
+    outputs:
+      artifact: ${{ steps.names.outputs.artifact }}
     steps:
       - uses: actions/checkout@v4
-        with: {sparse-checkout: "tools/windows"}
+        with:
+          sparse-checkout: |
+            tools/windows
+            test/guests
+      - id: names
+        shell: bash
+        env: {ZIP: "${{ inputs.zip-name }}", CALLER: "${{ github.workflow }}"}
+        run: |
+          short=${GITHUB_SHA::7}
+          if [ "$CALLER" = release ]; then
+            echo "zip=$ZIP" >> "$GITHUB_OUTPUT"; echo "artifact=tmp-runsc-zip" >> "$GITHUB_OUTPUT"; echo "days=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "zip=runsc-windows-amd64-$short.zip" >> "$GITHUB_OUTPUT"; echo "artifact=runsc-windows-amd64-$short" >> "$GITHUB_OUTPUT"; echo "days=14" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/download-artifact@v4
-        with: {name: win-bin, path: 'C:\ci\bin'}
-      - uses: actions/download-artifact@v4
-        with: {name: runsc-guests, path: guests}
+        with: {name: tmp-win-bin, path: 'C:\ci\bin'}
+      # the guests windows-runsc built and cached (same key); a miss fails the job
+      # the key is the git object ids of the inputs, not hashFiles: CRLF checkouts on Windows hash differently
+      - id: key
+        shell: bash
+        run: echo "key=runsc-guests-v2-$(git rev-parse HEAD:test/guests HEAD:tools/windows/bench | tr -d '\n')" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v4
+        with:
+          path: out
+          key: ${{ steps.key.outputs.key }}
+          enableCrossOsArchive: true
+          fail-on-cache-miss: true
       - shell: pwsh
-        run: ./tools/windows/ci/make-release.ps1 -Guests guests -Runsc C:\ci\bin\runsc.exe -Out release -Zip "zip\${{ inputs.zip-name || 'gvisor-windows-bundle.zip' }}"
+        run: ./tools/windows/ci/make-release.ps1 -Guests out -Runsc C:\ci\bin\runsc.exe -Out release -Zip "zip\${{ steps.names.outputs.zip }}"
       - uses: actions/upload-artifact@v4
-        with: {name: gvisor-windows-zip, path: zip, compression-level: 0, retention-days: 14}
+        with: {name: "${{ steps.names.outputs.artifact }}", path: zip, compression-level: 0, retention-days: "${{ steps.names.outputs.days }}"}
   test:
     needs: bundle
     runs-on: windows-latest
@@ -32,7 +58,7 @@ jobs:
       - uses: actions/checkout@v4
         with: {sparse-checkout: "tools/windows"}
       - uses: actions/download-artifact@v4
-        with: {name: gvisor-windows-zip, path: 'C:\rt\zip'}
+        with: {name: "${{ needs.bundle.outputs.artifact }}", path: 'C:\rt\zip'}
       - name: Extract and run as a standard user
         shell: pwsh
         run: |

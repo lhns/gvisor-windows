@@ -87,7 +87,7 @@ flowchart TB
 | `ops-upstream-merges` | Merge upstream gVisor regularly | a weekly workflow now merges `google/gvisor` `go` into a branch from `windows`, builds it and opens an issue when that fails |  | Regularly take in upstream gVisor's Go branch so the port does not drift. | Weekly workflow merges google/gvisor go into an upstream-merge-<date> branch, builds both GOOS, and opens or updates one issue on conflict or build failure; dry run merged 4 commits cleanly. |  |  |  |  |
 | `ops-portable-packaging` | Portable zip, no installer |  |  | Ship runsc for Windows as a zip or per-user installer that needs no admin. | The Podman bundle moved to lhns/podman-portable (ADR 0023); this repo ships runsc.exe plus a hello bundle, tested from a fresh standard user profile. Draft releases come from release.yml after the heavy suites pass on the same sha. |  |  |  |  |
 | `ops-run-on-a-work-machine` | Try it on a real work machine |  |  | All evidence comes from GitHub hosted Windows images; the owner runs runsc.exe once on a work machine to check FSGSBASE and whether security software tolerates the generated stub being debugged. | Ready: download the release zip (or the latest ci run on windows) and run its hello bundle; the Podman bundle test belongs to lhns/podman-portable. Done when: the owner reports the result of one run. |  |  |  |  |
-| `ops-ci-build-once` | Build once, run suites on demand |  |  | One ci.yml builds runsc.exe and the test binaries once and calls every Windows suite; worker branches start no runs and dispatch only what they need. About 62 to 40 job-minutes per push. | Next lever: merge the 16 small Linux acceptance jobs. Also uploads a runsc-windows package (runsc.exe, hello bundle, README) for trying it on a work machine. |  |  |  |  |
+| `ops-ci-build-once` | Build once, run suites on demand |  |  | One ci.yml builds runsc.exe and the test binaries once and calls every Windows suite; worker branches start no runs and dispatch only what they need. About 62 to 40 job-minutes per push. | Next lever: merge the 16 small Linux acceptance jobs. Also uploads a runsc-windows-amd64-<shortsha> package (runsc.exe, hello bundle, README) for trying it on a work machine. |  |  |  |  |
 | `ops-podman-on-the-dev-vm` | Podman on the development VM |  |  | Podman has passed in rewrite-fxsave mode only on CI runners that force it; on the development VM (no FSGSBASE, XSAVE or AVX) only runsc bundles ran, because the engine opens a network listener. | Needs the owner's go-ahead to start the engine on the VM (firewall prompt). Done when: the zip's README steps run on the VM. |  |  |  |  |
 
 ### Folded items per node
@@ -95,8 +95,9 @@ flowchart TB
 - `ops-syscall-tests-on-windows`: gVisor syscall tests on Windows
   - Linux runsc 81.5%, Windows with network 77.3% of 14620 cases (2026-11-27, commit 63612b2a1)
 - `ops-portable-packaging`: Portable zip, no installer
-  - CI uploads a runsc-windows package (runsc.exe, hello bundle, README) on each push to windows (2026-11-27, commit 20ac3fb3b)
+  - CI uploads a runsc-windows-amd64-<shortsha> package (runsc.exe, hello bundle, README, NOTICE, LICENSE) on each push to windows (2026-11-27, commit 20ac3fb3b)
   - Published gvisor-windows v0.1.0 (pre-release, runsc for Windows and Linux) from release run 46093187743 and podman-portable v0.1.0 (single exe and zip) (2026-11-28, commit b907ae6aa)
 - `ops-ci-build-once`: Build once, run suites on demand
   - Owner decision: CI on push only, no scheduled test runs; repeats are dispatched when needed (2026-11-28, commit 8760b32fc)
+  - Artifacts: one download per run (runsc-windows-amd64-<shortsha>), job hand-offs as tmp- with 1-day retention or from cache, logs only on failure with results in job summaries (2026-11-28, commit 01a68d038)
 <!-- END GENERATED: table-ops -->

@@ -15,7 +15,7 @@ jobs:
           ls -l root/lib/x86_64-linux-gnu/libc.so.6 root/lib64/ld-linux-x86-64.so.2 root/bin/echo
           tar -C root -cf rootfs.tar .
       - uses: actions/upload-artifact@v4
-        with: {name: debian-rootfs, path: rootfs.tar, compression-level: 0}
+        with: {name: tmp-debian-rootfs, path: rootfs.tar, compression-level: 0, retention-days: 1}
   run:
     needs: rootfs
     runs-on: windows-latest
@@ -24,7 +24,7 @@ jobs:
       - uses: actions/setup-go@v5
         with: {go-version-file: go.mod, cache: false}
       - uses: actions/download-artifact@v4
-        with: {name: debian-rootfs, path: dl}
+        with: {name: tmp-debian-rootfs, path: dl}
       - run: go build -p 2 -o sentryguest.exe ./tools/windows/sentryguest
         shell: pwsh
       - name: Run

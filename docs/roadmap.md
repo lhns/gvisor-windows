@@ -360,8 +360,9 @@ Generated on 2026-11-28.
 - `fs-unix-sockets-on-host-folders`: Unix sockets on host folders (✔ fixed). Binding a Unix socket on a Windows folder and connecting to it (by path or via /proc/self/fd) is refused, so Podman cannot reach conmon's attach socket.
 - `ops-ci-build-once`: Build once, run suites on demand (✔ done · unrated). One ci.yml builds runsc.exe and the test binaries once and calls every Windows suite; worker branches start no runs and dispatch only what they need. About 62 to 40 job-minutes per push.
   - Owner decision: CI on push only, no scheduled test runs; repeats are dispatched when needed (2026-11-28)
+  - Artifacts: one download per run (runsc-windows-amd64-<shortsha>), job hand-offs as tmp- with 1-day retention or from cache, logs only on failure with results in job summaries (2026-11-28)
 - `ops-portable-packaging`: Portable zip, no installer (✔ done · unrated). Ship runsc for Windows as a zip or per-user installer that needs no admin.
-  - CI uploads a runsc-windows package (runsc.exe, hello bundle, README) on each push to windows (2026-11-27)
+  - CI uploads a runsc-windows-amd64-<shortsha> package (runsc.exe, hello bundle, README, NOTICE, LICENSE) on each push to windows (2026-11-27)
   - Published gvisor-windows v0.1.0 (pre-release, runsc for Windows and Linux) from release run 46093187743 and podman-portable v0.1.0 (single exe and zip) (2026-11-28)
 - `ops-syscall-tests-on-windows`: gVisor syscall tests on Windows (✔ done · mixed). gVisor's own syscall test suite runs against the Windows port to show which Linux calls work.
   - Linux runsc 81.5%, Windows with network 77.3% of 14620 cases (2026-11-27)
