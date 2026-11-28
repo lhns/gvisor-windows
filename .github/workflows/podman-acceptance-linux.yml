@@ -365,14 +365,14 @@ jobs:
       - name: Start engine (rootless runsc, as spike)
         id: start
         run: |
-          sudo -u spike -H env -i HOME=/home/spike USER=spike PATH="$PATH" STRACE=$([ ${{ matrix.net }} = windows-nat ] && echo 1 || echo 0) GV=/opt/gv ROOTFS=/home/spike/rootfs WORK=/home/spike/work NET=${{ matrix.net }} STORAGE_DRIVER=${{ matrix.driver }}             bash /tmp/rl/rootless-spike.sh start 2>&1 | tee "$RESULTS_DIR/out/start.txt"
+          sudo -u spike -H env -i HOME=/home/spike USER=spike PATH="$PATH" STRACE=0 GV=/opt/gv ROOTFS=/home/spike/rootfs WORK=/home/spike/work NET=${{ matrix.net }} STORAGE_DRIVER=${{ matrix.driver }}             bash /tmp/rl/rootless-spike.sh start 2>&1 | tee "$RESULTS_DIR/out/start.txt"
           test "${PIPESTATUS[0]}" = 0
       - name: Acceptance test (as spike)
         if: steps.start.outcome == 'success'
         run: |
           mkdir -p /tmp/rl-out && chmod 777 /tmp/rl-out
           HN=""; [ "${{ matrix.net }}" = host ] && HN="HOSTNET=1 NETARGS=--network=host"
-          sudo -u spike -H env -i HOME=/home/spike USER=spike PATH="$PATH" STRACE=$([ ${{ matrix.net }} = windows-nat ] && echo 1 || echo 0) $HN GV=/opt/gv ROOTFS=/home/spike/rootfs WORK=/home/spike/work NET=${{ matrix.net }} STORAGE_DRIVER=${{ matrix.driver }}             XDG_RUNTIME_DIR=/home/spike/xdg CONTAINER_HOST=unix:///home/spike/podman.sock SHARE_DIR=/home/spike/share RESULTS_DIR=/tmp/rl-out             ENGINE_CTL=/tmp/rl/rootless-spike.sh bash /tmp/rl/run.sh || true
+          sudo -u spike -H env -i HOME=/home/spike USER=spike PATH="$PATH" STRACE=0 $HN GV=/opt/gv ROOTFS=/home/spike/rootfs WORK=/home/spike/work NET=${{ matrix.net }} STORAGE_DRIVER=${{ matrix.driver }}             XDG_RUNTIME_DIR=/home/spike/xdg CONTAINER_HOST=unix:///home/spike/podman.sock SHARE_DIR=/home/spike/share RESULTS_DIR=/tmp/rl-out             ENGINE_CTL=/tmp/rl/rootless-spike.sh bash /tmp/rl/run.sh || true
       - name: Diagnostics
         if: always()
         run: |
