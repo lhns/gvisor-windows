@@ -310,17 +310,18 @@ jobs:
           foreach ($leg in 'native', 'rewrite', 'rewrite-fxsave') {
             Set-Leg $leg
             foreach ($name in $work.Keys) {
-              foreach ($tc in '', '0') {
-                $env:WINSTUB_TEXTCACHE = $tc
+              foreach ($tc in '', 'reloc-off', '0') {
+                $env:WINSTUB_TEXTCACHE = if ($tc -eq '0') { '0' } else { '' }
+                $env:WINSTUB_TEXTRELOC = if ($tc -eq 'reloc-off') { '0' } else { '' }
                 $t = @()
                 for ($i = 0; $i -lt 5; $i++) {
                   $o = & C:\ci\bin\sentryguest.exe @g @($work[$name]) 2>&1 | Out-String
                   if ($o -match 'code 0, signaled false.*run ([0-9.]+)(ms|s)') { $v = [double]$Matches[1]; if ($Matches[2] -eq 'ms') { $v /= 1000 }; $t += $v } else { "no time in $leg $name run $i"; ($o -split "`n" | Select-Object -Last 15) -join "`n" }
                 }
                 $m = ($t | Sort-Object)[[int]($t.Count / 2)]
-                "DYNFORKEXEC $leg $name textcache=$(if ($tc) { 'off' } else { 'on' }) median=$m s (runs: $($t -join ' '))" | Tee-Object -Append out/loops.txt
+                "DYNFORKEXEC $leg $name textcache=$(if ($tc -eq '0') { 'off' } elseif ($tc) { 'on,relocation-off' } else { 'on' }) median=$m s (runs: $($t -join ' '))" | Tee-Object -Append out/loops.txt
               }
-              $env:WINSTUB_TEXTCACHE = ''
+              $env:WINSTUB_TEXTCACHE = ''; $env:WINSTUB_TEXTRELOC = ''
               $env:GVISOR_PROFSTATS = '1'
               $o = & C:\ci\bin\sentryguest.exe -profstats @g @($work[$name]) 2>&1 | Out-String
               Remove-Item Env:GVISOR_PROFSTATS
