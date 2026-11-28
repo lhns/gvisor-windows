@@ -190,7 +190,8 @@ flowchart TB
 | Event waiting on IOCP | ⏸ parked | Waiting for many host events at once (epoll on Linux) moves to Windows completion ports. |
 | Profile the slow file and exec path | ✔ done · mixed | Creating a file on tmpfs costs about 1 ms and a fork+exec 32 ms on Windows; find where the time goes (syscall round trips, page faults, debug events, Sentry work) and fix the top causes. |
 | One-off negative WaitGroup panic | ⚠ open | A "negative WaitGroup counter" panic seen once in safecopy tests is not explained by stack overrun and did not recur in 1600 runs. |
-| Rare long epoll timeout overshoot | ⚠ open | A 30 ms timer signal meant to interrupt epoll_wait took 212 ms once in about 12 leg runs (rewrite-fxsave); the clocks test now retries, so CI would hide a repeat. |
+| Host writes that block for seconds | ⚠ open | A WriteFile to the debug log blocked for seconds on CI runners, mostly at the first boot; any other host I/O done while holding a Sentry lock would stall the guest the same way. |
+| Flaky shell wait status test | ⚠ open | The sentry-guests case sh_wait_status sometimes gets 2 instead of 143 from wait on a killed background job (native and rewrite-fxsave). |
 | Compatibility layer, not security boundary | ✔ done · n/a | The sandbox may open the user's files directly with the user's rights; it isolates containers from each other, not from the user. |
 | Open Windows files directly | ✔ done · successful | The Sentry opens NTFS files itself for bind mounts, with its own caches, instead of going through a file protocol. |
 | Netstack to Windows sockets | ✔ done · successful | gVisor's own TCP/IP stack sends guest traffic out through ordinary Windows sockets, like a user-space NAT. |
@@ -212,9 +213,10 @@ flowchart TB
 **windows-ci**
 
 - `sentry-waitgroup-panic`: One-off negative WaitGroup panic
-- `sentry-epoll-timeout-overshoot`: Rare long epoll timeout overshoot
 - `workloads-podman-client-on-pipe`: Podman client over the named pipe
 - `platform-text-cache-pie`: Patched-text cache for PIE programs
+- `sentry-host-io-under-locks`: Host writes that block for seconds
+- `sentry-sh-wait-status-flake`: Flaky shell wait status test
 <!-- END GENERATED: ready-now -->
 
 ## Running
@@ -247,7 +249,7 @@ Generated on 2026-11-28.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 121 done, 7 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 122 done, 7 abandoned</summary>
 
 - `fs-attribute-cache`: Faster stat walks on host folders (✔ done · mixed). A git-status-like walk of 20000 files takes 1.2-2.4 s through the host folder; an attribute cache fed by the change watcher would bring stat near native.
   - Cold stat walk on a fresh mount is still about 4x native, 99-105 us per file (2026-11-26)
@@ -424,6 +426,7 @@ Generated on 2026-11-28.
   - Rewrite Podman: all 10 steps 7 of 8, then 8 of 8 (runs 46016231319, 46020575644) (2026-11-27)
 - `workloads-tty-through-windows-client`: Interactive TTY through the Windows client (✔ fixed). The Windows podman client says "The input device is not a TTY" inside the ConPTY test driver, so the interactive step cannot type into the container.
 - `workloads-volume-lost-on-restart`: Volume data lost across engine restart (✔ fixed). In 2 of 5 complete native runs, the named volume written before the engine restart is empty afterwards (step 9).
+- `sentry-epoll-timeout-overshoot`: Rare long epoll timeout overshoot (✔ fixed). A 30 ms timer signal meant to interrupt epoll_wait took 212 ms once in about 12 leg runs (rewrite-fxsave); the clocks test now retries, so CI would hide a repeat.
 
 </details>
 <!-- END GENERATED: done-by-month -->
@@ -435,7 +438,7 @@ Each track has its own page with its tree, node table and per-node details.
 
 - [runsc - runsc](roadmap/tracks/runsc.md): 6 nodes (6 done)
 - [platform - platform](roadmap/tracks/platform.md): 45 nodes (40 done, 1 next, 3 parked, 1 abandoned)
-- [sentry - sentry](roadmap/tracks/sentry.md): 16 nodes (13 done, 2 next, 1 parked)
+- [sentry - sentry](roadmap/tracks/sentry.md): 18 nodes (14 done, 3 next, 1 parked)
 - [fs - files](roadmap/tracks/fs.md): 23 nodes (23 done)
 - [net - network](roadmap/tracks/net.md): 4 nodes (4 done)
 - [workloads - workloads](roadmap/tracks/workloads.md): 23 nodes (22 done, 1 next)

@@ -11,7 +11,9 @@ package winrunsc
 
 import (
 	"runtime/pprof"
+	"bytes"
 	"fmt"
+	"strconv"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -224,9 +226,13 @@ type instance struct {
 	pf      *pipeForward
 	uf      *unixForward
 	logFile *os.File
+	log     *asyncLog
 }
 
 func (in *instance) closeLog() {
+	if in.log != nil {
+		in.log.Close()
+	}
 	if in.logFile != nil {
 		in.logFile.Close()
 	}
@@ -235,10 +241,15 @@ func (in *instance) closeLog() {
 // newInstance reads the bundle and creates the Loader (the sandbox, with the
 // container not yet started). On failure it prints the error and returns the
 // exit code.
-func newInstance(id, bundle string, terminal bool) (*instance, int) {
+func newInstance(id, bundle string, terminal bool) (ret *instance, code int) {
 	// Logs must not reach stderr, which belongs to the container.
 	log.SetTarget(discard{})
 	in := &instance{}
+	defer func() {
+		if ret == nil {
+			in.closeLog() // write out the error's log lines
+		}
+	}()
 	conf, err := config.NewFromFlags(flag.CommandLine)
 	if err != nil {
 		return nil, fatalf("%v", err)
@@ -252,7 +263,8 @@ func newInstance(id, bundle string, terminal bool) (*instance, int) {
 			return nil, fatalf("opening the debug log: %v", err)
 		}
 		in.logFile = f // closed by the caller (closeLog), not when newInstance returns
-		log.SetTarget(log.GoogleEmitter{Writer: &log.Writer{Next: &reportingWriter{w: f}}})
+		in.log = newAsyncLog(&reportingWriter{w: f})
+		log.SetTarget(log.GoogleEmitter{Writer: &log.Writer{Next: in.log}})
 	}
 	log.Infof("runsc %s %s, %d CPUs, args %v", version.Version(), runtime.Version(), runtime.NumCPU(), os.Args)
 
@@ -404,7 +416,18 @@ type reportingWriter struct {
 	once sync.Once
 }
 
+// logStall (GVISOR_TEST_LOG_STALL=ms, a test hook) delays every debug log write of a
+// signal send's line ("Notified of signal"), as a stalled disk would
+// (docs/results/3e-signal-latency.md).
+var logStall = func() time.Duration {
+	ms, _ := strconv.Atoi(os.Getenv("GVISOR_TEST_LOG_STALL"))
+	return time.Duration(ms) * time.Millisecond
+}()
+
 func (r *reportingWriter) Write(p []byte) (int, error) {
+	if logStall > 0 && bytes.Contains(p, []byte("Notified of signal")) {
+		time.Sleep(logStall)
+	}
 	n, err := r.w.Write(p)
 	if err != nil {
 		r.once.Do(func() { fmt.Fprintf(os.Stderr, "runsc: the debug log stopped: %v"+string(rune(10)), err) })

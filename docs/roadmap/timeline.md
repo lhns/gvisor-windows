@@ -77,6 +77,8 @@ gantt
     pasta networking inside the sandbox :sentry_pasta_in_sandbox, 2026-11-27, 2026-11-27
     One-off negative WaitGroup panic :sentry_waitgroup_panic, 2026-11-27, 2026-11-28
     Rare long epoll timeout overshoot :sentry_epoll_timeout_overshoot, 2026-11-27, 2026-11-28
+    Host writes that block for seconds :sentry_host_io_under_locks, 2026-11-28, 2026-11-28
+    Flaky shell wait status test :sentry_sh_wait_status_flake, 2026-11-28, 2026-11-28
     section fs - files
     Compatibility layer, not security bound… :fs_compat_layer_not_boundary, 2026-11-26, 2026-11-26
     Test persistent image storage :fs_persistent_image_storage, 2026-11-26, 2026-11-26

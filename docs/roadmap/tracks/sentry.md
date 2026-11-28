@@ -23,7 +23,9 @@ flowchart TB
     sentry_fchmod_std_stream>"✔ fchmod on a standard<br/>stream fails"]
     sentry_pasta_in_sandbox>"✔ pasta networking<br/>inside the sandbox"]
     sentry_waitgroup_panic>"⚠ One-off negative<br/>WaitGroup panic"]
-    sentry_epoll_timeout_overshoot>"⚠ Rare long epoll<br/>timeout overshoot"]
+    sentry_epoll_timeout_overshoot>"✔ Rare long epoll<br/>timeout overshoot"]
+    sentry_host_io_under_locks>"⚠ Host writes that<br/>block for seconds"]
+    sentry_sh_wait_status_flake>"⚠ Flaky shell wait<br/>status test"]
     sentry_event_loop_iocp["⏸ Event waiting on<br/>IOCP"]
     sentry_go_fault_recovery ~~~ sentry_windows_build
     sentry_unix_shim ~~~ sentry_windows_build
@@ -39,8 +41,8 @@ flowchart TB
     sentry_profile_small_file_path ~~~ sentry_pasta_in_sandbox
     sentry_netpoll_failure ~~~ sentry_waitgroup_panic
     sentry_fchmod_std_stream ~~~ sentry_epoll_timeout_overshoot
-    sentry_pasta_in_sandbox ~~~ sentry_event_loop_iocp
-    sentry_waitgroup_panic ~~~ sentry_event_loop_iocp
+    sentry_pasta_in_sandbox ~~~ sentry_host_io_under_locks
+    sentry_waitgroup_panic ~~~ sentry_sh_wait_status_flake
     sentry_epoll_timeout_overshoot ~~~ sentry_event_loop_iocp
     sentry_unix_shim --> sentry_windows_build
     sentry_windows_build --> sentry_memory_file_sections
@@ -62,10 +64,10 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class sentry_go_fault_recovery,sentry_unix_shim,sentry_fault_recovery,sentry_host_stdio_and_tty,sentry_threads_and_signals,sentry_dynamic_elf_and_exec,sentry_timers_and_clocks,sentry_netpoll_failure,sentry_fchmod_std_stream,sentry_pasta_in_sandbox succ
+    class sentry_go_fault_recovery,sentry_unix_shim,sentry_fault_recovery,sentry_host_stdio_and_tty,sentry_threads_and_signals,sentry_dynamic_elf_and_exec,sentry_timers_and_clocks,sentry_netpoll_failure,sentry_fchmod_std_stream,sentry_pasta_in_sandbox,sentry_epoll_timeout_overshoot succ
     class sentry_windows_build,sentry_memory_file_sections unrated
     class sentry_profile_small_file_path mixed
-    class sentry_waitgroup_panic,sentry_epoll_timeout_overshoot finding
+    class sentry_waitgroup_panic,sentry_host_io_under_locks,sentry_sh_wait_status_flake finding
     class sentry_event_loop_iocp parked
 ```
 <!-- END GENERATED: track-sentry -->
@@ -90,7 +92,9 @@ flowchart TB
 | `sentry-fchmod-std-stream` | fchmod on a standard stream fails | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
 | `sentry-pasta-in-sandbox` | pasta networking inside the sandbox | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/5-podman-windows.md |
 | `sentry-waitgroup-panic` | One-off negative WaitGroup panic | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/0b-windows.md |
-| `sentry-epoll-timeout-overshoot` | Rare long epoll timeout overshoot | defect | windows-ci | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/3d-clocks-upstream.md |
+| `sentry-epoll-timeout-overshoot` | Rare long epoll timeout overshoot | defect | windows-ci | done | unrated | 2026-11-27 | 2026-11-28 |  |  |  |  | docs/results/3d-clocks-upstream.md; docs/results/3e-signal-latency.md |
+| `sentry-host-io-under-locks` | Host writes that block for seconds | defect | windows-ci | next | unrated | 2026-11-28 |  |  |  |  |  | docs/results/3e-signal-latency.md |
+| `sentry-sh-wait-status-flake` | Flaky shell wait status test | defect | windows-ci | next | unrated | 2026-11-28 |  |  |  |  |  | docs/results/3e-signal-latency.md |
 
 ### Details per node
 
@@ -111,7 +115,9 @@ flowchart TB
 | `sentry-fchmod-std-stream` | fchmod on a standard stream fails |  |  | conmon logs "Failed to chmod stderr" and container logs are lost, so the compose check cannot read them. | Fixed: pipefs refused every mode change with EPERM; it now keeps the mode like Linux. fchmod test required in windows-runsc. |  |  |  |  |
 | `sentry-pasta-in-sandbox` | pasta networking inside the sandbox |  |  | buildah RUN uses pasta, which fails: /proc/sys/net/ipv4/ip_local_port_range is missing and switching into the namespace returns EPERM. | ip_local_port_range now printed with a tab; the setns EPERM is pasta dropping its capabilities, not a Sentry bug. Builds use BUILDAH_ISOLATION=oci. |  |  |  |  |
 | `sentry-waitgroup-panic` | One-off negative WaitGroup panic |  |  | A "negative WaitGroup counter" panic seen once in safecopy tests is not explained by stack overrun and did not recur in 1600 runs. | Fixed when: the cause is found, or it does not recur for a month; pkg/safecopy tests run on every push to windows (windows-sentry in ci.yml). |  |  |  |  |
-| `sentry-epoll-timeout-overshoot` | Rare long epoll timeout overshoot |  |  | A 30 ms timer signal meant to interrupt epoll_wait took 212 ms once in about 12 leg runs (rewrite-fxsave); the clocks test now retries, so CI would hide a repeat. | Fixed when: the cause is known (runner stall or Sentry delay, e.g. interrupt retry waits in rewrite mode) and the check passes without retries in 30 runs. |  |  |  |  |
+| `sentry-epoll-timeout-overshoot` | Rare long epoll timeout overshoot |  |  | A 30 ms timer signal meant to interrupt epoll_wait took 212 ms once in about 12 leg runs (rewrite-fxsave); the clocks test now retries, so CI would hide a repeat. | Fixed: the timer goroutine sent signals under a Sentry lock while blocked on a synchronous runsc debug-log write; runsc now writes its debug log asynchronously. A logstall test reproduced it; signal latency p99 is about 1 ms in all modes, and the retry is gone. |  |  |  |  |
+| `sentry-host-io-under-locks` | Host writes that block for seconds |  |  | A WriteFile to the debug log blocked for seconds on CI runners, mostly at the first boot; any other host I/O done while holding a Sentry lock would stall the guest the same way. | Fixed when: the cause of the multi-second writes is known and no host I/O under Sentry locks remains on hot paths, or it is shown to be harmless. |  |  |  |  |
+| `sentry-sh-wait-status-flake` | Flaky shell wait status test |  |  | The sentry-guests case sh_wait_status sometimes gets 2 instead of 143 from wait on a killed background job (native and rewrite-fxsave). | Fixed when: the case passes 30 runs in a row in all modes. |  |  |  |  |
 
 ### Folded items per node
 

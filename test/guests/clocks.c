@@ -1,7 +1,10 @@
-/* Sleeps, clocks, timerfd, POSIX timers, interval timers and timeouts: clocks [GROUP...].
- * Without a group every group runs. Each check prints its measurement; a failed check is
- * reported and the run goes on, the exit code is 1 if any failed. Prints "clocks ok" at the end.
- * Tolerances are generous (CI runners are noisy): a wait of T ms returns within [T-1, T+100] ms. */
+/* Sleeps, clocks, timerfd, POSIX timers, interval timers and timeouts:
+ *   clocks [repeat=N] [GROUP...]
+ * Without a group every group but siglat runs. Each check prints its measurement; a failed check
+ * is reported and the run goes on, the exit code is 1 if any failed. Prints "clocks ok" at the end.
+ * Tolerances are generous (CI runners are noisy): a wait of T ms returns within [T-1, T+100] ms.
+ * repeat=N runs the groups N times; siglat measures timer signal latency
+ * (docs/results/3e-signal-latency.md). */
 #define _GNU_SOURCE
 #include <errno.h>
 #include <poll.h>
@@ -63,6 +66,7 @@ static struct timespec ts_add(clockid_t c, double ms) {
 /* Checks that got (ms) is within [want - SLACK_LO, want + hi]. */
 static void within(const char *what, double got, double want, double hi) {
 	printf("  %-36s %8.2f ms (want %g)\n", what, got, want);
+	if (got > want + 5) printf("  (late %.2f ms, ended at realtime %.3f)\n", got - want, now_ms(CLOCK_REALTIME) / 1e3);
 	if (got < want - SLACK_LO || got > want + hi) bad(what, "%.2f ms outside [%g, %g]", got, want - SLACK_LO, want + hi);
 }
 #define WITHIN(what, got, want) within(what, got, want, SLACK_HI)
@@ -630,23 +634,15 @@ static void t_timeouts(void) {
 	t0 = now_ms(CLOCK_MONOTONIC);
 	rc = epoll_wait(ep, out, 2, 0);
 	if (rc != 0 || now_ms(CLOCK_MONOTONIC) - t0 > 20) bad("epoll_wait 0", "rc %d or slow", rc);
-	/* A timer signal after 30 ms ends a 2 s epoll_wait with EINTR (a stalled runner gets 3 tries). */
+	/* A timer signal after 30 ms ends a 2 s epoll_wait with EINTR. */
 	handler(SIGALRM, on_alrm);
-	int e = 0;
-	for (int try = 0; try < 3; try++) {
-		struct itimerval it = {{0, 0}, {0, 30000}};
-		setitimer(ITIMER_REAL, &it, NULL);
-		t0 = now_ms(CLOCK_MONOTONIC);
-		rc = epoll_wait(ep, out, 2, 2000);
-		e = errno;
-		double el = now_ms(CLOCK_MONOTONIC) - t0;
-		if (rc == -1 && e == EINTR && el < 30 + SLACK_HI) {
-			WITHIN("epoll_wait interrupted by a timer", el, 30);
-			break;
-		}
-		printf("  epoll_wait interrupted by a timer: try %d took %.2f ms, rc %d\n", try, el, rc);
-		if (try == 2) bad("epoll_wait EINTR", "rc %d errno %d after %.2f ms", rc, e, el);
-	}
+	struct itimerval it = {{0, 0}, {0, 30000}};
+	setitimer(ITIMER_REAL, &it, NULL);
+	t0 = now_ms(CLOCK_MONOTONIC);
+	rc = epoll_wait(ep, out, 2, 2000);
+	int e = errno;
+	if (rc != -1 || e != EINTR) bad("epoll_wait EINTR", "rc %d errno %d", rc, e);
+	WITHIN("epoll_wait interrupted by a timer", now_ms(CLOCK_MONOTONIC) - t0, 30);
 	close(ep);
 
 	/* sigtimedwait and the futex-based waits */
@@ -693,24 +689,73 @@ static void t_timeouts(void) {
 	pthread_join(th, NULL);
 }
 
+/* Timer signal latency, report only: each sample line is "siglat KIND LATENCY_MS REALTIME_S".
+ * eintr: ITIMER_REAL at 30 ms ends a 2 s epoll_wait (latency: the return after 30 ms; the path
+ * of the timeouts check); spin: the same timer while the thread runs guest code (latency: the
+ * handler's entry after 30 ms; the platform's interrupt); timeout: a plain 30 ms epoll_wait. */
+static volatile double alrm_at;
+static void on_alrm_at(int s) { (void)s; alrm_at = now_ms(CLOCK_MONOTONIC); }
+static void t_siglat(void) {
+	int p[2];
+	if (pipe(p)) { bad("pipe", "failed"); return; }
+	int ep = epoll_create1(0);
+	struct epoll_event ev = {.events = EPOLLIN, .data.fd = p[0]}, out[2];
+	epoll_ctl(ep, EPOLL_CTL_ADD, p[0], &ev);
+	handler(SIGALRM, on_alrm_at);
+	struct itimerval it = {{0, 0}, {0, 30000}};
+	for (int k = 0; k < 5; k++) {
+		setitimer(ITIMER_REAL, &it, NULL);
+		double t0 = now_ms(CLOCK_MONOTONIC);
+		int rc = epoll_wait(ep, out, 2, 2000);
+		int e = errno;
+		double el = now_ms(CLOCK_MONOTONIC) - t0;
+		printf("siglat eintr %.3f %.3f\n", el - 30, now_ms(CLOCK_REALTIME) / 1e3);
+		if (rc != -1 || e != EINTR) bad("siglat eintr", "rc %d errno %d", rc, e);
+
+		alrm_at = 0;
+		setitimer(ITIMER_REAL, &it, NULL);
+		t0 = now_ms(CLOCK_MONOTONIC);
+		while (alrm_at == 0 && now_ms(CLOCK_MONOTONIC) - t0 < 2000) {
+		}
+		printf("siglat spin %.3f %.3f\n", alrm_at != 0 ? alrm_at - t0 - 30 : 2000.0, now_ms(CLOCK_REALTIME) / 1e3);
+
+		t0 = now_ms(CLOCK_MONOTONIC);
+		rc = epoll_wait(ep, out, 2, 30);
+		printf("siglat timeout %.3f %.3f\n", now_ms(CLOCK_MONOTONIC) - t0 - 30, now_ms(CLOCK_REALTIME) / 1e3);
+		if (rc != 0) bad("siglat timeout", "rc %d", rc);
+	}
+	close(ep);
+	close(p[0]);
+	close(p[1]);
+}
+
 static const struct {
 	const char *name;
 	void (*fn)(void);
+	int dflt; /* runs when no group is named */
 } groups[] = {
-	{"sleep", t_sleep}, {"clocks", t_clocks}, {"timerfd", t_timerfd}, {"ptimer", t_ptimer}, {"itimer", t_itimer}, {"timeouts", t_timeouts},
+	{"sleep", t_sleep, 1}, {"clocks", t_clocks, 1}, {"timerfd", t_timerfd, 1}, {"ptimer", t_ptimer, 1},
+	{"itimer", t_itimer, 1}, {"timeouts", t_timeouts, 1}, {"siglat", t_siglat, 0},
 };
+#define NGROUPS (sizeof groups / sizeof *groups)
 
 int main(int argc, char **argv) {
 	setvbuf(stdout, NULL, _IOLBF, 0);
-	for (unsigned g = 0; g < sizeof groups / sizeof *groups; g++) {
-		int want = argc < 2;
-		for (int i = 1; i < argc; i++)
-			if (!strcmp(argv[i], groups[g].name)) want = 1;
-		if (!want) continue;
-		int before = failed;
-		groups[g].fn();
-		printf("%s: %s\n", groups[g].name, failed == before ? "ok" : "FAILED");
+	int repeat = 1, named = 0, want[NGROUPS] = {0};
+	for (int i = 1; i < argc; i++) {
+		if (!strncmp(argv[i], "repeat=", 7))
+			repeat = atoi(argv[i] + 7);
+		else
+			for (unsigned g = 0; g < NGROUPS; g++)
+				if (!strcmp(argv[i], groups[g].name)) want[g] = named = 1;
 	}
+	for (int r = 0; r < repeat; r++)
+		for (unsigned g = 0; g < NGROUPS; g++) {
+			if (named ? !want[g] : !groups[g].dflt) continue;
+			int before = failed;
+			groups[g].fn();
+			printf("%s: %s\n", groups[g].name, failed == before ? "ok" : "FAILED");
+		}
 	if (failed) {
 		printf("clocks: %d checks failed\n", failed);
 		return 1;

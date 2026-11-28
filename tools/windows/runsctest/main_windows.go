@@ -106,6 +106,8 @@ func main() {
 		{"ovlopaque", testOvlOpaque},
 		{"cfr", testCfr},
 		{"clocks", testClocks},
+		{"siglat", testSiglat},
+		{"logstall", testLogStall},
 		{"debian", testDebian},
 		{"gogc", testGoGC},
 		{"bench", testBench},
@@ -126,7 +128,7 @@ func main() {
 	}
 	failed := 0
 	for _, t := range tests {
-		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "strace" || t.name == "restart" || t.name == "aptrename" || t.name == "mountkeep" || t.name == "devnull" || t.name == "ovlsub" || t.name == "ovlopaque" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec" || t.name == "sockfs" || t.name == "fsstress" || t.name == "cfr" || t.name == "debian" || t.name == "gogc")) {
+		if (len(want) > 0 && !want[t.name]) || (len(want) == 0 && (t.name == "erofs" || t.name == "hostfs" || t.name == "case" || t.name == "strace" || t.name == "restart" || t.name == "aptrename" || t.name == "mountkeep" || t.name == "devnull" || t.name == "ovlsub" || t.name == "ovlopaque" || t.name == "lifecycle" || t.name == "bench" || t.name == "noop" || t.name == "mounts" || t.name == "untar-trace" || t.name == "untar" || t.name == "forkexec" || t.name == "sockfs" || t.name == "fsstress" || t.name == "cfr" || t.name == "debian" || t.name == "gogc" || t.name == "siglat")) {
 			continue
 		}
 		start := time.Now()
@@ -889,6 +891,31 @@ func testClocks() error {
 	fmt.Printf("clocks: exit %d\n%s%s\n", r.code, r.stdout, r.stderr)
 	if r.code != 0 || !strings.Contains(r.stdout, "clocks ok") {
 		return fmt.Errorf("clocks: exit %d, failures %q", r.code, failedLines(r.stdout))
+	}
+	return nil
+}
+
+// testLogStall: a debug log whose disk stalls must not delay timer signals. The Sentry logs
+// while it holds locks (a signal send under the signal mutex logs "Notified of signal"), and a
+// write to the log file on a runner once took 2.6 s (docs/results/3e-signal-latency.md). The
+// test hook GVISOR_TEST_LOG_STALL delays the write of each such line by 150 ms.
+func testLogStall() error {
+	os.Setenv("GVISOR_TEST_LOG_STALL", "150")
+	defer os.Unsetenv("GVISOR_TEST_LOG_STALL")
+	r, err := runsc("logstall", []string{"/bin/clocks", "sleep", "ptimer", "itimer", "timeouts"}, nil)
+	if err != nil {
+		return err
+	}
+	if r.code != 0 || !strings.Contains(r.stdout, "clocks ok") {
+		return fmt.Errorf("logstall: exit %d, failures %q", r.code, failedLines(r.stdout))
+	}
+	// The log is still complete: every line got written before runsc exited.
+	b, err := os.ReadFile(filepath.Join(*workDir, "logs", "logstall.log"))
+	if err != nil {
+		return err
+	}
+	if n := strings.Count(string(b), "Notified of signal"); n < 20 {
+		return fmt.Errorf("logstall: the debug log has %d signal lines, want at least 20", n)
 	}
 	return nil
 }

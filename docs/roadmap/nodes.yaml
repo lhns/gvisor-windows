@@ -2836,19 +2836,21 @@
   depends_on: &id019 []
   replaced_by: &id020 []
   start: '2026-11-27'
-  end: ''
+  end: '2026-11-28'
   folded: &id021 []
   overview: false
   id: sentry-epoll-timeout-overshoot
   title: Rare long epoll timeout overshoot
   track: sentry
   kind: defect
-  state: next
+  state: done
   lane: windows-ci
   evidence:
   - docs/results/3d-clocks-upstream.md
+  - docs/results/3e-signal-latency.md
   plain: A 30 ms timer signal meant to interrupt epoll_wait took 212 ms once in about 12 leg runs (rewrite-fxsave); the clocks test now retries, so CI would hide a repeat.
-  notes: 'Fixed when: the cause is known (runner stall or Sentry delay, e.g. interrupt retry waits in rewrite mode) and the check passes without retries in 30 runs.'
+  notes: 'Fixed: the timer goroutine sent signals under a Sentry lock while blocked on a synchronous runsc debug-log write; runsc now writes its debug log asynchronously. A logstall test reproduced it;
+    signal latency p99 is about 1 ms in all modes, and the retry is gone.'
 - outcome: unrated
   verdict_quote: ''
   headline: ''
@@ -2906,3 +2908,41 @@
   - docs/results/1r-platform-speed.md
   plain: The patched-text cache is keyed by address, so PIE and dynamically linked programs loaded at random addresses miss it; the 4 to 6 times fork+exec gain was measured with static busybox.
   notes: 'Fixed when: a dynamic or PIE fork+exec loop hits the cache, with its own before and after numbers.'
+- outcome: unrated
+  verdict_quote: ''
+  headline: ''
+  depends_on: &id025 []
+  replaced_by: &id026 []
+  start: '2026-11-28'
+  end: ''
+  folded: &id027 []
+  overview: false
+  lane: windows-ci
+  id: sentry-host-io-under-locks
+  title: Host writes that block for seconds
+  track: sentry
+  kind: defect
+  state: next
+  evidence:
+  - docs/results/3e-signal-latency.md
+  plain: A WriteFile to the debug log blocked for seconds on CI runners, mostly at the first boot; any other host I/O done while holding a Sentry lock would stall the guest the same way.
+  notes: 'Fixed when: the cause of the multi-second writes is known and no host I/O under Sentry locks remains on hot paths, or it is shown to be harmless.'
+- outcome: unrated
+  verdict_quote: ''
+  headline: ''
+  depends_on: *id025
+  replaced_by: *id026
+  start: '2026-11-28'
+  end: ''
+  folded: *id027
+  overview: false
+  lane: windows-ci
+  id: sentry-sh-wait-status-flake
+  title: Flaky shell wait status test
+  track: sentry
+  kind: defect
+  state: next
+  evidence:
+  - docs/results/3e-signal-latency.md
+  plain: The sentry-guests case sh_wait_status sometimes gets 2 instead of 143 from wait on a killed background job (native and rewrite-fxsave).
+  notes: 'Fixed when: the case passes 30 runs in a row in all modes.'
