@@ -83,7 +83,11 @@ After (run 46084995179, fix):
 CPU-time timers (ITIMER_VIRTUAL, ITIMER_PROF, CPUTIME) are 6 to 17 ms off in every run: CPU time is
 counted in 10 ms ticks (3d), and they are not part of this issue.
 
-Final code: see the runs in the tech-tree node (windows-runsc, windows-sentry-guests).
+Final code (1de4cccec): windows-runsc, full default set including `logstall`, green in all legs
+(run 46086553147). windows-sentry-guests green in all legs on its second attempt (run 46086561456).
+The first attempt failed `sh_wait_status` in native and rewrite-fxsave: `wait $p` for a killed
+background `sleep` returned 2, not 143. That case runs no changed code (sentryguest, no runsc debug
+log). winstub has no change left; windows-platform was also green on the trace build (run 46085923008).
 
 ## The trace (branch only)
 
@@ -104,5 +108,6 @@ takes 50 ms. runsc also times its debug log writes there. To use it, dispatch wi
 - In the trace build, `ktime` tick lines of 200 to 500 ms appeared three times per boot in the ptimer
   group. They matched no late guest measurement (probably timers nobody waits for: SIGEV_NONE, or a
   timer whose signal is blocked) and were not looked into.
+- `sh_wait_status` in windows-sentry-guests is flaky (`bg=2`), unrelated to this change.
 - A pending interrupt that meets a thread in its "waking" window is retried every 50 us
   (`time.Sleep`). Harmless at these rates.
