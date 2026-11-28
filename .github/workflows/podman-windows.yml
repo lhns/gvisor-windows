@@ -2,19 +2,23 @@
 # running in a runsc.exe sandbox, through a named pipe, as a standard user. Expected to fail at
 # first; docs/results/5-podman-windows.md lists the gaps per step.
 name: podman-windows
-# Called by ci.yml on push (runs=1); nightly with runs=4 (flakiness). Dispatch it alone with
+# Called by ci.yml on push (runs=1) and by release.yml (all modes, runs=8). Dispatch it alone with
 # `gh workflow run podman-windows --ref <branch> -f only=4 -f modes=native -f runs=1`.
 on:
   workflow_call:
     inputs:
       prebuilt: {type: boolean, default: false}
+      only: {type: string, default: ''}
+      modes: {type: string, default: 'default'}
+      runs: {type: string, default: '1'}
+      group: {type: string, default: ''}   # concurrency group suffix of a caller other than ci.yml
   workflow_dispatch:
     inputs:
       only: {description: 'steps to run, e.g. 4 (default all)', default: ''}
       modes: {description: 'comma list of fs modes to compare: default, native, rewrite (rewrite also keeps AVX-512), rewrite-fxsave', default: 'default'}
       runs: {description: 'how many times to run the whole acceptance, in parallel (flakiness)', default: '1'}
 concurrency:
-  group: podman-windows-${{ github.ref }}-${{ inputs.prebuilt && 'ci' || github.event_name }}
+  group: podman-windows-${{ github.ref }}-${{ inputs.group || (inputs.prebuilt && 'ci' || github.event_name) }}
   cancel-in-progress: true
 env:
   PODMAN_VERSION: "6.2.0"

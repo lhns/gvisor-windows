@@ -1,6 +1,11 @@
 # Stress for the create/lookup races seen in the Podman acceptance (docs/results/5-podman-windows.md, fifth round).
 name: fs-flakes
 on:
+  workflow_call:
+    inputs:
+      iters: {type: string, default: "600"}
+      workers: {type: string, default: "12"}
+      reps: {type: string, default: "3"}
   workflow_dispatch:
     inputs:
       iters: {description: iterations per worker, default: "600"}

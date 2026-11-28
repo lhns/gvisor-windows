@@ -1,0 +1,43 @@
+# The runsc zip (runsc.exe, hello/busybox bundle, README, NOTICE, LICENSE) and its clean-machine test: the zip
+# extracted into a fresh standard user's profile, hello and a busybox shell command run. Called by ci.yml and
+# release.yml; both provide the win-bin artifact (runsc.exe) and the runsc-guests artifact (hello, busybox).
+name: windows-release
+on:
+  workflow_call:
+    inputs:
+      zip-name: {type: string, default: gvisor-windows-bundle.zip}
+  workflow_dispatch:
+concurrency:
+  group: windows-release-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+jobs:
+  bundle:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {sparse-checkout: "tools/windows"}
+      - uses: actions/download-artifact@v4
+        with: {name: win-bin, path: 'C:\ci\bin'}
+      - uses: actions/download-artifact@v4
+        with: {name: runsc-guests, path: guests}
+      - shell: pwsh
+        run: ./tools/windows/ci/make-release.ps1 -Guests guests -Runsc C:\ci\bin\runsc.exe -Out release -Zip "zip\${{ inputs.zip-name || 'gvisor-windows-bundle.zip' }}"
+      - uses: actions/upload-artifact@v4
+        with: {name: gvisor-windows-zip, path: zip, compression-level: 0, retention-days: 14}
+  test:
+    needs: bundle
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: {sparse-checkout: "tools/windows"}
+      - uses: actions/download-artifact@v4
+        with: {name: gvisor-windows-zip, path: 'C:\rt\zip'}
+      - name: Extract and run as a standard user
+        shell: pwsh
+        run: |
+          $zip = (Get-ChildItem C:\rt\zip -Filter '*.zip').FullName
+          & tools/windows/ci/run-as-standard-user.ps1 `
+            -Program 'C:\Program Files\PowerShell\7\pwsh.exe' `
+            -Arguments '-NoProfile','-File',"$PWD\tools\windows\ci\release-test.ps1",'-Zip',$zip `
+            -GrantPath C:\rt,$PWD -TimeoutSeconds 600

@@ -1,11 +1,10 @@
 <#
 .SYNOPSIS
-  Packs runsc.exe, a hello/busybox OCI bundle, the Podman engine image and its scripts into a folder and a zip (the CI "release" artifact).
+  Packs runsc.exe, a hello/busybox OCI bundle, README, NOTICE and LICENSE into a folder and a zip (the CI "release" artifact).
 .PARAMETER Guests  Folder of the runsc-guests artifact (hello, busybox, ...).
-.PARAMETER Image   podman.erofs of the Podman engine.
-.PARAMETER Zip     The zip to write, gvisor-windows-<sha>.zip.
+.PARAMETER Zip     The zip to write.
 #>
-param([Parameter(Mandatory)][string]$Guests, [Parameter(Mandatory)][string]$Runsc, [Parameter(Mandatory)][string]$Image,
+param([Parameter(Mandatory)][string]$Guests, [Parameter(Mandatory)][string]$Runsc,
   [Parameter(Mandatory)][string]$Out, [Parameter(Mandatory)][string]$Zip)
 $ErrorActionPreference = 'Stop'
 $r = "$Out\bundle\rootfs"
@@ -33,13 +32,9 @@ $spec = [ordered]@{
   }
 }
 $spec | ConvertTo-Json -Depth 8 | Set-Content -Encoding ascii "$Out\bundle\config.json"
-# The Podman engine: erofs image, start-engine.ps1 (lib) and the end-user wrapper, README of the zip.
-$pm = Join-Path $PSScriptRoot '..\podman'
-New-Item -ItemType Directory -Force "$Out\lib" | Out-Null
-Copy-Item $Image "$Out\podman.erofs"
-Copy-Item "$pm\start-engine.ps1" "$Out\lib\start-engine.ps1"
-Copy-Item "$pm\podman-engine.ps1" "$Out\podman-engine.ps1"
-Copy-Item "$pm\README-release.md" "$Out\README.md"
+$repo = Join-Path $PSScriptRoot '..\..\..'
+Copy-Item (Join-Path $PSScriptRoot 'README-release.md') "$Out\README.md"
+Copy-Item "$repo\NOTICE", "$repo\LICENSE" $Out
 # The zip (Compress-Archive stops at 2 GB). Keep -Zip outside -Out.
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $z = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Zip)

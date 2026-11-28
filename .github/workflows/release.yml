@@ -1,0 +1,108 @@
+# Cuts a DRAFT GitHub release of runsc: dispatch it with
+#   gh workflow run release --ref windows -f version=v0.1.0 -f dry_run=false
+# The release is built from the dispatched commit and gated on the heavy suites of that same commit. The owner
+# reviews and publishes the draft. With dry_run (the default) everything runs except `gh release create`; the
+# assets are left in the artifact release-assets.
+name: release
+on:
+  workflow_dispatch:
+    inputs:
+      version: {description: "release tag, e.g. v0.1.0", required: true}
+      dry_run: {description: "build and gate, but create no release", type: boolean, default: true}
+permissions:
+  contents: read
+concurrency:
+  # not `release-<ref>`: called workflows use `<caller workflow>-<ref>` as their group
+  group: release-dispatch-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: The version is v<major>.<minor>.<patch>[-suffix]
+        env: {VERSION: "${{ inputs.version }}"}
+        run: |
+          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "bad version '$VERSION'"; exit 1; }
+  bin:
+    needs: check
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/gosetup
+        with: {save: "true"}
+      - name: Build every Windows binary
+        shell: pwsh
+        run: ./tools/windows/ci/build-bin.ps1
+      - uses: actions/upload-artifact@v4
+        with: {name: win-bin, path: 'C:\ci\bin', compression-level: 1, retention-days: 3}
+  runsc-linux:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version-file: go.mod}
+      - run: GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -p 2 -trimpath -o runsc-linux-amd64 ./runsc
+      - uses: actions/upload-artifact@v4
+        with: {name: runsc-linux, path: runsc-linux-amd64, compression-level: 1, retention-days: 3}
+  # Gates: the same suites ci.yml runs, plus the heavy ones, on this commit.
+  runsc:
+    needs: bin
+    uses: ./.github/workflows/windows-runsc.yml
+    with: {prebuilt: true, group: release}
+  podman:
+    needs: bin
+    uses: ./.github/workflows/podman-windows.yml
+    with: {prebuilt: true, only: '', modes: "native,rewrite,rewrite-fxsave", runs: "8", group: release}
+  fs-flakes:
+    needs: check
+    uses: ./.github/workflows/fs-flakes.yml
+  stability:
+    needs: check
+    uses: ./.github/workflows/windows-stability.yml
+  bundle:
+    needs: [bin, runsc]
+    uses: ./.github/workflows/windows-release.yml
+    with: {zip-name: "runsc-windows-hello-bundle-${{ inputs.version }}.zip"}
+  publish:
+    needs: [bin, runsc-linux, runsc, podman, fs-flakes, stability, bundle]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with: {sparse-checkout: .github}
+      - uses: actions/download-artifact@v4
+        with: {name: win-bin, path: bin}
+      - uses: actions/download-artifact@v4
+        with: {name: runsc-linux, path: dist}
+      - uses: actions/download-artifact@v4
+        with: {name: gvisor-windows-zip, path: dist}
+      - name: Assets
+        run: |
+          cp bin/runsc.exe dist/runsc-windows-amd64.exe
+          cp NOTICE LICENSE dist/
+          cd dist && sha256sum runsc-windows-amd64.exe runsc-linux-amd64 *.zip NOTICE LICENSE > SHA256SUMS && cat SHA256SUMS
+      - name: Release notes
+        run: |
+          cat > notes.md <<'NOTES'
+          Unofficial port of [gVisor](https://gvisor.dev) to Windows hosts. Not a Google project.
+
+          **Not a security sandbox on Windows.** The port runs Linux code natively and catches its system calls by rewriting them; code that jumps into the middle of an instruction can still reach the Windows kernel, and host folders are opened with the user's own rights. Treat it as a compatibility layer, not an isolation boundary.
+
+          Assets: `runsc-windows-amd64.exe` (runs as a standard user, no admin rights, Hyper-V, WSL or VM), `runsc-linux-amd64` (the same source built for Linux), a zip with `runsc.exe`, a hello bundle and a README, `NOTICE`, `LICENSE`, `SHA256SUMS`.
+
+          CPU modes: with FSGSBASE the sandbox runs `native`; without it, `%fs` accesses are rewritten (`rewrite`), and on CPUs without XSAVE vector state is saved with `fxsave` (`rewrite-fxsave`), chosen from CPUID. All three passed the Podman acceptance test, 8 runs each, before this release (see ADR 0020).
+
+          A ready-to-run Podman engine built on this runsc: https://github.com/lhns/podman-portable
+          NOTES
+          echo "Built from ${{ github.sha }}." >> notes.md
+      - uses: actions/upload-artifact@v4
+        with: {name: release-assets, path: "dist\nnotes.md", retention-days: 7}
+      - name: Draft release
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ inputs.version }}" --repo "${{ github.repository }}" --draft --target "${{ github.sha }}" \
+            --title "${{ inputs.version }}" --notes-file notes.md dist/*
