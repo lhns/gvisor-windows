@@ -25,6 +25,7 @@ import (
 	"unsafe"
 
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/stubasm"
+	"gvisor.dev/gvisor/pkg/sentry/profkeys"
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/x86asm"
 )
 
@@ -385,6 +386,9 @@ func (as *addressSpace) patchReloc(code []byte, base uint64, list []ins, s int, 
 		va = as.p.sharedVeneer(w0, code[list[bestA].off:list[bestA].off+bestL], vlen)
 		if va == 0 {
 			return false
+		}
+		if profkeys.On {
+			profkeys.Count("winstub syscall site: shared veneer", 0)
 		}
 	} else {
 		vlen = uint64(len(pre)+23+15) &^ 15

@@ -790,11 +790,11 @@ const wxWindow = 1 << 20
 func (as *addressSpace) wxExec(a uint64) bool {
 	as.mu.Lock()
 	defer as.mu.Unlock()
-	as.histOK = false
 	v := as.findView(a)
 	if v == nil || !v.wx || v.wxPriv {
-		return false
+		return false // (the first fetch from text not mapped yet: not W^X)
 	}
+	as.histOK = false
 	lo := max(v.lo, a&^(wxWindow-1))
 	hi := min(v.hi, (a&^(wxWindow-1))+wxWindow)
 	buf := make([]byte, hi-lo)

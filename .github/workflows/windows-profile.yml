@@ -324,7 +324,7 @@ jobs:
               $env:GVISOR_PROFSTATS = '1'
               $o = & C:\ci\bin\sentryguest.exe -profstats @g @($work[$name]) 2>&1 | Out-String
               Remove-Item Env:GVISOR_PROFSTATS
-              $o -split "`n" | Select-String 'PROFSTATS key winstub text' | ForEach-Object { "  $leg $name $($_.Line.Trim())" } | Tee-Object -Append out/loops.txt
+              $o -split "`n" | Select-String 'PROFSTATS key winstub (text|syscall site)' | ForEach-Object { "  $leg $name $($_.Line.Trim())" } | Tee-Object -Append out/loops.txt
             }
           }
       - name: Text operations of two execs (trace)
