@@ -37,6 +37,7 @@ import (
 	"gvisor.dev/gvisor/pkg/sentry/pgalloc"
 	"gvisor.dev/gvisor/pkg/sentry/platform"
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub/stubasm"
+	"gvisor.dev/gvisor/pkg/sentry/profkeys"
 )
 
 // SectionFile is the part of a memmap.File the platform needs on Windows:
@@ -557,6 +558,9 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 			if snap != nil {
 				err := as.applySnap(snap, e.histAfter)
 				as.p.texts.hits.Add(1)
+				if profkeys.On {
+					profkeys.Count("winstub text: cached patch", qpc()-t0)
+				}
 				if traceOn {
 					Trace("text %#x-%#x: cached patch %.3fms (err %v)", lo, hi, float64(qpc()-t0)/1e6, err)
 				}
@@ -589,6 +593,15 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 			return err
 		}
 		as.textStore(lo, hi, orig, before, e)
+		if profkeys.On {
+			why := "winstub text: patched, first time"
+			if e != nil {
+				why = "winstub text: patched, second time (kept)"
+			} else if !textCacheOn || !as.histOK {
+				why = "winstub text: patched, cache off"
+			}
+			profkeys.Count(why, qpc()-t0)
+		}
 		if traceOn {
 			Trace("text %#x-%#x: patch %.3fms (scan %.3fms) section and cache %.3fms %+v", lo, hi, float64(t2-t1)/1e6, float64(as.lastScanNS)/1e6, float64(qpc()-t2)/1e6, st)
 		}

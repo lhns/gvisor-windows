@@ -13,6 +13,7 @@ on:
     inputs:
       only: {description: 'regexp of the guest case names to run, e.g. fork|sig_ (default all, and the stress/timing steps)', default: ''}
       legs: {description: 'comma list of legs: native, rewrite, rewrite-fxsave (default all)', default: ''}
+      iterations: {description: 'runs of each selected case (more than 1: also the wait diagnosis step)', default: '1'}
 concurrency:
   group: windows-sentry-guests-${{ github.ref }}-${{ inputs.prebuilt && 'ci' || 'solo' }}
   cancel-in-progress: true
@@ -20,6 +21,7 @@ env:
   WINSTUB_TRIPWIRE: '1'
   LEGS: ${{ inputs.legs || 'native,rewrite,rewrite-fxsave' }}
   ONLY: ${{ inputs.only }}
+  ITER: ${{ inputs.iterations || '1' }}
 jobs:
   guests:
     runs-on: ubuntu-latest
@@ -131,16 +133,44 @@ jobs:
             Set-Leg $leg -KeepAvx512
             "##### leg $leg" | Tee-Object -Append -FilePath guests-$leg.txt
             foreach ($c in $cases) {
-              "===== $($c.n)" | Tee-Object -Append -FilePath guests-$leg.txt
               $a = @("-code=$($c.code)", "-timeout=120s")
               if (-not $c.noout) { $a += "-check", "-out=$($c.out)" }
               if ($c.tar) { $a += "-tar=out/rootfs.tar"; $a += $c.a } else { $a += "out/$($c.n)" }
-              & ./sentryguest.exe @a 2>&1 | Tee-Object -Append -FilePath guests-$leg.txt
-              "exit: $LASTEXITCODE" | Tee-Object -Append -FilePath guests-$leg.txt
-              if ($LASTEXITCODE -ne 0 -and -not $c.known) { $fail = 1 }
+              $pass = 0
+              for ($it = 0; $it -lt [int]$env:ITER; $it++) {
+                "===== $($c.n)" | Tee-Object -Append -FilePath guests-$leg.txt
+                & ./sentryguest.exe @a 2>&1 | Tee-Object -Append -FilePath guests-$leg.txt
+                "exit: $LASTEXITCODE" | Tee-Object -Append -FilePath guests-$leg.txt
+                if ($LASTEXITCODE -eq 0) { $pass++ } elseif (-not $c.known) { $fail = 1 }
+              }
+              if ([int]$env:ITER -gt 1) { "REPEAT $leg $($c.n): $pass of $($env:ITER) passed" | Tee-Object -Append -FilePath repeat.txt }
             }
           }
           exit $fail
+      - name: Wait status diagnosis (repeated)
+        if: always() && env.ITER != '1' && contains(env.ONLY, 'wait')
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          # A killed background job must be reported as 143 by wait: many tries in one shell, then
+          # whole runs with the Sentry's strace, keeping the failing ones.
+          . tools/windows/ci/leg.ps1
+          $loop = 'i=0; while [ $i -lt 200 ]; do sleep 30 & p=$!; kill $p; wait $p; s=$?; [ $s = 143 ] || echo "iter $i bg=$s"; i=$((i+1)); done 2>/t/x.err; echo loop done'
+          foreach ($leg in $env:LEGS -split '[, ]+' | Where-Object { $_ }) {
+            Set-Leg $leg -KeepAvx512
+            $o = & ./sentryguest.exe "-tar=out/rootfs.tar" "-timeout=300s" /bin/busybox sh -c $loop 2>&1 | Out-String
+            "WAITLOOP $leg : $(@($o -split "`n" | Select-String 'iter \d+ bg=').Count) bad of 200, finished: $($o -match 'loop done'); $(($o -split "`n" | Select-String 'iter \d+ bg=' | Select-Object -First 5) -join ' / ')" | Tee-Object -Append -FilePath waitdiag.txt
+            $bad = 0
+            for ($i = 0; $i -lt [int]$env:ITER -and $bad -lt 3; $i++) {
+              $o = & ./sentryguest.exe -strace "-tar=out/rootfs.tar" "-timeout=120s" /bin/busybox sh /t/wait.sh 2>&1 | Out-String
+              if ($o -notmatch 'bg=143') {
+                $bad++
+                "WAITSTRACE $leg run $i failed: $(($o -split "`n" | Select-String '^bg=') -join ' ')" | Tee-Object -Append -FilePath waitdiag.txt
+                $o | Out-File -Encoding utf8 "waitstrace-$leg-$i.txt"
+              }
+            }
+            "WAITSTRACE $leg : $bad failed of $i" | Tee-Object -Append -FilePath waitdiag.txt
+          }
       - name: vDSO without traps
         if: always() && (env.ONLY == '' || contains(env.ONLY, 'vdso'))
         shell: pwsh
@@ -273,4 +303,7 @@ jobs:
             hang.txt
             diag.txt
             vdso.txt
+            repeat.txt
+            waitdiag.txt
+            waitstrace-*.txt
           if-no-files-found: ignore
