@@ -1,15 +1,13 @@
 # The runsc zip (runsc.exe, hello/busybox bundle, README, NOTICE, LICENSE) and its clean-machine test: the zip
 # extracted into a fresh standard user's profile, hello and a busybox shell command run. Called by ci.yml and
 # release.yml; both provide the tmp-win-bin artifact (runsc.exe) and the runsc guests cache (hello, busybox; saved
-# by windows-runsc). ci.yml gets the artifact runsc-windows-amd64-<shortsha>; release.yml passes a tmp- name that its
-# publish job reads.
+# by windows-runsc). called from ci.yml it uploads the artifact runsc-windows-amd64-<shortsha> (14 days); called
+# from release.yml (github.workflow is the caller's) a one-day tmp-runsc-zip that release.yml's publish job reads.
 name: windows-release
 on:
   workflow_call:
     inputs:
-      zip-name: {type: string, default: ''}        # default runsc-windows-amd64-<shortsha>.zip
-      artifact-name: {type: string, default: ''}   # default runsc-windows-amd64-<shortsha>
-      retention-days: {type: number, default: 14}
+      zip-name: {type: string, default: gvisor-windows-bundle.zip}
   workflow_dispatch:
 concurrency:
   group: windows-release-${{ github.ref }}-${{ github.event_name }}
@@ -27,11 +25,14 @@ jobs:
             test/guests
       - id: names
         shell: bash
-        env: {ZIP: "${{ inputs.zip-name }}", ART: "${{ inputs.artifact-name }}"}
+        env: {ZIP: "${{ inputs.zip-name }}", CALLER: "${{ github.workflow }}"}
         run: |
           short=${GITHUB_SHA::7}
-          echo "zip=${ZIP:-runsc-windows-amd64-$short.zip}" >> "$GITHUB_OUTPUT"
-          echo "artifact=${ART:-runsc-windows-amd64-$short}" >> "$GITHUB_OUTPUT"
+          if [ "$CALLER" = release ]; then
+            echo "zip=$ZIP" >> "$GITHUB_OUTPUT"; echo "artifact=tmp-runsc-zip" >> "$GITHUB_OUTPUT"; echo "days=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "zip=runsc-windows-amd64-$short.zip" >> "$GITHUB_OUTPUT"; echo "artifact=runsc-windows-amd64-$short" >> "$GITHUB_OUTPUT"; echo "days=14" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/download-artifact@v4
         with: {name: tmp-win-bin, path: 'C:\ci\bin'}
       # the guests windows-runsc built and cached (same key); a miss fails the job
@@ -48,7 +49,7 @@ jobs:
       - shell: pwsh
         run: ./tools/windows/ci/make-release.ps1 -Guests out -Runsc C:\ci\bin\runsc.exe -Out release -Zip "zip\${{ steps.names.outputs.zip }}"
       - uses: actions/upload-artifact@v4
-        with: {name: "${{ steps.names.outputs.artifact }}", path: zip, compression-level: 0, retention-days: "${{ inputs.retention-days || 14 }}"}
+        with: {name: "${{ steps.names.outputs.artifact }}", path: zip, compression-level: 0, retention-days: "${{ steps.names.outputs.days }}"}
   test:
     needs: bundle
     runs-on: windows-latest

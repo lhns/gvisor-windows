@@ -88,12 +88,18 @@ A successful `ci` run has one download and nothing else that outlives a day:
 | `results-windows-profile-<job>` | `windows-profile`, whose point is its measurements: always uploaded | default |
 
 Rules for a workflow change: a hand-off between jobs is named `tmp-*` with `retention-days: 1`; guests and images
-that have a hash-keyed cache (runsc guests, sentry guests, rootfs erofs images, the Podman erofs image) are not
+that have an input-keyed cache (runsc guests, sentry guests, rootfs erofs images, the Podman erofs image) are not
 uploaded at all: the Linux job saves the cache with `enableCrossOsArchive` and the Windows job restores it with
-`actions/cache/restore` and `fail-on-cache-miss` (the key is spelled in both places). Logs are uploaded `if: failure()`.
+`actions/cache/restore` and `fail-on-cache-miss`. The key is built from `git rev-parse HEAD:<input>` (object ids),
+not `hashFiles`, which differs between a Linux and a CRLF Windows checkout; bump the `v2` (`v4` for the Podman
+image) in the key to rebuild, the base images float. The key step is repeated in each producer and consumer. Logs
+are uploaded `if: failure()`. The diagnostic workflows that only run on dispatch (windows-spikes, -dispatch-depth,
+-gcrepro, -fsscan, syscall-survey, syscall-tests, sentry-netpoll, podman-acceptance-linux, podman-diag, glibc-diag)
+keep their output artifacts: the output is their purpose and results docs and `sentry-netpoll` (a run id) name them;
+only their job hand-offs are `tmp-*`.
 On success the numbers are in the job summary (`tools/windows/ci/summary.ps1`: step outcomes of runsc, pass counts
 per leg of platform and sentry-guests, timings, podman-windows steps, stability and fs-flakes repetitions), so
-nobody needs to download anything. Run a failed leg's logs with `gh run download <run> -n logs-windows-runsc-native`.
+nobody needs to download anything. After a failure: `gh run download <run> -n logs-windows-runsc-native`.
 
 ## How workers run suites now
 

@@ -62,7 +62,7 @@ jobs:
   bundle:
     needs: [bin, runsc]
     uses: ./.github/workflows/windows-release.yml
-    with: {zip-name: "runsc-windows-hello-bundle-${{ inputs.version }}.zip", artifact-name: tmp-runsc-zip, retention-days: 1}
+    with: {zip-name: "runsc-windows-hello-bundle-${{ inputs.version }}.zip"}
   publish:
     needs: [bin, runsc-linux, runsc, podman, fs-flakes, stability, bundle]
     runs-on: ubuntu-latest
