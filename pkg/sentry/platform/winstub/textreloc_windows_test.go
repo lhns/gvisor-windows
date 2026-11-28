@@ -32,6 +32,9 @@ import (
 // nr distinguishes the pieces. It returns the code and the offsets of the starts.
 func relocPiece(nr byte) (code []byte, noPost, withPost, imm int) {
 	a := &asm{}
+	for range 64 {
+		a.emit(0x90) // (sites in the first bytes of a piece get only the safe patch: zoneNoContext)
+	}
 	noPost = len(a.b)
 	a.emit(0xbf, nr, 0, 0, 0)  // mov edi,nr
 	a.emit(0x48, 0x89, 0xf8)   // mov rax,rdi
@@ -150,6 +153,9 @@ func TestTextRelocate(t *testing.T) {
 	place(fresh, lo1, hi1)
 	textCacheOn = true
 	got, want := stateOf(t, moved, lo1, hi1), stateOf(t, fresh, lo1, hi1)
+	if len(want.relAt) == 0 || len(want.absAt) == 0 || len(want.shared) == 0 {
+		t.Fatalf("the pieces were not patched as the test needs: %d rel32 jumps, %d addresses in the stub area, %d shared veneers", len(want.relAt), len(want.absAt), len(want.shared))
+	}
 	for _, c := range []struct {
 		name string
 		g, w any
@@ -161,7 +167,7 @@ func TestTextRelocate(t *testing.T) {
 		{"fsVen", got.fsVen, want.fsVen}, {"relAt", got.relAt, want.relAt}, {"absAt", got.absAt, want.absAt},
 		{"shared", got.shared, want.shared},
 	} {
-		if !reflect.DeepEqual(c.g, c.w) {
+		if !reflect.DeepEqual(c.g, c.w) && !(reflect.ValueOf(c.g).Len() == 0 && reflect.ValueOf(c.w).Len() == 0) {
 			t.Errorf("%s differs: relocated %v, patched %v", c.name, c.g, c.w)
 		}
 	}
