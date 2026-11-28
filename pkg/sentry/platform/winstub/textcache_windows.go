@@ -170,6 +170,9 @@ func (as *addressSpace) textKeyFor(lo, hi uint64) textKey {
 // pinBases makes the history from now on depend on where the regions are: for
 // operations that do not move with them.
 func (as *addressSpace) pinBases() {
+	if traceOn {
+		Trace("text history: bases %#x %#x pinned", as.bases[0], as.bases[1])
+	}
 	as.histMix('B', as.bases[0], as.bases[1], 0)
 }
 
@@ -177,6 +180,9 @@ func (as *addressSpace) pinBases() {
 // relative to its base (a region without a base has no text, and nothing of it is
 // in the patch state).
 func (as *addressSpace) histUnmap(lo, hi uint64) {
+	if traceOn {
+		Trace("text history: unmap %#x-%#x (bases %#x %#x)", lo, hi, as.bases[0], as.bases[1])
+	}
 	for r, rr := range []rng{{lo, min(hi, 1 << 32)}, {max(lo, 1<<32), hi}} {
 		if rr.lo < rr.hi && as.bases[r] != 0 {
 			as.histMix("uU"[r], rr.lo-as.bases[r], rr.hi-as.bases[r], 0)

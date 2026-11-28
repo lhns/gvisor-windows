@@ -333,9 +333,9 @@ jobs:
         shell: pwsh
         run: |
           $env:WINSTUB_TRACE = '1'
-          & C:\ci\bin\sentryguest.exe -sysmounts -timeout=300s '-tar=dl/fsroot.tar' '-env=PATH=/usr/bin:/bin,HOME=/tmp' /bin/bash -c '/bin/true; /bin/true; /t/true_spie; /t/true_spie' *> out/trace-dyn.txt
-          Get-Content out/trace-dyn.txt | Select-String 'text 0x|as: release|MapFile' | Select-Object -First 400 | ForEach-Object { $_.Line } | Out-File -Encoding utf8 out/trace-dyn-text.txt
-          Get-Content out/trace-dyn-text.txt | Select-String 'text 0x' | Select-Object -First 120 | ForEach-Object { $_.Line }
+          & C:\ci\bin\sentryguest.exe -sysmounts -timeout=300s '-tar=dl/fsroot.tar' '-env=PATH=/usr/bin:/bin,HOME=/tmp' /bin/bash -c '/bin/true; /bin/true; /t/true_spie; /t/true_spie; /usr/bin/python3 -c pass; /usr/bin/python3 -c pass; /usr/bin/python3 -c pass' *> out/trace-dyn.txt
+          Get-Content out/trace-dyn.txt | Select-String 'text 0x|text history|as: release|MapFile' | Select-Object -First 3000 | ForEach-Object { $_.Line } | Out-File -Encoding utf8 out/trace-dyn-text.txt
+          Get-Content out/trace-dyn-text.txt | Select-String 'text 0x' | Select-Object -First 300 | ForEach-Object { $_.Line }
       - uses: actions/upload-artifact@v4
         if: always()
         with: {name: dyn-forkexec, path: out}
