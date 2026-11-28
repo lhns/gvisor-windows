@@ -351,6 +351,7 @@ jobs:
           # Ubuntu 24.04 blocks unprivileged user namespaces by AppArmor; rootless runsc needs one.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
           sudo useradd -m -s /bin/bash spike
+          sudo install -d -o spike -g spike -m 700 /run/user/$(id -u spike)  # what a login session provides; the podman client wants it
           id spike; sudo -u spike sh -c 'sudo -n true' 2>&1 | head -1 || true
           docker pull -q "$PODMAN_IMAGE"
           c=$(docker create "$PODMAN_IMAGE" sh)
