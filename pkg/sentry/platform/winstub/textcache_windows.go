@@ -21,6 +21,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"maps"
+	"slices"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -79,6 +80,7 @@ type textCache struct {
 	lightBytes int
 	serial     uint64
 	hits       atomic.Uint64 // patches taken from the cache (diagnostics, tests)
+	relocs     atomic.Uint64 // of them relocated (textreloc_windows.go)
 }
 
 // textKey: the history before, and the range relative to the base of its region.
@@ -116,6 +118,10 @@ type textView struct {
 	sec         uintptr // the entry's own handle
 	size        uint64  // of the section
 	id          uint64  // privSection.id
+	// A relocated view (textreloc_windows.go): mapped as a copy of the section with
+	// the rel32 fields at these section offsets set to these values.
+	fix   []relFix
+	delta uint64
 }
 
 // privIDs numbers the private sections, so that two handles of one section are
@@ -141,6 +147,9 @@ type patchSnap struct {
 	edges                              map[uint64]edge
 	area                               []areaPiece
 	texts                              []textView
+	absAt                              []absRec
+	relAt                              []relRec
+	shared                             []sharedRec
 }
 
 // textKeyFor returns the key of a patch of [lo,hi) now. A range across the two
@@ -359,6 +368,7 @@ func (as *addressSpace) snapshot() (*patchSnap, int) {
 		tailExact: maps.Clone(as.tailExact), fsCache: maps.Clone(as.fsCache), fsVen: append([]*fsVenInfo(nil), as.fsVen...),
 		fsUD2: maps.Clone(as.fsUD2), fsSplit: maps.Clone(as.fsSplit), tails: maps.Clone(as.tails), heads: maps.Clone(as.heads),
 		fsWhy: maps.Clone(as.fsWhy), edges: maps.Clone(as.edges),
+		absAt: slices.Clone(as.absAt), relAt: slices.Clone(as.relAt), shared: slices.Clone(as.shared),
 	}
 	size := 0
 	for _, r := range as.areaUsed() {
@@ -423,6 +433,7 @@ func (as *addressSpace) applySnap(s *patchSnap, histAfter [32]byte, bases [2]uin
 	as.tailExact, as.fsCache, as.fsVen = maps.Clone(s.tailExact), maps.Clone(s.fsCache), append([]*fsVenInfo(nil), s.fsVen...)
 	as.fsUD2, as.fsSplit, as.tails, as.heads = maps.Clone(s.fsUD2), maps.Clone(s.fsSplit), maps.Clone(s.tails), maps.Clone(s.heads)
 	as.fsWhy, as.edges = maps.Clone(s.fsWhy), maps.Clone(s.edges)
+	as.absAt, as.relAt, as.shared = slices.Clone(s.absAt), slices.Clone(s.relAt), slices.Clone(s.shared)
 	for as.fbigView != nil && as.gcommit < s.gcommit {
 		if _, err := windows.VirtualAlloc(uintptr(as.fbigView)+uintptr(as.gcommit-stubasm.FSBig), uintptr(stubasm.FSBigChunk), windows.MEM_COMMIT, windows.PAGE_READWRITE); err != nil {
 			as.histOK = false
@@ -434,8 +445,9 @@ func (as *addressSpace) applySnap(s *patchSnap, histAfter [32]byte, bases [2]uin
 		as.fsPut(a.addr, a.b) // (the stub area or the big area, by address)
 	}
 	for _, t := range s.texts {
-		if v := as.findView(t.lo); v != nil && v.lo == t.lo && v.hi == t.hi && v.priv != nil && v.priv.id == t.id {
-			continue // the same section already
+		if v := as.findView(t.lo); v != nil && v.lo == t.lo && v.hi == t.hi && v.priv != nil &&
+			(v.priv.id == t.id || t.fix != nil && v.priv.srcID == t.id && v.priv.srcDelta == t.delta) {
+			continue // the same section already (or the same relocated copy of it)
 		}
 		if err := as.replaceText(t); err != nil {
 			as.histOK = false
@@ -463,7 +475,15 @@ func (as *addressSpace) replaceText(t textView) error {
 		}
 		i++
 	}
-	p := &privSection{h: dupInto(^uintptr(0), t.sec), refs: 1, size: t.size, shared: true, id: t.id}
+	var p *privSection
+	if t.fix != nil {
+		var err error
+		if p, err = fixedCopy(t); err != nil {
+			return err
+		}
+	} else {
+		p = &privSection{h: dupInto(^uintptr(0), t.sec), refs: 1, size: t.size, shared: true, id: t.id}
+	}
 	as.privs = append(as.privs, p)
 	if err := as.mapView(&view{lo: t.lo, hi: t.hi, sec: p.h, off: t.off, prot: protR | protX, priv: p}); err != nil {
 		as.unrefPriv(p)

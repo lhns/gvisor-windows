@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"slices"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -75,6 +76,8 @@ type privSection struct {
 	refs int
 	size uint64
 	id   uint64 // (privIDs)
+	// A relocated copy of the cached section srcID, moved by srcDelta (textreloc_windows.go).
+	srcID, srcDelta uint64
 	// shared: the text cache maps this section into other address spaces too; it
 	// is copied before it is patched in place (ownPriv).
 	shared bool
@@ -144,6 +147,10 @@ type addressSpace struct {
 	heads     map[uint64][]byte // original first bytes of text mapped with nothing below it, by start address (reseam)
 	privs     []*privSection
 	edges     map[uint64]edge
+	// What relocating the patch state must change (textreloc_windows.go).
+	absAt  []absRec
+	relAt  []relRec
+	shared []sharedRec
 
 	createMu  sync.Mutex // serializes thread creation
 	lastEvent atomic.Value
@@ -559,7 +566,8 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 			snap, bases := e.after, e.bases
 			as.p.texts.mu.Unlock()
 			hadState = snap != nil
-			if snap != nil && bases == as.basesWith(k, lo) {
+			want := as.basesWith(k, lo)
+			if snap != nil && bases == want {
 				err := as.applySnap(snap, e.histAfter, bases)
 				as.p.texts.hits.Add(1)
 				if profkeys.On {
@@ -569,6 +577,36 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 					Trace("text %#x-%#x: cached patch %.3fms (err %v)", lo, hi, float64(qpc()-t0)/1e6, err)
 				}
 				return err
+			}
+			// Made at other places: move it there (textreloc_windows.go).
+			if snap != nil && textRelocOn && hi-lo >= relocMinLen {
+				var d [2]uint64
+				why := ""
+				for r := range d {
+					if (bases[r] == 0) != (want[r] == 0) {
+						why = "regions differ"
+					}
+					d[r] = want[r] - bases[r]
+				}
+				var n *patchSnap
+				if why == "" {
+					n, why = as.relocSnap(snap, d)
+				}
+				if n != nil {
+					err := as.applySnap(n, e.histAfter, want)
+					as.p.texts.hits.Add(1)
+					as.p.texts.relocs.Add(1)
+					if profkeys.On {
+						profkeys.Count("winstub text: relocated patch", qpc()-t0)
+					}
+					if traceOn {
+						Trace("text %#x-%#x: relocated patch (by %#x, %#x) %.3fms (err %v)", lo, hi, d[0], d[1], float64(qpc()-t0)/1e6, err)
+					}
+					return err
+				}
+				if profkeys.On {
+					profkeys.Count("winstub text: relocation refused, "+why, 0)
+				}
 			}
 		}
 		var err error
@@ -946,6 +984,7 @@ func (as *addressSpace) patchText(content []byte, lo, hi uint64) siteStats {
 		}
 	}
 	if scan.tail0f && highE.head05 {
+		as.pinBases() // (fixHead patches in place what the relocation records do not describe)
 		if as.fixHead(hi) {
 			as.ud2Sites[hi-1] = true
 			highE.head05 = false
@@ -1201,5 +1240,7 @@ func (as *addressSpace) purgeSites(lo, hi uint64) bool {
 			delete(as.heads, k)
 		}
 	}
+	as.relAt = slices.DeleteFunc(as.relAt, func(r relRec) bool { return r.at >= lo && r.at < hi })
+	as.shared = slices.DeleteFunc(as.shared, func(r sharedRec) bool { return r.w0 >= lo && r.w0 < hi })
 	return n != len(as.restartAt)+len(as.ud2Sites)+len(as.fsUD2)+len(as.fsSplit)+len(as.tails)+len(as.heads)
 }

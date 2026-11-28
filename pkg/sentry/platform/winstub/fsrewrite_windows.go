@@ -135,6 +135,9 @@ func (as *addressSpace) fsWindow(code []byte, base uint64, win []ins, a, b, s, m
 		}
 		as.fsPut(va, binary.LittleEndian.AppendUint64(nil, va+8))
 		as.fsPut(va+8, v.code)
+		for _, o := range v.abs {
+			as.absAt = append(as.absAt, absRec{va + 8 + uint64(o), regionOf(w0)})
+		}
 		as.fsCache[key] = va
 		vi := &fsVenInfo{lo: va + 8, hi: va + 8 + uint64(len(v.code)), w0: w0, v: v, jlen: 7}
 		if minLen == 5 {
@@ -151,6 +154,7 @@ func (as *addressSpace) fsWindow(code []byte, base uint64, win []ins, a, b, s, m
 	if minLen == 5 {
 		j = []byte{0xE9}
 		j = binary.LittleEndian.AppendUint32(j, uint32(int32(int64(entry)-int64(w0+5))))
+		as.relAt = append(as.relAt, relRec{w0 + 1, entry})
 	} else {
 		j = []byte{0xFF, 0x24, 0x25}
 		j = binary.LittleEndian.AppendUint32(j, uint32(va))

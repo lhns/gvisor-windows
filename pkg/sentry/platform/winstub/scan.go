@@ -1001,6 +1001,7 @@ type fsVeneer struct {
 	fsO     uint32 // window offset of the %fs instruction
 	afterO  uint32 // window offset of what follows it
 	winLen  uint32
+	abs     []uint32 // code offsets of the 8-byte guest addresses in it (relocation)
 }
 
 // buildFSVeneer builds the veneer for the window list[a..b] of code, which is
@@ -1033,6 +1034,7 @@ func buildFSVeneer(code []byte, base uint64, list []ins, a, b, s int) (*fsVeneer
 		dst := int(x.rdst)
 		target := base + uint64(x.off+x.n) + uint64(int64(x.ripDisp))
 		c = append(c, 0x48|byte(dst>>3), 0xB8|byte(dst&7))
+		v.abs = append(v.abs, uint32(len(c)))
 		c = binary.LittleEndian.AppendUint64(c, target)
 		if x.rkind == ripLea {
 			return true
@@ -1076,6 +1078,7 @@ func buildFSVeneer(code []byte, base uint64, list []ins, a, b, s int) (*fsVeneer
 	}
 	v.bnd = append(v.bnd, fsBound{v: uint32(len(c)), o: v.winLen})
 	c = append(c, 0xFF, 0x25, 0, 0, 0, 0)
+	v.abs = append(v.abs, uint32(len(c)))
 	c = binary.LittleEndian.AppendUint64(c, base+uint64(w0)+uint64(v.winLen))
 	v.code = c
 	return v, true
