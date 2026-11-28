@@ -150,7 +150,7 @@ func (as *addressSpace) reset() string {
 	as.siteCache, as.restartAt, as.ud2Sites, as.fsCache, as.fsVen = n.siteCache, n.restartAt, n.ud2Sites, n.fsCache, nil
 	as.fsUD2, as.fsSplit, as.fsWhy, as.fsHits = n.fsUD2, n.fsSplit, n.fsWhy, n.fsHits
 	as.tails, as.tailExact, as.heads, as.edges = n.tails, n.tailExact, n.heads, n.edges
-	as.hist, as.histOK = [32]byte{}, true
+	as.hist, as.histOK, as.bases = [32]byte{}, true, [2]uint64{}
 	as.holesDone.Store(false)
 	// Nothing of the guest may remain: every committed page of the guest range is
 	// in a view of the stub's own or in a hole Windows keeps for itself

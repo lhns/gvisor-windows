@@ -171,6 +171,7 @@ type addressSpace struct {
 	// once it is not tracked (textcache_windows.go).
 	hist   [32]byte
 	histOK bool
+	bases  [2]uint64 // of the history's regions (textcache_windows.go)
 }
 
 func newAddressSpace(p *Platform) *addressSpace {
@@ -336,7 +337,7 @@ func (as *addressSpace) removeRange(lo, hi uint64) error {
 		changed = changed || v.isText()
 	}
 	if changed {
-		as.histMix('u', lo, hi, 0)
+		as.histUnmap(lo, hi)
 	}
 	// Where a private text view is cut, the new ends may form a split syscall
 	// with a range mapped there later: remember what the surviving pieces end
@@ -549,14 +550,17 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 	if isText {
 		// The same bytes patched after the same history before: take the result.
 		t0 := qpc()
-		e := as.textLookup(lo, hi, f, fr)
+		k := as.textKeyFor(lo, hi)
+		e := as.textLookup(k, f, fr)
+		hadState := false
 		if e != nil {
 			defer as.p.texts.done(e)
 			as.p.texts.mu.Lock()
-			snap := e.after
+			snap, bases := e.after, e.bases
 			as.p.texts.mu.Unlock()
-			if snap != nil {
-				err := as.applySnap(snap, e.histAfter)
+			hadState = snap != nil
+			if snap != nil && bases == as.basesWith(k, lo) {
+				err := as.applySnap(snap, e.histAfter, bases)
 				as.p.texts.hits.Add(1)
 				if profkeys.On {
 					profkeys.Count("winstub text: cached patch", qpc()-t0)
@@ -575,7 +579,6 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 			e = nil // the file changed since the lookup: these are other bytes
 		}
 		var orig []byte
-		before := as.hist
 		if e == nil && textCacheOn && as.histOK {
 			orig = append([]byte(nil), content...)
 		}
@@ -592,10 +595,12 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 			as.unrefPriv(ps)
 			return err
 		}
-		as.textStore(lo, hi, orig, before, e)
+		as.textStore(k, lo, orig, e)
 		if profkeys.On {
 			why := "winstub text: patched, first time"
-			if e != nil {
+			if e != nil && hadState {
+				why = "winstub text: patched, cached at other bases"
+			} else if e != nil {
 				why = "winstub text: patched, second time (kept)"
 			} else if !textCacheOn || !as.histOK {
 				why = "winstub text: patched, cache off"
