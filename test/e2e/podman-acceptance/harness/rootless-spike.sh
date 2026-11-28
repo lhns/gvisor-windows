@@ -17,6 +17,8 @@ mkspec() {
   mkdir -p "$ROOTFS/etc/containers" "$ROOTFS/run" "$ROOTFS/tmp" "$ROOTFS/var/lib/containers" "$ROOTFS/mnt"
   cp "$HERE/containers.conf" "$ROOTFS/etc/containers/containers.conf"
   sed "s/^driver = .*/driver = \"$STORAGE_DRIVER\"/" "$HERE/storage.conf" >"$ROOTFS/etc/containers/storage.conf"
+  # host networking: the sandbox resolves names like the host does (the image's resolv.conf is docker's)
+  [ "$NET" = host ] && cp -L /run/systemd/resolve/resolv.conf "$ROOTFS/etc/resolv.conf" 2>/dev/null
   if [ "$NET" = windows-nat ]; then
     echo qemu >"$ROOTFS/etc/containers/podman-machine"
     echo "10.0.2.2 gateway.containers.internal host.containers.internal" >>"$ROOTFS/etc/hosts"
@@ -62,7 +64,9 @@ stop() {
 start() {
   mkspec || return 1
   echo "start: ${RUNSC[*]} run --bundle $WORK/bundle podman-spike"
-  setsid nohup "${RUNSC[@]}" run --bundle "$WORK/bundle" podman-spike >>"$WORK/runsc.out" 2>&1 &
+  local pre=()
+  [ "${STRACE:-0}" = 1 ] && pre=(strace -f -s 80 -o "$WORK/strace.out" -e trace=socket,setsockopt,getsockopt,connect,bind,listen,accept4,sendto,recvfrom,sendmsg,recvmsg,shutdown,getsockname,getpeername)
+  setsid nohup "${pre[@]}" "${RUNSC[@]}" run --bundle "$WORK/bundle" podman-spike >>"$WORK/runsc.out" 2>&1 &
   echo $! >"$WORK/runsc.pid"
   setsid nohup bash -c "while :; do socat UNIX-LISTEN:$SOCK,unlink-early,fork,mode=600 TCP:127.0.0.1:8888; sleep 1; done" >"$WORK/socat.log" 2>&1 &
   for _ in $(seq 1 120); do

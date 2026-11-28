@@ -347,7 +347,7 @@ jobs:
           /opt/gv/runsc --version | tee "$RESULTS_DIR/out/runsc-version.txt"
       - name: Unprivileged user and engine rootfs
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq podman socat uidmap
+          sudo apt-get update -qq && sudo apt-get install -y -qq podman socat uidmap strace
           # Ubuntu 24.04 blocks unprivileged user namespaces by AppArmor; rootless runsc needs one.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
           sudo useradd -m -s /bin/bash spike
@@ -365,19 +365,21 @@ jobs:
       - name: Start engine (rootless runsc, as spike)
         id: start
         run: |
-          sudo -u spike -H env -i HOME=/home/spike USER=spike PATH="$PATH" GV=/opt/gv ROOTFS=/home/spike/rootfs WORK=/home/spike/work NET=${{ matrix.net }} STORAGE_DRIVER=${{ matrix.driver }}             bash /tmp/rl/rootless-spike.sh start 2>&1 | tee "$RESULTS_DIR/out/start.txt"
+          sudo -u spike -H env -i HOME=/home/spike USER=spike PATH="$PATH" STRACE=$([ ${{ matrix.net }} = windows-nat ] && echo 1 || echo 0) GV=/opt/gv ROOTFS=/home/spike/rootfs WORK=/home/spike/work NET=${{ matrix.net }} STORAGE_DRIVER=${{ matrix.driver }}             bash /tmp/rl/rootless-spike.sh start 2>&1 | tee "$RESULTS_DIR/out/start.txt"
           test "${PIPESTATUS[0]}" = 0
       - name: Acceptance test (as spike)
         if: steps.start.outcome == 'success'
         run: |
           mkdir -p /tmp/rl-out && chmod 777 /tmp/rl-out
           HN=""; [ "${{ matrix.net }}" = host ] && HN="HOSTNET=1 NETARGS=--network=host"
-          sudo -u spike -H env -i HOME=/home/spike USER=spike PATH="$PATH" $HN GV=/opt/gv ROOTFS=/home/spike/rootfs WORK=/home/spike/work NET=${{ matrix.net }} STORAGE_DRIVER=${{ matrix.driver }}             XDG_RUNTIME_DIR=/home/spike/xdg CONTAINER_HOST=unix:///home/spike/podman.sock SHARE_DIR=/home/spike/share RESULTS_DIR=/tmp/rl-out             ENGINE_CTL=/tmp/rl/rootless-spike.sh bash /tmp/rl/run.sh || true
+          sudo -u spike -H env -i HOME=/home/spike USER=spike PATH="$PATH" STRACE=$([ ${{ matrix.net }} = windows-nat ] && echo 1 || echo 0) $HN GV=/opt/gv ROOTFS=/home/spike/rootfs WORK=/home/spike/work NET=${{ matrix.net }} STORAGE_DRIVER=${{ matrix.driver }}             XDG_RUNTIME_DIR=/home/spike/xdg CONTAINER_HOST=unix:///home/spike/podman.sock SHARE_DIR=/home/spike/share RESULTS_DIR=/tmp/rl-out             ENGINE_CTL=/tmp/rl/rootless-spike.sh bash /tmp/rl/run.sh || true
       - name: Diagnostics
         if: always()
         run: |
           cd "$RESULTS_DIR/out"
           cp -r /tmp/rl-out/. . 2>/dev/null || true
+          sudo dmesg 2>/dev/null | grep -iE 'seccomp|SIGSYS' | tail -20 >dmesg-seccomp.txt || true
+          sudo grep -B6 -m3 'SIGSYS' /home/spike/work/strace.out 2>/dev/null | cut -c1-300 >strace-sigsys.txt || true
           sudo cp /home/spike/work/runsc.out /home/spike/work/socat.log . 2>/dev/null || true
           sudo cp /home/spike/work/storage/engine-env.txt . 2>/dev/null || true
           sudo tar -czf runsc-logs.tgz -C /home/spike/work logs 2>/dev/null || true
