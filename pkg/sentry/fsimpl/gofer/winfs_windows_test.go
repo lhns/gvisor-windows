@@ -589,7 +589,18 @@ func TestVFSWatchedOverflowDropsTheCache(t *testing.T) {
 		t.Logf("the cached 'does not exist' was not used")
 	}
 
+	// The host stats of the drop run outside renameMu.
+	free := false
+	testDropStat = func(fs *filesystem) {
+		if free = fs.renameMu.TryLock(); free {
+			fs.renameMu.Unlock()
+		}
+	}
 	hostFS(e).hostChange(e.ctx, winhost.Change{Overflow: true})
+	testDropStat = nil
+	if !free {
+		t.Errorf("renameMu is held during the host stats of the drop")
+	}
 
 	if st, err := e.stat("/f"); err != nil || st.Size != 10 {
 		t.Errorf("after the overflow: stat /f = %+v %v, want size 10", st, err)

@@ -152,6 +152,9 @@ type addressSpace struct {
 	relAt   []relRec
 	shared  []sharedRec
 	inPlace bool // text was patched again in place (fixHead): the state is not relocated
+	// The shared veneers as holds (veneers_windows.go): every one it got, until
+	// it is released, whether its site is still mapped or not.
+	vheld map[*sharedVen]bool
 
 	createMu  sync.Mutex // serializes thread creation
 	lastEvent atomic.Value
@@ -519,8 +522,10 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 		srs = sf.Sections(fr)
 	}
 
-	read := func() ([]byte, error) {
-		content := make([]byte, fr.Length())
+	read := func(content []byte) ([]byte, error) {
+		if content == nil {
+			content = make([]byte, fr.Length())
+		}
 		bs, err := f.MapInternal(fr, hostarch.Read)
 		if err != nil {
 			return nil, err
@@ -531,9 +536,22 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 		return content, nil
 	}
 	var content []byte
+	var buf *[]byte // (content of text, back to textBufs if the cache has its patch)
 	if !isSec && !isText {
 		var err error
-		if content, err = read(); err != nil {
+		if content, err = read(nil); err != nil {
+			return err
+		}
+	} else if isText {
+		// Read before as.mu, which Switch takes on every syscall return: the pages
+		// of a cold file fault in here.
+		buf, _ = textBufs.Get().(*[]byte)
+		if buf == nil || uint64(cap(*buf)) < fr.Length() {
+			b := make([]byte, fr.Length())
+			buf = &b
+		}
+		var err error
+		if content, err = read((*buf)[:fr.Length()]); err != nil {
 			return err
 		}
 	}
@@ -559,7 +577,7 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 		// The same bytes patched after the same history before: take the result.
 		t0 := qpc()
 		k := as.textKeyFor(lo, hi)
-		e := as.textLookup(k, f, fr)
+		e := as.textLookup(k, content)
 		hadState := false
 		if e != nil {
 			defer as.p.texts.done(e)
@@ -570,6 +588,7 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 			want := as.basesWith(k, lo)
 			if snap != nil && bases == want {
 				err := as.applySnap(snap, e.histAfter, bases)
+				textBufs.Put(buf)
 				as.p.texts.hits.Add(1)
 				if profkeys.On {
 					profkeys.Count("winstub text: cached patch", qpc()-t0)
@@ -595,6 +614,7 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 				}
 				if n != nil {
 					err := as.applySnap(n, e.histAfter, want)
+					textBufs.Put(buf)
 					as.p.texts.hits.Add(1)
 					as.p.texts.relocs.Add(1)
 					if profkeys.On {
@@ -609,13 +629,6 @@ func (as *addressSpace) MapFile(addr hostarch.Addr, f memmap.File, fr memmap.Fil
 					profkeys.Count("winstub text: relocation refused, "+why, 0)
 				}
 			}
-		}
-		var err error
-		if content, err = read(); err != nil {
-			return err
-		}
-		if e != nil && !bytes.Equal(content, e.orig) {
-			e = nil // the file changed since the lookup: these are other bytes
 		}
 		var orig []byte
 		if e == nil && textCacheOn && as.histOK {

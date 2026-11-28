@@ -679,31 +679,23 @@ const hostFolderMaxCachedDentries = 200000
 // testNoWatcher keeps tests from starting the watch, to model lost events.
 var testNoWatcher bool
 
+// testDropStat, if set, runs where dropAllCaches starts its host stats.
+var testDropStat func(fs *filesystem)
+
 // dropAllCaches forgets everything cached about the folder: dentries,
 // listings, "does not exist" answers, and the metadata and clean data of
 // every inode. It is what the watch's overflow or failure means: changes were
 // lost, so nothing cached can be trusted.
 func (fs *filesystem) dropAllCaches(ctx context.Context) {
 	ctx.Warningf("gofer: host folder change stream overflowed or ended: dropping every cached dentry (mounts on it are kept)")
-	var ds *[]*dentry
-	fs.renameMu.RLock()
-	defer fs.renameMuRUnlockAndCheckCaching(ctx, &ds)
-	root := fs.root
-	var kids []*dentry
-	root.childrenMu.Lock()
-	for name, c := range root.children {
-		if c == nil {
-			delete(root.children, name)
-		} else {
-			kids = append(kids, c)
-		}
+	fs.dropAllDentries(ctx)
+	// The host stats run outside renameMu, which every walk of the mount takes
+	// (a pending rename's writer lock would hold them all up behind seconds of
+	// stats); updateMetadata needs only the inode's own locks.
+	if testDropStat != nil {
+		testDropStat(fs)
 	}
-	root.clearDirentsLocked()
-	root.childrenMu.Unlock()
-	for _, c := range kids {
-		c.invalidate(ctx, fs.vfsfs.VirtualFilesystem(), &ds)
-	}
-	root.inode.updateMetadata(ctx)
+	fs.root.inode.updateMetadata(ctx)
 	// Inodes of regular files outlive their dentries: refresh them too.
 	fs.inodeMu.Lock()
 	inodes := make([]*inode, 0, len(fs.inodeByKey))
@@ -723,6 +715,28 @@ func (fs *filesystem) dropAllCaches(ctx context.Context) {
 			}
 			in.dataMu.Unlock()
 		}
+	}
+}
+
+// dropAllDentries forgets the dentries and listings of the folder (dropAllCaches).
+func (fs *filesystem) dropAllDentries(ctx context.Context) {
+	var ds *[]*dentry
+	fs.renameMu.RLock()
+	defer fs.renameMuRUnlockAndCheckCaching(ctx, &ds)
+	root := fs.root
+	var kids []*dentry
+	root.childrenMu.Lock()
+	for name, c := range root.children {
+		if c == nil {
+			delete(root.children, name)
+		} else {
+			kids = append(kids, c)
+		}
+	}
+	root.clearDirentsLocked()
+	root.childrenMu.Unlock()
+	for _, c := range kids {
+		c.invalidate(ctx, fs.vfsfs.VirtualFilesystem(), &ds)
 	}
 }
 

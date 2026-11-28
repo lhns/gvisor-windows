@@ -18,7 +18,6 @@ package winstub
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"encoding/binary"
 	"hash/maphash"
 	"sync"
@@ -384,11 +383,13 @@ func (as *addressSpace) patchReloc(code []byte, base uint64, list []ins, s int, 
 	// Veneers without them are only entered from the text, and need no such
 	// promise.
 	vlen := uint64(len(pre)+23+len(post)+23+15) &^ 15
+	var sv *sharedVen
 	if len(post) > 0 {
-		va = as.p.sharedVeneer(w0, code[list[bestA].off:list[bestA].off+bestL], vlen)
-		if va == 0 {
+		sv = as.sharedVeneer(w0, code[list[bestA].off:list[bestA].off+bestL], vlen)
+		if sv == nil {
 			return false
 		}
+		va = sv.va
 		if profkeys.On {
 			profkeys.Count("winstub syscall site: shared veneer", 0)
 		}
@@ -444,7 +445,7 @@ func (as *addressSpace) patchReloc(code []byte, base uint64, list []ins, s int, 
 		as.absAt = append(as.absAt, absRec{va + uint64(len(pre)) + 2, r})
 	} else {
 		as.absAt = append(as.absAt, absRec{va + uint64(len(pre)) + 23 + uint64(len(post)) + 2, r})
-		as.shared = append(as.shared, sharedRec{w0: w0, va: va, vlen: vlen, post: va + uint64(len(pre)) + 2, slot: slot,
+		as.shared = append(as.shared, sharedRec{w0: w0, va: va, vlen: vlen, v: sv, post: va + uint64(len(pre)) + 2, slot: slot,
 			window: append([]byte(nil), code[list[bestA].off:list[bestA].off+bestL]...)})
 	}
 	copy(code[list[bestA].off:], j)
@@ -454,44 +455,4 @@ func (as *addressSpace) patchReloc(code []byte, base uint64, list []ins, s int, 
 	cl.add(list[bestA].off, list[bestA].off+bestL)
 	st.reloc++
 	return true
-}
-
-// veneerRegistry hands out the addresses of the veneers that a syscall returns
-// into. A clone child with a new address space starts at the return address of
-// its parent, so every address space must put the veneer of a site at the same
-// address: the address is chosen per (site address, displaced bytes) once, for
-// the whole platform. The space is not reclaimed.
-type veneerRegistry struct {
-	mu   sync.Mutex
-	next uint64
-	m    map[veneerKey]uint64
-}
-
-type veneerKey struct {
-	addr uint64
-	hash [32]byte
-}
-
-// sharedVeneer returns the address of the veneer for the window at addr with
-// the given original bytes, allocating vlen bytes for it on first use; 0 if the
-// shared area is full.
-func (p *Platform) sharedVeneer(addr uint64, window []byte, vlen uint64) uint64 {
-	k := veneerKey{addr: addr, hash: sha256.Sum256(window)}
-	r := &p.veneers
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if va, ok := r.m[k]; ok {
-		return va
-	}
-	if r.m == nil {
-		r.m = map[veneerKey]uint64{}
-		r.next = stubasm.VeneersShared
-	}
-	if r.next+vlen > stubasm.Veneers+stubasm.VeneersSize {
-		return 0
-	}
-	va := r.next
-	r.next += vlen
-	r.m[k] = va
-	return va
 }

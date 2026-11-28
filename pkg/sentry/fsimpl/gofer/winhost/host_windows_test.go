@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 	"testing"
 
 	"golang.org/x/sys/unix"
@@ -780,5 +781,40 @@ func TestRenameOverHeldFile(t *testing.T) {
 	buf := make([]byte, 3)
 	if n, _ := fs.ReadAt(dst.ID, buf, 0); string(buf[:n]) != "old" {
 		t.Errorf("the replaced file lost its data: %q", buf[:n])
+	}
+}
+
+// Pins taken, switched to a handle by name and released from many goroutines at
+// once (the opens run outside pinMu) end with no pin left and the file reachable.
+func TestPinConcurrent(t *testing.T) {
+	fs, _ := newFS(t, Options{})
+	root := fs.Root()
+	a := mustCreate(t, fs, root, "pinned", Spec{Mode: 0o644})
+	fs.WriteAt(a.ID, []byte("abc"), 0)
+	var wg sync.WaitGroup
+	for g := 0; g < 8; g++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < 50; i++ {
+				if err := fs.Pin(a.ID); err != nil {
+					t.Errorf("pin: %v", err)
+					return
+				}
+				fs.pinByName(a.ID)
+				fs.Unpin(a.ID)
+			}
+		}()
+	}
+	wg.Wait()
+	fs.pinMu.Lock()
+	n := len(fs.pins)
+	fs.pinMu.Unlock()
+	if n != 0 {
+		t.Fatalf("%d pins left", n)
+	}
+	buf := make([]byte, 3)
+	if n, _ := fs.ReadAt(a.ID, buf, 0); n != 3 || string(buf) != "abc" {
+		t.Errorf("read after the pins: %q", buf[:n])
 	}
 }
