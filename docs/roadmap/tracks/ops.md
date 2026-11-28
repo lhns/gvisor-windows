@@ -20,6 +20,7 @@ flowchart TB
     ops_upstream_merges["✔ Merge upstream<br/>gVisor regularly"]
     ops_portable_packaging["✔ Portable zip, no<br/>installer"]
     ops_ci_build_once["✔ Build once, run<br/>suites on demand"]
+    ops_podman_on_the_dev_vm{{"✔ Podman on the<br/>development VM"}}
     ops_name_and_fork ~~~ ops_podman_only_the_bar
     ops_linux_tests_on_actions ~~~ ops_phase0_go_no_go
     ops_borrow_code ~~~ ops_phase0_go_no_go
@@ -29,8 +30,8 @@ flowchart TB
     ops_syscall_test_strategy ~~~ ops_upstream_merges
     ops_syscall_test_strategy ~~~ ops_portable_packaging
     ops_syscall_tests_on_windows ~~~ ops_ci_build_once
-    ops_upstream_merges ~~~ ops_ci_build_once
-    ops_portable_packaging ~~~ ops_ci_build_once
+    ops_upstream_merges ~~~ ops_podman_on_the_dev_vm
+    ops_portable_packaging ~~~ ops_podman_on_the_dev_vm
     ops_phase0_go_no_go --> ops_windows_ci_standard_user
     classDef vsucc fill:#2e9e4f,stroke:#1b6b34,color:#fff
     classDef succ fill:#bfe8c8,stroke:#2e9e4f,color:#111
@@ -46,7 +47,7 @@ flowchart TB
     classDef decided fill:#ece0f7,stroke:#7b3fb5,stroke-dasharray:2 2,color:#111
     classDef finding fill:#ffe0b2,stroke:#d84315,stroke-width:2px,color:#111
     classDef waiting fill:#e3f2fd,stroke:#1f6fc5,stroke-dasharray:5 5,color:#111
-    class ops_name_and_fork,ops_linux_tests_on_actions,ops_borrow_code,ops_podman_only_the_bar,ops_phase0_go_no_go,ops_syscall_test_strategy decided
+    class ops_name_and_fork,ops_linux_tests_on_actions,ops_borrow_code,ops_podman_only_the_bar,ops_phase0_go_no_go,ops_syscall_test_strategy,ops_podman_on_the_dev_vm decided
     class ops_windows_ci_standard_user,ops_upstream_merges succ
     class ops_syscall_tests_on_windows mixed
     class ops_portable_packaging,ops_ci_build_once unrated
@@ -70,7 +71,7 @@ flowchart TB
 | `ops-portable-packaging` | Portable zip, no installer | feature | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 | runsc-container-on-windows |  |  |  | tools/windows/ci/README-release.md; tools/windows/ci/release-test.ps1; docs/adr/0023-podman-bundle-in-its-own-repo.md |
 | `ops-run-on-a-work-machine` | Try it on a real work machine | owner-decision | owner | next | n/a |  |  |  |  |  |  |  |
 | `ops-ci-build-once` | Build once, run suites on demand | tooling | windows-ci | done | unrated | 2026-11-27 | 2026-11-27 |  |  |  |  | docs/results/6-ci.md |
-| `ops-podman-on-the-dev-vm` | Podman on the development VM | owner-decision | owner | next | unrated | 2026-11-27 |  |  |  |  |  | docs/results/1p-rewrite-heap.md |
+| `ops-podman-on-the-dev-vm` | Podman on the development VM | owner-decision | owner | done | successful | 2026-11-27 | 2026-11-28 |  |  |  |  | docs/results/1p-rewrite-heap.md; docs/results/5-podman-windows.md |
 
 ### Details per node
 
@@ -88,7 +89,7 @@ flowchart TB
 | `ops-portable-packaging` | Portable zip, no installer |  |  | Ship runsc for Windows as a zip or per-user installer that needs no admin. | The Podman bundle moved to lhns/podman-portable (ADR 0023); this repo ships runsc.exe plus a hello bundle, tested from a fresh standard user profile. Draft releases come from release.yml after the heavy suites pass on the same sha. |  |  |  |  |
 | `ops-run-on-a-work-machine` | Try it on a real work machine |  |  | All evidence comes from GitHub hosted Windows images; the owner runs runsc.exe once on a work machine to check FSGSBASE and whether security software tolerates the generated stub being debugged. | Ready: download the release zip (or the latest ci run on windows) and run its hello bundle; the Podman bundle test belongs to lhns/podman-portable. Done when: the owner reports the result of one run. |  |  |  |  |
 | `ops-ci-build-once` | Build once, run suites on demand |  |  | One ci.yml builds runsc.exe and the test binaries once and calls every Windows suite; worker branches start no runs and dispatch only what they need. About 62 to 40 job-minutes per push. | Next lever: merge the 16 small Linux acceptance jobs. Also uploads a runsc-windows-amd64-<shortsha> package (runsc.exe, hello bundle, README) for trying it on a work machine. |  |  |  |  |
-| `ops-podman-on-the-dev-vm` | Podman on the development VM |  |  | Podman has passed in rewrite-fxsave mode only on CI runners that force it; on the development VM (no FSGSBASE, XSAVE or AVX) only runsc bundles ran, because the engine opens a network listener. | Needs the owner's go-ahead to start the engine on the VM (firewall prompt). Done when: the zip's README steps run on the VM. |  |  |  |  |
+| `ops-podman-on-the-dev-vm` | Podman on the development VM | an unmodified Podman 6.2.0 engine passes all ten acceptance steps on the development VM without FSGSBASE, XSAVE or AVX, started from the podman-portable v0.4.0 release |  | Podman has passed in rewrite-fxsave mode only on CI runners that force it; on the development VM (no FSGSBASE, XSAVE or AVX) only runsc bundles ran, because the engine opens a network listener. | Owner allowed the run. All 10 steps passed with podman-portable v0.4.0 in rewrite-fxsave mode; run.ps1 now also works under Windows PowerShell 5.1. |  |  |  |  |
 
 ### Folded items per node
 

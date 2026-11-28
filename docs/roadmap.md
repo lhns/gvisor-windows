@@ -89,9 +89,9 @@ Owner calls are the purple shape. A decided owner call is drawn; an open one is 
 ## Ratings
 
 <!-- BEGIN GENERATED: ratings -->
-0 of 63 rated nodes are confirmed by the owner.
+0 of 64 rated nodes are confirmed by the owner.
 
-Not yet confirmed: `research-lkl-nommu`, `research-unkernel`, `research-flinux-translation`, `research-qemu-emulation`, `workloads-podman-on-gvisor-linux`, `research-gvisor-benchmark`, `platform-elf-alignment-survey`, `fs-persistent-image-storage`, `platform-trap-cost`, `platform-4k-section-views`, `platform-tls-register`, `platform-restricted-stub`, `sentry-go-fault-recovery`, `research-whpx-this-machine`, `workloads-podman-on-windows`, `runsc-container-on-windows`, `platform-stub-controller`, `platform-page-verification`, `platform-syscall-fast-path`, `platform-own-vdso`, `platform-winstub`, `platform-busybox-on-windows`, `sentry-timers-and-clocks`, `fs-windows-directfs`, `fs-change-notifications`, `fs-linux-metadata-on-ntfs`, `fs-handles-do-not-block-users`, `net-netstack-windows-link`, `net-port-forwarding`, `runsc-measure-cli`, `runsc-sandbox-lifecycle`, `ops-windows-ci-standard-user`, `ops-syscall-tests-on-windows`, `ops-upstream-merges`, `sentry-fault-recovery`, `sentry-host-stdio-and-tty`, `fs-root-filesystem-source`, `sentry-threads-and-signals`, `research-file-protocol`, `platform-zpoline-hooks`, `platform-no-fsgsbase-fallback`, `sentry-unix-shim`, `platform-exception-stack`, `workloads-strict-bar-linux`, `platform-static-guest-from-memory`, `net-bridge-networking`, `platform-debug-event-cost`, `platform-syscall-site-survey`, `platform-faults-per-exec`, `platform-controller-wakeups`, `platform-fp-state`, `platform-retire-prototype`, `platform-fast-process-start`, `runsc-windows-boot`, `sentry-dynamic-elf-and-exec`, `fs-attribute-cache`, `runsc-windows-lifecycle-commands`, `workloads-end-to-end-speed`, `sentry-profile-small-file-path`, `platform-recycle-stubs`, `workloads-podman-without-fsgsbase`, `platform-exception-dispatch-depth`, `research-linux-rootless-podman`.
+Not yet confirmed: `research-lkl-nommu`, `research-unkernel`, `research-flinux-translation`, `research-qemu-emulation`, `workloads-podman-on-gvisor-linux`, `research-gvisor-benchmark`, `platform-elf-alignment-survey`, `fs-persistent-image-storage`, `platform-trap-cost`, `platform-4k-section-views`, `platform-tls-register`, `platform-restricted-stub`, `sentry-go-fault-recovery`, `research-whpx-this-machine`, `workloads-podman-on-windows`, `runsc-container-on-windows`, `platform-stub-controller`, `platform-page-verification`, `platform-syscall-fast-path`, `platform-own-vdso`, `platform-winstub`, `platform-busybox-on-windows`, `sentry-timers-and-clocks`, `fs-windows-directfs`, `fs-change-notifications`, `fs-linux-metadata-on-ntfs`, `fs-handles-do-not-block-users`, `net-netstack-windows-link`, `net-port-forwarding`, `runsc-measure-cli`, `runsc-sandbox-lifecycle`, `ops-windows-ci-standard-user`, `ops-syscall-tests-on-windows`, `ops-upstream-merges`, `sentry-fault-recovery`, `sentry-host-stdio-and-tty`, `fs-root-filesystem-source`, `sentry-threads-and-signals`, `research-file-protocol`, `platform-zpoline-hooks`, `platform-no-fsgsbase-fallback`, `sentry-unix-shim`, `platform-exception-stack`, `workloads-strict-bar-linux`, `platform-static-guest-from-memory`, `net-bridge-networking`, `platform-debug-event-cost`, `platform-syscall-site-survey`, `platform-faults-per-exec`, `platform-controller-wakeups`, `platform-fp-state`, `platform-retire-prototype`, `platform-fast-process-start`, `runsc-windows-boot`, `sentry-dynamic-elf-and-exec`, `fs-attribute-cache`, `runsc-windows-lifecycle-commands`, `workloads-end-to-end-speed`, `sentry-profile-small-file-path`, `platform-recycle-stubs`, `workloads-podman-without-fsgsbase`, `platform-exception-dispatch-depth`, `ops-podman-on-the-dev-vm`, `research-linux-rootless-podman`.
 <!-- END GENERATED: ratings -->
 
 ## Overview
@@ -200,7 +200,6 @@ flowchart TB
 | Name it gvisor-windows | ✔ done · n/a | The project is an unofficial fork of gVisor's Go branch called gvisor-windows. |
 | Go or no-go after Phase 0 | ✔ done · n/a | Go: the owner asked for the full project; ADR 0004 lists the conditions. |
 | Try it on a real work machine | ○ next | All evidence comes from GitHub hosted Windows images; the owner runs runsc.exe once on a work machine to check FSGSBASE and whether security software tolerates the generated stub being debugged. |
-| Podman on the development VM | ○ next | Podman has passed in rewrite-fxsave mode only on CI runners that force it; on the development VM (no FSGSBASE, XSAVE or AVX) only runsc bundles ran, because the engine opens a network listener. |
 <!-- END GENERATED: plain-words -->
 
 ## Ready now
@@ -227,7 +226,6 @@ _None._
 
 <!-- BEGIN GENERATED: waiting-on-owner -->
 - `ops-run-on-a-work-machine`: Try it on a real work machine
-- `ops-podman-on-the-dev-vm`: Podman on the development VM
 <!-- END GENERATED: waiting-on-owner -->
 
 ## Timeline
@@ -241,7 +239,7 @@ Generated on 2026-11-28.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 129 done, 7 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 130 done, 7 abandoned</summary>
 
 - `fs-attribute-cache`: Faster stat walks on host folders (✔ done · mixed). A git-status-like walk of 20000 files takes 1.2-2.4 s through the host folder; an attribute cache fed by the change watcher would bring stat near native.
   - Cold stat walk on a fresh mount is still about 4x native, 99-105 us per file (2026-11-26)
@@ -423,6 +421,7 @@ Generated on 2026-11-28.
 - `workloads-tty-through-windows-client`: Interactive TTY through the Windows client (✔ fixed). The Windows podman client says "The input device is not a TTY" inside the ConPTY test driver, so the interactive step cannot type into the container.
 - `workloads-volume-lost-on-restart`: Volume data lost across engine restart (✔ fixed). In 2 of 5 complete native runs, the named volume written before the engine restart is empty afterwards (step 9).
 - `net-linux-nat-seccomp`: User-space NAT on rootless Linux (✔ fixed). With --network=windows-nat on Linux the engine starts and answers through the published port, but the sandbox dies from seccomp (SIGSYS) at the first podman pull; the syscall is not identified yet.
+- `ops-podman-on-the-dev-vm`: Podman on the development VM (✔ done · successful). Podman has passed in rewrite-fxsave mode only on CI runners that force it; on the development VM (no FSGSBASE, XSAVE or AVX) only runsc bundles ran, because the engine opens a network listener.
 - `platform-shared-veneers-fill`: Shared veneer area fills up (✔ fixed). Shared veneers (where a syscall returns into) are allocated per site address and never freed; after about 500 dynamic execs at new addresses in one sandbox the 224 KiB area is full and those sites fall back to the slow debugger path.
 - `platform-text-cache-pie`: Patched-text cache for PIE programs (✔ fixed). The patched-text cache is keyed by address, so PIE and dynamically linked programs loaded at random addresses miss it; the 4 to 6 times fork+exec gain was measured with static busybox.
 - `research-linux-rootless-podman`: Podman on Linux without root (✔ done · mixed). This branch's runsc runs an unmodified Podman engine as an ordinary Linux user without Docker; 9 of 10 steps pass with host networking.
@@ -446,5 +445,5 @@ Each track has its own page with its tree, node table and per-node details.
 - [net - network](roadmap/tracks/net.md): 5 nodes (5 done)
 - [workloads - workloads](roadmap/tracks/workloads.md): 23 nodes (23 done)
 - [research - research](roadmap/tracks/research.md): 9 nodes (3 done, 6 abandoned)
-- [ops - operations](roadmap/tracks/ops.md): 13 nodes (11 done, 2 next)
+- [ops - operations](roadmap/tracks/ops.md): 13 nodes (12 done, 1 next)
 <!-- END GENERATED: tracks -->

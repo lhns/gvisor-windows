@@ -58,7 +58,10 @@ function Run([string]$exe, [string[]]$argv, [string]$log, [int]$timeout = $StepT
   $o = New-TemporaryFile; $e = New-TemporaryFile
   $p = Start-Process -FilePath $exe -ArgumentList ($argv | ForEach-Object { if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ } }) `
     -NoNewWindow -PassThru -RedirectStandardOutput $o -RedirectStandardError $e
-  if (-not $p.WaitForExit($timeout * 1000)) { $p.Kill($true); Add-Content $log "TIMEOUT after $timeout s: $exe $argv"; $code = 124 } else { $code = $p.ExitCode }
+  # Windows PowerShell 5.1 reports no ExitCode unless the handle was opened before the process exits,
+  # and .NET Framework has no Kill(bool).
+  $null = $p.Handle
+  if (-not $p.WaitForExit($timeout * 1000)) { if ($PSVersionTable.PSVersion.Major -ge 7) { $p.Kill($true) } else { $p.Kill() }; Add-Content $log "TIMEOUT after $timeout s: $exe $argv"; $code = 124 } else { $code = $p.ExitCode }
   $script:Out = (Get-Content $o -Raw); if ($null -eq $script:Out) { $script:Out = '' }
   Add-Content $log "> $exe $argv"; Add-Content $log $script:Out; Add-Content $log (Get-Content $e -Raw)
   Remove-Item $o, $e -Force

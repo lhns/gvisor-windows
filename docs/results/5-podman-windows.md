@@ -350,3 +350,9 @@ Verdict: an unmodified Podman 6.2.0 engine passes all ten acceptance steps on gV
 Run 46064357443 on `windows` 030754bf2 (overlay as the default storage driver, ADR 0021; fork+exec work, ADR 0022; the first upstream merge), all ten steps required: native 8 of 8, rewrite 8 of 8, rewrite-fxsave 8 of 8. windows-stability on the same head passed.
 
 Verdict: with overlay as the default storage driver and the fork+exec changes, an unmodified Podman 6.2.0 engine still passes all ten acceptance steps in all three CPU modes, 24 of 24 runs.
+
+## Fourteenth round: the development VM (2026-11-28)
+
+podman-portable v0.4.0 (gvisor-windows c3a491380) on the QEMU development VM, a CPU without FSGSBASE, XSAVE and AVX (rewrite-fxsave chosen from CPUID), as the owner's own user, with the clients as hard links to the launcher. Windows PowerShell 5.1 miscounted every step until `run.ps1` opened the process handle before the process exited (5.1 otherwise reports no exit code); with that fix all ten steps passed. Step 5 reused the layers of an earlier run on the same store, so its 4 s is a cached build.
+
+Verdict: an unmodified Podman 6.2.0 engine passes all ten acceptance steps on the development VM without FSGSBASE, XSAVE or AVX, started from the podman-portable v0.4.0 release.
