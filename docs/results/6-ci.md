@@ -59,8 +59,8 @@ What the numbers say:
   (`tools/windows/ci/leg.ps1`, `Set-Leg`). windows-runsc keeps three jobs (7 min of tests per leg). windows-fs
   split into an admin job and a standard-user job.
 - Triggers: every Windows suite fires on push to `windows` only (through `ci.yml`). nftables, fsscan, tech-tree
-  also only on `windows`; syscall-survey and syscall-tests have no push trigger. Nightly (03:17 UTC)
-  podman-windows with runs=4 and (03:43) windows-stability; syscall-tests keeps its weekly schedule.
+  also only on `windows`; syscall-survey and syscall-tests have no push trigger. No scheduled test runs (owner, 2026-11-28:
+  CI on push is enough); repeat runs are dispatched when needed. Only upstream-merge runs weekly.
 - Every workflow has `concurrency: {group: workflow-ref, cancel-in-progress: true}`; a new push cancels the
   previous run of the same workflow on the same ref. Called suites use their own group (`<name>-<ref>-ci`).
 - Moves to Linux: none. Every Windows test package is `//go:build windows` (winstub, winhost, winnat, rootfs), and

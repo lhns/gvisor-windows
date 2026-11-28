@@ -3,8 +3,6 @@
 # full output and a state dump (goroutines and stub threads) in the artifact.
 name: windows-stability
 on:
-  schedule:
-    - cron: "43 3 * * *"
   workflow_dispatch:
     inputs:
       runs: {description: "runs per mode", default: "300"}

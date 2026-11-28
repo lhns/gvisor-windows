@@ -8,8 +8,6 @@ on:
   workflow_call:
     inputs:
       prebuilt: {type: boolean, default: false}
-  schedule:
-    - cron: "17 3 * * *"
   workflow_dispatch:
     inputs:
       only: {description: 'steps to run, e.g. 4 (default all)', default: ''}
@@ -31,8 +29,8 @@ jobs:
     steps:
       - id: p
         run: |
-          n=${{ inputs.runs || (github.event_name == 'schedule' && 4 || 1) }}
-          echo "modes=$(echo '${{ inputs.modes || (github.event_name == 'schedule' && 'native,rewrite,rewrite-fxsave' || 'default') }}' | sed 's/,/","/g; s/^/["/; s/$/"]/')" >> $GITHUB_OUTPUT
+          n=${{ inputs.runs || 1 }}
+          echo "modes=$(echo '${{ inputs.modes || 'default' }}' | sed 's/,/","/g; s/^/["/; s/$/"]/')" >> $GITHUB_OUTPUT
           echo "runs=$(seq -s, 1 $n | sed 's/^/[/; s/$/]/')" >> $GITHUB_OUTPUT
   image:
     runs-on: ubuntu-latest

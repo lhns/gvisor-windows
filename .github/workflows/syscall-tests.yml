@@ -20,15 +20,13 @@ on:
       from_run:
         description: "Only make the report from the results of this earlier run (id)"
         default: ""
-  schedule:
-    - cron: "0 3 * * 0"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 env:
   UPSTREAM_SHA: c3efd8c9381c89b78c1d86b6c64a49d53ee938f8
-  # A push to the branch runs a quick subset; dispatch and schedule run all.
+  # A push to the branch runs a quick subset; a dispatch runs all.
   QUICK_TARGETS: "//test/syscalls/linux:pipe_test //test/syscalls/linux:open_test //test/syscalls/linux:fork_test //test/syscalls/linux:mmap_test //test/syscalls/linux:getdents_test //test/syscalls/linux:stat_test"
 
 jobs:
