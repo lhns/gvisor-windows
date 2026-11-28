@@ -58,7 +58,11 @@ func (n *NAT) handleTCP(r *tcp.ForwarderRequest) {
 // the guest, and returns the host port. Only the loopback address is
 // bound: no firewall prompt, no exposure to the network.
 func (n *NAT) Publish(hostPort, guestPort uint16) (uint16, error) {
-	l, err := net.Listen("tcp4", net.JoinHostPort("127.0.0.1", strconv.Itoa(int(hostPort))))
+	// No MPTCP: Go tries it first for listeners, and a seccomp-confined Sentry
+	// does not allow socket(..., IPPROTO_MPTCP).
+	var lc net.ListenConfig
+	lc.SetMultipathTCP(false)
+	l, err := lc.Listen(context.Background(), "tcp4", net.JoinHostPort("127.0.0.1", strconv.Itoa(int(hostPort))))
 	if err != nil {
 		return 0, err
 	}
