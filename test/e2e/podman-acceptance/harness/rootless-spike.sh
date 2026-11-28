@@ -68,6 +68,10 @@ start() {
     kill -0 "$(cat "$WORK/runsc.pid")" 2>/dev/null || { echo "runsc exited"; break; }
     sleep 1
   done
-  echo "engine not ready; runsc.out:"; tail -40 "$WORK/runsc.out"; return 1
+  echo "engine not ready; runsc.out:"; tail -40 "$WORK/runsc.out"
+  echo "--- diag"; ss -ltnp 2>&1 | head; pgrep -a socat; cat "$WORK/socat.log"
+  curl -sS -m 5 -v http://127.0.0.1:8888/_ping 2>&1 | tail -15
+  podman --url "unix://$SOCK" version 2>&1 | tail -15
+  return 1
 }
 case "${1:-}" in start) start ;; stop) stop ;; restart) stop; start ;; esac

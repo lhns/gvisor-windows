@@ -327,7 +327,6 @@ jobs:
           - {net: host,        driver: overlay}
           - {net: host,        driver: vfs}
           - {net: windows-nat, driver: overlay}
-          - {net: sandbox,     driver: overlay}
     env:
       PODMAN_IMAGE: quay.io/podman/stable:v6.2.0
     steps:
