@@ -196,7 +196,6 @@ flowchart TB
 | Podman on gVisor on Linux | ✔ done · mixed ⚠ | Run the acceptance test on stock gVisor on Linux; whatever fails there is a gap in gVisor itself, not in the port. |
 | Podman passes on Windows | ✔ done · successful | The bar for enough features: an unmodified Podman engine passes the acceptance test on gVisor on Windows. |
 | Podman on CPUs without FSGSBASE | ✔ done · successful | The same acceptance in rewrite mode, which older CPUs and this development VM need because they cannot set the %fs base from user mode. |
-| Podman client over the named pipe | ⚠ open | The stock Windows podman client connects over a unix socket path without a drive letter, so the zip only works from drive C:; the docker CLI uses the named pipe. |
 | Pick gVisor as the base | ✔ done · unrated | Of all ways to run Linux code on Windows without admin, gVisor's user-space Linux kernel is the only one that already runs containers. |
 | Name it gvisor-windows | ✔ done · n/a | The project is an unofficial fork of gVisor's Go branch called gvisor-windows. |
 | Go or no-go after Phase 0 | ✔ done · n/a | Go: the owner asked for the full project; ADR 0004 lists the conditions. |
@@ -210,7 +209,6 @@ flowchart TB
 **windows-ci**
 
 - `sentry-waitgroup-panic`: One-off negative WaitGroup panic
-- `workloads-podman-client-on-pipe`: Podman client over the named pipe
 <!-- END GENERATED: ready-now -->
 
 ## Running
@@ -243,7 +241,7 @@ Generated on 2026-11-28.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 128 done, 7 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 129 done, 7 abandoned</summary>
 
 - `fs-attribute-cache`: Faster stat walks on host folders (✔ done · mixed). A git-status-like walk of 20000 files takes 1.2-2.4 s through the host folder; an attribute cache fed by the change watcher would bring stat near native.
   - Cold stat walk on a fresh mount is still about 4x native, 99-105 us per file (2026-11-26)
@@ -365,6 +363,7 @@ Generated on 2026-11-28.
   - CI uploads a runsc-windows-amd64-<shortsha> package (runsc.exe, hello bundle, README, NOTICE, LICENSE) on each push to windows (2026-11-27)
   - Published gvisor-windows v0.1.0 (pre-release, runsc for Windows and Linux) from release run 46093187743 and podman-portable v0.1.0 (single exe and zip) (2026-11-28)
   - Published gvisor-windows v0.2.0 by hand from the gated assets of release run 46110083701: its publish step was refused because workflow files on windows changed during the gates; podman-portable v0.2.0 and v0.3.0 were published by its release workflow (2026-11-28)
+  - podman-portable v0.4.0: the engine pipe name carries the user (a constant name blocked a second user on one machine); two-user isolation tests on Windows and Linux (2026-11-28)
 - `ops-syscall-tests-on-windows`: gVisor syscall tests on Windows (✔ done · mixed). gVisor's own syscall test suite runs against the Windows port to show which Linux calls work.
   - Linux runsc 81.5%, Windows with network 77.3% of 14620 cases (2026-11-27)
 - `ops-upstream-merges`: Merge upstream gVisor regularly (✔ done · successful). Regularly take in upstream gVisor's Go branch so the port does not drift.
@@ -430,6 +429,7 @@ Generated on 2026-11-28.
 - `sentry-epoll-timeout-overshoot`: Rare long epoll timeout overshoot (✔ fixed). A 30 ms timer signal meant to interrupt epoll_wait took 212 ms once in about 12 leg runs (rewrite-fxsave); the clocks test now retries, so CI would hide a repeat.
 - `sentry-host-io-under-locks`: Host writes that block for seconds (✔ fixed). A WriteFile to the debug log blocked for seconds on CI runners, mostly at the first boot; any other host I/O done while holding a Sentry lock would stall the guest the same way.
 - `sentry-sh-wait-status-flake`: Flaky shell wait status test (✔ fixed). The sentry-guests case sh_wait_status sometimes gets 2 instead of 143 from wait on a killed background job (native and rewrite-fxsave).
+- `workloads-podman-client-on-pipe`: Podman client over the named pipe (✔ fixed). The stock Windows podman client connects over a unix socket path without a drive letter, so the zip only works from drive C:; the docker CLI uses the named pipe.
 
 </details>
 <!-- END GENERATED: done-by-month -->
@@ -444,7 +444,7 @@ Each track has its own page with its tree, node table and per-node details.
 - [sentry - sentry](roadmap/tracks/sentry.md): 18 nodes (16 done, 1 next, 1 parked)
 - [fs - files](roadmap/tracks/fs.md): 23 nodes (23 done)
 - [net - network](roadmap/tracks/net.md): 5 nodes (5 done)
-- [workloads - workloads](roadmap/tracks/workloads.md): 23 nodes (22 done, 1 next)
+- [workloads - workloads](roadmap/tracks/workloads.md): 23 nodes (23 done)
 - [research - research](roadmap/tracks/research.md): 9 nodes (3 done, 6 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 13 nodes (11 done, 2 next)
 <!-- END GENERATED: tracks -->

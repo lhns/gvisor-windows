@@ -1118,6 +1118,7 @@
   - Published gvisor-windows v0.1.0 (pre-release, runsc for Windows and Linux) from release run 46093187743 and podman-portable v0.1.0 (single exe and zip) (2026-11-28, commit b907ae6aa)
   - 'Published gvisor-windows v0.2.0 by hand from the gated assets of release run 46110083701: its publish step was refused because workflow files on windows changed during the gates; podman-portable v0.2.0
     and v0.3.0 were published by its release workflow (2026-11-28, commit c3a491380)'
+  - 'podman-portable v0.4.0: the engine pipe name carries the user (a constant name blocked a second user on one machine); two-user isolation tests on Windows and Linux (2026-11-28, commit c3a491380)'
   overview: false
   plain: Ship runsc for Windows as a zip or per-user installer that needs no admin.
   notes: The Podman bundle moved to lhns/podman-portable (ADR 0023); this repo ships runsc.exe plus a hello bundle, tested from a fresh standard user profile. Draft releases come from release.yml after
@@ -2884,7 +2885,7 @@
   depends_on: &id021 []
   replaced_by: &id022 []
   start: '2026-11-28'
-  end: ''
+  end: '2026-11-28'
   folded: &id023 []
   overview: false
   lane: windows-ci
@@ -2892,11 +2893,11 @@
   title: Podman client over the named pipe
   track: workloads
   kind: defect
-  state: next
+  state: done
   evidence:
   - tools/windows/ci/README-release.md
   plain: The stock Windows podman client connects over a unix socket path without a drive letter, so the zip only works from drive C:; the docker CLI uses the named pipe.
-  notes: Now in lhns/podman-portable (the bundle); fixed when the stock podman client works from any drive, tested by its CI.
+  notes: 'Fixed in lhns/podman-portable: podman 6.2.0 has no npipe:// support, so the client uses unix:////./C:/... which works from any drive; the docker-compatible API is on the per-user pipe.'
 - outcome: unrated
   verdict_quote: ''
   headline: ''
