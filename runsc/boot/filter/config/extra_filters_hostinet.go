@@ -24,7 +24,7 @@ import (
 )
 
 // hostInetFilters contains syscalls that are needed by sentry/socket/hostinet.
-func hostInetFilters(allowRawSockets bool) seccomp.SyscallRules {
+func hostInetFilters(allowRawSockets, nat bool) seccomp.SyscallRules {
 	rules := seccomp.MakeSyscallRules(map[uintptr]seccomp.SyscallRule{
 		unix.SYS_ACCEPT4: seccomp.PerArg{
 			seccomp.AnyValue{},
@@ -144,6 +144,18 @@ func hostInetFilters(allowRawSockets bool) seccomp.SyscallRules {
 			rule[2] = seccomp.AnyValue{}
 		}
 		socketRules = append(socketRules, rule)
+	}
+	if nat {
+		// Go's net package creates TCP and UDP sockets with protocol 0.
+		for _, fam := range []int{unix.AF_INET, unix.AF_INET6} {
+			for _, typ := range []int{unix.SOCK_STREAM, unix.SOCK_DGRAM} {
+				socketRules = append(socketRules, seccomp.PerArg{
+					seccomp.EqualTo(fam),
+					seccomp.EqualTo(typ | unix.SOCK_NONBLOCK | unix.SOCK_CLOEXEC),
+					seccomp.EqualTo(0),
+				})
+			}
+		}
 	}
 	rules.Set(unix.SYS_SOCKET, socketRules)
 

@@ -87,6 +87,9 @@ type Options struct {
 	Platform              platform.SeccompInfo
 	HostNetwork           bool
 	HostNetworkRawSockets bool
+	// HostNetworkNAT: the user-space NAT of --network=windows-nat dials and
+	// listens through Go's net package (socket() with protocol 0).
+	HostNetworkNAT bool
 	HostFS                HostFSAccess
 	ProcSelfFD            uint32
 	ProfileEnable         bool
@@ -132,6 +135,7 @@ func (opt Options) ConfigKey() string {
 	fmt.Fprintf(&sb, "Platform=%q ", opt.Platform.ConfigKey())
 	fmt.Fprintf(&sb, "HostNetwork=%t ", opt.HostNetwork)
 	fmt.Fprintf(&sb, "HostNetworkRawSockets=%t ", opt.HostNetworkRawSockets)
+	fmt.Fprintf(&sb, "HostNetworkNAT=%t ", opt.HostNetworkNAT)
 	fmt.Fprintf(&sb, "HostFS=%v ", opt.HostFS)
 	fmt.Fprintf(&sb, "ProfileEnable=%t ", opt.ProfileEnable)
 	fmt.Fprintf(&sb, "Instrumentation=%t ", isInstrumentationEnabled())
@@ -218,7 +222,7 @@ func rules(opt Options, vars precompiledseccomp.Values) (seccomp.SyscallRules, s
 	s.Merge(instrumentationFilters())
 
 	if opt.HostNetwork {
-		s.Merge(hostInetFilters(opt.HostNetworkRawSockets))
+		s.Merge(hostInetFilters(opt.HostNetworkRawSockets, opt.HostNetworkNAT))
 	}
 	if opt.ProfileEnable {
 		s.Merge(profileFilters())

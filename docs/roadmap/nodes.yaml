@@ -2974,7 +2974,7 @@
   depends_on: *id027
   replaced_by: *id028
   start: '2026-11-28'
-  end: ''
+  end: '2026-11-28'
   folded: *id029
   overview: false
   lane: linux-ci
@@ -2982,10 +2982,11 @@
   title: User-space NAT on rootless Linux
   track: net
   kind: defect
-  state: next
+  state: done
   outcome: unrated
   evidence:
   - docs/results/0e-linux-rootless.md
   plain: With --network=windows-nat on Linux the engine starts and answers through the published port, but the sandbox dies from seccomp (SIGSYS) at the first podman pull; the syscall is not identified
     yet.
-  notes: 'Fixed when: the rootless Linux spike passes the strict steps 7 and 8 (bridge, -p, compose by name) with the user-space NAT.'
+  notes: 'Fixed: three seccomp gaps under windows-nat on Linux (resolv.conf read by Go resolver, now a --nat-dns upstream; protocol-0 sockets; an MPTCP listener) plus nftables for this mode; the rootless
+    spike passes all 10 strict steps as an ordinary user.'

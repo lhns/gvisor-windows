@@ -1553,6 +1553,7 @@ func (l *Loader) installSeccompFilters(hostFS filter.HostFSAccess) error {
 			Platform:              l.k.Platform.SeccompInfo(),
 			HostNetwork:           hostnet,
 			HostNetworkRawSockets: hostnet && l.root.conf.EnableRaw,
+			HostNetworkNAT:        l.root.conf.Network == config.NetworkWindowsNAT,
 			HostFS:                hostFS,
 			ProcSelfFD:            uint32(l.procSelfFD),
 			ProfileEnable:         l.root.conf.ProfileEnable,

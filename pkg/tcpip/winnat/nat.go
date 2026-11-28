@@ -68,6 +68,11 @@ type Options struct {
 	// Resolver answers the guest's DNS queries; net.DefaultResolver (the
 	// Windows resolver) when nil.
 	Resolver *net.Resolver
+	// UpstreamDNS ("ip:port"), if set, makes the NAT forward the guest's DNS
+	// queries unparsed to that server instead of using Resolver. For hosts where
+	// the process must not open files (the Go resolver reads /etc/resolv.conf,
+	// which a seccomp-confined Sentry cannot).
+	UpstreamDNS string
 	// HostLoopback maps connections to GatewayIP to 127.0.0.1 of the host,
 	// so the guest can reach host services. Off by default: it exposes
 	// everything listening on the host's loopback to the guest.

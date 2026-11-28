@@ -196,7 +196,6 @@ flowchart TB
 | Open Windows files directly | ✔ done · successful | The Sentry opens NTFS files itself for bind mounts, with its own caches, instead of going through a file protocol. |
 | Netstack to Windows sockets | ✔ done · successful | gVisor's own TCP/IP stack sends guest traffic out through ordinary Windows sockets, like a user-space NAT. |
 | Bridge networking inside gVisor | ✔ done · successful | Podman's default network creates a bridge and veth pairs over netlink; gVisor lacks part of that, so it fails today. Fix it in gVisor itself, first on Linux, then it carries over to Windows. |
-| User-space NAT on rootless Linux | ⚠ open | With --network=windows-nat on Linux the engine starts and answers through the published port, but the sandbox dies from seccomp (SIGSYS) at the first podman pull; the syscall is not identified yet. |
 | Podman on gVisor on Linux | ✔ done · mixed ⚠ | Run the acceptance test on stock gVisor on Linux; whatever fails there is a gap in gVisor itself, not in the port. |
 | Podman passes on Windows | ✔ done · successful | The bar for enough features: an unmodified Podman engine passes the acceptance test on gVisor on Windows. |
 | Podman on CPUs without FSGSBASE | ✔ done · successful | The same acceptance in rewrite mode, which older CPUs and this development VM need because they cannot set the %fs base from user mode. |
@@ -211,10 +210,6 @@ flowchart TB
 ## Ready now
 
 <!-- BEGIN GENERATED: ready-now -->
-**linux-ci**
-
-- `net-linux-nat-seccomp`: User-space NAT on rootless Linux
-
 **windows-ci**
 
 - `sentry-waitgroup-panic`: One-off negative WaitGroup panic
@@ -254,7 +249,7 @@ Generated on 2026-11-28.
 ## Done, by month
 
 <!-- BEGIN GENERATED: done-by-month -->
-<details><summary><b>Nov 2026</b>: 123 done, 7 abandoned</summary>
+<details><summary><b>Nov 2026</b>: 124 done, 7 abandoned</summary>
 
 - `fs-attribute-cache`: Faster stat walks on host folders (✔ done · mixed). A git-status-like walk of 20000 files takes 1.2-2.4 s through the host folder; an attribute cache fed by the change watcher would bring stat near native.
   - Cold stat walk on a fresh mount is still about 4x native, 99-105 us per file (2026-11-26)
@@ -431,6 +426,7 @@ Generated on 2026-11-28.
   - Rewrite Podman: all 10 steps 7 of 8, then 8 of 8 (runs 46016231319, 46020575644) (2026-11-27)
 - `workloads-tty-through-windows-client`: Interactive TTY through the Windows client (✔ fixed). The Windows podman client says "The input device is not a TTY" inside the ConPTY test driver, so the interactive step cannot type into the container.
 - `workloads-volume-lost-on-restart`: Volume data lost across engine restart (✔ fixed). In 2 of 5 complete native runs, the named volume written before the engine restart is empty afterwards (step 9).
+- `net-linux-nat-seccomp`: User-space NAT on rootless Linux (✔ fixed). With --network=windows-nat on Linux the engine starts and answers through the published port, but the sandbox dies from seccomp (SIGSYS) at the first podman pull; the syscall is not identified yet.
 - `research-linux-rootless-podman`: Podman on Linux without root (✔ done · mixed). This branch's runsc runs an unmodified Podman engine as an ordinary Linux user without Docker; 9 of 10 steps pass with host networking.
 - `sentry-epoll-timeout-overshoot`: Rare long epoll timeout overshoot (✔ fixed). A 30 ms timer signal meant to interrupt epoll_wait took 212 ms once in about 12 leg runs (rewrite-fxsave); the clocks test now retries, so CI would hide a repeat.
 
@@ -446,7 +442,7 @@ Each track has its own page with its tree, node table and per-node details.
 - [platform - platform](roadmap/tracks/platform.md): 45 nodes (40 done, 1 next, 3 parked, 1 abandoned)
 - [sentry - sentry](roadmap/tracks/sentry.md): 18 nodes (14 done, 3 next, 1 parked)
 - [fs - files](roadmap/tracks/fs.md): 23 nodes (23 done)
-- [net - network](roadmap/tracks/net.md): 5 nodes (4 done, 1 next)
+- [net - network](roadmap/tracks/net.md): 5 nodes (5 done)
 - [workloads - workloads](roadmap/tracks/workloads.md): 23 nodes (22 done, 1 next)
 - [research - research](roadmap/tracks/research.md): 9 nodes (3 done, 6 abandoned)
 - [ops - operations](roadmap/tracks/ops.md): 13 nodes (11 done, 2 next)

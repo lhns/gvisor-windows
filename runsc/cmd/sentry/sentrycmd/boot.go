@@ -691,7 +691,7 @@ func (b *Boot) Execute(_ context.Context, f *flag.FlagSet, args ...any) subcomma
 	}
 
 	// NFtables is only supported for netstack.
-	if (conf.Network == config.NetworkNone || conf.Network == config.NetworkSandbox) && conf.Nftables {
+	if (conf.Network == config.NetworkNone || conf.Network == config.NetworkSandbox || conf.Network == config.NetworkWindowsNAT) && conf.Nftables {
 		nftables.EnableNFTables()
 	}
 

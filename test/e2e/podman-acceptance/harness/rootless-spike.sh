@@ -11,7 +11,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 mkdir -p "$WORK"/{state,logs,storage,bundle} "$SHARE_DIR"
 RUNSC=("$GV/runsc" --rootless --ignore-cgroups --network="$NET" --platform=systrap --overlay2=root:memory
        --in-sandbox-cgroup=v2 --root "$WORK/state" --debug --debug-log="$WORK/logs/")
-[ "$NET" = windows-nat ] && RUNSC+=(--publish=8888:8888,8080:80)
+[ "$NET" = windows-nat ] && RUNSC+=(--publish=8888:8888)
 
 mkspec() {
   mkdir -p "$ROOTFS/etc/containers" "$ROOTFS/run" "$ROOTFS/tmp" "$ROOTFS/var/lib/containers" "$ROOTFS/mnt"

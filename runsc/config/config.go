@@ -506,6 +506,11 @@ type Config struct {
 	// gvisor-windows: new flag.
 	Publish string `flag:"publish"`
 
+	// NATDNS is the upstream DNS server ("ip:port") of --network=windows-nat;
+	// empty uses the host's Go resolver. `runsc run` fills it from the host's
+	// /etc/resolv.conf because the confined Sentry cannot read that file.
+	NATDNS string `flag:"nat-dns"`
+
 	// Nftables enables support for nftables to be used instead of iptables.
 	Nftables bool `flag:"nftables"`
 

@@ -1,6 +1,6 @@
 # 0e: Podman engine in a rootless runsc on Linux (spike)
 
-Verdict: feasible with 1 known fix (host networking works today, 9 of 10 steps pass); the isolated-network mode needed for the strict bar (-p publish, compose by service name) is not yet working because `--network=sandbox` is refused with `--rootless` and the user-space NAT (`--network=windows-nat`) is killed by seccomp on Linux.
+Verdict: feasible, with the strict bar met: as an unprivileged user, with no Docker and no root, this branch's rootless runsc runs an unmodified Podman 6.2.0 engine and passes all 10 steps in the strict variant (default bridge, `-p 8080:80`, compose by service name) through `--network=windows-nat`, after 5 small generic fixes (section "Seccomp gap closed"); host networking passes 9 of 10.
 
 Branch `linux-rootless-spike`, job `spike-rootless` in `.github/workflows/podman-acceptance-linux.yml` (dispatch only, input `spike_rootless`; other jobs are skipped when it is true). Runs: 46091596698 (engine start, first NAT result), 46092181445 (host results below). ubuntu-latest (24.04), runsc built from this tree (`go build ./runsc`, `./runsc/cmd/sentry`, sidecars from the latest release bundle), Podman engine `quay.io/podman/stable:v6.2.0`, client podman 4.9 (apt) and docker compose from the runner, all run as user `spike` (useradd, no sudo, no docker group).
 
@@ -43,3 +43,17 @@ No Sentry fixes were needed for the host mode: the shared fixes from the Windows
 
 - Host-network bundle (runsc + sidecars + erofs/OCI rootfs + this launcher): works now, needs packaging, a documented prerequisite for AppArmor userns on Ubuntu 24.04+, a resolv.conf choice, and a decision on what to say about missing network isolation and port 80: about 2 to 3 days.
 - Same promise as on Windows (isolated bridge network, `-p`, compose by name) through the user-space NAT: depends on finding the one seccomp gap (probably a few hours to 1 day), then re-running the strict steps 7 and 8 and the netavark/nft path on top of it (the NAT mode on Windows already passes them, so no new Sentry work is expected): about 3 to 5 days in total, with the seccomp gap as the risk.
+
+## Seccomp gap closed (branch `linux-nat-seccomp`)
+
+Method: a CI-only build with `const debugFilter = true` in `runsc/boot/filter/filter.go` (matrix entry `dbg`, applied by `sed`, not committed) makes a seccomp violation a SIGSYS trap, and Go prints a panic stack with the call site in the boot log. That replaced strace and found each gap in one run. Three gaps, in the order they appeared:
+
+1. `openat(AT_FDCWD, "/etc/resolv.conf", O_RDONLY|O_CLOEXEC)` from `net.dnsReadConfig` (Go resolver, first DNS query of `podman pull`). Not allowed: the filter only permits `openat` relative to a real FD, and widening it would let a compromised Sentry read host files. Fix: `winnat.Options.UpstreamDNS`, new flag `--nat-dns`; the NAT forwards the guest's raw DNS queries over UDP to one upstream server, and `runsc run` fills it from the first IPv4 nameserver of the host's `/etc/resolv.conf` before the sandbox starts (empty, so unchanged, on Windows).
+2. `socket(AF_INET, SOCK_DGRAM|SOCK_NONBLOCK|SOCK_CLOEXEC, 0)` from `net.Dialer` (protocol 0; hostinet always passes the explicit protocol). Fix: new filter option `HostNetworkNAT` (set only for `--network=windows-nat`) adds the four rules AF_INET/AF_INET6 x STREAM/DGRAM with exactly these flags and protocol 0.
+3. `socket(AF_INET, SOCK_STREAM, IPPROTO_MPTCP=262)` from `net.Listen` (Go tries MPTCP first for listeners) when Podman asked the gateway to publish 8080. Fix in code, not in the filter: `ListenConfig.SetMultipathTCP(false)` in `winnat.Publish`.
+
+Two more generic fixes were not seccomp: `runsc/cmd/sentry/sentrycmd/boot.go` registered NETLINK_NETFILTER only for `none`/`sandbox` (netavark failed with `nft ... Unable to initialize Netlink socket: Protocol not supported`); `windows-nat` now enables it on Linux as `winrunsc` already did on Windows. And the spike harness must not pre-publish 8080 (`--publish=8888:8888` only), or Podman's forwarder `expose` fails with `bind: address already in use`.
+
+Results with `--network=windows-nat`, rootless, as user `spike` (run 46095673751, both the normal and the seccomp-trap build): steps 1 to 10 all PASS, FAILED_STEPS=0. Earlier runs on the way: 46093938006 (resolv.conf gap), 46094579801 (pull passes, nft netlink missing: 2/10), 46094956489 (7/10, MPTCP kill at step 7), 46095334618 (9/10, step 7 port clash).
+
+Estimate for the Linux bundle: the engine side is done; what is left is packaging (runsc + sidecars, rootfs, launcher with the socat/unix socket or a `--unix-forward` equivalent, the AppArmor userns prerequisite on Ubuntu 24.04+) and a decision to ship `windows-nat` as the Linux network mode: about 2 to 3 days. Unmeasured: throughput of the user-space NAT on Linux, and a host with `systemd-resolved` only on 127.0.0.53 (it worked on the runner).
