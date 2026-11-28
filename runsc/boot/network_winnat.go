@@ -52,6 +52,11 @@ func setupWindowsNAT(conf *config.Config, s *stack.Stack) error {
 	if err != nil {
 		return err
 	}
+	// Go reads /proc/sys/net/core/somaxconn on its first Listen; do that now, before the
+	// seccomp filter forbids the open, so a runtime publish (podman run -p) can listen later.
+	if l, err := net.Listen("tcp", "127.0.0.1:0"); err == nil {
+		l.Close()
+	}
 	var nat *winnat.NAT
 	nat, err = winnat.New(winnat.Options{UpstreamDNS: conf.NATDNS, HostLoopback: WindowsNATHostLoopback, GatewayHTTP: forwarderAPI(func() *winnat.NAT { return nat })})
 	if err != nil {
