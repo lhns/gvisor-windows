@@ -150,6 +150,7 @@ type patchSnap struct {
 	absAt                              []absRec
 	relAt                              []relRec
 	shared                             []sharedRec
+	inPlace                            bool
 }
 
 // textKeyFor returns the key of a patch of [lo,hi) now. A range across the two
@@ -374,7 +375,7 @@ func (as *addressSpace) snapshot() (*patchSnap, int) {
 		tailExact: maps.Clone(as.tailExact), fsCache: maps.Clone(as.fsCache), fsVen: append([]*fsVenInfo(nil), as.fsVen...),
 		fsUD2: maps.Clone(as.fsUD2), fsSplit: maps.Clone(as.fsSplit), tails: maps.Clone(as.tails), heads: maps.Clone(as.heads),
 		fsWhy: maps.Clone(as.fsWhy), edges: maps.Clone(as.edges),
-		absAt: slices.Clone(as.absAt), relAt: slices.Clone(as.relAt), shared: slices.Clone(as.shared),
+		absAt: slices.Clone(as.absAt), relAt: slices.Clone(as.relAt), shared: slices.Clone(as.shared), inPlace: as.inPlace,
 	}
 	size := 0
 	for _, r := range as.areaUsed() {
@@ -439,7 +440,7 @@ func (as *addressSpace) applySnap(s *patchSnap, histAfter [32]byte, bases [2]uin
 	as.tailExact, as.fsCache, as.fsVen = maps.Clone(s.tailExact), maps.Clone(s.fsCache), append([]*fsVenInfo(nil), s.fsVen...)
 	as.fsUD2, as.fsSplit, as.tails, as.heads = maps.Clone(s.fsUD2), maps.Clone(s.fsSplit), maps.Clone(s.tails), maps.Clone(s.heads)
 	as.fsWhy, as.edges = maps.Clone(s.fsWhy), maps.Clone(s.edges)
-	as.absAt, as.relAt, as.shared = slices.Clone(s.absAt), slices.Clone(s.relAt), slices.Clone(s.shared)
+	as.absAt, as.relAt, as.shared, as.inPlace = slices.Clone(s.absAt), slices.Clone(s.relAt), slices.Clone(s.shared), s.inPlace
 	for as.fbigView != nil && as.gcommit < s.gcommit {
 		if _, err := windows.VirtualAlloc(uintptr(as.fbigView)+uintptr(as.gcommit-stubasm.FSBig), uintptr(stubasm.FSBigChunk), windows.MEM_COMMIT, windows.PAGE_READWRITE); err != nil {
 			as.histOK = false

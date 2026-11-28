@@ -97,6 +97,9 @@ func isStub(a uint64) bool {
 // relocSnap returns s moved by d (per region), or nil and why not. The caller holds
 // as.mu; nothing of as changes (but the platform's shared veneer registry may grow).
 func (as *addressSpace) relocSnap(s *patchSnap, d [2]uint64) (*patchSnap, string) {
+	if s.inPlace {
+		return nil, "text patched again in place"
+	}
 	for _, t := range s.texts {
 		r := regionOf(t.lo)
 		if d[r] == 0 {
@@ -155,7 +158,7 @@ func (as *addressSpace) relocSnap(s *patchSnap, d [2]uint64) (*patchSnap, string
 		siteCache: make(map[uint64]siteInfo, len(s.siteCache)), restartAt: make(map[uint64]uint64, len(s.restartAt)),
 		ud2Sites: rekey(s.ud2Sites, ra), tailExact: rekey(s.tailExact, ra), fsCache: make(map[fsKey]uint64, len(s.fsCache)),
 		fsUD2: rekey(s.fsUD2, ra), fsSplit: rekey(s.fsSplit, ra), tails: rekey(s.tails, ra), heads: rekey(s.heads, ra),
-		fsWhy: rekey(s.fsWhy, ra), edges: rekey(s.edges, ra), shared: shared,
+		fsWhy: rekey(s.fsWhy, ra), edges: rekey(s.edges, ra), shared: shared, inPlace: s.inPlace,
 	}
 	for k, v := range s.siteCache {
 		n.siteCache[ra(k)] = v

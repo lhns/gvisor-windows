@@ -328,6 +328,19 @@ jobs:
               $o -split "`n" | Select-String 'PROFSTATS key winstub (text|syscall site)' | ForEach-Object { "  $leg $name $($_.Line.Trim())" } | Tee-Object -Append out/loops.txt
             }
           }
+      - name: Many execs (the shared veneer area fills)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          . tools/windows/ci/leg.ps1
+          Set-Leg rewrite
+          $env:GVISOR_PROFSTATS = '1'
+          foreach ($n in 300, 1000) {
+            $t0 = Get-Date
+            $o = & C:\ci\bin\sentryguest.exe -profstats -sysmounts -timeout=1200s '-tar=dl/fsroot.tar' '-env=PATH=/usr/bin:/bin,HOME=/tmp' /bin/bash -c "for i in `$(seq $n); do /bin/true; done" 2>&1 | Out-String
+            "MANYEXEC rewrite $n x /bin/true: $([math]::Round(((Get-Date) - $t0).TotalSeconds, 2)) s, $(($o -split "`n" | Select-String 'sentryguest: exit') -join ' ')" | Tee-Object -Append out/many.txt
+            $o -split "`n" | Select-String 'PROFSTATS key winstub (text|syscall site)' | ForEach-Object { "  $($_.Line.Trim())" } | Tee-Object -Append out/many.txt
+          }
       - name: Text operations of two execs (trace)
         continue-on-error: true
         shell: pwsh

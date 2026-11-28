@@ -148,9 +148,10 @@ type addressSpace struct {
 	privs     []*privSection
 	edges     map[uint64]edge
 	// What relocating the patch state must change (textreloc_windows.go).
-	absAt  []absRec
-	relAt  []relRec
-	shared []sharedRec
+	absAt   []absRec
+	relAt   []relRec
+	shared  []sharedRec
+	inPlace bool // text was patched again in place (fixHead): the state is not relocated
 
 	createMu  sync.Mutex // serializes thread creation
 	lastEvent atomic.Value
@@ -984,7 +985,7 @@ func (as *addressSpace) patchText(content []byte, lo, hi uint64) siteStats {
 		}
 	}
 	if scan.tail0f && highE.head05 {
-		as.pinBases() // (fixHead patches in place what the relocation records do not describe)
+		as.inPlace = true // (fixHead patches in place what the relocation records do not describe)
 		if as.fixHead(hi) {
 			as.ud2Sites[hi-1] = true
 			highE.head05 = false

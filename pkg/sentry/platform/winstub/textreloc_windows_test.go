@@ -224,6 +224,20 @@ func TestTextRelocate(t *testing.T) {
 		t.Fatalf("child: syscall %d rdi %d, want 501 77", nr, ac2.StateData().Regs.Rdi)
 	}
 
+	// A state with text patched again in place (fixHead) is not relocated.
+	other := h.newMM()
+	place(other, lo0, hi0)
+	oas := other.as.(*addressSpace)
+	oas.mu.Lock()
+	snap, _ := oas.snapshot()
+	snap.inPlace = true
+	n, why := oas.relocSnap(snap, [2]uint64{lo1 - lo0, hi1 - hi0})
+	oas.mu.Unlock()
+	snap.release()
+	if n != nil || why != "text patched again in place" {
+		t.Fatalf("a state patched in place was relocated (%q)", why)
+	}
+
 	// Out of rel32 reach of the stub area (still the low region): patched.
 	far := h.newMM()
 	relocs = h.p.texts.relocs.Load()
