@@ -8,15 +8,8 @@ import (
 var (
 	pQPC    = syscall.NewLazyDLL("kernel32.dll").NewProc("QueryPerformanceCounter")
 	pQPF    = syscall.NewLazyDLL("kernel32.dll").NewProc("QueryPerformanceFrequency")
-	pCPU    = syscall.NewLazyDLL("kernel32.dll").NewProc("GetCurrentProcessorNumber")
 	qpcFreq float64
 )
-
-// profCPU returns the processor the caller runs on.
-func profCPU() int32 {
-	r, _, _ := pCPU.Call()
-	return int32(r)
-}
 
 // profNow returns a high-resolution monotonic time in ns (Go's clock ticks only every 0.5 to 15 ms on Windows).
 func profNow() int64 {

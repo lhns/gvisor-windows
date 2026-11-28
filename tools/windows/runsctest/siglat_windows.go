@@ -47,13 +47,15 @@ var (
 
 // testSiglat (dispatch only, -only siglat) measures timer signal latency: fresh
 // sandboxes running the whole clocks guest, then
-// sandboxes looping the timeouts and siglat groups, with the Sentry's trace
-// (GVISOR_SIGLAT) and stall watches in runsc and in this process. It prints the
+// sandboxes looping the timeouts and siglat groups, with stall watches in this
+// process (one heartbeat per processor). With a runsc built with the Sentry's
+// trace (GVISOR_SIGLAT; branch sentry-siglat at e75e051e6, not merged) it also
+// lines up the trace's SIGLAT lines with the heartbeats. It prints the
 // latency distribution per kind and every outlier with what the traces saw around
 // it (docs/results/3e-signal-latency.md). Report only: it fails only if a guest
 // did not run to its end.
 func testSiglat() error {
-	// Trace every timer signal later than 5 ms.
+	// A traced runsc reports every timer signal later than 5 ms.
 	os.Setenv("GVISOR_SIGLAT", "5")
 	defer os.Unsetenv("GVISOR_SIGLAT")
 	var host lockedBuf

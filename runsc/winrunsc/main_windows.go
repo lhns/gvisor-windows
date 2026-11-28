@@ -19,7 +19,6 @@ import (
 	"runtime"
 	"strings"
 	"gvisor.dev/gvisor/pkg/sentry/platform/winstub"
-	"gvisor.dev/gvisor/pkg/stallwatch"
 	"sync"
 	"time"
 
@@ -66,18 +65,7 @@ func Main() {
 			}
 		}
 	}
-	// GVISOR_SIGLAT=1 traces timer signal latency (kernel/siglat.go) and watches this
-	// process for stalls (docs/results/3e-signal-latency.md).
-	var stalls *stallwatch.Watch
-	if kernel.SigLat {
-		stalls = stallwatch.Start("runsc", os.Stderr, 20*time.Millisecond, false)
-	}
 	code := run(os.Args[1:])
-	if stalls != nil {
-		stalls.Stop()
-		kernel.DumpSigLat(os.Stderr)
-		winstub.DumpSigLat(os.Stderr)
-	}
 	if kernel.ProfStats {
 		if tbl, ok := kernel.LookupSyscallTable(abi.Linux, arch.AMD64); ok {
 			kernel.DumpProfStats(os.Stderr, tbl.LookupName)
@@ -440,16 +428,7 @@ func (r *reportingWriter) Write(p []byte) (int, error) {
 	if logStall > 0 && bytes.Contains(p, []byte("Notified of signal")) {
 		time.Sleep(logStall)
 	}
-	var t0 int64
-	if kernel.SigLat {
-		t0 = stallwatch.Now()
-	}
 	n, err := r.w.Write(p)
-	if kernel.SigLat {
-		if d := stallwatch.Now() - t0; d >= 5e6 {
-			fmt.Fprintf(os.Stderr, "SIGLAT debug log write took %.2f ms (qpc %.3f ms)\n", float64(d)/1e6, float64(t0+d)/1e6)
-		}
-	}
 	if err != nil {
 		r.once.Do(func() { fmt.Fprintf(os.Stderr, "runsc: the debug log stopped: %v"+string(rune(10)), err) })
 	}

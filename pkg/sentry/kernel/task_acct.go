@@ -127,13 +127,7 @@ type itimerRealListener struct {
 // +checklocksexclude:l.tg.pidns.owner.mu
 // +checklocksexclude:l.tg.signalHandlers.mu
 func (l *itimerRealListener) NotifyTimer(exp uint64) {
-	if SigLat {
-		sigLatFire(int32(linux.SIGALRM)) // gvisor-windows
-	}
 	l.tg.SendSignal(SignalInfoPriv(linux.SIGALRM))
-	if SigLat {
-		sigLatSent()
-	}
 }
 
 // +stateify savable

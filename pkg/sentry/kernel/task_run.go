@@ -274,13 +274,7 @@ func (app *runApp) execute(t *Task) taskRunState {
 	if ProfStats {
 		profT0 = profNow()
 	}
-	if SigLat {
-		sigLatSwitch(t, true, nil) // gvisor-windows
-	}
 	info, at, err := t.p.Switch(t, t.MemoryManager(), t.Arch(), t.rseqCPU)
-	if SigLat {
-		sigLatSwitch(t, false, err)
-	}
 	if ProfStats {
 		o := 4
 		switch err {
