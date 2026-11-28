@@ -1115,6 +1115,7 @@
   end: '2026-11-27'
   folded:
   - CI uploads a runsc-windows package (runsc.exe, hello bundle, README) on each push to windows (2026-11-27, commit 20ac3fb3b)
+  - Published gvisor-windows v0.1.0 (pre-release, runsc for Windows and Linux) from release run 46093187743 and podman-portable v0.1.0 (single exe and zip) (2026-11-28, commit b907ae6aa)
   overview: false
   plain: Ship runsc for Windows as a zip or per-user installer that needs no admin.
   notes: The Podman bundle moved to lhns/podman-portable (ADR 0023); this repo ships runsc.exe plus a hello bundle, tested from a fresh standard user profile. Draft releases come from release.yml after

@@ -368,6 +368,7 @@ Generated on 2026-11-28.
   - Owner decision: CI on push only, no scheduled test runs; repeats are dispatched when needed (2026-11-28)
 - `ops-portable-packaging`: Portable zip, no installer (✔ done · unrated). Ship runsc for Windows as a zip or per-user installer that needs no admin.
   - CI uploads a runsc-windows package (runsc.exe, hello bundle, README) on each push to windows (2026-11-27)
+  - Published gvisor-windows v0.1.0 (pre-release, runsc for Windows and Linux) from release run 46093187743 and podman-portable v0.1.0 (single exe and zip) (2026-11-28)
 - `ops-syscall-tests-on-windows`: gVisor syscall tests on Windows (✔ done · mixed). gVisor's own syscall test suite runs against the Windows port to show which Linux calls work.
   - Linux runsc 81.5%, Windows with network 77.3% of 14620 cases (2026-11-27)
 - `ops-upstream-merges`: Merge upstream gVisor regularly (✔ done · successful). Regularly take in upstream gVisor's Go branch so the port does not drift.

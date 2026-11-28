@@ -96,6 +96,7 @@ flowchart TB
   - Linux runsc 81.5%, Windows with network 77.3% of 14620 cases (2026-11-27, commit 63612b2a1)
 - `ops-portable-packaging`: Portable zip, no installer
   - CI uploads a runsc-windows package (runsc.exe, hello bundle, README) on each push to windows (2026-11-27, commit 20ac3fb3b)
+  - Published gvisor-windows v0.1.0 (pre-release, runsc for Windows and Linux) from release run 46093187743 and podman-portable v0.1.0 (single exe and zip) (2026-11-28, commit b907ae6aa)
 - `ops-ci-build-once`: Build once, run suites on demand
   - Owner decision: CI on push only, no scheduled test runs; repeats are dispatched when needed (2026-11-28, commit 8760b32fc)
 <!-- END GENERATED: table-ops -->

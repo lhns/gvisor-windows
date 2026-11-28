@@ -1,14 +1,13 @@
-# Cuts a DRAFT GitHub release of runsc: dispatch it with
-#   gh workflow run release --ref windows -f version=v0.1.0 -f dry_run=false
-# The release is built from the dispatched commit and gated on the heavy suites of that same commit. The owner
-# reviews and publishes the draft. With dry_run (the default) everything runs except `gh release create`; the
-# assets are left in the artifact release-assets.
+# Publishes a GitHub pre-release of runsc: dispatch it with
+#   gh workflow run release --ref windows -f version=v0.2.0
+# The release is built from the dispatched commit and gated on the heavy suites of that same commit. With
+# dry_run everything runs except `gh release create`; the assets are left in the artifact release-assets.
 name: release
 on:
   workflow_dispatch:
     inputs:
       version: {description: "release tag, e.g. v0.1.0", required: true}
-      dry_run: {description: "build and gate, but create no release", type: boolean, default: true}
+      dry_run: {description: "build and gate, but create no release", type: boolean, default: false}
 permissions:
   contents: read
 concurrency:
@@ -104,5 +103,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ inputs.version }}" --repo "${{ github.repository }}" --draft --target "${{ github.sha }}" \
+          gh release create "${{ inputs.version }}" --repo "${{ github.repository }}" --prerelease --target "${{ github.sha }}" \
             --title "${{ inputs.version }}" --notes-file notes.md dist/*
